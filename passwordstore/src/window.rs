@@ -121,8 +121,8 @@ mod imp {
             self.list.connect_row_activated(move |_, row| {
                 if let Some(inner) = row.child() {
                     if let Ok(label) = inner.downcast::<gtk::Label>() {
-                        let text = label.text().to_string();
-                        println!("Label text: {}", text);
+                        let path = label.text().to_string().replace(" / ", "/");
+                        println!("Selected: {}", path);
                     }
                 }
             });

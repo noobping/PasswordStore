@@ -190,7 +190,7 @@ mod imp {
                         let path = label.text().to_string().replace(" / ", "/");
                         println!("Selected: {}", path);
                         obj_clone.set_path(path.clone());
-                        obj_clone.open_text_editor();
+                        obj_clone.ask_for_passphrase();
                         return;
                     }
                 }

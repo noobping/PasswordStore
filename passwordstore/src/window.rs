@@ -28,6 +28,12 @@ mod imp {
 
     use super::*;
 
+    pub enum Pages {
+        ListPage,
+        AskPage,
+        TextPage,
+    }
+
     #[derive(Debug, Default, gtk::CompositeTemplate)]
     #[template(resource = "/io/github/noobping/PasswordStore/window.ui")]
     pub struct PasswordstoreWindow {
@@ -38,7 +44,7 @@ mod imp {
         pub toast_overlay: TemplateChild<adw::ToastOverlay>,
 
         #[template_child]
-        pub nav: TemplateChild<adw::NavigationView>,
+        pub navigation_view: TemplateChild<adw::NavigationView>,
 
         // ① List page
         #[template_child]
@@ -82,6 +88,35 @@ mod imp {
                 label.set_valign(gtk::Align::Center);
                 label.set_vexpand(false);
                 list.append(&label);
+            }
+        }
+
+        pub fn push(&self, page: Pages) {
+            let page_ref = match page {
+                Pages::ListPage => &self.list_page,
+                Pages::AskPage => &self.ask_page,
+                Pages::TextPage => &self.text_page,
+            };
+            println!(
+                "Pushing page: {:?}",
+                match page {
+                    Pages::ListPage => "ListPage",
+                    Pages::AskPage => "AskPage",
+                    Pages::TextPage => "TextPage",
+                }
+            );
+            self.navigation_view
+                .push(page_ref.as_ref() as &adw::NavigationPage);
+        }
+
+        pub fn toggle_search(&self) {
+            let entry = self.search_entry.clone();
+            let visible = !entry.is_visible();
+            entry.set_visible(visible);
+            if visible {
+                entry.grab_focus();
+            } else {
+                entry.set_text("");
             }
         }
 
@@ -147,11 +182,6 @@ mod imp {
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
-            let add_action = gio::SimpleAction::new("ask-passphrase", None);
-            add_action.connect_activate(move |_, _| obj_clone.ask_for_passphrase());
-            obj.add_action(&add_action);
-
-            let obj_clone = obj.clone();
             let add_action = gio::SimpleAction::new("decrypt-password", None);
             add_action.connect_activate(move |_, _| obj_clone.open_text_editor());
             obj.add_action(&add_action);
@@ -190,7 +220,7 @@ mod imp {
                         let path = label.text().to_string().replace(" / ", "/");
                         println!("Selected: {}", path);
                         obj_clone.set_path(path.clone());
-                        obj_clone.ask_for_passphrase();
+                        obj_clone.push(Pages::AskPage);
                         return;
                     }
                 }
@@ -250,14 +280,7 @@ impl PasswordstoreWindow {
     }
 
     pub fn toggle_search(&self) {
-        let entry = self.imp().search_entry.clone();
-        let visible = !entry.is_visible();
-        entry.set_visible(visible);
-        if visible {
-            entry.grab_focus();
-        } else {
-            entry.set_text("");
-        }
+        self.imp().toggle_search();
     }
 
     pub fn open_new_password(&self) {
@@ -266,16 +289,7 @@ impl PasswordstoreWindow {
         text_view.set_editable(true);
         let text_page = self.imp().text_page.clone();
         if !text_page.is_visible() {
-            self.imp().nav.push(&text_page.clone());
-        }
-    }
-
-    pub fn ask_for_passphrase(&self) {
-        let ask_page = self.imp().ask_page.clone();
-        if ask_page.is_visible() {
-            return;
-        } else {
-            self.imp().nav.push(&ask_page.clone());
+            self.push(imp::Pages::TextPage);
         }
     }
 
@@ -285,7 +299,7 @@ impl PasswordstoreWindow {
         if passphrase.is_empty() {
             let ask_page = self.imp().ask_page.clone();
             if !&ask_page.is_visible() {
-                self.imp().nav.push(&ask_page.clone());
+                self.push(imp::Pages::AskPage);
             }
             self.show_toast("Passphrase cannot be empty");
             return;
@@ -296,7 +310,7 @@ impl PasswordstoreWindow {
             self.show_toast("Password not found");
             let list_page = self.imp().list_page.clone();
             if !&list_page.is_visible() {
-                self.imp().nav.push(&list_page.clone());
+                self.push(imp::Pages::ListPage);
             }
             return;
         }
@@ -317,7 +331,7 @@ impl PasswordstoreWindow {
                 text_view.set_buffer(Some(&buffer));
                 text_view.set_editable(false);
                 // Open the text page so that I can view (or edit) the encqrypted password file
-                self.imp().nav.push(&self.imp().text_page.clone());
+                self.push(imp::Pages::TextPage);
             }
             Err(e) => {
                 let message = e.to_string();
@@ -327,6 +341,10 @@ impl PasswordstoreWindow {
                 eprintln!("Failed to open password: {}", e);
             }
         }
+    }
+
+    pub fn push(&self, page: imp::Pages) {
+        self.imp().push(page);
     }
 
     pub fn get_path(&self) -> String {

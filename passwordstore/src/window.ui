@@ -37,7 +37,7 @@
         <property name="content">
           <object class="AdwToastOverlay" id="toast_overlay">
             <child>
-              <object class="AdwNavigationView" id="nav">
+              <object class="AdwNavigationView" id="navigation_view">
 
                 <!-- ① List page -->
                 <child>

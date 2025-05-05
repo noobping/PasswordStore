@@ -115,11 +115,16 @@ mod imp {
             });
             obj.add_action(&sync_action);
 
-            // Initialize store and list
+            self.init_list(&store); // Initialize store and list
 
-            self.init_list(&store);
+            // Connect the ListBoxRow activated signal
             self.list.connect_row_activated(move |_, row| {
-                println!("Row activated: {}", row.index());
+                if let Some(inner) = row.child() {
+                    if let Ok(label) = inner.downcast::<gtk::Label>() {
+                        let text = label.text().to_string();
+                        println!("Label text: {}", text);
+                    }
+                }
             });
 
             // Real-time filter: hide/show rows based on search text

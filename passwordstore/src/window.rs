@@ -130,10 +130,7 @@ mod imp {
                         let mut store = PassStore::default();
                         match store.get(&path) {
                             Ok(item) => {
-                                overlay.add_toast(adw::Toast::new(&format!(
-                                    "Password: {}",
-                                    item.password
-                                )));
+                                overlay.add_toast(adw::Toast::new(&item.password));
                             }
                             Err(e) => {
                                 let message = e.to_string();

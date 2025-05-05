@@ -42,6 +42,7 @@
                 <!-- ① List page -->
                 <child>
                   <object class="AdwNavigationPage" id="list_page">
+                    <property name="title" translatable="yes">Password List</property>
                     <child>
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
@@ -80,7 +81,7 @@
                 <!-- ② Ask for password page -->
                 <child>
                   <object class="AdwNavigationPage" id="ask_page">
-                    <property name="title" translatable="yes">Ask for password</property>
+                    <property name="title" translatable="yes">Decrypt Password File</property>
                     <child>
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>

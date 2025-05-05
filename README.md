@@ -1,3 +1,5 @@
+![License](https://img.shields.io/badge/license-GPLv3+-blue.svg)
+
 # Password Store for GNOME
 
 A lightweight GTK4 front‑end for **pass**, written in Rust and distributed as a Flatpak.
@@ -43,9 +45,3 @@ flatpak install org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.rust-stable
 ## Contributing
 
 Issues, feature requests, and pull requests are welcome. If you plan to introduce a substantial change, please open an issue first to discuss the proposed approach.
-
-## Licence
-
-This project is released under the **GNU General Public License, version 3 or later (GPL‑3.0‑or‑later)**.
-
-![License](https://img.shields.io/badge/license-GPLv3+-blue.svg)

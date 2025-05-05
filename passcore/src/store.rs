@@ -26,7 +26,10 @@ use derivative::Derivative;
 use git2::{
     Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks, Repository,
 };
-use gpgme::{Context as GpgContext, DecryptFlags, KeyListMode, Protocol};
+use gpgme::{
+    Context as GpgContext, DecryptFlags, KeyListMode, PassphraseProvider, PassphraseRequest,
+    PinentryMode, Protocol,
+};
 use log::{info, warn};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -149,19 +152,30 @@ impl PassStore {
     ///
     /// Returns an `Entry` containing the password and any extra lines of metadata.
     /// Errors if the entry file is not found or if decryption fails.
-    pub fn get(&mut self, id: &str) -> Result<Entry> {
-        let path = self.root.join(format!("{}.gpg", id));
-        // Open de versleutelde file, geef duidelijke fout als dit niet lukt
-        let mut file =
-            File::open(&path).with_context(|| format!("Failed to open entry '{}'", id))?;
-        let mut cipher = Vec::new();
-        file.read_to_end(&mut cipher)
-            .with_context(|| format!("Failed to read entry '{}'", id))?;
-        // Ontsleutel de inhoud met GPG
+    pub fn get(&mut self, id: &str, passphrase: &str) -> Result<Entry> {
+        // 1. Load the .gpg file into `cipher`
+        let path = self.root.join(format!("{id}.gpg"));
+        let cipher =
+            std::fs::read(&path).with_context(|| format!("Failed to read entry `{id}`"))?;
+
+        // 2. Tell GPGME to accept a loop‑back pass‑phrase
+        self.gpg.set_pinentry_mode(PinentryMode::Loopback)?;
+
+        // 3. Temporarily install a provider that writes `passphrase`
+        let secret = passphrase.to_owned();
         let mut plain = Vec::new();
-        self.gpg
-            .decrypt_with_flags(&cipher, &mut plain, DecryptFlags::empty())
-            .context("GPG decryption failed")?;
+        self.gpg.with_passphrase_provider(
+            move |_req: PassphraseRequest, out: &mut dyn Write| {
+                writeln!(out, "{secret}")?; // passphrase + '\n'
+                Ok(())
+            },
+            |ctx| {
+                // 4. Decrypt while the provider is active
+                ctx.decrypt_with_flags(&cipher, &mut plain, DecryptFlags::empty())
+            },
+        )?; // propagates any GPGME error
+
+        // 5. Convert to UTF‑8 and parse
         let txt = String::from_utf8(plain)?;
         Ok(Entry::from_plaintext(txt))
     }

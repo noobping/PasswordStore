@@ -10,15 +10,16 @@
       <object class="AdwToolbarView">
         <child type="top">
           <object class="AdwHeaderBar">
+            <property name="show-back-button">true</property>
             <child type="start">
-              <object class="GtkButton" id="add_button">
+              <object class="GtkButton">
                 <property name="icon-name">list-add-symbolic</property>
                 <property name="tooltip-text" translatable="yes">Add a new password</property>
                 <property name="action-name">win.add-password</property>
               </object>
             </child>
             <child type="title">
-              <object class="AdwWindowTitle">
+              <object class="AdwWindowTitle" id="window_title">
                 <property name="title" translatable="yes">Password Store</property>
                 <property name="subtitle" translatable="yes">Manage your passwords</property>
               </object>
@@ -36,32 +37,91 @@
         <property name="content">
           <object class="AdwToastOverlay" id="toast_overlay">
             <child>
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <!-- Search entry -->
+              <object class="AdwNavigationView" id="nav">
+
+                <!-- ① List page -->
                 <child>
-                  <object class="GtkSearchEntry" id="search_entry">
-                    <property name="visible">true</property>
-                    <property name="placeholder-text" translatable="yes">Search...</property>
+                  <object class="AdwNavigationPage" id="list_page">
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkSearchEntry" id="search_entry">
+                            <property name="visible">true</property>
+                            <property name="placeholder-text" translatable="yes">Search...</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="vscrollbar-policy">automatic</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="GtkListBox" id="list">
+                                <property name="hexpand">true</property>
+                                <property name="vexpand">true</property>
+                                <child type="placeholder">
+                                  <object class="AdwStatusPage">
+                                    <property name="icon-name">io.github.noobping.PasswordStore</property>
+                                    <property name="title" translatable="yes">No passwords yet</property>
+                                    <property name="description" translatable="yes">Add a new entry with the “＋” button.</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                 </child>
 
-                <!-- Main content: scroll view + list -->
+                <!-- ② Ask for password page -->
                 <child>
-                  <object class="GtkScrolledWindow">
-                    <property name="vscrollbar-policy">automatic</property>
-                    <property name="hscrollbar-policy">never</property>
-                    <property name="propagate-natural-width">true</property>
-                    <property name="propagate-natural-height">true</property>
+                  <object class="AdwNavigationPage" id="ask_page">
+                    <property name="title" translatable="yes">Ask for password</property>
                     <child>
-                      <object class="GtkListBox" id="list">
-                        <property name="hexpand">true</property>
-                        <property name="vexpand">true</property>
-                        <child type="placeholder">
-                          <object class="AdwStatusPage">
-                            <property name="icon-name">io.github.noobping.PasswordStore</property>
-                            <property name="title" translatable="yes">No passwords yet</property>
-                            <property name="description" translatable="yes">Add a new entry with the “＋” button.</property>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Please enter your password:</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkEntry" id="password_entry">
+                            <property name="visibility">false</property>
+                            <property name="placeholder-text" translatable="yes">Password</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton">
+                            <property name="label" translatable="yes">Decrypt</property>
+                            <property name="action-name">win.decrypt-password</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <!-- ③ Text editor page -->
+                <child>
+                  <object class="AdwNavigationPage" id="text_page">
+                    <property name="title" translatable="yes">Text Editor</property>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vscrollbar-policy">automatic</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="propagate-natural-width">true</property>
+                        <property name="propagate-natural-height">true</property>
+                        <child>
+                          <object class="GtkTextView" id="text_view">
+                            <property name="editable">true</property>
+                            <property name="wrap-mode">word</property>
+                            <property name="hexpand">true</property>
+                            <property name="vexpand">true</property>
                           </object>
                         </child>
                       </object>

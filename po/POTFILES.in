@@ -1,0 +1,6 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/io.github.noobping.PasswordStore.desktop.in
+data/io.github.noobping.PasswordStore.metainfo.xml.in
+data/io.github.noobping.PasswordStore.gschema.xml
+passwordstore/src/window.ui

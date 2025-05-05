@@ -311,7 +311,7 @@ impl PasswordstoreWindow {
         }
 
         let mut store = PassStore::default();
-        if store.entry_exists(&path) {
+        if !store.entry_exists(&path) {
             self.show_toast("Password not found");
             let list_page = self.imp().list_page.clone();
             if !&list_page.is_visible() {

@@ -298,6 +298,7 @@ impl PasswordstoreWindow {
     }
 
     pub fn open_text_editor(&self) {
+        println!("Opening text editor for {}", self.get_path());
         let path = self.get_path();
         let passphrase = self.imp().password_entry.text().to_string();
         if passphrase.is_empty() {

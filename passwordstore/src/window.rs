@@ -109,6 +109,16 @@ mod imp {
                 .push(page_ref.as_ref() as &adw::NavigationPage);
         }
 
+        pub fn add_new_password(&self) {
+            let buffer = gtk::TextBuffer::new(None);
+            buffer.connect_changed(move |buffer| {
+                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                println!("Text changed: {}", text);
+            });
+            self.text_view.set_buffer(Some(&buffer));
+            self.push(Pages::TextPage);
+        }
+
         pub fn toggle_search(&self) {
             let entry = self.search_entry.clone();
             let visible = !entry.is_visible();
@@ -284,13 +294,7 @@ impl PasswordstoreWindow {
     }
 
     pub fn open_new_password(&self) {
-        let text_view = self.imp().text_view.clone();
-        text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
-        text_view.set_editable(true);
-        let text_page = self.imp().text_page.clone();
-        if !text_page.is_visible() {
-            self.push(imp::Pages::TextPage);
-        }
+        self.imp().add_new_password();
     }
 
     pub fn open_text_editor(&self) {

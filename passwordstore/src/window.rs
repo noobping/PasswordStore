@@ -118,11 +118,32 @@ mod imp {
             self.init_list(&store); // Initialize store and list
 
             // Connect the ListBoxRow activated signal
+            let obj_clone = obj.clone();
             self.list.connect_row_activated(move |_, row| {
                 if let Some(inner) = row.child() {
                     if let Ok(label) = inner.downcast::<gtk::Label>() {
+                        let overlay = obj_clone.imp().toast_overlay.clone();
                         let path = label.text().to_string().replace(" / ", "/");
                         println!("Selected: {}", path);
+
+                        // Open the password using the path
+                        let mut store = PassStore::default();
+                        match store.get(&path) {
+                            Ok(item) => {
+                                overlay.add_toast(adw::Toast::new(&format!(
+                                    "Password: {}",
+                                    item.password
+                                )));
+                            }
+                            Err(e) => {
+                                let message = e.to_string();
+                                let idx = message.find(';').unwrap_or(message.len());
+                                let before_semicolon = &message[..idx];
+
+                                overlay.add_toast(adw::Toast::new(before_semicolon));
+                                println!("Failed to open password: {}", e);
+                            }
+                        }
                     }
                 }
             });

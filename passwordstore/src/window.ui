@@ -10,12 +10,11 @@
       <object class="AdwToolbarView">
         <child type="top">
           <object class="AdwHeaderBar">
-            <property name="show-back-button">true</property>
             <child type="start">
               <object class="GtkButton">
-                <property name="icon-name">list-add-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Add a new password</property>
-                <property name="action-name">win.add-password</property>
+                <property name="icon-name">go-home-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Back to password list</property>
+                <property name="action-name">win.back</property>
               </object>
             </child>
             <child type="title">
@@ -25,11 +24,23 @@
               </object>
             </child>
             <child type="end">
-              <object class="GtkMenuButton">
-                <property name="primary">True</property>
-                <property name="icon-name">open-menu-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Main Menu</property>
-                <property name="menu-model">primary_menu</property>
+              <object class="GtkBox">
+                <child>
+                  <object class="GtkButton">
+                    <property name="icon-name">document-save-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Save password</property>
+                    <property name="action-name">win.save-password</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton">
+                    <property name="primary">True</property>
+                    <property name="icon-name">open-menu-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Main Menu</property>
+                    <property name="menu-model">primary_menu</property>
+                  </object>
+                </child>
               </object>
             </child>
           </object>

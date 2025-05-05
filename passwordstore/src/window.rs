@@ -91,6 +91,11 @@ mod imp {
             }
         }
 
+        pub fn pop(&self) {
+            println!("Popping page");
+            self.navigation_view.pop();
+        }
+
         pub fn push(&self, page: Pages) {
             let page_ref = match page {
                 Pages::ListPage => &self.list_page,
@@ -194,6 +199,11 @@ mod imp {
             let obj_clone = obj.clone();
             let add_action = gio::SimpleAction::new("decrypt-password", None);
             add_action.connect_activate(move |_, _| obj_clone.open_text_editor());
+            obj.add_action(&add_action);
+
+            let obj_clone = obj.clone();
+            let add_action = gio::SimpleAction::new("back", None);
+            add_action.connect_activate(move |_, _| obj_clone.pop());
             obj.add_action(&add_action);
 
             let store = PassStore::default();
@@ -346,6 +356,10 @@ impl PasswordstoreWindow {
                 eprintln!("Failed to open password: {}", e);
             }
         }
+    }
+
+    pub fn pop(&self) {
+        self.imp().pop();
     }
 
     pub fn push(&self, page: imp::Pages) {

@@ -183,6 +183,7 @@ impl PassStore {
     /// Check whether a given entry (by relative path without `.gpg`) exists in the store.
     pub fn entry_exists(&self, id: &str) -> bool {
         let path = self.root.join(format!("{}.gpg", id));
+        println!("Checking existence of entry: '{}'", path.display());
         path.is_file()
     }
 

@@ -95,6 +95,8 @@
                     <property name="title" translatable="yes">Decrypt Password File</property>
                     <child>
                       <object class="GtkBox">
+                        <property name="spacing">15</property>
+                        <property name="valign">center</property>
                         <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkLabel">
@@ -102,15 +104,17 @@
                           </object>
                         </child>
                         <child>
-                          <object class="GtkEntry" id="password_entry">
-                            <property name="visibility">false</property>
-                            <property name="placeholder-text" translatable="yes">Password</property>
+                          <object class="GtkPasswordEntry" id="password_entry">
+                            <property name="show-peek-icon">true</property>
                           </object>
                         </child>
                         <child>
                           <object class="GtkButton">
                             <property name="label" translatable="yes">Decrypt</property>
                             <property name="action-name">win.decrypt-password</property>
+                            <style>
+                              <class name="suggested-action"/>
+                            </style>
                           </object>
                         </child>
                       </object>

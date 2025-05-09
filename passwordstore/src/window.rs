@@ -25,6 +25,7 @@ use passcore::PassStore;
 
 mod imp {
     use gettextrs::gettext;
+    use gtk::PasswordEntry;
 
     use super::*;
 
@@ -61,7 +62,7 @@ mod imp {
         pub ask_page: TemplateChild<adw::NavigationPage>,
 
         #[template_child]
-        pub password_entry: TemplateChild<gtk::Entry>,
+        pub password_entry: TemplateChild<PasswordEntry>,
 
         // ③ Text editor page
         #[template_child]

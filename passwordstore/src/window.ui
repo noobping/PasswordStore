@@ -77,7 +77,7 @@
                                   <object class="AdwStatusPage">
                                     <property name="icon-name">io.github.noobping.PasswordStore</property>
                                     <property name="title" translatable="yes">No passwords found</property>
-                                    <property name="description" translatable="yes">Add a new entry, clone a existing password store or clear the search filter.</property>
+                                    <property name="description" translatable="yes">Try a different search, add a new entry or clone an existing password store.</property>
                                   </object>
                                 </child>
                               </object>

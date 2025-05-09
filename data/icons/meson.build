@@ -11,3 +11,13 @@ install_data(
   symbolic_dir / ('@0@-symbolic.svg').format(application_id),
   install_dir: get_option('datadir') / 'icons' / symbolic_dir
 )
+
+install_data(
+  symbolic_dir / ('left-symbolic.svg').format(application_id),
+  install_dir: get_option('datadir') / 'icons' / symbolic_dir
+)
+
+install_data(
+  symbolic_dir / ('padlock2-open-symbolic.svg').format(application_id),
+  install_dir: get_option('datadir') / 'icons' / symbolic_dir
+)

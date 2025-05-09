@@ -12,8 +12,8 @@
           <object class="AdwHeaderBar">
             <child type="start">
               <object class="GtkButton">
-                <property name="icon-name">go-home-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Back to password list</property>
+                <property name="icon-name">left-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Back</property>
                 <property name="action-name">win.back</property>
               </object>
             </child>
@@ -76,8 +76,8 @@
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
                                     <property name="icon-name">io.github.noobping.PasswordStore</property>
-                                    <property name="title" translatable="yes">No passwords yet</property>
-                                    <property name="description" translatable="yes">Add a new entry with the “＋” button.</property>
+                                    <property name="title" translatable="yes">No passwords found</property>
+                                    <property name="description" translatable="yes">Add a new entry, clone a existing password store or clear the search filter.</property>
                                   </object>
                                 </child>
                               </object>
@@ -99,8 +99,14 @@
                         <property name="valign">center</property>
                         <property name="orientation">vertical</property>
                         <child>
+                          <object class="GtkImage">
+                            <property name="icon-name">padlock2-open-symbolic</property>
+                            <property name="icon-size">GTK_ICON_SIZE_LARGE</property>
+                          </object>
+                        </child>
+                        <child>
                           <object class="GtkLabel">
-                            <property name="label" translatable="yes">Please enter your password:</property>
+                            <property name="label" translatable="yes">Please enter your password to decrypt:</property>
                           </object>
                         </child>
                         <child>

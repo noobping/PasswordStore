@@ -93,6 +93,10 @@
                 <child>
                   <object class="AdwNavigationPage" id="ask_page">
                     <property name="title" translatable="yes">Decrypt Password File</property>
+                    <property name="margin-start">15</property>
+                    <property name="margin-end">15</property>
+                    <property name="margin-top">15</property>
+                    <property name="margin-bottom">15</property>
                     <child>
                       <object class="GtkBox">
                         <property name="spacing">15</property>

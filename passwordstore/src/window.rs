@@ -64,6 +64,15 @@ mod imp {
         #[template_child]
         pub password_entry: TemplateChild<PasswordEntry>,
 
+        #[template_child]
+        pub loading_spinner: TemplateChild<gtk::Spinner>,
+
+        #[template_child]
+        pub decrypt_label: TemplateChild<gtk::Label>,
+
+        #[template_child]
+        pub decrypt_button: TemplateChild<gtk::Button>,
+
         // ③ Text editor page
         #[template_child]
         pub text_page: TemplateChild<adw::NavigationPage>,
@@ -111,6 +120,7 @@ mod imp {
                     Pages::TextPage => "TextPage",
                 }
             );
+            self.stop_loading();
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
         }
@@ -134,6 +144,22 @@ mod imp {
             } else {
                 entry.set_text("");
             }
+        }
+
+        pub fn start_loading(&self) {
+            self.loading_spinner.start();
+            self.loading_spinner.set_visible(true);
+            self.decrypt_label.set_visible(false);
+            self.decrypt_button.set_sensitive(false);
+            self.decrypt_button.set_can_focus(false);
+        }
+
+        pub fn stop_loading(&self) {
+            self.loading_spinner.stop();
+            self.loading_spinner.set_visible(false);
+            self.decrypt_label.set_visible(true);
+            self.decrypt_button.set_sensitive(true);
+            self.decrypt_button.set_can_focus(true);
         }
 
         pub fn show_toast(&self, message: &str) {
@@ -206,6 +232,11 @@ mod imp {
             let add_action = gio::SimpleAction::new("back", None);
             add_action.connect_activate(move |_, _| obj_clone.pop());
             obj.add_action(&add_action);
+
+            let obj_clone = obj.clone();
+            obj.imp().password_entry.connect_activate(move |_| {
+                obj_clone.open_text_editor();
+            });
 
             let store = PassStore::default();
 
@@ -310,7 +341,7 @@ impl PasswordstoreWindow {
 
     pub fn open_text_editor(&self) {
         println!("Opening text editor for {}", self.get_path());
-        let path = self.get_path();
+
         let passphrase = self.imp().password_entry.text().to_string();
         if passphrase.is_empty() {
             let ask_page = self.imp().ask_page.clone();
@@ -321,42 +352,57 @@ impl PasswordstoreWindow {
             return;
         }
 
-        let mut store = PassStore::default();
-        if !store.entry_exists(&path) {
-            self.show_toast("Password not found");
-            let list_page = self.imp().list_page.clone();
-            if !&list_page.is_visible() {
-                self.push(imp::Pages::ListPage);
-            }
-            return;
-        }
-
-        match store.get(&path, passphrase.as_str()) {
-            Ok(item) => {
-                println!("Password: {}", item.password);
-                // Pass item to the text view
-                // Add item.password to the first line of the text view
-                // Add the item.extra (a list of strings) after that.
-                let mut text = item.password;
-                for line in item.extra {
-                    text.push_str(&format!("\n{}", line));
+        let obj_clone = self.clone();
+        glib::idle_add_local_once(move || {
+            let path = obj_clone.get_path();
+            let mut store = PassStore::default();
+            if !store.entry_exists(&path) {
+                obj_clone.show_toast("Password not found");
+                let list_page = obj_clone.imp().list_page.clone();
+                obj_clone.stop_loading();
+                if !&list_page.is_visible() {
+                    obj_clone.push(imp::Pages::ListPage);
                 }
-                let buffer = gtk::TextBuffer::new(None);
-                buffer.set_text(&text);
-                let text_view = self.imp().text_view.clone();
-                text_view.set_buffer(Some(&buffer));
-                text_view.set_editable(false);
-                // Open the text page so that I can view (or edit) the encqrypted password file
-                self.push(imp::Pages::TextPage);
+                return;
             }
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                self.show_toast(before_semicolon);
-                eprintln!("Failed to open password: {}", e);
+
+            match store.get(&path, passphrase.as_str()) {
+                Ok(item) => {
+                    println!("Password: {}", item.password);
+                    // Pass item to the text view
+                    // Add item.password to the first line of the text view
+                    // Add the item.extra (a list of strings) after that.
+                    let mut text = item.password;
+                    for line in item.extra {
+                        text.push_str(&format!("\n{}", line));
+                    }
+                    let buffer = gtk::TextBuffer::new(None);
+                    buffer.set_text(&text);
+                    let text_view = obj_clone.imp().text_view.clone();
+                    text_view.set_buffer(Some(&buffer));
+                    text_view.set_editable(false);
+                    obj_clone.stop_loading();
+                    // Open the text page so that I can view (or edit) the encqrypted password file
+                    obj_clone.push(imp::Pages::TextPage);
+                }
+                Err(e) => {
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    obj_clone.stop_loading();
+                    obj_clone.show_toast(before_semicolon);
+                    eprintln!("Failed to open password: {}", e);
+                }
             }
-        }
+        });
+    }
+
+    pub fn stop_loading(&self) {
+        self.imp().stop_loading();
+    }
+
+    pub fn start_loading(&self) {
+        self.imp().start_loading();
     }
 
     pub fn pop(&self) {

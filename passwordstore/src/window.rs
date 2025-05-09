@@ -29,6 +29,8 @@ mod imp {
 
     use super::*;
 
+    // Add to string
+    #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum Pages {
         ListPage,
         AskPage,
@@ -63,12 +65,6 @@ mod imp {
 
         #[template_child]
         pub password_entry: TemplateChild<PasswordEntry>,
-
-        #[template_child]
-        pub loading_spinner: TemplateChild<gtk::Spinner>,
-
-        #[template_child]
-        pub decrypt_label: TemplateChild<gtk::Label>,
 
         #[template_child]
         pub decrypt_button: TemplateChild<gtk::Button>,
@@ -112,15 +108,7 @@ mod imp {
                 Pages::AskPage => &self.ask_page,
                 Pages::TextPage => &self.text_page,
             };
-            println!(
-                "Pushing page: {:?}",
-                match page {
-                    Pages::ListPage => "ListPage",
-                    Pages::AskPage => "AskPage",
-                    Pages::TextPage => "TextPage",
-                }
-            );
-            self.stop_loading();
+            println!("Pushing page: {:?}", page);
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
         }
@@ -147,19 +135,20 @@ mod imp {
         }
 
         pub fn start_loading(&self) {
-            self.loading_spinner.start();
-            self.loading_spinner.set_visible(true);
-            self.decrypt_label.set_visible(false);
+            println!("Loading...");
             self.decrypt_button.set_sensitive(false);
             self.decrypt_button.set_can_focus(false);
+            self.password_entry.set_can_focus(false);
+            self.password_entry.set_sensitive(false);
         }
 
         pub fn stop_loading(&self) {
-            self.loading_spinner.stop();
-            self.loading_spinner.set_visible(false);
-            self.decrypt_label.set_visible(true);
+            println!("Done!");
             self.decrypt_button.set_sensitive(true);
             self.decrypt_button.set_can_focus(true);
+            self.password_entry.set_can_focus(true);
+            self.password_entry.set_sensitive(true);
+            self.password_entry.grab_focus();
         }
 
         pub fn show_toast(&self, message: &str) {
@@ -340,11 +329,13 @@ impl PasswordstoreWindow {
     }
 
     pub fn open_text_editor(&self) {
+        self.start_loading();
         println!("Opening text editor for {}", self.get_path());
 
         let passphrase = self.imp().password_entry.text().to_string();
         if passphrase.is_empty() {
             let ask_page = self.imp().ask_page.clone();
+            self.stop_loading();
             if !&ask_page.is_visible() {
                 self.push(imp::Pages::AskPage);
             }

@@ -23,6 +23,7 @@ use crate::entry::Entry;
 
 use anyhow::{Context, Result, anyhow};
 use derivative::Derivative;
+use git2::build::RepoBuilder;
 use git2::{
     Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks, Repository,
 };
@@ -83,7 +84,9 @@ impl PassStore {
     }
 
     fn root(&self) -> Result<&PathBuf, anyhow::Error> {
-        let root = self.root.as_ref()
+        let root = self
+            .root
+            .as_ref()
             .ok_or_else(|| anyhow!("Password store root is not initialized"))?;
         Ok(root)
     }
@@ -449,5 +452,42 @@ impl PassStore {
         self.git_push()?;
 
         Ok(())
+    }
+
+    pub fn git_clone(repo_url: &str) -> Result<Self> {
+        // 1. Bepaal waar de store moet staan (bijv. ~/.password-store)
+        let root = discover_store_dir()?;
+
+        // 2. Zorg dat de directory leeg is (om een echte clone te doen)
+        if root.exists() {
+            // als er al iets in staat, liever niet klungelen
+            if root.read_dir()?.next().is_some() {
+                return Err(anyhow!("Password store directory {:?} is not empty", root));
+            }
+        } else {
+            // maak ‘m aan als 'ie nog niet bestaat
+            fs::create_dir_all(&root).context("Failed to create password store directory")?;
+        }
+
+        // 3. Clone met onze SSH-callbacks
+        let mut fo = FetchOptions::new();
+        fo.remote_callbacks(PassStore::make_callbacks());
+
+        let repo = RepoBuilder::new()
+            .fetch_options(fo)
+            .clone(repo_url, &root)
+            .context("Failed to clone repository")?;
+
+        // 4. Zet GPG klaar
+        let mut gpg = GpgContext::from_protocol(Protocol::OpenPgp)
+            .context("Failed to create GPG context for password store")?;
+        gpg.set_armor(true);
+
+        // 5. Return een geconfigureerde PassStore
+        Ok(PassStore {
+            root: Some(root),
+            repo: Some(repo.into()),
+            gpg: Some(gpg.into()),
+        })
     }
 }

@@ -133,10 +133,21 @@ mod imp {
 
         fn update_navigation_buttons(&self) {
             let default_page = self.is_default_page();
-            self.back_button.set_visible(!default_page);
+            self.add_button.set_can_focus(default_page);
+            self.add_button.set_sensitive(default_page);
             self.add_button.set_visible(default_page);
+            self.back_button.set_can_focus(!default_page);
+            self.back_button.set_sensitive(!default_page);
+            self.back_button.set_visible(!default_page);
+
             let exists_store = default_page && exists_store_dir();
+            self.git_button.set_can_focus(default_page && !exists_store);
+            self.git_button.set_sensitive(default_page && !exists_store);
             self.git_button.set_visible(default_page && !exists_store);
+            self.search_button
+                .set_can_focus(default_page && exists_store);
+            self.search_button
+                .set_sensitive(default_page && exists_store);
             self.search_button.set_visible(default_page && exists_store);
         }
 
@@ -216,10 +227,18 @@ mod imp {
 
         pub fn start_loading(&self) {
             println!("Loading...");
-            self.decrypt_button.set_sensitive(false);
+            self.add_button.set_can_focus(false);
+            self.add_button.set_sensitive(false);
+            self.back_button.set_can_focus(false);
+            self.back_button.set_sensitive(false);
             self.decrypt_button.set_can_focus(false);
+            self.decrypt_button.set_sensitive(false);
+            self.git_button.set_can_focus(false);
+            self.git_button.set_sensitive(false);
             self.password_entry.set_can_focus(false);
             self.password_entry.set_sensitive(false);
+            self.search_button.set_can_focus(false);
+            self.search_button.set_sensitive(false);
         }
 
         pub fn stop_loading(&self) {
@@ -229,6 +248,7 @@ mod imp {
             self.password_entry.set_can_focus(true);
             self.password_entry.set_sensitive(true);
             self.password_entry.grab_focus();
+            self.update_navigation_buttons();
         }
 
         pub fn show_toast(&self, message: &str) {

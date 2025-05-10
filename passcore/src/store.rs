@@ -216,7 +216,7 @@ impl PassStore {
         }
         let root = self.root().unwrap();
         let path = root.join(format!("{}.gpg", id));
-        println!("Checking existence of entry: '{}'", path.display());
+        info!("Checking existence of entry: '{}'", path.display());
         path.is_file()
     }
 

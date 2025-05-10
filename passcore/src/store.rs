@@ -212,6 +212,28 @@ impl PassStore {
         Ok(Entry::from_plaintext(txt))
     }
 
+    /// Like `get`, but let GPGME/agent ask you for the passphrase via pinentry.
+    pub fn ask(&self, id: &str) -> Result<Entry> {
+        // 1. Read the .gpg blob
+        let root = self.root()?;
+        let path = root.join(format!("{id}.gpg"));
+        let cipher =
+            std::fs::read(&path).with_context(|| format!("Failed to read entry `{}`", id))?;
+
+        // 2. Force a pinentry dialog instead of loopback
+        let mut gpg = self.gpg();
+        gpg.set_pinentry_mode(PinentryMode::Ask)?;
+
+        // 3. Decrypt; GPGME will launch your pinentry (GUI/tty) for you
+        let mut plain = Vec::new();
+        gpg.decrypt_with_flags(&cipher, &mut plain, DecryptFlags::empty())
+            .context("Decryption failed")?;
+
+        // 4. UTF-8 + parse just like `get`
+        let txt = String::from_utf8(plain)?;
+        Ok(Entry::from_plaintext(txt))
+    }
+
     /// Check whether a given entry (by relative path without `.gpg`) exists in the store.
     pub fn entry_exists(&self, id: &str) -> bool {
         if self.root.is_none() {

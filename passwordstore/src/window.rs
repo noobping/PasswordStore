@@ -121,7 +121,6 @@ mod imp {
                 label.set_vexpand(false);
                 list.append(&label);
             }
-            self.toggle_search();
         }
 
         fn is_default_page(&self) -> bool {
@@ -316,7 +315,7 @@ mod imp {
                 Ok(store) => store,
                 Err(e) => {
                     eprint!("Failed to open password store: {}", e);
-                    return;
+                    PassStore::default()
                 }
             };
 

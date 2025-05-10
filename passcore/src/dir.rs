@@ -34,3 +34,14 @@ pub fn discover_store_dir() -> Result<PathBuf> {
     let base = BaseDirs::new().ok_or_else(|| anyhow!("Could not determine home directory"))?;
     Ok(base.home_dir().join(DEFAULT_STORE_DIR))
 }
+
+pub fn exists_store_dir() -> bool {
+    let store_dir = match discover_store_dir() {
+        Ok(dir) => dir,
+        Err(_) => return false,
+    };
+    if store_dir.exists() {
+        return true;
+    }
+    return false;
+}

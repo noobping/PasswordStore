@@ -18,10 +18,10 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-pub mod dir;
+mod dir;
 pub mod entry;
 pub mod store;
 
-pub use dir::discover_store_dir;
+pub use dir::exists_store_dir;
 pub use entry::Entry;
 pub use store::PassStore;

@@ -26,6 +26,7 @@ use passcore::PassStore;
 mod imp {
     use gettextrs::gettext;
     use gtk::PasswordEntry;
+    use passcore::exists_store_dir;
 
     use super::*;
 
@@ -64,6 +65,9 @@ mod imp {
 
         #[template_child]
         pub git_button: TemplateChild<gtk::Button>,
+
+        #[template_child]
+        pub search_button: TemplateChild<gtk::Button>,
 
         // ① List page
         #[template_child]
@@ -131,7 +135,9 @@ mod imp {
             let default_page = self.is_default_page();
             self.back_button.set_visible(!default_page);
             self.add_button.set_visible(default_page);
-            self.git_button.set_visible(default_page);
+            let exists_store = default_page && exists_store_dir();
+            self.git_button.set_visible(default_page && !exists_store);
+            self.search_button.set_visible(default_page && exists_store);
         }
 
         pub fn pop(&self) {
@@ -303,7 +309,10 @@ mod imp {
 
             let obj_clone = obj.clone();
             let add_action = gio::SimpleAction::new("git-clone", None);
-            add_action.connect_activate(move |_, _| obj_clone.git_clone());
+            add_action.connect_activate(move |_, _| {
+                let obj_clone2 = obj_clone.clone();
+                glib::idle_add_local_once(move || obj_clone2.git_clone());
+            });
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
@@ -342,6 +351,7 @@ mod imp {
             obj.add_action(&sync_action);
 
             self.init_list(&store); // Initialize store and list
+            self.update_navigation_buttons();
 
             // Connect the ListBoxRow activated signal
             let obj_clone = obj.clone();

@@ -35,6 +35,13 @@ mod imp {
         ListPage,
         AskPage,
         TextPage,
+        GitPage,
+    }
+
+    impl Default for Pages {
+        fn default() -> Self {
+            Pages::ListPage
+        }
     }
 
     #[derive(Debug, Default, gtk::CompositeTemplate)]
@@ -48,6 +55,15 @@ mod imp {
 
         #[template_child]
         pub navigation_view: TemplateChild<adw::NavigationView>,
+
+        #[template_child]
+        pub back_button: TemplateChild<gtk::Button>,
+
+        #[template_child]
+        pub add_button: TemplateChild<gtk::Button>,
+
+        #[template_child]
+        pub git_button: TemplateChild<gtk::Button>,
 
         // ① List page
         #[template_child]
@@ -75,6 +91,13 @@ mod imp {
 
         #[template_child]
         pub text_view: TemplateChild<gtk::TextView>,
+
+        #[template_child]
+        pub save_button: TemplateChild<gtk::Button>,
+
+        // ④ Git clone page
+        #[template_child]
+        pub git_page: TemplateChild<adw::NavigationPage>,
     }
 
     impl PasswordstoreWindow {
@@ -97,9 +120,21 @@ mod imp {
             }
         }
 
+        fn is_default_page(&self) -> bool {
+            self.navigation_view.navigation_stack().n_items() <= 1
+        }
+
+        fn update_navigation_buttons(&self) {
+            let default_page = self.is_default_page();
+            self.back_button.set_visible(!default_page);
+            self.add_button.set_visible(default_page);
+            self.git_button.set_visible(default_page);
+        }
+
         pub fn pop(&self) {
             println!("Popping page");
             self.navigation_view.pop();
+            self.update_navigation_buttons();
         }
 
         pub fn push(&self, page: Pages) {
@@ -107,10 +142,12 @@ mod imp {
                 Pages::ListPage => &self.list_page,
                 Pages::AskPage => &self.ask_page,
                 Pages::TextPage => &self.text_page,
+                Pages::GitPage => &self.git_page,
             };
             println!("Pushing page: {:?}", page);
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
+            self.update_navigation_buttons();
         }
 
         pub fn add_new_password(&self) {
@@ -125,6 +162,15 @@ mod imp {
 
         pub fn toggle_search(&self) {
             let entry = self.search_entry.clone();
+            if !self.is_default_page() {
+                self.navigation_view
+                    .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
+                entry.grab_focus();
+                entry.set_visible(true);
+                self.update_navigation_buttons();
+                return;
+            }
+
             let visible = !entry.is_visible();
             entry.set_visible(visible);
             if visible {
@@ -223,6 +269,11 @@ mod imp {
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
+            let add_action = gio::SimpleAction::new("git-clone", None);
+            add_action.connect_activate(move |_, _| obj_clone.git_page());
+            obj.add_action(&add_action);
+
+            let obj_clone = obj.clone();
             obj.imp().password_entry.connect_activate(move |_| {
                 obj_clone.open_text_editor();
             });
@@ -318,6 +369,10 @@ impl PasswordstoreWindow {
         glib::Object::builder()
             .property("application", application)
             .build()
+    }
+
+    pub fn git_page(&self) {
+        self.imp().push(imp::Pages::GitPage);
     }
 
     pub fn toggle_search(&self) {

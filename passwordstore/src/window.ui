@@ -11,10 +11,31 @@
         <child type="top">
           <object class="AdwHeaderBar">
             <child type="start">
-              <object class="GtkButton">
-                <property name="icon-name">left-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Back</property>
-                <property name="action-name">win.back</property>
+              <object class="GtkBox">
+                <child>
+                  <object class="GtkButton" id="git_button">
+                    <property name="icon-name">git-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Add new password</property>
+                    <property name="action-name">win.git-clone</property>
+                    <property name="visible">true</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="add_button">
+                    <property name="icon-name">list-add-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Add new password</property>
+                    <property name="action-name">win.add-password</property>
+                    <property name="visible">true</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="back_button">
+                    <property name="icon-name">left-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Back</property>
+                    <property name="action-name">win.back</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
               </object>
             </child>
             <child type="title">
@@ -26,7 +47,7 @@
             <child type="end">
               <object class="GtkBox">
                 <child>
-                  <object class="GtkButton">
+                  <object class="GtkButton" id="save_button">
                     <property name="icon-name">document-save-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Save password</property>
                     <property name="action-name">win.save-password</property>
@@ -156,6 +177,43 @@
                   </object>
                 </child>
 
+                <!-- ④ Git clone page -->
+                <child>
+                  <object class="AdwNavigationPage" id="git_page">
+                    <property name="title" translatable="yes">Git Clone</property>
+                    <property name="margin-start">15</property>
+                    <property name="margin-end">15</property>
+                    <property name="margin-top">15</property>
+                    <property name="margin-bottom">15</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="spacing">15</property>
+                        <property name="valign">center</property>
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkLabel">
+                            <property name="label" translatable="yes">Please enter the URL of the remote repository:</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkEntry" id="git_url_entry">
+                            <property name="placeholder-text" translatable="yes">Git repository URL...</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="git_clone_button">
+                            <property name="action-name">win.git-clone</property>
+                            <property name="label" translatable="yes">Clone</property>
+                            <style>
+                              <class name="suggested-action" />
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
               </object>
             </child>
           </object>
@@ -176,6 +234,10 @@
       <item>
         <attribute name="label" translatable="yes">_Synchronize</attribute>
         <attribute name="action">win.synchronize</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Restore backup</attribute>
+        <attribute name="action">win.git-clone</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

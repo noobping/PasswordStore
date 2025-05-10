@@ -341,6 +341,12 @@ mod imp {
             });
 
             let obj_clone = obj.clone();
+            obj.imp().git_url_entry.connect_activate(move |_| {
+                let obj_clone2 = obj_clone.clone();
+                glib::idle_add_local_once(move || obj_clone2.git_clone());
+            });
+
+            let obj_clone = obj.clone();
             glib::idle_add_local_once(move || {
                 let store = match PassStore::new() {
                     Ok(store) => store,

@@ -98,6 +98,9 @@ mod imp {
         // ④ Git clone page
         #[template_child]
         pub git_page: TemplateChild<adw::NavigationPage>,
+
+        #[template_child]
+        pub git_url_entry: TemplateChild<gtk::Entry>,
     }
 
     impl PasswordstoreWindow {
@@ -177,6 +180,31 @@ mod imp {
                 entry.grab_focus();
             } else {
                 entry.set_text("");
+            }
+        }
+
+        pub fn git_clone(&self) {
+            let url = self.git_url_entry.text().to_string();
+            if url.is_empty() {
+                self.show_toast("Git URL cannot be empty");
+                return;
+            }
+            let store = match PassStore::git_clone(&url) {
+                Ok(store) => store,
+                Err(e) => {
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    self.show_toast(before_semicolon);
+                    eprintln!("Failed to clone git repository: {}", e);
+                    PassStore::default()
+                }
+            };
+            if store.ok() {
+                self.init_list(&store);
+                self.navigation_view
+                    .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
+                self.update_navigation_buttons();
             }
         }
 
@@ -269,8 +297,13 @@ mod imp {
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
-            let add_action = gio::SimpleAction::new("git-clone", None);
+            let add_action = gio::SimpleAction::new("git-page", None);
             add_action.connect_activate(move |_, _| obj_clone.git_page());
+            obj.add_action(&add_action);
+
+            let obj_clone = obj.clone();
+            let add_action = gio::SimpleAction::new("git-clone", None);
+            add_action.connect_activate(move |_, _| obj_clone.git_clone());
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
@@ -281,7 +314,7 @@ mod imp {
             let store = match PassStore::new() {
                 Ok(store) => store,
                 Err(e) => {
-                    obj.show_toast(&format!("Failed to open password store: {}", e));
+                    eprint!("Failed to open password store: {}", e);
                     return;
                 }
             };
@@ -379,6 +412,10 @@ impl PasswordstoreWindow {
 
     pub fn git_page(&self) {
         self.imp().push(imp::Pages::GitPage);
+    }
+
+    pub fn git_clone(&self) {
+        self.imp().git_clone();
     }
 
     pub fn toggle_search(&self) {

@@ -16,7 +16,7 @@
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Add new password</property>
-                    <property name="action-name">win.git-clone</property>
+                    <property name="action-name">win.git-page</property>
                     <property name="visible">true</property>
                   </object>
                 </child>
@@ -237,7 +237,7 @@
       </item>
       <item>
         <attribute name="label" translatable="yes">_Restore backup</attribute>
-        <attribute name="action">win.git-clone</attribute>
+        <attribute name="action">win.git-page</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

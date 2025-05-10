@@ -30,7 +30,7 @@
             <child>
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes" context="shortcut window">Restore password store from backup</property>
-                <property name="action-name">win.git-clone</property>
+                <property name="action-name">win.git-page</property>
               </object>
             </child>
             <child>

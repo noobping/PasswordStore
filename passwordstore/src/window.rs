@@ -121,6 +121,7 @@ mod imp {
                 label.set_vexpand(false);
                 list.append(&label);
             }
+            self.toggle_search();
         }
 
         fn is_default_page(&self) -> bool {

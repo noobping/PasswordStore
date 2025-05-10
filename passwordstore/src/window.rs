@@ -278,7 +278,13 @@ mod imp {
                 obj_clone.open_text_editor();
             });
 
-            let store = PassStore::default();
+            let store = match PassStore::new() {
+                Ok(store) => store,
+                Err(e) => {
+                    obj.show_toast(&format!("Failed to open password store: {}", e));
+                    return;
+                }
+            };
 
             // synchronize action
             let obj_clone = obj.clone();
@@ -401,7 +407,14 @@ impl PasswordstoreWindow {
         let obj_clone = self.clone();
         glib::idle_add_local_once(move || {
             let path = obj_clone.get_path();
-            let mut store = PassStore::default();
+            let store = match PassStore::new() {
+                Ok(store) => store,
+                Err(e) => {
+                    obj_clone.stop_loading();
+                    obj_clone.show_toast(&format!("Failed to open password store: {}", e));
+                    return;
+                }
+            };
             if !store.entry_exists(&path) {
                 obj_clone.show_toast("Password not found");
                 let list_page = obj_clone.imp().list_page.clone();

@@ -20,10 +20,8 @@
 
 pub mod dir;
 pub mod entry;
-pub mod pass;
 pub mod store;
 
 pub use dir::discover_store_dir;
 pub use entry::Entry;
-pub use pass::Pass;
 pub use store::PassStore;

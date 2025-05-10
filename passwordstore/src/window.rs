@@ -189,7 +189,7 @@ mod imp {
                 self.show_toast("Git URL cannot be empty");
                 return;
             }
-            let store = match PassStore::git_clone(&url) {
+            let store = match PassStore::git_clone(url) {
                 Ok(store) => store,
                 Err(e) => {
                     let message = e.to_string();

@@ -454,7 +454,7 @@ impl PassStore {
         Ok(())
     }
 
-    pub fn git_clone(repo_url: &str) -> Result<Self> {
+    pub fn git_clone(repo_url: String) -> Result<PassStore> {
         // 1. Bepaal waar de store moet staan (bijv. ~/.password-store)
         let root = discover_store_dir()?;
 
@@ -475,7 +475,7 @@ impl PassStore {
 
         let repo = RepoBuilder::new()
             .fetch_options(fo)
-            .clone(repo_url, &root)
+            .clone(&repo_url, &root)
             .context("Failed to clone repository")?;
 
         // 4. Zet GPG klaar

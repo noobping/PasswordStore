@@ -534,7 +534,7 @@ mod imp {
                         let path = label.text().to_string().replace(" / ", "/");
                         debug!("Selected: {}", path);
                         obj_clone.set_path(path.clone());
-                        obj_clone.push(Pages::AskPage);
+                        obj_clone.open_text_editor_or_ask_password();
                         return;
                     }
                 }
@@ -609,6 +609,15 @@ impl PasswordstoreWindow {
         self.imp().add_new_password();
     }
 
+    pub fn open_text_editor_or_ask_password(&self) {
+        let passphrase = self.imp().password_entry.text().to_string();
+        if passphrase.is_empty() {
+            self.push(imp::Pages::AskPage);
+            return;
+        }
+        self.open_text_editor();
+    }
+
     pub fn open_text_editor(&self) {
         self.start_loading();
         info!("Opening text editor for {}", self.get_path());
@@ -680,6 +689,9 @@ impl PasswordstoreWindow {
                     obj_clone.stop_loading();
                     obj_clone.show_toast(before_semicolon);
                     error!("Failed to open password: {}", e);
+                    obj_clone.imp().password_entry.set_text("");
+                    obj_clone.push(imp::Pages::AskPage);
+                    obj_clone.imp().password_entry.grab_focus();
                 }
             }
         });

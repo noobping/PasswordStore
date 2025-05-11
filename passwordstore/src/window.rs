@@ -131,10 +131,22 @@ mod imp {
             self.navigation_view.navigation_stack().n_items() <= 1
         }
 
+        fn is_text_page(&self) -> bool {
+            let last_page = self
+                .navigation_view
+                .navigation_stack()
+                .iter::<adw::NavigationPage>()
+                .last()
+                .unwrap()
+                .ok()
+                .unwrap();
+            last_page.as_ptr() == self.text_page.as_ptr()
+        }
+
         fn update_navigation_buttons(&self) {
             self.save_button.set_can_focus(false);
             self.save_button.set_sensitive(false);
-            self.save_button.set_visible(false);
+            self.save_button.set_visible(self.is_text_page());
 
             let default_page = self.is_default_page();
             self.add_button.set_can_focus(default_page);
@@ -182,9 +194,6 @@ mod imp {
             });
             self.text_view.set_buffer(Some(&buffer));
             self.push(Pages::TextPage);
-            self.save_button.set_can_focus(true);
-            self.save_button.set_sensitive(true);
-            self.save_button.set_visible(true);
         }
 
         pub fn toggle_search(&self) {
@@ -246,6 +255,8 @@ mod imp {
             self.password_entry.set_sensitive(false);
             self.search_button.set_can_focus(false);
             self.search_button.set_sensitive(false);
+            self.save_button.set_can_focus(false);
+            self.save_button.set_sensitive(false);
         }
 
         pub fn stop_loading(&self) {
@@ -317,6 +328,33 @@ mod imp {
             let obj_clone = obj.clone();
             let add_action = gio::SimpleAction::new("add-password", None);
             add_action.connect_activate(move |_, _| obj_clone.open_new_password());
+            obj.add_action(&add_action);
+
+            let obj_clone = obj.clone();
+            let add_action = gio::SimpleAction::new("save-password", None);
+            add_action.connect_activate(move |_, _| {
+                let obj_clone2 = obj_clone.clone();
+                glib::idle_add_local_once(move || {
+                    obj_clone2.start_loading();
+                    let path = obj_clone2.get_path();
+                    if path.is_empty() {
+                        obj_clone2.show_toast("Path cannot be empty");
+                        obj_clone2.stop_loading();
+                        return;
+                    }
+                    let store = match PassStore::new() {
+                        Ok(store) => store,
+                        Err(e) => {
+                            obj_clone2.show_toast(&format!("Can not save password: {}", e));
+                            PassStore::default()
+                        }
+                    };
+                    let buffer = obj_clone2.imp().text_view.buffer();
+                    let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                    println!("Saving {}: \n{}", path, text);
+                    obj_clone2.stop_loading();
+                });
+            });
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
@@ -528,9 +566,6 @@ impl PasswordstoreWindow {
                     obj_clone.stop_loading();
                     // Open the text page so that I can view (or edit) the encqrypted password file
                     obj_clone.push(imp::Pages::TextPage);
-                    obj_clone.imp().save_button.set_can_focus(true);
-                    obj_clone.imp().save_button.set_sensitive(true);
-                    obj_clone.imp().save_button.set_visible(true);
                 }
                 Err(e) => {
                     let message = e.to_string();
@@ -544,31 +579,31 @@ impl PasswordstoreWindow {
         });
     }
 
-    pub fn stop_loading(&self) {
+    fn stop_loading(&self) {
         self.imp().stop_loading();
     }
 
-    pub fn start_loading(&self) {
+    fn start_loading(&self) {
         self.imp().start_loading();
     }
 
-    pub fn pop(&self) {
+    fn pop(&self) {
         self.imp().pop();
     }
 
-    pub fn push(&self, page: imp::Pages) {
+    fn push(&self, page: imp::Pages) {
         self.imp().push(page);
     }
 
-    pub fn get_path(&self) -> String {
+    fn get_path(&self) -> String {
         self.imp().get_path()
     }
 
-    pub fn set_path(&self, path: String) {
+    fn set_path(&self, path: String) {
         self.imp().set_path(path.clone());
     }
 
-    pub fn show_toast(&self, message: &str) {
+    fn show_toast(&self, message: &str) {
         self.imp().show_toast(message);
     }
 }

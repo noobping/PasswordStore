@@ -354,6 +354,126 @@ mod imp {
                 self.window_title.set_subtitle(path.trim());
             }
         }
+
+        pub fn add_or_update_password(&self) {
+            self.start_loading();
+            let path = self.get_path();
+            let new_path = self.path_entry.text().to_string();
+            if path.is_empty() {
+                self.show_toast("Name the new password");
+                self.stop_loading();
+                return;
+            }
+            let store = match PassStore::new() {
+                Ok(store) => store,
+                Err(e) => {
+                    self.show_toast(&format!("Can not save password: {}", e));
+                    PassStore::default()
+                }
+            };
+            let buffer = self.text_view.buffer();
+            // first line is password, the rest are extra
+            let lines = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .lines()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>();
+            let password = lines.get(0).unwrap_or(&"".to_string()).to_string();
+            let extra = lines[1..].to_vec();
+            let item = passcore::Entry { password, extra };
+            let recipients = match store.get_recipients() {
+                Ok(recipients) => recipients,
+                Err(e) => {
+                    self.show_toast(&format!("Failed to get recipients: {}", e));
+                    return;
+                }
+            };
+
+            // Check if the password must be updated, added, renamed or both
+            let is_update = store.exists(&path);
+            let saved: bool = if is_update {
+                self.update_pass(&store, &path, &item, &recipients)
+            } else {
+                self.add_pass(&store, &path, &item, &recipients)
+            };
+
+            let renamed = if !new_path.is_empty() && path != new_path {
+                self.rename_pass(&store, &path, &new_path)
+            } else {
+                false
+            };
+
+            if saved || renamed {
+                self.refresh_list();
+            }
+            self.stop_loading();
+            self.navigation_view
+                .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
+            self.update_navigation_buttons();
+        }
+
+        fn rename_pass(&self, store: &PassStore, path: &String, new_path: &String) -> bool {
+            return match store.rename(&path, &new_path) {
+                Ok(_) => {
+                    self.show_toast(&format!("Password updated and renamed to {}", new_path));
+                    true
+                }
+                Err(e) => {
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    self.show_toast(before_semicolon);
+                    error!("Failed to rename password: {}", e);
+                    false
+                }
+            };
+        }
+
+        fn update_pass(
+            &self,
+            store: &PassStore,
+            path: &String,
+            item: &passcore::Entry,
+            recipients: &Vec<String>,
+        ) -> bool {
+            return match store.update(&path, &item, &recipients) {
+                Ok(_) => {
+                    self.show_toast(&format!("Updated {}", path));
+                    true
+                }
+                Err(e) => {
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    self.show_toast(before_semicolon);
+                    error!("Failed to update password: {}", e);
+                    false
+                }
+            };
+        }
+
+        fn add_pass(
+            &self,
+            store: &PassStore,
+            path: &String,
+            item: &passcore::Entry,
+            recipients: &Vec<String>,
+        ) -> bool {
+            return match store.add(&path, &item, &recipients) {
+                Ok(_) => {
+                    self.show_toast(&format!("Password {} added", path));
+                    true
+                }
+                Err(e) => {
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    self.show_toast(before_semicolon);
+                    error!("Failed to add password: {}", e);
+                    false
+                }
+            };
+        }
     }
 
     #[glib::object_subclass]
@@ -439,89 +559,7 @@ mod imp {
             let add_action = gio::SimpleAction::new("save-password", None);
             add_action.connect_activate(move |_, _| {
                 let obj_clone2 = obj_clone.clone();
-                glib::idle_add_local_once(move || {
-                    obj_clone2.start_loading();
-                    let path = obj_clone2.get_path();
-                    let new_path = obj_clone2.imp().path_entry.text().to_string();
-                    if path.is_empty() {
-                        obj_clone2.show_toast("Name the new password");
-                        obj_clone2.stop_loading();
-                        return;
-                    }
-                    info!("Saving password to {} from {}", new_path, path);
-                    let store = match PassStore::new() {
-                        Ok(store) => store,
-                        Err(e) => {
-                            obj_clone2.show_toast(&format!("Can not save password: {}", e));
-                            PassStore::default()
-                        }
-                    };
-                    let buffer = obj_clone2.imp().text_view.buffer();
-                    // first line is password, the rest are extra
-                    let lines = buffer
-                        .text(&buffer.start_iter(), &buffer.end_iter(), false)
-                        .lines()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>();
-                    let password = lines.get(0).unwrap_or(&"".to_string()).to_string();
-                    let extra = lines[1..].to_vec();
-                    let item = passcore::Entry { password, extra };
-                    let recipients = match store.get_recipients() {
-                        Ok(recipients) => recipients,
-                        Err(e) => {
-                            obj_clone2.show_toast(&format!("Failed to get recipients: {}", e));
-                            return;
-                        }
-                    };
-                    if store.exists(&path) {
-                        match store.update(&path, &item, &recipients) {
-                            Ok(_) => {
-                                if !new_path.is_empty() && path != new_path {
-                                    match store.rename(&path, &new_path) {
-                                        Ok(_) => {
-                                            obj_clone2.show_toast(&format!(
-                                                "Password updated and renamed to {}",
-                                                new_path
-                                            ));
-                                            obj_clone2.refresh_list();
-                                        }
-                                        Err(e) => {
-                                            let message = e.to_string();
-                                            let idx = message.find(';').unwrap_or(message.len());
-                                            let before_semicolon = &message[..idx];
-                                            obj_clone2.show_toast(before_semicolon);
-                                            error!("Failed to rename password: {}", e);
-                                        }
-                                    }
-                                } else {
-                                    obj_clone2.show_toast(&format!("Updated {}", path));
-                                }
-                            }
-                            Err(e) => {
-                                let message = e.to_string();
-                                let idx = message.find(';').unwrap_or(message.len());
-                                let before_semicolon = &message[..idx];
-                                obj_clone2.show_toast(before_semicolon);
-                                error!("Failed to update password: {}", e);
-                            }
-                        }
-                    } else {
-                        match store.add(&path, &item, &recipients) {
-                            Ok(_) => {
-                                obj_clone2.show_toast(&format!("Password {} added", path));
-                                obj_clone2.refresh_list();
-                            }
-                            Err(e) => {
-                                let message = e.to_string();
-                                let idx = message.find(';').unwrap_or(message.len());
-                                let before_semicolon = &message[..idx];
-                                obj_clone2.show_toast(before_semicolon);
-                                error!("Failed to add password: {}", e);
-                            }
-                        }
-                    }
-                    obj_clone2.stop_loading();
-                });
+                glib::idle_add_local_once(move || obj_clone2.add_or_update_password());
             });
             obj.add_action(&add_action);
 
@@ -841,5 +879,9 @@ impl PasswordstoreWindow {
 
     fn show_toast(&self, message: &str) {
         self.imp().show_toast(message);
+    }
+
+    fn add_or_update_password(&self) {
+        self.imp().add_or_update_password();
     }
 }

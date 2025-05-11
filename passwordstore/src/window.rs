@@ -21,6 +21,7 @@
 use adw::subclass::prelude::*;
 use gtk::prelude::*;
 use gtk::{gio, glib};
+use log::{debug, error, info};
 use passcore::PassStore;
 
 mod imp {
@@ -168,7 +169,7 @@ mod imp {
         }
 
         pub fn pop(&self) {
-            println!("Popping page");
+            debug!("Popping page");
             self.navigation_view.pop();
             self.update_navigation_buttons();
         }
@@ -180,7 +181,7 @@ mod imp {
                 Pages::TextPage => &self.text_page,
                 Pages::GitPage => &self.git_page,
             };
-            println!("Pushing page: {:?}", page);
+            debug!("Pushing page: {:?}", page);
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
             self.update_navigation_buttons();
@@ -188,9 +189,13 @@ mod imp {
 
         pub fn add_new_password(&self) {
             let buffer = gtk::TextBuffer::new(None);
+            let save_button = self.save_button.clone();
             buffer.connect_changed(move |buffer| {
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                println!("Text changed: {}", text);
+                debug!("Text changed: {}", text);
+                let is_not_empty = !text.is_empty();
+                save_button.set_sensitive(is_not_empty);
+                save_button.set_can_focus(is_not_empty);
             });
             self.text_view.set_buffer(Some(&buffer));
             self.push(Pages::TextPage);
@@ -229,7 +234,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    eprintln!("Failed to clone git repository: {}", e);
+                    error!("Failed to clone git repository: {}", e);
                     PassStore::default()
                 }
             };
@@ -242,7 +247,7 @@ mod imp {
         }
 
         pub fn start_loading(&self) {
-            println!("Loading...");
+            info!("Loading...");
             self.add_button.set_can_focus(false);
             self.add_button.set_sensitive(false);
             self.back_button.set_can_focus(false);
@@ -260,7 +265,7 @@ mod imp {
         }
 
         pub fn stop_loading(&self) {
-            println!("Done!");
+            info!("Done!");
             self.decrypt_button.set_sensitive(true);
             self.decrypt_button.set_can_focus(true);
             self.password_entry.set_can_focus(true);
@@ -358,10 +363,7 @@ mod imp {
                         .collect::<Vec<String>>();
                     let password = lines.get(0).unwrap_or(&"".to_string()).to_string();
                     let extra = lines[1..].to_vec();
-                    let item = passcore::Entry {
-                        password,
-                        extra,
-                    };
+                    let item = passcore::Entry { password, extra };
                     let recipients = match store.get_recipients() {
                         Ok(recipients) => recipients,
                         Err(e) => {
@@ -377,7 +379,7 @@ mod imp {
                                 let idx = message.find(';').unwrap_or(message.len());
                                 let before_semicolon = &message[..idx];
                                 obj_clone2.show_toast(before_semicolon);
-                                eprintln!("Failed to update password: {}", e);
+                                error!("Failed to update password: {}", e);
                             }
                         }
                     } else {
@@ -388,7 +390,7 @@ mod imp {
                                 let idx = message.find(';').unwrap_or(message.len());
                                 let before_semicolon = &message[..idx];
                                 obj_clone2.show_toast(before_semicolon);
-                                eprintln!("Failed to add password: {}", e);
+                                error!("Failed to add password: {}", e);
                             }
                         }
                     }
@@ -436,7 +438,7 @@ mod imp {
                 let store = match PassStore::new() {
                     Ok(store) => store,
                     Err(e) => {
-                        eprint!("Failed to open password store: {}", e);
+                        error!("Failed to open password store: {}", e);
                         PassStore::default()
                     }
                 };
@@ -448,7 +450,7 @@ mod imp {
                 let store_clone = store.clone();
                 sync_action.connect_activate(move |_, _| {
                     obj_clone2.start_loading();
-                    println!("Synchronizing...");
+                    info!("Synchronizing...");
                     match store_clone.sync() {
                         Ok(_) => overlay.add_toast(adw::Toast::new("Synchronized successfully")),
                         Err(e) => {
@@ -457,7 +459,7 @@ mod imp {
                             let before_semicolon = &message[..idx];
 
                             overlay.add_toast(adw::Toast::new(before_semicolon));
-                            eprintln!("Failed to synchronize: {}", e);
+                            error!("Failed to synchronize: {}", e);
                         }
                     }
                     obj_clone2.stop_loading();
@@ -475,7 +477,7 @@ mod imp {
                 if let Some(inner) = row.child() {
                     if let Ok(label) = inner.downcast::<gtk::Label>() {
                         let path = label.text().to_string().replace(" / ", "/");
-                        println!("Selected: {}", path);
+                        debug!("Selected: {}", path);
                         obj_clone.set_path(path.clone());
                         obj_clone.push(Pages::AskPage);
                         return;
@@ -554,7 +556,7 @@ impl PasswordstoreWindow {
 
     pub fn open_text_editor(&self) {
         self.start_loading();
-        println!("Opening text editor for {}", self.get_path());
+        info!("Opening text editor for {}", self.get_path());
 
         let passphrase = self.imp().password_entry.text().to_string();
         if passphrase.is_empty() {
@@ -590,7 +592,7 @@ impl PasswordstoreWindow {
 
             match store.get(&path, passphrase.as_str()) {
                 Ok(item) => {
-                    println!("Password: {}", item.password);
+                    debug!("Password: {}", item.password);
                     // Pass item to the text view
                     // Add item.password to the first line of the text view
                     // Add the item.extra (a list of strings) after that.
@@ -613,7 +615,7 @@ impl PasswordstoreWindow {
                     let before_semicolon = &message[..idx];
                     obj_clone.stop_loading();
                     obj_clone.show_toast(before_semicolon);
-                    eprintln!("Failed to open password: {}", e);
+                    error!("Failed to open password: {}", e);
                 }
             }
         });

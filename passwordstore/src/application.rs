@@ -25,6 +25,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
+use log::{error, info};
 use passcore::PassStore;
 use search_provider::{self, ResultID, ResultMeta, SearchProvider};
 
@@ -87,7 +88,7 @@ mod imp {
                     "/io/github/noobping/PasswordStore/SearchProvider",
                 );
                 block_on::block_on(async {
-                    println!("[passwordstore] Registering search provider...");
+                    info!("[passwordstore] Registering search provider...");
                     provider
                         .await
                         .expect("[passwordstore] Failed to register search provider");
@@ -108,20 +109,20 @@ glib::wrapper! {
 
 impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     fn activate_result(&self, identifier: ResultID, _terms: &[String], _timestamp: u32) {
-        println!("[passwordstore] Activating result for `{}`", identifier);
+        info!("[passwordstore] Activating result for `{}`", identifier);
         let store = PassStore::new().unwrap();
         if let Ok(_entry) = store.ask(&identifier) {
-            println!(
+            info!(
                 "[passwordstore] Copied password for `{}` to clipboard",
                 identifier
             );
         } else {
-            eprintln!("[passwordstore] Failed to get entry for `{}`", identifier);
+            error!("[passwordstore] Failed to get entry for `{}`", identifier);
         }
     }
 
     fn initial_result_set(&self, terms: &[String]) -> Vec<ResultID> {
-        println!("[passwordstore] Searching for `{}`", terms.join(", "));
+        info!("[passwordstore] Searching for `{}`", terms.join(", "));
         let needle = terms.join(" ").to_lowercase();
         let store = PassStore::default();
 
@@ -134,7 +135,7 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     }
 
     fn result_metas(&self, identifiers: &[ResultID]) -> Vec<ResultMeta> {
-        println!(
+        info!(
             "[passwordstore] Getting result metas for `{}`",
             identifiers.join(", ")
         );

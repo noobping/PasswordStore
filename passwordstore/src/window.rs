@@ -270,6 +270,8 @@ mod imp {
             self.save_button.set_can_focus(false);
             self.save_button.set_sensitive(false);
             self.text_view.set_editable(false);
+            self.path_entry.set_can_focus(false);
+            self.path_entry.set_sensitive(false);
         }
 
         pub fn stop_loading(&self) {
@@ -280,6 +282,8 @@ mod imp {
             self.password_entry.set_sensitive(true);
             self.password_entry.grab_focus();
             self.text_view.set_editable(true);
+            self.path_entry.set_can_focus(true);
+            self.path_entry.set_sensitive(true);
             self.update_navigation_buttons();
         }
 
@@ -351,11 +355,13 @@ mod imp {
                 glib::idle_add_local_once(move || {
                     obj_clone2.start_loading();
                     let path = obj_clone2.get_path();
+                    let new_path = obj_clone2.imp().path_entry.text().to_string();
                     if path.is_empty() {
                         obj_clone2.show_toast("Path cannot be empty");
                         obj_clone2.stop_loading();
                         return;
                     }
+                    info!("Saving password to {} from {}", new_path, path);
                     let store = match PassStore::new() {
                         Ok(store) => store,
                         Err(e) => {
@@ -382,7 +388,24 @@ mod imp {
                     };
                     if store.exists(&path) {
                         match store.update(&path, &item, &recipients) {
-                            Ok(_) => obj_clone2.show_toast("Password updated successfully"),
+                            Ok(_) => {
+                                if !new_path.is_empty() && path != new_path {
+                                    match store.rename(&path, &new_path) {
+                                        Ok(_) => obj_clone2.show_toast(
+                                            "Password updated and renamed successfully",
+                                        ),
+                                        Err(e) => {
+                                            let message = e.to_string();
+                                            let idx = message.find(';').unwrap_or(message.len());
+                                            let before_semicolon = &message[..idx];
+                                            obj_clone2.show_toast(before_semicolon);
+                                            error!("Failed to rename password: {}", e);
+                                        }
+                                    }
+                                } else {
+                                    obj_clone2.show_toast("Password updated successfully");
+                                }
+                            }
                             Err(e) => {
                                 let message = e.to_string();
                                 let idx = message.find(';').unwrap_or(message.len());

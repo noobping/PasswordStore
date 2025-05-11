@@ -351,7 +351,7 @@ mod imp {
                 };
                 self.window_title.set_subtitle(&subtitle);
             } else {
-                self.window_title.set_subtitle(path.as_str());
+                self.window_title.set_subtitle(path.trim());
             }
         }
     }
@@ -393,6 +393,49 @@ mod imp {
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
+            let toggle_action = gio::SimpleAction::new("remove-password", None);
+            toggle_action.connect_activate(move |_, _| {
+                println!("Removing password: {}", obj_clone.get_path());
+                let obj_clone2 = obj_clone.clone();
+                glib::idle_add_local_once(move || {
+                    obj_clone2.start_loading();
+                    let path = obj_clone2.get_path();
+                    if path.is_empty() {
+                        obj_clone2.show_toast("Can not remove unknown password");
+                        obj_clone2.stop_loading();
+                        return;
+                    }
+                    println!("Removing password {}", path);
+                    let store = match PassStore::new() {
+                        Ok(store) => store,
+                        Err(e) => {
+                            obj_clone2.show_toast(&format!("Failed to open password store: {}", e));
+                            PassStore::default()
+                        }
+                    };
+                    if store.exists(&path) {
+                        match store.remove(&path) {
+                            Ok(_) => {
+                                obj_clone2.show_toast(&format!("{} removed", path));
+                                obj_clone2.refresh_list();
+                            }
+                            Err(e) => {
+                                let message = e.to_string();
+                                let idx = message.find(';').unwrap_or(message.len());
+                                let before_semicolon = &message[..idx];
+                                obj_clone2.show_toast(before_semicolon);
+                                eprintln!("Failed to remove password: {}", e);
+                            }
+                        }
+                    } else {
+                        obj_clone2.show_toast("Password not found");
+                    }
+                    obj_clone2.stop_loading();
+                });
+            });
+            obj.add_action(&toggle_action);
+
+            let obj_clone = obj.clone();
             let add_action = gio::SimpleAction::new("save-password", None);
             add_action.connect_activate(move |_, _| {
                 let obj_clone2 = obj_clone.clone();
@@ -401,7 +444,7 @@ mod imp {
                     let path = obj_clone2.get_path();
                     let new_path = obj_clone2.imp().path_entry.text().to_string();
                     if path.is_empty() {
-                        obj_clone2.show_toast("Path cannot be empty");
+                        obj_clone2.show_toast("Name the new password");
                         obj_clone2.stop_loading();
                         return;
                     }
@@ -436,9 +479,10 @@ mod imp {
                                 if !new_path.is_empty() && path != new_path {
                                     match store.rename(&path, &new_path) {
                                         Ok(_) => {
-                                            obj_clone2.show_toast(
-                                                "Password updated and renamed successfully",
-                                            );
+                                            obj_clone2.show_toast(&format!(
+                                                "Password updated and renamed to {}",
+                                                new_path
+                                            ));
                                             obj_clone2.refresh_list();
                                         }
                                         Err(e) => {
@@ -450,7 +494,7 @@ mod imp {
                                         }
                                     }
                                 } else {
-                                    obj_clone2.show_toast("Password updated successfully");
+                                    obj_clone2.show_toast(&format!("Updated {}", path));
                                 }
                             }
                             Err(e) => {
@@ -463,7 +507,7 @@ mod imp {
                         }
                     } else {
                         match store.add(&path, &item, &recipients) {
-                            Ok(_) => obj_clone2.show_toast("Password added successfully"),
+                            Ok(_) => obj_clone2.show_toast(&format!("Password {} added", path)),
                             Err(e) => {
                                 let message = e.to_string();
                                 let idx = message.find(';').unwrap_or(message.len());
@@ -627,6 +671,16 @@ mod imp {
                 let is_not_empty = !text.is_empty();
                 obj_clone.imp().git_clone_button.set_sensitive(is_not_empty);
                 obj_clone.imp().git_clone_button.set_can_focus(is_not_empty);
+            });
+
+            let obj_clone = obj.clone();
+            let path_entry = self.path_entry.clone();
+            path_entry.connect_changed(move |entry| {
+                let text = entry.text().to_string();
+                obj_clone.set_path(text.clone());
+                let is_not_empty = !text.is_empty();
+                obj_clone.imp().save_button.set_sensitive(is_not_empty);
+                obj_clone.imp().save_button.set_can_focus(is_not_empty);
             });
         }
     }

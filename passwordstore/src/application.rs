@@ -51,6 +51,7 @@ mod imp {
             obj.set_accels_for_action("win.toggle-search", &["<primary>f"]);
             obj.set_accels_for_action("win.add-password", &["<primary>n"]);
             obj.set_accels_for_action("win.synchronize", &["<primary>s"]);
+            obj.set_accels_for_action("win.git-page", &["<primary>r"]);
         }
     }
 
@@ -107,8 +108,8 @@ glib::wrapper! {
 impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     fn activate_result(&self, identifier: ResultID, _terms: &[String], _timestamp: u32) {
         println!("[passwordstore] Activating result for `{}`", identifier);
-        let mut store = PassStore::default();
-        if let Ok(_entry) = store.get(&identifier) {
+        let store = PassStore::new().unwrap();
+        if let Ok(_entry) = store.ask(&identifier) {
             println!(
                 "[passwordstore] Copied password for `{}` to clipboard",
                 identifier
@@ -136,7 +137,7 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
             "[passwordstore] Getting result metas for `{}`",
             identifiers.join(", ")
         );
-        let mut store = PassStore::default();
+        let store = PassStore::new().unwrap();
         store
             .list()
             .unwrap_or_default()
@@ -146,7 +147,7 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
                     Some(
                         ResultMeta::builder(path.clone(), &path)
                             .description("Copy password to clipboard")
-                            .clipboard_text(&store.get(&path).ok()?.password)
+                            .clipboard_text(&store.ask(&path).ok()?.password)
                             .build(),
                     )
                 } else {

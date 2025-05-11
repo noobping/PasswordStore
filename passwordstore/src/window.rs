@@ -109,6 +109,9 @@ mod imp {
 
         #[template_child]
         pub git_url_entry: TemplateChild<gtk::Entry>,
+
+        #[template_child]
+        pub git_clone_button: TemplateChild<gtk::Button>,
     }
 
     impl PasswordstoreWindow {
@@ -184,6 +187,14 @@ mod imp {
             self.search_button
                 .set_sensitive(default_page && exists_store);
             self.search_button.set_visible(default_page && exists_store);
+
+            let has_password = !self.password_entry.text().is_empty();
+            self.decrypt_button.set_can_focus(has_password);
+            self.decrypt_button.set_sensitive(has_password);
+
+            let has_git_url = !self.git_url_entry.text().is_empty();
+            self.git_clone_button.set_can_focus(has_git_url);
+            self.git_clone_button.set_sensitive(has_git_url);
         }
 
         pub fn pop(&self) {
@@ -287,12 +298,12 @@ mod imp {
             self.text_view.set_editable(false);
             self.path_entry.set_can_focus(false);
             self.path_entry.set_sensitive(false);
+            self.git_clone_button.set_can_focus(false);
+            self.git_clone_button.set_sensitive(false);
         }
 
         pub fn stop_loading(&self) {
             info!("Done!");
-            self.decrypt_button.set_sensitive(true);
-            self.decrypt_button.set_can_focus(true);
             self.password_entry.set_can_focus(true);
             self.password_entry.set_sensitive(true);
             self.password_entry.grab_focus();
@@ -570,6 +581,24 @@ mod imp {
                         }
                     }
                 }
+            });
+
+            let obj_clone = obj.clone();
+            let password_entry = self.password_entry.clone();
+            password_entry.connect_changed(move |entry| {
+                let text = entry.text().to_string();
+                let is_not_empty = !text.is_empty();
+                obj_clone.imp().decrypt_button.set_sensitive(is_not_empty);
+                obj_clone.imp().decrypt_button.set_can_focus(is_not_empty);
+            });
+
+            let obj_clone = obj.clone();
+            let git_url_entry = self.git_url_entry.clone();
+            git_url_entry.connect_changed(move |entry| {
+                let text = entry.text().to_string();
+                let is_not_empty = !text.is_empty();
+                obj_clone.imp().git_clone_button.set_sensitive(is_not_empty);
+                obj_clone.imp().git_clone_button.set_can_focus(is_not_empty);
             });
         }
     }

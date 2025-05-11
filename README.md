@@ -22,8 +22,7 @@ This application delivers a GNOME‑native experience while remaining fully comp
 ## Project Goals
 
 1. **Native GNOME experience** — behaviour consistent with other GNOME applications.
-2. **Offline operation** — all core functionality works without network access; Git synchronisation is optional.
-
+2. **Offline operation** — all core functionality (CRUD Encrypted files) works without network access.
 
 ## Building and Running
 

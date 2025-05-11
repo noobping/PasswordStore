@@ -23,6 +23,7 @@ This application delivers a GNOME‑native experience while remaining fully comp
 
 1. **Native GNOME experience** — behaviour consistent with other GNOME applications.
 2. **Offline operation** — all core functionality (CRUD Encrypted files) works without network access.
+3. **Minimal dependencies** — no need for external libraries or tools beyond the Flatpak runtime.
 
 ## Building and Running
 

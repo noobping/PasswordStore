@@ -220,6 +220,17 @@ mod imp {
         }
 
         pub fn add_new_password(&self) {
+            let path = self.get_path();
+            if !path.is_empty() {
+                if path.contains('/') {
+                    let last_slash = path.rfind('/').unwrap_or(path.len());
+                    let new_path = path[..last_slash + 1].to_string();
+                    self.set_path(new_path);
+                } else {
+                    self.set_path("".to_string());
+                }
+            }
+
             let buffer = gtk::TextBuffer::new(None);
             let save_button = self.save_button.clone();
             buffer.connect_changed(move |buffer| {
@@ -537,7 +548,7 @@ mod imp {
                 obj_clone.imp().update_navigation_buttons();
             });
 
-            // Connect the ListBoxRow activated signal
+            // Select a password with the activated signal
             let obj_clone = obj.clone();
             self.list.connect_row_activated(move |_, row| {
                 if let Some(inner) = row.child() {
@@ -550,6 +561,20 @@ mod imp {
                     }
                 }
                 obj_clone.show_toast("Failed to open password");
+            });
+
+            // Selected a password with the keyboard
+            let obj_clone = obj.clone();
+            self.list.connect_row_selected(move |_, row| {
+                if let Some(row) = row {
+                    let inner = row.child().unwrap();
+                    if let Ok(label) = inner.downcast::<gtk::Label>() {
+                        let path = label.text().to_string().replace(" / ", "/");
+                        debug!("Selected: {}", path);
+                        obj_clone.set_path(path.clone());
+                        return;
+                    }
+                }
             });
 
             // Real-time filter: hide/show rows based on search text
@@ -583,6 +608,7 @@ mod imp {
                 }
             });
 
+            // Enable or disable the buttons if the entry is empty
             let obj_clone = obj.clone();
             let password_entry = self.password_entry.clone();
             password_entry.connect_changed(move |entry| {

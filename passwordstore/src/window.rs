@@ -98,6 +98,9 @@ mod imp {
         pub text_view: TemplateChild<gtk::TextView>,
 
         #[template_child]
+        pub path_entry: TemplateChild<gtk::Entry>,
+
+        #[template_child]
         pub save_button: TemplateChild<gtk::Button>,
 
         // ④ Git clone page
@@ -578,6 +581,8 @@ impl PasswordstoreWindow {
         let obj_clone = self.clone();
         glib::idle_add_local_once(move || {
             let path = obj_clone.get_path();
+            obj_clone.imp().path_entry.set_text(&path);
+
             let store = match PassStore::new() {
                 Ok(store) => store,
                 Err(e) => {

@@ -79,7 +79,7 @@
             <child>
               <object class="AdwNavigationView" id="navigation_view">
 
-                <!-- ① List page -->
+                <!-- List page -->
                 <child>
                   <object class="AdwNavigationPage" id="list_page">
                     <property name="title" translatable="yes">Password List</property>
@@ -118,7 +118,7 @@
                   </object>
                 </child>
 
-                <!-- ② Ask for password page -->
+                <!-- Ask for password page -->
                 <child>
                   <object class="AdwNavigationPage" id="ask_page">
                     <property name="title" translatable="yes">Decrypt Password File</property>
@@ -162,7 +162,7 @@
                   </object>
                 </child>
 
-                <!-- ③ Text editor page -->
+                <!-- Text editor page -->
                 <child>
                   <object class="AdwNavigationPage" id="text_page">
                     <property name="title" translatable="yes">Text Editor</property>
@@ -173,12 +173,28 @@
                         <property name="propagate-natural-width">true</property>
                         <property name="propagate-natural-height">true</property>
                         <child>
-                          <object class="GtkTextView" id="text_view">
-                            <property name="editable">true</property>
-                            <property name="wrap-mode">word</property>
-                            <property name="cursor-visible">true</property>
-                            <property name="hexpand">true</property>
-                            <property name="vexpand">true</property>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <child>
+                              <object class="GtkEntry" id="path_entry">
+                                <property name="name" translatable="yes">Path</property>
+                                <property name="placeholder-text" translatable="yes">username/account</property>
+                                <property name="margin-start">15</property>
+                                <property name="margin-end">15</property>
+                                <property name="margin-top">15</property>
+                                <property name="margin-bottom">15</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkTextView" id="text_view">
+                                <property name="editable">true</property>
+                                <property name="wrap-mode">word</property>
+                                <property name="cursor-visible">true</property>
+                                <property name="hexpand">true</property>
+                                <property name="vexpand">true</property>
+                                <property name="name" translatable="yes">Password and account details</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>
@@ -186,7 +202,7 @@
                   </object>
                 </child>
 
-                <!-- ④ Git clone page -->
+                <!-- Git clone page -->
                 <child>
                   <object class="AdwNavigationPage" id="git_page">
                     <property name="title" translatable="yes">Git Clone</property>

@@ -225,6 +225,7 @@ mod imp {
                 if path.contains('/') {
                     let last_slash = path.rfind('/').unwrap_or(path.len());
                     let new_path = path[..last_slash + 1].to_string();
+                    self.path_entry.set_text(&new_path);
                     self.set_path(new_path);
                 } else {
                     self.set_path("".to_string());
@@ -242,6 +243,7 @@ mod imp {
             });
             self.text_view.set_buffer(Some(&buffer));
             self.push(Pages::TextPage);
+            self.path_entry.grab_focus();
         }
 
         pub fn toggle_search(&self) {

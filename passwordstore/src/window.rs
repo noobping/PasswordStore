@@ -131,6 +131,21 @@ mod imp {
             }
         }
 
+        pub fn refresh_list(&self) {
+            let store = match PassStore::new() {
+                Ok(store) => store,
+                Err(e) => {
+                    error!("Failed to open password store: {}", e);
+                    PassStore::default()
+                }
+            };
+            self.list.remove_all();
+            self.init_list(&store);
+            self.navigation_view
+                .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
+            self.update_navigation_buttons();
+        }
+
         fn is_default_page(&self) -> bool {
             self.navigation_view.navigation_stack().n_items() <= 1
         }
@@ -339,6 +354,11 @@ mod imp {
 
             // Actions
             let obj_clone = obj.clone();
+            let toggle_action = gio::SimpleAction::new("refresh", None);
+            toggle_action.connect_activate(move |_, _| obj_clone.refresh_list());
+            obj.add_action(&toggle_action);
+
+            let obj_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("toggle-search", None);
             toggle_action.connect_activate(move |_, _| obj_clone.toggle_search());
             obj.add_action(&toggle_action);
@@ -391,9 +411,12 @@ mod imp {
                             Ok(_) => {
                                 if !new_path.is_empty() && path != new_path {
                                     match store.rename(&path, &new_path) {
-                                        Ok(_) => obj_clone2.show_toast(
-                                            "Password updated and renamed successfully",
-                                        ),
+                                        Ok(_) => {
+                                            obj_clone2.show_toast(
+                                                "Password updated and renamed successfully",
+                                            );
+                                            obj_clone2.refresh_list();
+                                        }
                                         Err(e) => {
                                             let message = e.to_string();
                                             let idx = message.find(';').unwrap_or(message.len());
@@ -660,6 +683,10 @@ impl PasswordstoreWindow {
                 }
             }
         });
+    }
+
+    pub fn refresh_list(&self) {
+        self.imp().refresh_list();
     }
 
     fn stop_loading(&self) {

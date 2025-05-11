@@ -172,6 +172,9 @@ mod imp {
             debug!("Popping page");
             self.navigation_view.pop();
             self.update_navigation_buttons();
+            if self.is_default_page() {
+                self.set_path("".to_string());
+            }
         }
 
         pub fn push(&self, page: Pages) {
@@ -207,6 +210,7 @@ mod imp {
                 self.navigation_view
                     .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
                 entry.grab_focus();
+                self.set_path("".to_string());
                 entry.set_visible(true);
                 self.update_navigation_buttons();
                 return;
@@ -294,7 +298,7 @@ mod imp {
         pub fn set_path(&self, path: String) {
             if path.is_empty() {
                 let translated = &gettext("subtitle");
-                let subtitle = if translated.is_empty() {
+                let subtitle = if translated.is_empty() || translated.contains("subtitle") {
                     &"Manage your passwords".to_string()
                 } else {
                     translated
@@ -604,6 +608,14 @@ impl PasswordstoreWindow {
                     }
                     let buffer = gtk::TextBuffer::new(None);
                     buffer.set_text(&text);
+                    let save_button = obj_clone.imp().save_button.clone();
+                    buffer.connect_changed(move |buffer| {
+                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                        debug!("Text changed: {}", text);
+                        let is_not_empty = !text.is_empty();
+                        save_button.set_sensitive(is_not_empty);
+                        save_button.set_can_focus(is_not_empty);
+                    });
                     let text_view = obj_clone.imp().text_view.clone();
                     text_view.set_buffer(Some(&buffer));
                     obj_clone.stop_loading();

@@ -51,6 +51,7 @@ mod imp {
             obj.set_accels_for_action("win.toggle-search", &["<primary>f"]);
             obj.set_accels_for_action("win.add-password", &["<primary>n"]);
             obj.set_accels_for_action("win.synchronize", &["<primary>s"]);
+            obj.set_accels_for_action("win.save-password", &["<primary><shift>s"]);
             obj.set_accels_for_action("win.git-page", &["<primary>r"]);
         }
     }

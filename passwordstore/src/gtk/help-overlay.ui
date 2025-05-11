@@ -29,6 +29,12 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Save password</property>
+                <property name="action-name">win.save-password</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes" context="shortcut window">Restore from Git repository</property>
                 <property name="action-name">win.git-page</property>
               </object>

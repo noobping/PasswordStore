@@ -176,6 +176,7 @@
                           <object class="GtkTextView" id="text_view">
                             <property name="editable">true</property>
                             <property name="wrap-mode">word</property>
+                            <property name="cursor-visible">true</property>
                             <property name="hexpand">true</property>
                             <property name="vexpand">true</property>
                           </object>

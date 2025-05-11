@@ -262,6 +262,7 @@ mod imp {
             self.search_button.set_sensitive(false);
             self.save_button.set_can_focus(false);
             self.save_button.set_sensitive(false);
+            self.text_view.set_editable(false);
         }
 
         pub fn stop_loading(&self) {
@@ -271,6 +272,7 @@ mod imp {
             self.password_entry.set_can_focus(true);
             self.password_entry.set_sensitive(true);
             self.password_entry.grab_focus();
+            self.text_view.set_editable(true);
             self.update_navigation_buttons();
         }
 
@@ -604,7 +606,6 @@ impl PasswordstoreWindow {
                     buffer.set_text(&text);
                     let text_view = obj_clone.imp().text_view.clone();
                     text_view.set_buffer(Some(&buffer));
-                    text_view.set_editable(false);
                     obj_clone.stop_loading();
                     // Open the text page so that I can view (or edit) the encqrypted password file
                     obj_clone.push(imp::Pages::TextPage);

@@ -507,7 +507,10 @@ mod imp {
                         }
                     } else {
                         match store.add(&path, &item, &recipients) {
-                            Ok(_) => obj_clone2.show_toast(&format!("Password {} added", path)),
+                            Ok(_) => {
+                                obj_clone2.show_toast(&format!("Password {} added", path));
+                                obj_clone2.refresh_list();
+                            }
                             Err(e) => {
                                 let message = e.to_string();
                                 let idx = message.find(';').unwrap_or(message.len());

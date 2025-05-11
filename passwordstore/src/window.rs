@@ -350,8 +350,48 @@ mod imp {
                         }
                     };
                     let buffer = obj_clone2.imp().text_view.buffer();
-                    let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                    println!("Saving {}: \n{}", path, text);
+                    // first line is password, the rest are extra
+                    let lines = buffer
+                        .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>();
+                    let password = lines.get(0).unwrap_or(&"".to_string()).to_string();
+                    let extra = lines[1..].to_vec();
+                    let item = passcore::Entry {
+                        password,
+                        extra,
+                    };
+                    let recipients = match store.get_recipients() {
+                        Ok(recipients) => recipients,
+                        Err(e) => {
+                            obj_clone2.show_toast(&format!("Failed to get recipients: {}", e));
+                            return;
+                        }
+                    };
+                    if store.exists(&path) {
+                        match store.update(&path, &item, &recipients) {
+                            Ok(_) => obj_clone2.show_toast("Password updated successfully"),
+                            Err(e) => {
+                                let message = e.to_string();
+                                let idx = message.find(';').unwrap_or(message.len());
+                                let before_semicolon = &message[..idx];
+                                obj_clone2.show_toast(before_semicolon);
+                                eprintln!("Failed to update password: {}", e);
+                            }
+                        }
+                    } else {
+                        match store.add(&path, &item, &recipients) {
+                            Ok(_) => obj_clone2.show_toast("Password added successfully"),
+                            Err(e) => {
+                                let message = e.to_string();
+                                let idx = message.find(';').unwrap_or(message.len());
+                                let before_semicolon = &message[..idx];
+                                obj_clone2.show_toast(before_semicolon);
+                                eprintln!("Failed to add password: {}", e);
+                            }
+                        }
+                    }
                     obj_clone2.stop_loading();
                 });
             });
@@ -538,7 +578,7 @@ impl PasswordstoreWindow {
                     return;
                 }
             };
-            if !store.entry_exists(&path) {
+            if !store.exists(&path) {
                 obj_clone.show_toast("Password not found");
                 let list_page = obj_clone.imp().list_page.clone();
                 obj_clone.stop_loading();

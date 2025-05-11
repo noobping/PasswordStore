@@ -132,6 +132,22 @@ impl PassStore {
         cb
     }
 
+    /// Read the default recipients from the `.gpg-id` file.
+    pub fn get_recipients(&self) -> Result<Vec<String>> {
+        let root = self.root().context("Failed to get password store root")?;
+        let path = root.join(".gpg-id");
+        let content = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read .gpg-id file at {}", path.display()))?;
+        // 3. Split op regels, trim en filter lege regels
+        let recipients = content
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect();
+        Ok(recipients)
+    }
+
     /// Return a list of all password entries as relative paths (without the `.gpg` suffix).
     ///
     /// Recursively scans the store for `.gpg` files. Hidden files/dirs and “.”/“..” are excluded.
@@ -235,7 +251,7 @@ impl PassStore {
     }
 
     /// Check whether a given entry (by relative path without `.gpg`) exists in the store.
-    pub fn entry_exists(&self, id: &str) -> bool {
+    pub fn exists(&self, id: &str) -> bool {
         if self.root.is_none() {
             return false;
         }
@@ -245,20 +261,15 @@ impl PassStore {
         path.is_file()
     }
 
-    /// Check if the password store exists.
-    pub fn exists(&self) -> bool {
-        self.root.is_some() && self.root.as_ref().unwrap().is_dir()
-    }
-
     /// Encrypt (for the given recipients) and write an entry. Creates parents as needed.
-    pub fn insert(&self, id: &str, entry: &Entry, recipients: &[&str]) -> Result<()> {
+    pub fn add(&self, id: &str, entry: &Entry, recipients: &Vec<String>) -> Result<()> {
         // Resolve keys.
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
             .expect("Failed to set key list mode");
         let keys: Vec<_> = recipients
             .iter()
-            .map(|r| gpg.get_key(*r))
+            .map(|r| gpg.get_key(r.clone()))
             .collect::<Result<_, _>>()?;
         if keys.is_empty() {
             return Err(anyhow!("No recipients found for encryption"));
@@ -274,6 +285,41 @@ impl PassStore {
         File::create(&path)?.write_all(&cipher)?;
 
         self.git_add_commit(&format!("Add/Update {}", id))?;
+        Ok(())
+    }
+
+    /// Overwrites an existing entry. Fails als ‘id’ niet bestaat.
+    pub fn update(&self, id: &str, entry: &Entry, recipients: &Vec<String>) -> Result<()> {
+        // 1. Check of het bestand al bestaat
+        if !self.exists(id) {
+            return Err(anyhow!("Entry '{}' does not exist", id));
+        }
+
+        // 2. Keys ophalen
+        let mut gpg = self.gpg();
+        gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
+            .context("Failed to set key list mode")?;
+        let keys: Vec<_> = recipients
+            .iter()
+            .map(|r| gpg.get_key(r.clone()))
+            .collect::<Result<_, _>>()?;
+        if keys.is_empty() {
+            return Err(anyhow!("No recipients found for encryption"));
+        }
+
+        // 3. Encrypt de nieuwe content
+        let mut cipher = Vec::new();
+        gpg.encrypt(&keys, &entry.to_plaintext().into_bytes()[..], &mut cipher)?;
+
+        // 4. Overschrijf het .gpg-bestand, maak dirs indien nodig
+        let path = self.root()?.join(format!("{}.gpg", id));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        File::create(&path)?.write_all(&cipher)?;
+
+        // 5. Git commit met duidelijke boodschap
+        self.git_add_commit(&format!("Update {}", id))?;
         Ok(())
     }
 
@@ -327,7 +373,7 @@ impl PassStore {
     // Git helpers
 
     /// Fetch all remotes.
-    pub fn git_fetch(&self) -> Result<()> {
+    fn git_fetch(&self) -> Result<()> {
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(Self::make_callbacks());
         let repo = self.repo();
@@ -342,7 +388,7 @@ impl PassStore {
     /// – No changes…… → Ok
     /// – Fast‑forward… → branch pointer moves
     /// – Diverged………. → real merge commit (errors if conflicts)
-    pub fn git_pull(&self) -> Result<()> {
+    fn git_pull(&self) -> Result<()> {
         let repo = self.repo();
         // 1a. Get the current HEAD (e.g. "refs/heads/master")
         let head_ref = repo.head()?;
@@ -444,7 +490,7 @@ impl PassStore {
     }
 
     /// Push the current branch to its configured upstream.
-    pub fn git_push(&self) -> Result<()> {
+    fn git_push(&self) -> Result<()> {
         let mut cb = RemoteCallbacks::new();
         cb.credentials(|_url, username_from_url, _allowed| {
             Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))

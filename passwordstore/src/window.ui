@@ -13,10 +13,10 @@
             <child type="start">
               <object class="GtkBox">
                 <child>
-                  <object class="GtkButton" id="git_button">
-                    <property name="icon-name">git-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Restore backup from Git repository</property>
-                    <property name="action-name">win.git-page</property>
+                  <object class="GtkButton" id="back_button">
+                    <property name="icon-name">left-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Back</property>
+                    <property name="action-name">win.back</property>
                     <property name="visible">false</property>
                   </object>
                 </child>
@@ -29,10 +29,18 @@
                   </object>
                 </child>
                 <child>
-                  <object class="GtkButton" id="back_button">
-                    <property name="icon-name">left-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Back</property>
-                    <property name="action-name">win.back</property>
+                  <object class="GtkButton" id="git_button">
+                    <property name="icon-name">git-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Restore from Git repository</property>
+                    <property name="action-name">win.git-page</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="search_button">
+                    <property name="icon-name">edit-find-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Search passwords</property>
+                    <property name="action-name">win.toggle-search</property>
                     <property name="visible">false</property>
                   </object>
                 </child>
@@ -46,14 +54,6 @@
             </child>
             <child type="end">
               <object class="GtkBox">
-                <child>
-                  <object class="GtkButton" id="search_button">
-                    <property name="icon-name">edit-find-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Search passwords</property>
-                    <property name="action-name">win.toggle-search</property>
-                    <property name="visible">false</property>
-                  </object>
-                </child>
                 <child>
                   <object class="GtkButton" id="save_button">
                     <property name="icon-name">document-save-symbolic</property>
@@ -240,10 +240,6 @@
       <item>
         <attribute name="label" translatable="yes">_Synchronize</attribute>
         <attribute name="action">win.synchronize</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Restore backup</attribute>
-        <attribute name="action">win.git-page</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

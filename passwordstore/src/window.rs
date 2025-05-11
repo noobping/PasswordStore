@@ -132,6 +132,10 @@ mod imp {
         }
 
         fn update_navigation_buttons(&self) {
+            self.save_button.set_can_focus(false);
+            self.save_button.set_sensitive(false);
+            self.save_button.set_visible(false);
+
             let default_page = self.is_default_page();
             self.add_button.set_can_focus(default_page);
             self.add_button.set_sensitive(default_page);
@@ -178,6 +182,9 @@ mod imp {
             });
             self.text_view.set_buffer(Some(&buffer));
             self.push(Pages::TextPage);
+            self.save_button.set_can_focus(true);
+            self.save_button.set_sensitive(true);
+            self.save_button.set_visible(true);
         }
 
         pub fn toggle_search(&self) {
@@ -521,6 +528,9 @@ impl PasswordstoreWindow {
                     obj_clone.stop_loading();
                     // Open the text page so that I can view (or edit) the encqrypted password file
                     obj_clone.push(imp::Pages::TextPage);
+                    obj_clone.imp().save_button.set_can_focus(true);
+                    obj_clone.imp().save_button.set_sensitive(true);
+                    obj_clone.imp().save_button.set_visible(true);
                 }
                 Err(e) => {
                     let message = e.to_string();

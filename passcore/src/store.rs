@@ -216,7 +216,7 @@ impl PassStore {
                 writeln!(out, "{}", passphrase_owned.expose_secret())?;
                 Ok(())
             },
-            |ctx| ctx.decrypt_with_flags(&cipher, plain.expose_secret_mut(), DecryptFlags::empty()),
+            |ctx| ctx.decrypt_with_flags(&cipher, secret.expose_secret_mut(), DecryptFlags::empty()),
         )?;
 
         // 4. Convert & wipe

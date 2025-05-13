@@ -766,7 +766,6 @@ impl PasswordstoreWindow {
         self.imp().start_loading();
         let path = self.imp().get_path();
         self.imp().path_entry.set_text(&path);
-        self.imp().push(imp::Pages::TextPage);
         self.imp().path_entry.grab_focus();
 
         let passphrase = self.imp().get_passphrase();

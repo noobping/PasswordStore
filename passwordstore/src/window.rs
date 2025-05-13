@@ -769,11 +769,11 @@ impl PasswordstoreWindow {
             return;
         }
 
+        let path = self.get_path();
+        self.imp().path_entry.set_text(&path);
+
         let obj_clone = self.clone();
         glib::idle_add_local_once(move || {
-            let path = obj_clone.get_path();
-            obj_clone.imp().path_entry.set_text(&path);
-
             let store = match PassStore::new() {
                 Ok(store) => store,
                 Err(e) => {
@@ -815,7 +815,6 @@ impl PasswordstoreWindow {
                     let text_view = obj_clone.imp().text_view.clone();
                     text_view.set_buffer(Some(&buffer));
                     obj_clone.stop_loading();
-                    // Open the text page so that I can view (or edit) the encqrypted password file
                     obj_clone.push(imp::Pages::TextPage);
                 }
                 Err(e) => {

@@ -596,12 +596,12 @@ mod imp {
 
                 // synchronize action
                 let obj_clone2 = obj_clone.clone();
-                let overlay = obj_clone.imp().toast_overlay.clone();
                 let sync_action = gio::SimpleAction::new("synchronize", None);
                 let store_clone = store.clone();
                 glib::MainContext::default().spawn_local(async move {
                     sync_action.connect_activate(move |_, _| {
                         obj_clone2.start_loading();
+                        let overlay = obj_clone2.imp().toast_overlay.clone();
                         info!("Synchronizing...");
                         match store_clone.sync() {
                             Ok(_) => {

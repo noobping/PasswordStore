@@ -591,32 +591,36 @@ mod imp {
                     }
                 };
 
+                obj_clone.imp().init_list(&store); // Initialize store and list
+                obj_clone.imp().update_navigation_buttons();
+
                 // synchronize action
                 let obj_clone2 = obj_clone.clone();
                 let overlay = obj_clone.imp().toast_overlay.clone();
                 let sync_action = gio::SimpleAction::new("synchronize", None);
                 let store_clone = store.clone();
-                sync_action.connect_activate(move |_, _| {
-                    obj_clone2.start_loading();
-                    info!("Synchronizing...");
-                    match store_clone.sync() {
-                        Ok(_) => overlay.add_toast(adw::Toast::new("Synchronized successfully")),
-                        Err(e) => {
-                            let message = e.to_string();
-                            let idx = message.find(';').unwrap_or(message.len());
-                            let before_semicolon = &message[..idx];
+                glib::MainContext::default().spawn_local(async move {
+                    sync_action.connect_activate(move |_, _| {
+                        obj_clone2.start_loading();
+                        info!("Synchronizing...");
+                        match store_clone.sync() {
+                            Ok(_) => {
+                                overlay.add_toast(adw::Toast::new("Synchronized successfully"))
+                            }
+                            Err(e) => {
+                                let message = e.to_string();
+                                let idx = message.find(';').unwrap_or(message.len());
+                                let before_semicolon = &message[..idx];
 
-                            overlay.add_toast(adw::Toast::new(before_semicolon));
-                            error!("Failed to synchronize: {}", e);
+                                overlay.add_toast(adw::Toast::new(before_semicolon));
+                                error!("Failed to synchronize: {}", e);
+                            }
                         }
-                    }
-                    obj_clone2.stop_loading();
-                    obj_clone2.imp().init_list(&store_clone);
+                        obj_clone2.stop_loading();
+                        obj_clone2.imp().init_list(&store_clone);
+                    });
+                    obj_clone.add_action(&sync_action);
                 });
-                obj_clone.add_action(&sync_action);
-
-                obj_clone.imp().init_list(&store); // Initialize store and list
-                obj_clone.imp().update_navigation_buttons();
             });
 
             // Select a password with the activated signal

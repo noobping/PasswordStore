@@ -99,16 +99,16 @@ mod imp {
         pub text_view: TemplateChild<gtk::TextView>,
 
         #[template_child]
-        pub path_entry: TemplateChild<gtk::Entry>,
+        pub path_entry: TemplateChild<adw::EntryRow>,
 
         #[template_child]
         pub save_button: TemplateChild<gtk::Button>,
 
         #[template_child]
-        pub entry_password_entry: TemplateChild<PasswordEntry>,
+        pub entry_password_entry: TemplateChild<adw::PasswordEntryRow>,
 
         #[template_child]
-        pub username_entry: TemplateChild<gtk::Entry>,
+        pub username_entry: TemplateChild<adw::EntryRow>,
 
         // ④ Git clone page
         #[template_child]

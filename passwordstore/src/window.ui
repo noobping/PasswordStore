@@ -178,35 +178,24 @@
                           <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <child>
-                              <object class="GtkEntry" id="path_entry">
-                                <property name="name" translatable="yes">Path</property>
-                                <property name="placeholder-text" translatable="yes">username/entry name</property>
+                              <object class="AdwEntryRow" id="path_entry">
+                                <property name="title" translatable="yes">Path or name</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>
                                 <property name="margin-bottom">5</property>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkPasswordEntry" id="entry_password_entry">
-                                <property name="show-peek-icon">true</property>
-                                <property name="placeholder-text" translatable="yes">Entry password</property>
+                              <object class="AdwPasswordEntryRow" id="entry_password_entry">
+                                <property name="title" translatable="yes">Password</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>
                                 <property name="margin-bottom">5</property>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkEntry" id="username_entry">
-                                <property name="name" translatable="yes">Username</property>
-                                <property name="placeholder-text" translatable="yes">username</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">5</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel">
-                                <property name="label" translatable="yes">Entry details:</property>
+                              <object class="AdwEntryRow" id="username_entry">
+                                <property name="title" translatable="yes">Username</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>
                                 <property name="margin-bottom">5</property>
@@ -219,7 +208,6 @@
                                 <property name="cursor-visible">true</property>
                                 <property name="hexpand">true</property>
                                 <property name="vexpand">true</property>
-                                <property name="name" translatable="yes">Password and entry details</property>
                               </object>
                             </child>
                           </object>

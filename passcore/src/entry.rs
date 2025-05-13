@@ -30,15 +30,22 @@ pub struct Entry {
 impl Entry {
     pub fn new<S: AsRef<str>>(password: S, extra: Vec<S>) -> Self {
         let password = SecretString::from(password.as_ref().to_string());
-        let extra = extra.into_iter().map(|l| SecretString::from(l.as_ref().to_string())).collect();
+        let extra = extra
+            .into_iter()
+            .map(|l| SecretString::from(l.as_ref().to_string()))
+            .collect();
         Self { password, extra }
     }
 
-    pub fn from_lines<S: AsRef<str>>(lines: Vec<S>) -> Self {
-        let mut lines = lines.into_iter();
-        let password = SecretString::from(lines.next().unwrap_or_default().as_ref().to_string());
-        let extra = lines.map(|l| SecretString::from(l.as_ref().to_string())).collect();
-        Self { password, extra }
+    pub fn from_lines<S: AsRef<str>>(lines: Vec<S>) -> SecretString {
+        SecretString::new(
+            lines
+                .into_iter()
+                .map(|l| l.as_ref().to_owned()) // Vec<String>
+                .collect::<Vec<String>>() // Collect into Vec<String>
+                .join("\n")
+                .into(),
+        )
     }
 
     pub fn from_plaintext<S: AsRef<str>>(data: S) -> Self {
@@ -53,6 +60,13 @@ impl Entry {
         let password = SecretString::from(lines.next().unwrap_or_default().to_string());
         let extra = lines.map(|l| SecretString::from(l.to_string())).collect();
         Self { password, extra }
+    }
+
+    pub fn secret_string_from_utf8(bytes: Vec<u8>) -> Result<SecretString, FromUtf8Error> {
+        // 1. reuse the Vec allocation to make a String
+        let s = String::from_utf8(bytes)?;
+        // 2. wrap it – zeroize will kick in when it’s dropped
+        Ok(SecretString::new(s))
     }
 
     pub fn to_plaintext(&self) -> String {

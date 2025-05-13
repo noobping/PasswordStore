@@ -103,6 +103,12 @@ mod imp {
         #[template_child]
         pub save_button: TemplateChild<gtk::Button>,
 
+        #[template_child]
+        pub entry_password_entry: TemplateChild<PasswordEntry>,
+
+        #[template_child]
+        pub username_entry: TemplateChild<gtk::Entry>,
+
         // ④ Git clone page
         #[template_child]
         pub git_page: TemplateChild<adw::NavigationPage>,

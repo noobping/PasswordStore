@@ -159,11 +159,6 @@
                             </style>
                           </object>
                         </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">This passphrase is used to decrypt the password store. Decripting may fail even if the passphrase is correct. In this case, try agen or relogin into you desktop session.</property>
-                          </object>
-                        </child>
                       </object>
                     </child>
                   </object>

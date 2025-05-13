@@ -143,20 +143,9 @@
                           </object>
                         </child>
                         <child>
-                          <object class="GtkPasswordEntry" id="password_entry">
-                            <property name="show-peek-icon">true</property>
-                            <property name="placeholder-text" translatable="yes">Decryption passphrase...</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkButton" id="decrypt_button">
-                            <property name="action-name">win.decrypt-password</property>
-                            <property name="label" translatable="yes">Decrypt</property>
-                            <property name="can_focus">false</property>
-                            <property name="sensitive">false</property>
-                            <style>
-                              <class name="suggested-action" />
-                            </style>
+                          <object class="AdwPasswordEntryRow" id="password_entry">
+                            <property name="title" translatable="yes">Decryption passphrase</property>
+                            <property name="show-apply-button">True</property>
                           </object>
                         </child>
                       </object>

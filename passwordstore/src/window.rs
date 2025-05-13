@@ -777,18 +777,23 @@ impl PasswordstoreWindow {
             let store = match PassStore::new() {
                 Ok(store) => store,
                 Err(e) => {
-                    obj_clone.stop_loading();
-                    obj_clone.show_toast(&format!("Failed to open password store: {}", e));
+                    error!("Failed to open password store: {}", e);
+                    glib::MainContext::default().spawn_local(async move {
+                        obj_clone.stop_loading();
+                        obj_clone.show_toast(&format!("Failed to open password store: {}", e));
+                    });
                     return;
                 }
             };
             if !store.exists(&path) {
-                obj_clone.show_toast("Password not found");
-                let list_page = obj_clone.imp().list_page.clone();
-                obj_clone.stop_loading();
-                if !&list_page.is_visible() {
-                    obj_clone.push(imp::Pages::ListPage);
-                }
+                glib::MainContext::default().spawn_local(async move {
+                    obj_clone.show_toast("Password not found");
+                    let list_page = obj_clone.imp().list_page.clone();
+                    obj_clone.stop_loading();
+                    if !&list_page.is_visible() {
+                        obj_clone.push(imp::Pages::ListPage);
+                    }
+                });
                 return;
             }
 
@@ -804,29 +809,34 @@ impl PasswordstoreWindow {
                     }
                     let buffer = gtk::TextBuffer::new(None);
                     buffer.set_text(&text);
-                    let save_button = obj_clone.imp().save_button.clone();
-                    buffer.connect_changed(move |buffer| {
-                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                        debug!("Text changed: {}", text);
-                        let is_not_empty = !text.is_empty();
-                        save_button.set_sensitive(is_not_empty);
-                        save_button.set_can_focus(is_not_empty);
+                    glib::MainContext::default().spawn_local(async move {
+                        let save_button = obj_clone.imp().save_button.clone();
+                        buffer.connect_changed(move |buffer| {
+                            let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                            debug!("Text changed: {}", text);
+                            let is_not_empty = !text.is_empty();
+                            save_button.set_sensitive(is_not_empty);
+                            save_button.set_can_focus(is_not_empty);
+                        });
+                        let text_view = obj_clone.imp().text_view.clone();
+                        text_view.set_buffer(Some(&buffer));
+                        obj_clone.stop_loading();
+                        obj_clone.push(imp::Pages::TextPage);
                     });
-                    let text_view = obj_clone.imp().text_view.clone();
-                    text_view.set_buffer(Some(&buffer));
-                    obj_clone.stop_loading();
-                    obj_clone.push(imp::Pages::TextPage);
                 }
                 Err(e) => {
-                    let message = e.to_string();
-                    let idx = message.find(';').unwrap_or(message.len());
-                    let before_semicolon = &message[..idx];
-                    obj_clone.stop_loading();
-                    obj_clone.show_toast(before_semicolon);
                     error!("Failed to open password: {}", e);
-                    obj_clone.imp().password_entry.set_text("");
-                    obj_clone.push(imp::Pages::AskPage);
-                    obj_clone.imp().password_entry.grab_focus();
+                    glib::MainContext::default().spawn_local(async move {
+                        let message = e.to_string();
+                        let idx = message.find(';').unwrap_or(message.len());
+                        let before_semicolon = &message[..idx];
+                        obj_clone.stop_loading();
+                        obj_clone.show_toast(before_semicolon);
+
+                        obj_clone.imp().password_entry.set_text("");
+                        obj_clone.push(imp::Pages::AskPage);
+                        obj_clone.imp().password_entry.grab_focus();
+                    });
                 }
             }
         });

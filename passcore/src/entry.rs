@@ -28,6 +28,19 @@ pub struct Entry {
 }
 
 impl Entry {
+    pub fn new<S: AsRef<str>>(password: S, extra: Vec<S>) -> Self {
+        let password = SecretString::from(password.as_ref().to_string());
+        let extra = extra.into_iter().map(|l| SecretString::from(l.as_ref().to_string())).collect();
+        Self { password, extra }
+    }
+
+    pub fn from_lines<S: AsRef<str>>(lines: Vec<S>) -> Self {
+        let mut lines = lines.into_iter();
+        let password = SecretString::from(lines.next().unwrap_or_default().as_ref().to_string());
+        let extra = lines.map(|l| SecretString::from(l.as_ref().to_string())).collect();
+        Self { password, extra }
+    }
+
     pub fn from_plaintext<S: AsRef<str>>(data: S) -> Self {
         let mut lines = data.as_ref().lines();
         let password = SecretString::from(lines.next().unwrap_or_default().to_string());

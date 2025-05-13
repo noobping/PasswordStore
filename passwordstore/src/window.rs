@@ -29,7 +29,7 @@ mod imp {
     use adw::prelude::EntryRowExt;
     use gettextrs::gettext;
     use passcore::exists_store_dir;
-    use secrecy::ExposeSecret;
+    use secrecy::{zeroize::Zeroize, ExposeSecret};
     use std::sync::Mutex;
 
     use super::*;
@@ -139,9 +139,7 @@ mod imp {
         pub fn clear_passphrase(&self) {
             self.password_entry.set_text("");
             match self.passphrase.try_lock() {
-                Ok(mut guard) => {
-                    *guard = SecretString::new("".into());
-                }
+                Ok(mut guard) => *guard.zeroize(),
                 Err(_) => self.show_toast("Failed to clear passphrase"),
             }
         }
@@ -829,7 +827,7 @@ impl PasswordstoreWindow {
                     obj_clone.imp().stop_loading();
                     obj_clone.imp().show_toast(before_semicolon);
 
-                    obj_clone.imp().password_entry.set_text("");
+                    obj_clone.imp().clear_passphrase();
                     obj_clone.imp().push(imp::Pages::AskPage);
                     obj_clone.imp().password_entry.grab_focus();
                 }

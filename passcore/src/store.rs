@@ -27,9 +27,7 @@ use git2::build::RepoBuilder;
 use git2::{
     Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks, Repository,
 };
-use gpgme::{
-    Context as GpgContext, DecryptFlags, KeyListMode, PinentryMode, Protocol,
-};
+use gpgme::{Context as GpgContext, DecryptFlags, KeyListMode, PinentryMode, Protocol};
 use log::{info, warn};
 use secrecy::zeroize::Zeroize;
 use secrecy::{ExposeSecret, ExposeSecretMut, SecretString};
@@ -211,7 +209,7 @@ impl PassStore {
 
         // 3. Decrypt
         let passphrase_owned = passphrase.to_owned();
-        let mut plain = secrecy::SecretBox::<Vec<u8>>::new(Box::new(Vec::new()));
+        let mut secret = secrecy::SecretBox::<Vec<u8>>::new(Box::new(Vec::new()));
 
         gpg.with_passphrase_provider(
             move |_req: gpgme::PassphraseRequest<'_>, out: &mut dyn std::io::Write| {
@@ -222,8 +220,8 @@ impl PassStore {
         )?;
 
         // 4. Convert & wipe
-        let txt = String::from_utf8(plain.expose_secret().clone())?;
-        plain.zeroize();
+        let txt = String::from_utf8(secret.expose_secret().clone())?;
+        secret.zeroize();
         Ok(Entry::from_plaintext(txt))
     }
 
@@ -240,12 +238,13 @@ impl PassStore {
         gpg.set_pinentry_mode(PinentryMode::Ask)?;
 
         // 3. Decrypt; GPGME will launch your pinentry (GUI/tty) for you
-        let mut plain = Vec::new();
-        gpg.decrypt_with_flags(&cipher, &mut plain, DecryptFlags::empty())
+        let mut secret = secrecy::SecretBox::<Vec<u8>>::new(Box::new(Vec::new()));
+        gpg.decrypt_with_flags(&cipher, secret.expose_secret_mut(), DecryptFlags::empty())
             .context("Decryption failed")?;
 
-        // 4. UTF-8 + parse just like `get`
-        let txt = String::from_utf8(plain)?;
+        // 4. Convert & wipe
+        let txt = String::from_utf8(secret.expose_secret().clone())?;
+        secret.zeroize();
         Ok(Entry::from_plaintext(txt))
     }
 

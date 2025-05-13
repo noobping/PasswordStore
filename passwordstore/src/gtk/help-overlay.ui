@@ -17,7 +17,7 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes" context="shortcut window">Remove password</property>
+                <property name="title" translatable="yes" context="shortcut window">Remove selected (or opened) password</property>
                 <property name="action-name">win.remove-password</property>
               </object>
             </child>
@@ -29,7 +29,7 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes" context="shortcut window">Synchronize</property>
+                <property name="title" translatable="yes" context="shortcut window">Synchronize with remote (backup)</property>
                 <property name="action-name">win.synchronize</property>
               </object>
             </child>

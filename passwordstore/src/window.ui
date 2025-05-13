@@ -259,8 +259,16 @@
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Synchronize</attribute>
+        <attribute name="label" translatable="yes">_Synchronize with remote</attribute>
         <attribute name="action">win.synchronize</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Refresh password store</attribute>
+        <attribute name="action">win.refresh</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Remove selected password</attribute>
+        <attribute name="action">win.remove-password</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

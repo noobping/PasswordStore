@@ -598,29 +598,25 @@ mod imp {
                 let obj_clone2 = obj_clone.clone();
                 let sync_action = gio::SimpleAction::new("synchronize", None);
                 let store_clone = store.clone();
-                glib::MainContext::default().spawn_local(async move {
-                    sync_action.connect_activate(move |_, _| {
-                        obj_clone2.start_loading();
-                        let overlay = obj_clone2.imp().toast_overlay.clone();
-                        info!("Synchronizing...");
-                        match store_clone.sync() {
-                            Ok(_) => {
-                                overlay.add_toast(adw::Toast::new("Synchronized successfully"))
-                            }
-                            Err(e) => {
-                                let message = e.to_string();
-                                let idx = message.find(';').unwrap_or(message.len());
-                                let before_semicolon = &message[..idx];
+                sync_action.connect_activate(move |_, _| {
+                    obj_clone2.start_loading();
+                    let overlay = obj_clone2.imp().toast_overlay.clone();
+                    info!("Synchronizing...");
+                    match store_clone.sync() {
+                        Ok(_) => overlay.add_toast(adw::Toast::new("Synchronized successfully")),
+                        Err(e) => {
+                            let message = e.to_string();
+                            let idx = message.find(';').unwrap_or(message.len());
+                            let before_semicolon = &message[..idx];
 
-                                overlay.add_toast(adw::Toast::new(before_semicolon));
-                                error!("Failed to synchronize: {}", e);
-                            }
+                            overlay.add_toast(adw::Toast::new(before_semicolon));
+                            error!("Failed to synchronize: {}", e);
                         }
-                        obj_clone2.stop_loading();
-                        obj_clone2.imp().init_list(&store_clone);
-                    });
-                    obj_clone.add_action(&sync_action);
+                    }
+                    obj_clone2.stop_loading();
+                    obj_clone2.imp().init_list(&store_clone);
                 });
+                obj_clone.add_action(&sync_action);
             });
 
             // Select a password with the activated signal
@@ -782,22 +778,18 @@ impl PasswordstoreWindow {
                 Ok(store) => store,
                 Err(e) => {
                     error!("Failed to open password store: {}", e);
-                    glib::MainContext::default().spawn_local(async move {
-                        obj_clone.stop_loading();
-                        obj_clone.show_toast(&format!("Failed to open password store: {}", e));
-                    });
+                    obj_clone.stop_loading();
+                    obj_clone.show_toast(&format!("Failed to open password store: {}", e));
                     return;
                 }
             };
             if !store.exists(&path) {
-                glib::MainContext::default().spawn_local(async move {
-                    obj_clone.show_toast("Password not found");
-                    let list_page = obj_clone.imp().list_page.clone();
-                    obj_clone.stop_loading();
-                    if !&list_page.is_visible() {
-                        obj_clone.push(imp::Pages::ListPage);
-                    }
-                });
+                obj_clone.show_toast("Password not found");
+                let list_page = obj_clone.imp().list_page.clone();
+                obj_clone.stop_loading();
+                if !&list_page.is_visible() {
+                    obj_clone.push(imp::Pages::ListPage);
+                }
                 return;
             }
 
@@ -813,34 +805,30 @@ impl PasswordstoreWindow {
                     }
                     let buffer = gtk::TextBuffer::new(None);
                     buffer.set_text(&text);
-                    glib::MainContext::default().spawn_local(async move {
-                        let save_button = obj_clone.imp().save_button.clone();
-                        buffer.connect_changed(move |buffer| {
-                            let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                            debug!("Text changed: {}", text);
-                            let is_not_empty = !text.is_empty();
-                            save_button.set_sensitive(is_not_empty);
-                            save_button.set_can_focus(is_not_empty);
-                        });
-                        let text_view = obj_clone.imp().text_view.clone();
-                        text_view.set_buffer(Some(&buffer));
-                        obj_clone.stop_loading();
-                        obj_clone.push(imp::Pages::TextPage);
+                    let save_button = obj_clone.imp().save_button.clone();
+                    buffer.connect_changed(move |buffer| {
+                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                        debug!("Text changed: {}", text);
+                        let is_not_empty = !text.is_empty();
+                        save_button.set_sensitive(is_not_empty);
+                        save_button.set_can_focus(is_not_empty);
                     });
+                    let text_view = obj_clone.imp().text_view.clone();
+                    text_view.set_buffer(Some(&buffer));
+                    obj_clone.stop_loading();
+                    obj_clone.push(imp::Pages::TextPage);
                 }
                 Err(e) => {
                     error!("Failed to open password: {}", e);
-                    glib::MainContext::default().spawn_local(async move {
-                        let message = e.to_string();
-                        let idx = message.find(';').unwrap_or(message.len());
-                        let before_semicolon = &message[..idx];
-                        obj_clone.stop_loading();
-                        obj_clone.show_toast(before_semicolon);
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    obj_clone.stop_loading();
+                    obj_clone.show_toast(before_semicolon);
 
-                        obj_clone.imp().password_entry.set_text("");
-                        obj_clone.push(imp::Pages::AskPage);
-                        obj_clone.imp().password_entry.grab_focus();
-                    });
+                    obj_clone.imp().password_entry.set_text("");
+                    obj_clone.push(imp::Pages::AskPage);
+                    obj_clone.imp().password_entry.grab_focus();
                 }
             }
         });

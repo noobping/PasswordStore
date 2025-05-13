@@ -110,7 +110,7 @@ impl PassStore {
     }
 
     /// Create a new `RemoteCallbacks` instance for SSH authentication.
-    fn make_callbacks() -> RemoteCallbacks<'static> {
+    fn callbacks() -> RemoteCallbacks<'static> {
         let mut cb = RemoteCallbacks::new();
 
         cb.credentials(|_url, username_from_url, allowed| {
@@ -133,7 +133,7 @@ impl PassStore {
     }
 
     /// Read the default recipients from the `.gpg-id` file.
-    fn get_recipients(&self) -> Result<Vec<String>> {
+    fn recipients(&self) -> Result<Vec<String>> {
         let root = self.root().context("Failed to get password store root")?;
         let path = root.join(".gpg-id");
         let content = std::fs::read_to_string(&path)
@@ -267,7 +267,7 @@ impl PassStore {
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
             .expect("Failed to set key list mode");
-        let recipients = self.get_recipients()?;
+        let recipients = self.recipients()?;
         let keys: Vec<_> = recipients
             .iter()
             .map(|r| gpg.get_key(r.clone()))
@@ -300,7 +300,7 @@ impl PassStore {
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
             .context("Failed to set key list mode")?;
-        let recipients = self.get_recipients()?;
+        let recipients = self.recipients()?;
         let keys: Vec<_> = recipients
             .iter()
             .map(|r| gpg.get_key(r.clone()))
@@ -377,7 +377,7 @@ impl PassStore {
     /// Fetch all remotes.
     fn git_fetch(&self) -> Result<()> {
         let mut fo = FetchOptions::new();
-        fo.remote_callbacks(Self::make_callbacks());
+        fo.remote_callbacks(Self::callbacks());
         let repo = self.repo();
         for name in repo.remotes()?.iter().flatten() {
             let mut remote = repo.find_remote(name)?;
@@ -406,7 +406,7 @@ impl PassStore {
 
         // 2. Fetching with Default Refspecs
         let mut fo = FetchOptions::new();
-        fo.remote_callbacks(Self::make_callbacks());
+        fo.remote_callbacks(Self::callbacks());
 
         for remote_name in repo.remotes()?.iter().flatten() {
             let mut remote = repo.find_remote(remote_name)?;
@@ -498,7 +498,7 @@ impl PassStore {
             Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
         });
         let mut po = PushOptions::new();
-        po.remote_callbacks(Self::make_callbacks());
+        po.remote_callbacks(Self::callbacks());
 
         let repo = self.repo();
         let head = repo.head()?;
@@ -541,7 +541,7 @@ impl PassStore {
 
         // 3. Clone met onze SSH-callbacks
         let mut fo = FetchOptions::new();
-        fo.remote_callbacks(PassStore::make_callbacks());
+        fo.remote_callbacks(PassStore::callbacks());
 
         let repo = RepoBuilder::new()
             .fetch_options(fo)

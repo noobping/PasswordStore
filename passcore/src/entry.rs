@@ -18,27 +18,36 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use secrecy::{ExposeSecret, SecretString};
+
+#[derive(Debug, Clone)]
 pub struct Entry {
-    pub password: String,
+    pub password: SecretString,
     /// Remaining lines (metadata) are kept verbatim to preserve compatibility.
-    pub extra: Vec<String>,
+    pub extra: Vec<SecretString>,
 }
 
 impl Entry {
     pub fn from_plaintext<S: AsRef<str>>(data: S) -> Self {
         let mut lines = data.as_ref().lines();
-        let password = lines.next().unwrap_or_default().to_string();
-        let extra = lines.map(|l| l.to_string()).collect();
+        let password = SecretString::from(lines.next().unwrap_or_default().to_string());
+        let extra = lines.map(|l| SecretString::from(l.to_string())).collect();
+        Self { password, extra }
+    }
+
+    pub fn from_secret_string<S: AsRef<SecretString>>(data: S) -> Self {
+        let mut lines = data.as_ref().expose_secret().lines();
+        let password = SecretString::from(lines.next().unwrap_or_default().to_string());
+        let extra = lines.map(|l| SecretString::from(l.to_string())).collect();
         Self { password, extra }
     }
 
     pub fn to_plaintext(&self) -> String {
         let mut out = String::new();
-        out.push_str(&self.password);
+        out.push_str(&self.password.expose_secret());
         out.push('\n');
         for l in &self.extra {
-            out.push_str(l);
+            out.push_str(l.expose_secret());
             out.push('\n');
         }
         out

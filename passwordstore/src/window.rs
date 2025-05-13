@@ -232,6 +232,14 @@ mod imp {
 
         pub fn pop(&self) {
             debug!("Popping page");
+            if self.is_text_page() {
+                self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
+                self.path_entry.set_text("");
+                self.password_entry.set_text("");
+                while let Some(child) = self.dynamic_box.first_child() {
+                    self.dynamic_box.remove(&child);
+                }
+            }
             self.navigation_view.pop();
             self.update_navigation_buttons();
             if self.is_default_page() {

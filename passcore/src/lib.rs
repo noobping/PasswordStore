@@ -19,6 +19,7 @@
  */
 
 mod dir;
+mod extension;
 pub mod entry;
 pub mod store;
 

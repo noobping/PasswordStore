@@ -2,24 +2,21 @@ use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::string::String;
 
 pub trait SecretStringExt {
-    fn from_secret_utf8(lines: SecretBox<Vec<u8>>) -> Self;
-    fn from_utf8(bytes: Vec<u8>) -> Self;
+    fn from_secret_utf8(
+        bytes: SecretBox<Vec<u8>>,
+    ) -> Result<SecretString, std::string::FromUtf8Error>;
+    fn from_utf8(bytes: Vec<u8>) -> Result<SecretString, std::string::FromUtf8Error>;
 }
 
 impl SecretStringExt for SecretString {
-    fn from_utf8(bytes: Vec<u8>) -> Self {
-        match String::from_utf8(bytes) {
-            Ok(s) => SecretString::new(s.into()),
-            Err(_) => SecretString::new("".into()),
-        }
+    fn from_utf8(bytes: Vec<u8>) -> Result<Self, std::string::FromUtf8Error> {
+        Ok(SecretString::from(String::from_utf8(bytes)?))
     }
 
-    fn from_secret_utf8(lines: SecretBox<Vec<u8>>) -> Self {
-        let bytes: Vec<u8> = lines.expose_secret().clone();
-        let text = match String::from_utf8(bytes) {
-            Ok(s) => s,
-            Err(_) => String::new(),
-        };
-        SecretString::from(text)
+    fn from_secret_utf8(
+        bytes: SecretBox<Vec<u8>>,
+    ) -> Result<SecretString, std::string::FromUtf8Error> {
+        let bytes: Vec<u8> = bytes.expose_secret().clone();
+        Ok(String::from_utf8(bytes)?.into())
     }
 }

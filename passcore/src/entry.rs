@@ -18,13 +18,22 @@
  * SPDX-License-Identifier: GPL-3.0
  */
 
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 
 #[derive(Debug, Clone)]
 pub struct Entry {
     pub password: SecretString,
     /// Remaining lines (metadata) are kept verbatim to preserve compatibility.
     pub extra: Vec<SecretString>,
+}
+
+impl Default for Entry {
+    fn default() -> Self {
+        Self {
+            password: SecretString::new("".into()),
+            extra: vec![],
+        }
+    }
 }
 
 impl Entry {
@@ -37,36 +46,18 @@ impl Entry {
         Self { password, extra }
     }
 
-    pub fn from_lines<S: AsRef<str>>(lines: Vec<S>) -> SecretString {
-        SecretString::new(
-            lines
-                .into_iter()
-                .map(|l| l.as_ref().to_owned()) // Vec<String>
-                .collect::<Vec<String>>() // Collect into Vec<String>
-                .join("\n")
-                .into(),
-        )
-    }
-
-    pub fn from_plaintext<S: AsRef<str>>(data: S) -> Self {
-        let mut lines = data.as_ref().lines();
+    pub fn from_plaintext<S: AsRef<str>>(plaintext: S) -> Self {
+        let mut lines = plaintext.as_ref().lines();
         let password = SecretString::from(lines.next().unwrap_or_default().to_string());
         let extra = lines.map(|l| SecretString::from(l.to_string())).collect();
         Self { password, extra }
     }
 
-    pub fn from_secret_string<S: AsRef<SecretString>>(data: S) -> Self {
-        let mut lines = data.as_ref().expose_secret().lines();
+    pub fn from_secret(secret: impl ExposeSecret<str>) -> Self {
+        let mut lines: std::str::Lines<'_> = secret.expose_secret().lines();
         let password = SecretString::from(lines.next().unwrap_or_default().to_string());
         let extra = lines.map(|l| SecretString::from(l.to_string())).collect();
         Self { password, extra }
-    }
-
-    pub fn secret_string_from_utf8(bytes: Vec<u8>) -> Result<SecretString, FromUtf8Error> {
-        // 1. reuse the Vec allocation to make a String
-        let s = String::from_utf8(bytes)?;
-        // 2. wrap it – zeroize will kick in when it’s dropped
-        Ok(SecretString::new(s))
     }
 
     pub fn to_plaintext(&self) -> String {

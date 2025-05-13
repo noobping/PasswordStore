@@ -20,6 +20,7 @@
 
 use crate::dir::discover_store_dir;
 use crate::entry::Entry;
+use crate::extension::SecretStringExt;
 
 use anyhow::{Context, Result, anyhow};
 use derivative::Derivative;
@@ -161,13 +162,13 @@ impl PassStore {
         };
 
         let mut entries = Vec::new();
-        for item in glob::glob_with(
+        for entry in glob::glob_with(
             pattern
                 .to_str()
                 .ok_or_else(|| anyhow!("non-UTF-8 store path"))?,
             opts,
         )? {
-            let path = match item {
+            let path = match entry {
                 Ok(p) => p,
                 Err(e) => {
                     // Als een pad niet gelezen kan worden (bv. permissieprobleem), skip het.
@@ -216,13 +217,13 @@ impl PassStore {
                 writeln!(out, "{}", passphrase_owned.expose_secret())?;
                 Ok(())
             },
-            |ctx| ctx.decrypt_with_flags(&cipher, secret.expose_secret_mut(), DecryptFlags::empty()),
+            |ctx| {
+                ctx.decrypt_with_flags(&cipher, secret.expose_secret_mut(), DecryptFlags::empty())
+            },
         )?;
 
         // 4. Convert & wipe
-        let txt = String::from_utf8(secret.expose_secret().clone())?;
-        secret.zeroize();
-        Ok(Entry::from_plaintext(txt))
+        Ok(Entry::from_secret(SecretString::from_secret_utf8(secret)?))
     }
 
     /// Like `get`, but let GPGME/agent ask you for the passphrase via pinentry.
@@ -243,9 +244,7 @@ impl PassStore {
             .context("Decryption failed")?;
 
         // 4. Convert & wipe
-        let txt = String::from_utf8(secret.expose_secret().clone())?;
-        secret.zeroize();
-        Ok(Entry::from_plaintext(txt))
+        Ok(Entry::from_secret(SecretString::from_secret_utf8(secret)?))
     }
 
     /// Check whether a given entry (by relative path without `.gpg`) exists in the store.

@@ -146,6 +146,9 @@
                           <object class="AdwPasswordEntryRow" id="passphrase_entry">
                             <property name="title" translatable="yes">Decryption passphrase</property>
                             <property name="show-apply-button">True</property>
+                            <style>
+                              <class name="suggested-action" />
+                            </style>
                           </object>
                         </child>
                       </object>

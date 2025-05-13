@@ -767,6 +767,9 @@ impl PasswordstoreWindow {
         let path = self.imp().get_path();
         self.imp().path_entry.set_text(&path);
         self.imp().path_entry.grab_focus();
+        while let Some(child) = self.imp().dynamic_box.first_child() {
+            self.imp().dynamic_box.remove(&child);
+        }
 
         let passphrase = self.imp().get_passphrase();
         let obj_clone = self.clone();

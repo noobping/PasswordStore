@@ -143,7 +143,7 @@
                           </object>
                         </child>
                         <child>
-                          <object class="AdwPasswordEntryRow" id="password_entry">
+                          <object class="AdwPasswordEntryRow" id="passphrase_entry">
                             <property name="title" translatable="yes">Decryption passphrase</property>
                             <property name="show-apply-button">True</property>
                           </object>
@@ -175,7 +175,7 @@
                               </object>
                             </child>
                             <child>
-                              <object class="AdwPasswordEntryRow" id="entry_password_entry">
+                              <object class="AdwPasswordEntryRow" id="password_entry">
                                 <property name="title" translatable="yes">Password</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>

@@ -28,6 +28,7 @@ use gtk::{gio, glib};
 use log::{error, info};
 use passcore::PassStore;
 use search_provider::{self, ResultID, ResultMeta, SearchProvider};
+use secrecy::ExposeSecret;
 
 mod imp {
     use super::*;
@@ -168,7 +169,7 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
                     Some(
                         ResultMeta::builder(path.clone(), &path)
                             .description("Copy password to clipboard")
-                            .clipboard_text(&store.ask(&path).ok()?.password)
+                            .clipboard_text(&store.ask(&path).ok()?.password.expose_secret())
                             .build(),
                     )
                 } else {

@@ -30,7 +30,6 @@ use git2::{
 };
 use gpgme::{Context as GpgContext, DecryptFlags, KeyListMode, PinentryMode, Protocol};
 use log::{info, warn};
-use secrecy::zeroize::Zeroize;
 use secrecy::{ExposeSecret, ExposeSecretMut, SecretString};
 use std::cell::RefCell;
 use std::fs::{self, File};

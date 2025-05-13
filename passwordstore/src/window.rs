@@ -23,7 +23,7 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use log::{debug, error, info};
 use passcore::PassStore;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 
 mod imp {
     use adw::prelude::EntryRowExt;
@@ -88,7 +88,7 @@ mod imp {
         pub ask_page: TemplateChild<adw::NavigationPage>,
 
         #[template_child]
-        pub password_entry: TemplateChild<adw::PasswordEntryRow>,
+        pub passphrase_entry: TemplateChild<adw::PasswordEntryRow>,
 
         // ③ Text editor page
         #[template_child]
@@ -104,7 +104,7 @@ mod imp {
         pub save_button: TemplateChild<gtk::Button>,
 
         #[template_child]
-        pub entry_password_entry: TemplateChild<adw::PasswordEntryRow>,
+        pub password_entry: TemplateChild<adw::PasswordEntryRow>,
 
         #[template_child]
         pub username_entry: TemplateChild<adw::EntryRow>,
@@ -137,15 +137,15 @@ mod imp {
         }
 
         pub fn clear_passphrase(&self) {
-            self.password_entry.set_text("");
+            self.passphrase_entry.set_text("");
             match self.passphrase.try_lock() {
-                Ok(mut guard) => *guard.zeroize(),
+                Ok(mut guard) => guard.zeroize(),
                 Err(_) => self.show_toast("Failed to clear passphrase"),
             }
         }
 
         fn set_passphrase(&self, secret: SecretString) {
-            self.password_entry.set_text("");
+            self.passphrase_entry.set_text("");
             match self.passphrase.try_lock() {
                 Ok(mut guard) => *guard = secret,
                 Err(_) => self.show_toast("Failed to set passphrase"),
@@ -333,8 +333,8 @@ mod imp {
             self.back_button.set_sensitive(false);
             self.git_button.set_can_focus(false);
             self.git_button.set_sensitive(false);
-            self.password_entry.set_can_focus(false);
-            self.password_entry.set_sensitive(false);
+            self.passphrase_entry.set_can_focus(false);
+            self.passphrase_entry.set_sensitive(false);
             self.search_button.set_can_focus(false);
             self.search_button.set_sensitive(false);
             self.save_button.set_can_focus(false);
@@ -348,9 +348,9 @@ mod imp {
 
         pub fn stop_loading(&self) {
             info!("Done!");
-            self.password_entry.set_can_focus(true);
-            self.password_entry.set_sensitive(true);
-            self.password_entry.grab_focus();
+            self.passphrase_entry.set_can_focus(true);
+            self.passphrase_entry.set_sensitive(true);
+            self.passphrase_entry.grab_focus();
             self.text_view.set_editable(true);
             self.path_entry.set_can_focus(true);
             self.path_entry.set_sensitive(true);
@@ -409,16 +409,14 @@ mod imp {
                 .lines()
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>();
-            let password = lines.get(0).unwrap_or(&"".to_string()).to_string();
-            let extra = lines[1..].to_vec();
-            let item = passcore::Entry { password, extra };
+            let entry = passcore::Entry::from_lines(lines);
 
             // Check if the password must be updated, added, renamed or both
             let is_update = store.exists(&path);
             let saved: bool = if is_update {
-                self.update_pass(&store, &path, &item)
+                self.update_pass(&store, &path, &entry)
             } else {
-                self.add_pass(&store, &path, &item)
+                self.add_pass(&store, &path, &entry)
             };
 
             let renamed = if !new_path.is_empty() && path != new_path {
@@ -453,8 +451,8 @@ mod imp {
             };
         }
 
-        fn update_pass(&self, store: &PassStore, path: &String, item: &passcore::Entry) -> bool {
-            return match store.update(&path, &item) {
+        fn update_pass(&self, store: &PassStore, path: &String, entry: &passcore::Entry) -> bool {
+            return match store.update(&path, &entry) {
                 Ok(_) => {
                     self.show_toast(&format!("Updated {}", path));
                     true
@@ -470,8 +468,8 @@ mod imp {
             };
         }
 
-        fn add_pass(&self, store: &PassStore, path: &String, item: &passcore::Entry) -> bool {
-            return match store.add(&path, &item) {
+        fn add_pass(&self, store: &PassStore, path: &String, entry: &passcore::Entry) -> bool {
+            return match store.add(&path, &entry) {
                 Ok(_) => {
                     self.show_toast(&format!("Password {} added", path));
                     true
@@ -711,7 +709,7 @@ mod imp {
 
             // Enable or disable the buttons if the entry is empty
             let obj_clone = obj.clone();
-            self.password_entry.connect_apply(move |row| {
+            self.passphrase_entry.connect_apply(move |row| {
                 obj_clone.imp().set_passphrase(row.text().trim().into());
                 obj_clone.decrypt_and_open();
             });
@@ -795,14 +793,13 @@ impl PasswordstoreWindow {
                 return;
             }
             match store.get(&path, passphrase) {
-                Ok(item) => {
-                    debug!("Password: {}", item.password);
-                    // Pass item to the text view
-                    // Add item.password to the first line of the text view
-                    // Add the item.extra (a list of strings) after that.
-                    let mut text = item.password;
-                    for line in item.extra {
-                        text.push_str(&format!("\n{}", line));
+                Ok(entry) => {
+                    let password = entry.password.expose_secret();
+                    obj_clone.imp().passphrase_entry.set_text(password);
+
+                    let mut text = String::new();
+                    for line in entry.extra.iter() {
+                        text.push_str(&format!("\n{}", line.expose_secret()));
                     }
                     let buffer = gtk::TextBuffer::new(None);
                     buffer.set_text(&text);
@@ -829,7 +826,7 @@ impl PasswordstoreWindow {
 
                     obj_clone.imp().clear_passphrase();
                     obj_clone.imp().push(imp::Pages::AskPage);
-                    obj_clone.imp().password_entry.grab_focus();
+                    obj_clone.imp().passphrase_entry.grab_focus();
                 }
             }
         });

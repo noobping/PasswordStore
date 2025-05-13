@@ -499,7 +499,10 @@ mod imp {
             // Actions
             let obj_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("refresh", None);
-            toggle_action.connect_activate(move |_, _| obj_clone.refresh_list());
+            toggle_action.connect_activate(move |_, _| {
+                let obj_clone2 = obj_clone.clone();
+                glib::idle_add_local_once(move || obj_clone2.refresh_list());
+            });
             obj.add_action(&toggle_action);
 
             let obj_clone = obj.clone();

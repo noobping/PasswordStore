@@ -133,7 +133,7 @@ impl PassStore {
     }
 
     /// Read the default recipients from the `.gpg-id` file.
-    pub fn get_recipients(&self) -> Result<Vec<String>> {
+    fn get_recipients(&self) -> Result<Vec<String>> {
         let root = self.root().context("Failed to get password store root")?;
         let path = root.join(".gpg-id");
         let content = std::fs::read_to_string(&path)
@@ -262,11 +262,12 @@ impl PassStore {
     }
 
     /// Encrypt (for the given recipients) and write an entry. Creates parents as needed.
-    pub fn add(&self, id: &str, entry: &Entry, recipients: &Vec<String>) -> Result<()> {
+    pub fn add(&self, id: &str, entry: &Entry) -> Result<()> {
         // Resolve keys.
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
             .expect("Failed to set key list mode");
+        let recipients = self.get_recipients()?;
         let keys: Vec<_> = recipients
             .iter()
             .map(|r| gpg.get_key(r.clone()))
@@ -289,7 +290,7 @@ impl PassStore {
     }
 
     /// Overwrites an existing entry. Fails als ‘id’ niet bestaat.
-    pub fn update(&self, id: &str, entry: &Entry, recipients: &Vec<String>) -> Result<()> {
+    pub fn update(&self, id: &str, entry: &Entry) -> Result<()> {
         // 1. Check of het bestand al bestaat
         if !self.exists(id) {
             return Err(anyhow!("Entry '{}' does not exist", id));
@@ -299,6 +300,7 @@ impl PassStore {
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
             .context("Failed to set key list mode")?;
+        let recipients = self.get_recipients()?;
         let keys: Vec<_> = recipients
             .iter()
             .map(|r| gpg.get_key(r.clone()))

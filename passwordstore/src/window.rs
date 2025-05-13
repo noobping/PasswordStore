@@ -381,20 +381,13 @@ mod imp {
             let password = lines.get(0).unwrap_or(&"".to_string()).to_string();
             let extra = lines[1..].to_vec();
             let item = passcore::Entry { password, extra };
-            let recipients = match store.get_recipients() {
-                Ok(recipients) => recipients,
-                Err(e) => {
-                    self.show_toast(&format!("Failed to get recipients: {}", e));
-                    return;
-                }
-            };
 
             // Check if the password must be updated, added, renamed or both
             let is_update = store.exists(&path);
             let saved: bool = if is_update {
-                self.update_pass(&store, &path, &item, &recipients)
+                self.update_pass(&store, &path, &item)
             } else {
-                self.add_pass(&store, &path, &item, &recipients)
+                self.add_pass(&store, &path, &item)
             };
 
             let renamed = if !new_path.is_empty() && path != new_path {
@@ -429,14 +422,8 @@ mod imp {
             };
         }
 
-        fn update_pass(
-            &self,
-            store: &PassStore,
-            path: &String,
-            item: &passcore::Entry,
-            recipients: &Vec<String>,
-        ) -> bool {
-            return match store.update(&path, &item, &recipients) {
+        fn update_pass(&self, store: &PassStore, path: &String, item: &passcore::Entry) -> bool {
+            return match store.update(&path, &item) {
                 Ok(_) => {
                     self.show_toast(&format!("Updated {}", path));
                     true
@@ -452,14 +439,8 @@ mod imp {
             };
         }
 
-        fn add_pass(
-            &self,
-            store: &PassStore,
-            path: &String,
-            item: &passcore::Entry,
-            recipients: &Vec<String>,
-        ) -> bool {
-            return match store.add(&path, &item, &recipients) {
+        fn add_pass(&self, store: &PassStore, path: &String, item: &passcore::Entry) -> bool {
+            return match store.add(&path, &item) {
                 Ok(_) => {
                     self.show_toast(&format!("Password {} added", path));
                     true
@@ -590,7 +571,9 @@ mod imp {
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
-            obj.imp().password_entry.connect_activate(move |_| obj_clone.open_text_editor());
+            obj.imp()
+                .password_entry
+                .connect_activate(move |_| obj_clone.open_text_editor());
 
             let obj_clone = obj.clone();
             obj.imp().git_url_entry.connect_activate(move |_| {

@@ -180,11 +180,17 @@
                             <child>
                               <object class="GtkEntry" id="path_entry">
                                 <property name="name" translatable="yes">Path</property>
-                                <property name="placeholder-text" translatable="yes">username/account</property>
+                                <property name="placeholder-text" translatable="yes">username/entry name</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>
                                 <property name="margin-top">15</property>
                                 <property name="margin-bottom">15</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkPasswordEntry" id="Entry_password_entry">
+                                <property name="show-peek-icon">true</property>
+                                <property name="placeholder-text" translatable="yes">Entry password</property>
                               </object>
                             </child>
                             <child>
@@ -194,7 +200,7 @@
                                 <property name="cursor-visible">true</property>
                                 <property name="hexpand">true</property>
                                 <property name="vexpand">true</property>
-                                <property name="name" translatable="yes">Password and account details</property>
+                                <property name="name" translatable="yes">Password and entry details</property>
                               </object>
                             </child>
                           </object>

@@ -9,6 +9,7 @@ gtk = { version = "0.9", package = "gtk4", features = ["gnome_47"] }
 log = "0.4.27"
 passcore = { path = "../passcore" }
 search-provider = { version = "0.11.0", features = ["gdk"] }
+secrecy = "0.10.3"
 
 [dependencies.adw]
 package = "libadwaita"

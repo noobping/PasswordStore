@@ -28,9 +28,11 @@ use git2::{
     Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks, Repository,
 };
 use gpgme::{
-    Context as GpgContext, DecryptFlags, KeyListMode, PassphraseRequest, PinentryMode, Protocol,
+    Context as GpgContext, DecryptFlags, KeyListMode, PinentryMode, Protocol,
 };
 use log::{info, warn};
+use secrecy::zeroize::Zeroize;
+use secrecy::{ExposeSecret, ExposeSecretMut, SecretString};
 use std::cell::RefCell;
 use std::fs::{self, File};
 use std::io::Write;
@@ -198,33 +200,30 @@ impl PassStore {
     ///
     /// Returns an `Entry` containing the password and any extra lines of metadata.
     /// Errors if the entry file is not found or if decryption fails.
-    pub fn get(&self, id: &str, passphrase: &str) -> Result<Entry> {
-        // 1. Load the .gpg file into `cipher`
-        let root = self.root()?;
-        let path = root.join(format!("{id}.gpg"));
-        let cipher =
-            std::fs::read(&path).with_context(|| format!("Failed to read entry `{id}`"))?;
+    pub fn get(&self, id: &str, passphrase: SecretString) -> Result<Entry> {
+        // 1. Read ciphertext
+        let cipher = std::fs::read(self.root()?.join(format!("{id}.gpg")))
+            .with_context(|| format!("Failed to read entry `{id}`"))?;
 
-        // 2. Tell GPGME to accept a loop‑back pass‑phrase
+        // 2. GPG context
         let mut gpg = self.gpg();
         gpg.set_pinentry_mode(PinentryMode::Loopback)?;
 
-        // 3. Temporarily install a provider that writes `passphrase`
-        let secret = passphrase.to_owned();
-        let mut plain = Vec::new();
+        // 3. Decrypt
+        let passphrase_owned = passphrase.to_owned();
+        let mut plain = secrecy::SecretBox::<Vec<u8>>::new(Box::new(Vec::new()));
+
         gpg.with_passphrase_provider(
-            move |_req: PassphraseRequest, out: &mut dyn Write| {
-                writeln!(out, "{secret}")?; // passphrase + '\n'
+            move |_req: gpgme::PassphraseRequest<'_>, out: &mut dyn std::io::Write| {
+                writeln!(out, "{}", passphrase_owned.expose_secret())?;
                 Ok(())
             },
-            |ctx| {
-                // 4. Decrypt while the provider is active
-                ctx.decrypt_with_flags(&cipher, &mut plain, DecryptFlags::empty())
-            },
-        )?; // propagates any GPGME error
+            |ctx| ctx.decrypt_with_flags(&cipher, plain.expose_secret_mut(), DecryptFlags::empty()),
+        )?;
 
-        // 5. Convert to UTF‑8 and parse
-        let txt = String::from_utf8(plain)?;
+        // 4. Convert & wipe
+        let txt = String::from_utf8(plain.expose_secret().clone())?;
+        plain.zeroize();
         Ok(Entry::from_plaintext(txt))
     }
 

@@ -16,5 +16,6 @@ git2 = "0.20.1"
 glob = "0.3.2"
 gpgme = { version = "0.11.0", features = ["v1_18"] }
 log = "0.4.27"
+secrecy = "0.10.3"
 walkdir = "2.5.0"
 zbus = "5.5.0"

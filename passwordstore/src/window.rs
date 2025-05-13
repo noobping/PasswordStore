@@ -23,6 +23,7 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use log::{debug, error, info};
 use passcore::PassStore;
+use secrecy::SecretString;
 
 mod imp {
     use gettextrs::gettext;
@@ -762,19 +763,6 @@ impl PasswordstoreWindow {
 
     pub fn open_text_editor(&self) {
         self.start_loading();
-        info!("Opening text editor for {}", self.get_path());
-
-        let passphrase = self.imp().password_entry.text().to_string();
-        if passphrase.is_empty() {
-            let ask_page = self.imp().ask_page.clone();
-            self.stop_loading();
-            if !&ask_page.is_visible() {
-                self.push(imp::Pages::AskPage);
-            }
-            self.show_toast("Passphrase cannot be empty");
-            return;
-        }
-
         let path = self.get_path();
         self.imp().path_entry.set_text(&path);
 
@@ -799,7 +787,8 @@ impl PasswordstoreWindow {
                 return;
             }
 
-            match store.get(&path, passphrase.as_str()) {
+            let passphrase = SecretString::from(obj_clone.imp().password_entry.text().to_string());
+            match store.get(&path, passphrase) {
                 Ok(item) => {
                     debug!("Password: {}", item.password);
                     // Pass item to the text view

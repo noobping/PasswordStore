@@ -111,7 +111,13 @@ glib::wrapper! {
 impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     fn activate_result(&self, identifier: ResultID, _terms: &[String], _timestamp: u32) {
         info!("[passwordstore] Activating result for `{}`", identifier);
-        let store = PassStore::new().unwrap();
+        let store = match PassStore::new() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("[passwordstore] Failed to create PassStore: {}", e);
+                PassStore::default()
+            }
+        };
         if let Ok(_entry) = store.ask(&identifier) {
             info!(
                 "[passwordstore] Copied password for `{}` to clipboard",
@@ -125,7 +131,13 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     fn initial_result_set(&self, terms: &[String]) -> Vec<ResultID> {
         info!("[passwordstore] Searching for `{}`", terms.join(", "));
         let needle = terms.join(" ").to_lowercase();
-        let store = PassStore::default();
+        let store = match PassStore::new() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("[passwordstore] Failed to create PassStore: {}", e);
+                PassStore::default()
+            }
+        };
 
         store
             .list()
@@ -140,7 +152,13 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
             "[passwordstore] Getting result metas for `{}`",
             identifiers.join(", ")
         );
-        let store = PassStore::new().unwrap();
+        let store = match PassStore::new() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("[passwordstore] Failed to create PassStore: {}", e);
+                PassStore::default()
+            }
+        };
         store
             .list()
             .unwrap_or_default()

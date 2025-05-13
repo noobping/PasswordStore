@@ -183,11 +183,8 @@
                               </object>
                             </child>
                             <child>
-                              <object class="AdwEntryRow" id="username_entry">
-                                <property name="title" translatable="yes">Username</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">5</property>
+                              <object class="GtkBox" id="dynamic_box">
+                                <property name="orientation">vertical</property>
                               </object>
                             </child>
                             <child>

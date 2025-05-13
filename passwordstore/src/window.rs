@@ -107,7 +107,7 @@ mod imp {
         pub password_entry: TemplateChild<adw::PasswordEntryRow>,
 
         #[template_child]
-        pub username_entry: TemplateChild<adw::EntryRow>,
+        pub dynamic_box: TemplateChild<gtk::Box>,
 
         // ④ Git clone page
         #[template_child]
@@ -798,7 +798,20 @@ impl PasswordstoreWindow {
 
                     let mut text = String::new();
                     for line in entry.extra.iter() {
-                        text.push_str(&format!("{}\n", line.expose_secret()));
+                        let exposed = line.expose_secret();
+                        if exposed.contains(':') {
+                            let (field, value) = Self::split_field_value(&exposed);
+                            let row = adw::EntryRow::builder()
+                                .title(&field)
+                                .margin_start(15)
+                                .margin_end(15)
+                                .margin_bottom(5)
+                                .build();
+                            row.set_text(&value);
+                            obj_clone.imp().dynamic_box.append(&row);
+                        } else {
+                            text.push_str(&format!("{}\n", exposed));
+                        }
                     }
                     let buffer = gtk::TextBuffer::new(None);
                     buffer.set_text(&text);
@@ -829,5 +842,12 @@ impl PasswordstoreWindow {
                 }
             }
         });
+    }
+
+    fn split_field_value(line: &str) -> (String, String) {
+        let mut parts = line.splitn(2, ':');
+        let field = parts.next().unwrap().trim().to_string();
+        let value = parts.next().unwrap_or("").trim().to_string();
+        (field, value)
     }
 }

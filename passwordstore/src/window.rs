@@ -795,11 +795,11 @@ impl PasswordstoreWindow {
             match store.get(&path, passphrase) {
                 Ok(entry) => {
                     let password = entry.password.expose_secret();
-                    obj_clone.imp().passphrase_entry.set_text(password);
+                    obj_clone.imp().password_entry.set_text(password);
 
                     let mut text = String::new();
                     for line in entry.extra.iter() {
-                        text.push_str(&format!("\n{}", line.expose_secret()));
+                        text.push_str(&format!("{}\n", line.expose_secret()));
                     }
                     let buffer = gtk::TextBuffer::new(None);
                     buffer.set_text(&text);

@@ -590,9 +590,7 @@ mod imp {
             obj.add_action(&add_action);
 
             let obj_clone = obj.clone();
-            obj.imp().password_entry.connect_activate(move |_| {
-                obj_clone.open_text_editor();
-            });
+            obj.imp().password_entry.connect_activate(move |_| obj_clone.open_text_editor());
 
             let obj_clone = obj.clone();
             obj.imp().git_url_entry.connect_activate(move |_| {

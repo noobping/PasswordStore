@@ -284,37 +284,6 @@ mod imp {
             self.path_entry.grab_focus();
         }
 
-        pub fn to_store_entry(&self) -> passcore::Entry {
-            let password = SecretString::from(self.password_entry.text().to_string());
-            let mut extra = vec![];
-            while let Some(child) = self.dynamic_box.first_child() {
-                match child.downcast::<adw::EntryRow>() {
-                    Ok(entry) => {
-                        let field = entry.title().to_string();
-                        let value = entry.text().to_string();
-                        extra.push(SecretString::from(format!("{}: {}", field, value)));
-                    }
-                    Err(_) => continue,
-                }
-            }
-            let buffer = self.text_view.buffer();
-            // first line is password, the rest are extra
-            let lines = buffer
-                .text(&buffer.start_iter(), &buffer.end_iter(), false)
-                .lines()
-                .map(|s| SecretString::from(s.to_string()))
-                .collect::<Vec<SecretString>>();
-            let merged = extra
-                .into_iter()
-                .chain(lines.into_iter().map(|l| l))
-                .collect::<Vec<SecretString>>();
-
-            passcore::Entry {
-                password,
-                extra: merged,
-            }
-        }
-
         pub fn toggle_search(&self) {
             let entry = self.search_entry.clone();
             if !self.is_default_page() {
@@ -432,14 +401,7 @@ mod imp {
                     PassStore::default()
                 }
             };
-            let buffer = self.text_view.buffer();
-            // first line is password, the rest are extra
-            let lines = buffer
-                .text(&buffer.start_iter(), &buffer.end_iter(), false)
-                .lines()
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>();
-            let entry = passcore::Entry::from_lines(lines);
+            let entry = self.to_store_entry();
 
             // Check if the password must be updated, added, renamed or both
             let is_update = store.exists(&path);
@@ -460,6 +422,37 @@ mod imp {
             }
             self.stop_loading();
             self.pop();
+        }
+
+        fn to_store_entry(&self) -> passcore::Entry {
+            let password = SecretString::from(self.password_entry.text().to_string());
+            let mut extra = vec![];
+            while let Some(child) = self.dynamic_box.first_child() {
+                match child.downcast::<adw::EntryRow>() {
+                    Ok(entry) => {
+                        let field = entry.title().to_string();
+                        let value = entry.text().to_string();
+                        extra.push(SecretString::from(format!("{}: {}", field, value)));
+                    }
+                    Err(_) => continue,
+                }
+            }
+            let buffer = self.text_view.buffer();
+            // first line is password, the rest are extra
+            let lines = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .lines()
+                .map(|s| SecretString::from(s.to_string()))
+                .collect::<Vec<SecretString>>();
+            let merged = extra
+                .into_iter()
+                .chain(lines.into_iter().map(|l| l))
+                .collect::<Vec<SecretString>>();
+
+            passcore::Entry {
+                password,
+                extra: merged,
+            }
         }
 
         fn rename_pass(&self, store: &PassStore, path: &String, new_path: &String) -> bool {

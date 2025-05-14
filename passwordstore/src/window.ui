@@ -6,6 +6,7 @@
     <property name="title" translatable="yes">PasswordStore</property>
     <property name="default-width">600</property>
     <property name="default-height">450</property>
+    <property name="icon-name">io.github.noobping.PasswordStore</property>
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">

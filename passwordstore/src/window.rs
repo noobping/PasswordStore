@@ -957,6 +957,7 @@ impl PasswordstoreWindow {
     pub fn new<P: IsA<gtk::Application>>(application: &P) -> Self {
         glib::Object::builder()
             .property("application", application)
+            .property("icon-name", "io.github.noobping.PasswordStore")
             .build()
     }
 }

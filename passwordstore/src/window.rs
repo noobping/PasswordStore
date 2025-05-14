@@ -795,7 +795,7 @@ impl PasswordstoreWindow {
                 let list_page = obj_clone.imp().list_page.clone();
                 obj_clone.imp().stop_loading();
                 if !&list_page.is_visible() {
-                    obj_clone.imp().push(imp::Pages::ListPage);
+                    obj_clone.imp().pop();
                 }
                 return;
             }

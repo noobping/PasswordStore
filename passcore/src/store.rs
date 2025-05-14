@@ -520,7 +520,7 @@ impl PassStore {
         Ok(())
     }
 
-    pub fn git_clone(repo_url: String) -> Result<PassStore> {
+    pub fn from_git(repo_url: String) -> Result<PassStore> {
         // 1. Bepaal waar de store moet staan (bijv. ~/.password-store)
         let root = discover_store_dir()?;
 

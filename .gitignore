@@ -1,6 +1,7 @@
 ### Flatpak ###
 .flatpak-builder
 build
+*-build
 build-dir
 repo
 AppDir/*

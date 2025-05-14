@@ -179,11 +179,11 @@ mod imp {
                     PassStore::default()
                 }
             };
-            self.list.remove_all();
-            self.init_list(&store);
-            self.navigation_view
-                .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
-            self.update_navigation_buttons();
+            if store.ok() {
+                self.list.remove_all();
+                self.init_list(&store);
+                self.pop();
+            }
         }
 
         fn is_default_page(&self) -> bool {
@@ -240,7 +240,10 @@ mod imp {
                     self.dynamic_box.remove(&child);
                 }
             }
-            self.navigation_view.pop();
+            if !self.is_default_page() {
+                self.navigation_view
+                    .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
+            }
             self.update_navigation_buttons();
             if self.is_default_page() {
                 self.set_path("".to_string());
@@ -290,12 +293,10 @@ mod imp {
         pub fn toggle_search(&self) {
             let entry = self.search_entry.clone();
             if !self.is_default_page() {
-                self.navigation_view
-                    .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
+                self.pop();
                 entry.grab_focus();
                 self.set_path("".to_string());
                 entry.set_visible(true);
-                self.update_navigation_buttons();
                 return;
             }
 
@@ -327,9 +328,7 @@ mod imp {
             };
             if store.ok() {
                 self.init_list(&store);
-                self.navigation_view
-                    .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
-                self.update_navigation_buttons();
+                self.pop();
             }
         }
 
@@ -437,9 +436,7 @@ mod imp {
                 self.refresh_list();
             }
             self.stop_loading();
-            self.navigation_view
-                .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
-            self.update_navigation_buttons();
+            self.pop();
         }
 
         fn rename_pass(&self, store: &PassStore, path: &String, new_path: &String) -> bool {

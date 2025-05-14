@@ -156,7 +156,7 @@ impl PassStore {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
-        
+
         let root = self.root()?;
         let pattern = root.join("**/*.gpg");
         let opts = glob::MatchOptions {
@@ -274,7 +274,11 @@ impl PassStore {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
-
+        let message = if self.exists(id) {
+            format!("Update {}", id)
+        } else {
+            format!("Add {}", id)
+        };
         // Resolve keys.
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
@@ -287,57 +291,17 @@ impl PassStore {
         if keys.is_empty() {
             return Err(anyhow!("No recipients found for encryption"));
         }
-
+        // Encrypt the entry.
         let mut cipher = Vec::new();
         gpg.encrypt(&keys, &entry.to_string().into_bytes()[..], &mut cipher)?;
-
+        // Write the encrypted entry to the store.
         let path = self.root()?.join(format!("{}.gpg", id));
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
         File::create(&path)?.write_all(&cipher)?;
-
-        self.git_add_commit(&format!("Add/Update {}", id))?;
-        Ok(())
-    }
-
-    /// Overwrites an existing entry. Fails als ‘id’ niet bestaat.
-    pub fn update(&self, id: &str, entry: &Entry) -> Result<()> {
-        if !self.ok() {
-            return Err(anyhow!("PassStore is not initialized"));
-        }
-
-        // 1. Check of het bestand al bestaat
-        if !self.exists(id) {
-            return Err(anyhow!("Entry '{}' does not exist", id));
-        }
-
-        // 2. Keys ophalen
-        let mut gpg = self.gpg();
-        gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
-            .context("Failed to set key list mode")?;
-        let recipients = self.recipients()?;
-        let keys: Vec<_> = recipients
-            .iter()
-            .map(|r| gpg.get_key(r.clone()))
-            .collect::<Result<_, _>>()?;
-        if keys.is_empty() {
-            return Err(anyhow!("No recipients found for encryption"));
-        }
-
-        // 3. Encrypt de nieuwe content
-        let mut cipher = Vec::new();
-        gpg.encrypt(&keys, &entry.to_string().into_bytes()[..], &mut cipher)?;
-
-        // 4. Overschrijf het .gpg-bestand, maak dirs indien nodig
-        let path = self.root()?.join(format!("{}.gpg", id));
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        File::create(&path)?.write_all(&cipher)?;
-
-        // 5. Git commit met duidelijke boodschap
-        self.git_add_commit(&format!("Update {}", id))?;
+        // Commit the change to the git repository.
+        self.git_add_commit(&message)?;
         Ok(())
     }
 

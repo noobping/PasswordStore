@@ -402,15 +402,7 @@ mod imp {
                 }
             };
             let entry = self.to_store_entry();
-
-            // Check if the password must be updated, added, renamed or both
-            let is_update = store.exists(&path);
-            let saved: bool = if is_update {
-                self.update_pass(&store, &path, &entry)
-            } else {
-                self.add_pass(&store, &path, &entry)
-            };
-
+            let saved: bool = self.save_pass(&store, &path, &entry);
             let renamed = if !new_path.is_empty() && path != new_path {
                 self.rename_pass(&store, &path, &new_path)
             } else {
@@ -476,24 +468,7 @@ mod imp {
             };
         }
 
-        fn update_pass(&self, store: &PassStore, path: &String, entry: &passcore::Entry) -> bool {
-            return match store.update(&path, &entry) {
-                Ok(_) => {
-                    self.show_toast(&format!("Updated {}", path));
-                    true
-                }
-                Err(e) => {
-                    let message = e.to_string();
-                    let idx = message.find(';').unwrap_or(message.len());
-                    let before_semicolon = &message[..idx];
-                    self.show_toast(before_semicolon);
-                    error!("Failed to update password: {}", e);
-                    false
-                }
-            };
-        }
-
-        fn add_pass(&self, store: &PassStore, path: &String, entry: &passcore::Entry) -> bool {
+        fn save_pass(&self, store: &PassStore, path: &String, entry: &passcore::Entry) -> bool {
             return match store.add(&path, &entry) {
                 Ok(_) => {
                     self.show_toast(&format!("Password {} added", path));

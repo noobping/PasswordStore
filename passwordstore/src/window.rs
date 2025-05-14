@@ -860,53 +860,16 @@ mod imp {
             });
             obj.add_action(&rename);
 
-            // // RENAME
-            // let rename =
-            //     gio::SimpleAction::new("rename-password", Some(String::static_variant_type()));
-            // rename.connect_activate(move |_, param| {
-            //     let old_path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-            //     // pop up a small dialog to ask for new name…
-            //     let dialog = gtk::Dialog::with_buttons::<gtk::Window>(
-            //         Some("Rename password"),
-            //         Some(&obj),
-            //         gtk::DialogFlags::MODAL,
-            //         &[
-            //             ("Cancel", gtk::ResponseType::Cancel),
-            //             ("OK", gtk::ResponseType::Ok),
-            //         ],
-            //     );
-            //     let entry = gtk::Entry::new();
-            //     entry.set_text(&old_path);
-            //     dialog.content_area().append(&entry);
-            //     if dialog.run() == gtk::ResponseType::Ok {
-            //         let new_path = entry.text().to_string();
-            //         if let Err(e) = store.rename(&old_path, &new_path) {
-            //             obj.imp().show_toast(&format!("Failed: {}", e));
-            //         } else {
-            //             obj.imp()
-            //                 .show_toast(&format!("Renamed {} → {}", old_path, new_path));
-            //             obj.imp().refresh_list();
-            //         }
-            //     }
-            //     dialog.close();
-            // });
-            // obj.add_action(&rename);
-
             // DELETE
             let obj_clone = obj.clone();
             let remove =
                 gio::SimpleAction::new("remove-password", Some(&String::static_variant_type()));
             remove.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                let dialog = gtk::AlertDialog::builder()
-                    .modal(true)
-                    .message(&format!("Are you sure you want to delete {}?", path))
-                    .build();
-                let obj_clone2 = obj_clone.clone();
-                dialog.connect_default_button_notify(move |_dialog| {
-                    obj_clone2.imp().remove_pass(&path);
-                });
-                dialog.show(Some(obj_clone.upcast_ref::<gtk::Window>()));
+                if obj_clone.imp().remove_pass(&path) {
+                    obj_clone.imp().refresh_list();
+                    obj_clone.imp().update_navigation_buttons();
+                }
             });
             obj.add_action(&remove);
 

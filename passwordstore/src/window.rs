@@ -26,7 +26,7 @@ use passcore::PassStore;
 use secrecy::{ExposeSecret, SecretString};
 
 mod imp {
-    use adw::prelude::EntryRowExt;
+    use adw::prelude::{EntryRowExt, PreferencesRowExt};
     use gettextrs::gettext;
     use passcore::exists_store_dir;
     use secrecy::{zeroize::Zeroize, ExposeSecret};
@@ -282,6 +282,39 @@ mod imp {
             self.text_view.set_buffer(Some(&buffer));
             self.push(Pages::TextPage);
             self.path_entry.grab_focus();
+        }
+
+        pub fn to_store_entry(&self) -> passcore::Entry {
+            let password = SecretString::from(self.password_entry.text().to_string());
+            let mut extra = vec![];
+            while let Some(child) = self.dynamic_box.first_child() {
+                match child.downcast::<adw::EntryRow>() {
+                    Ok(entry) => {
+                        let field = entry.title().to_string();
+                        let value = entry.text().to_string();
+                        extra.push(SecretString::from(format!("{}: {}", field, value)));
+                    }
+                    Err(_) => continue,
+                }
+            }
+            let buffer = self.text_view.buffer();
+            // first line is password, the rest are extra
+            let lines = buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .lines()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>();
+            // merge extra and lines
+            // first is extra and then add lines
+            let merged = extra
+                .into_iter()
+                .chain(lines.into_iter().map(|l| SecretString::from(l)))
+                .collect::<Vec<SecretString>>();
+
+            passcore::Entry {
+                password,
+                extra: merged,
+            }
         }
 
         pub fn toggle_search(&self) {
@@ -724,6 +757,14 @@ mod imp {
                 obj_clone.imp().save_button.set_sensitive(is_not_empty);
                 obj_clone.imp().save_button.set_can_focus(is_not_empty);
             });
+
+            let obj_clone = obj.clone();
+            let password_entry = self.password_entry.clone();
+            password_entry.connect_changed(move |entry| {
+                let is_not_empty = !entry.text().to_string().is_empty();
+                obj_clone.imp().save_button.set_sensitive(is_not_empty);
+                obj_clone.imp().save_button.set_can_focus(is_not_empty);
+            });
         }
     }
 
@@ -803,6 +844,12 @@ impl PasswordstoreWindow {
                                 .margin_bottom(5)
                                 .build();
                             row.set_text(&value);
+                            let obj_clone2 = obj_clone.clone();
+                            row.connect_changed(move |row| {
+                                let text = row.text().to_string();
+                                obj_clone2.imp().save_button.set_sensitive(!text.is_empty());
+                                obj_clone2.imp().save_button.set_can_focus(!text.is_empty());
+                            });
                             obj_clone.imp().dynamic_box.append(&row);
                         } else {
                             text.push_str(&format!("{}\n", exposed));
@@ -813,7 +860,6 @@ impl PasswordstoreWindow {
                     let save_button = obj_clone.imp().save_button.clone();
                     buffer.connect_changed(move |buffer| {
                         let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                        debug!("Text changed: {}", text);
                         let is_not_empty = !text.is_empty();
                         save_button.set_sensitive(is_not_empty);
                         save_button.set_can_focus(is_not_empty);

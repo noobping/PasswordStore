@@ -808,33 +808,23 @@ mod imp {
                 obj_clone.add_action(&sync_action);
             });
 
-            // Real-time filter: hide/show rows based on search text
+            // Real-time filter: hide/show action rows based on search text
             let list = self.list.clone();
             let search = self.search_entry.clone();
             search.connect_changed(move |entry| {
-                let pattern = entry
-                    .text()
-                    .to_string()
-                    .to_lowercase()
-                    .trim()
-                    .replace("/", " / ");
+                let binding = entry.text().to_string().to_lowercase();
+                let pattern = binding.trim();
 
-                // Walk each row in the ListBox
-                let mut row_widget = list.first_child();
-                while let Some(w) = row_widget.take() {
-                    // Prepare for next iteration
-                    row_widget = w.next_sibling();
+                // Iterate through álle children van je list-container
+                let mut child = list.first_child();
+                while let Some(widget) = child.take() {
+                    // Sla alvast de volgende op
+                    child = widget.next_sibling();
 
-                    // Downcast to ListBoxRow
-                    if let Ok(row) = w.clone().downcast::<gtk::ListBoxRow>() {
-                        // Get the widget you originally packed (your Label)
-                        if let Some(inner) = row.child() {
-                            if let Ok(row) = inner.downcast::<adw::ActionRow>() {
-                                let text = row.title().to_string().to_lowercase();
-                                // Show/hide the entire row
-                                row.set_visible(text.contains(&pattern));
-                            }
-                        }
+                    // Probeer rechtstreeks naar ActionRow te downcasten
+                    if let Ok(row) = widget.clone().downcast::<adw::ActionRow>() {
+                        let title = row.title().to_lowercase();
+                        row.set_visible(title.contains(&pattern));
                     }
                 }
             });
@@ -845,7 +835,12 @@ mod imp {
                 gio::SimpleAction::new("copy-password", Some(&String::static_variant_type()));
             copy.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                obj_clone.imp().copy_pass(&path);
+                if obj_clone.imp().is_passphrase_empty() {
+                    obj_clone.imp().set_path(path.clone());
+                    obj_clone.imp().push(Pages::AskPage);
+                } else {
+                    obj_clone.imp().copy_pass(&path);
+                }
             });
             obj.add_action(&copy);
 
@@ -855,7 +850,10 @@ mod imp {
                 gio::SimpleAction::new("rename-password", Some(&String::static_variant_type()));
             rename.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if obj_clone.imp().rename_pass(&path, &path) {
+                if obj_clone.imp().is_passphrase_empty() {
+                    obj_clone.imp().set_path(path.clone());
+                    obj_clone.imp().push(Pages::AskPage);
+                } else if obj_clone.imp().rename_pass(&path, &path) {
                     obj_clone.imp().refresh_list();
                     obj_clone.imp().update_navigation_buttons();
                 }

@@ -26,3 +26,9 @@ install_data(
   symbolic_dir / ('git-symbolic.svg').format(application_id),
   install_dir: get_option('datadir') / 'icons' / symbolic_dir
 )
+
+gnome = import('gnome')
+gnome.post_install(
+  gtk_update_icon_cache: true,
+  update_desktop_database: true
+)

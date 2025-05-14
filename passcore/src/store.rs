@@ -153,6 +153,10 @@ impl PassStore {
     /// Recursively scans the store for `.gpg` files. Hidden files/dirs and “.”/“..” are excluded.
     /// Returns a sorted vector of entry identifiers (e.g. `"folder/sub/entry"`).
     pub fn list(&self) -> Result<Vec<String>> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+        
         let root = self.root()?;
         let pattern = root.join("**/*.gpg");
         let opts = glob::MatchOptions {
@@ -199,6 +203,10 @@ impl PassStore {
     /// Returns an `Entry` containing the password and any extra lines of metadata.
     /// Errors if the entry file is not found or if decryption fails.
     pub fn get(&self, id: &str, passphrase: SecretString) -> Result<Entry> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+
         // 1. Read ciphertext
         let cipher = std::fs::read(self.root()?.join(format!("{id}.gpg")))
             .with_context(|| format!("Failed to read entry `{id}`"))?;
@@ -227,6 +235,10 @@ impl PassStore {
 
     /// Like `get`, but let GPGME/agent ask you for the passphrase via pinentry.
     pub fn ask(&self, id: &str) -> Result<Entry> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+
         // 1. Read the .gpg blob
         let root = self.root()?;
         let path = root.join(format!("{id}.gpg"));
@@ -259,6 +271,10 @@ impl PassStore {
 
     /// Encrypt (for the given recipients) and write an entry. Creates parents as needed.
     pub fn add(&self, id: &str, entry: &Entry) -> Result<()> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+
         // Resolve keys.
         let mut gpg = self.gpg();
         gpg.set_key_list_mode(KeyListMode::LOCAL | KeyListMode::SIGS)
@@ -287,6 +303,10 @@ impl PassStore {
 
     /// Overwrites an existing entry. Fails als ‘id’ niet bestaat.
     pub fn update(&self, id: &str, entry: &Entry) -> Result<()> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+
         // 1. Check of het bestand al bestaat
         if !self.exists(id) {
             return Err(anyhow!("Entry '{}' does not exist", id));
@@ -323,6 +343,9 @@ impl PassStore {
 
     /// Remove an entry.
     pub fn remove(&self, id: &str) -> Result<()> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
         let path = self.root()?.join(format!("{}.gpg", id));
         fs::remove_file(&path)?;
         Ok(self.git_add_commit(&format!("Remove {}", id))?)
@@ -333,6 +356,10 @@ impl PassStore {
     /// Creates any missing directories for the new path. Returns an error if the source entry
     /// does not exist, if the destination already exists, or if the operation fails.
     pub fn rename(&self, old_id: &str, new_id: &str) -> Result<()> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+
         // Valideer dat geen van beide paden verboden componenten bevat
         for part in std::path::Path::new(old_id)
             .components()
@@ -468,7 +495,7 @@ impl PassStore {
     }
 
     /// Commit all staged changes with the given message and push.
-    pub fn git_add_commit(&self, message: &str) -> Result<()> {
+    fn git_add_commit(&self, message: &str) -> Result<()> {
         let repo = self.repo();
         let mut idx = repo.index()?;
         idx.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
@@ -513,6 +540,10 @@ impl PassStore {
     }
 
     pub fn sync(&self) -> Result<()> {
+        if !self.ok() {
+            return Err(anyhow!("PassStore is not initialized"));
+        }
+
         self.git_fetch()?;
         self.git_pull()?;
         self.git_push()?;

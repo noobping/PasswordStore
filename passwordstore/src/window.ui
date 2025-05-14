@@ -216,30 +216,19 @@
                         <property name="valign">center</property>
                         <property name="orientation">vertical</property>
                         <child>
-                          <object class="GtkImage">
-                            <property name="icon-name">git-symbolic</property>
-                            <property name="icon-size">GTK_ICON_SIZE_LARGE</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Import a password store from a Git repository:</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkEntry" id="git_url_entry">
-                            <property name="placeholder-text" translatable="yes">ssh://foo@pass.store/git/pass.git</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkButton" id="git_clone_button">
-                            <property name="action-name">win.git-clone</property>
-                            <property name="label" translatable="yes">Clone</property>
-                            <property name="can_focus">false</property>
-                            <property name="sensitive">false</property>
+                          <object class="AdwEntryRow" id="git_url_entry">
+                            <property name="title" translatable="yes">Git URL</property>
+                            <property name="show-apply-button">True</property>
                             <style>
                               <class name="suggested-action" />
                             </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwStatusPage">
+                            <property name="icon-name">git-symbolic</property>
+                            <property name="title" translatable="yes">Git Clone</property>
+                            <property name="description" translatable="yes">Import a password store from a Git repository.</property>
                           </object>
                         </child>
                       </object>

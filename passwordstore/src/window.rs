@@ -114,10 +114,7 @@ mod imp {
         pub git_page: TemplateChild<adw::NavigationPage>,
 
         #[template_child]
-        pub git_url_entry: TemplateChild<gtk::Entry>,
-
-        #[template_child]
-        pub git_clone_button: TemplateChild<gtk::Button>,
+        pub git_url_entry: TemplateChild<adw::EntryRow>,
 
         passphrase: Mutex<SecretString>,
     }
@@ -224,10 +221,6 @@ mod imp {
             self.search_button
                 .set_sensitive(default_page && exists_store);
             self.search_button.set_visible(default_page && exists_store);
-
-            let has_git_url = !self.git_url_entry.text().is_empty();
-            self.git_clone_button.set_can_focus(has_git_url);
-            self.git_clone_button.set_sensitive(has_git_url);
         }
 
         pub fn pop(&self) {
@@ -350,8 +343,6 @@ mod imp {
             self.text_view.set_editable(false);
             self.path_entry.set_can_focus(false);
             self.path_entry.set_sensitive(false);
-            self.git_clone_button.set_can_focus(false);
-            self.git_clone_button.set_sensitive(false);
         }
 
         pub fn stop_loading(&self) {
@@ -721,13 +712,8 @@ mod imp {
             });
 
             let obj_clone = obj.clone();
-            let git_url_entry = self.git_url_entry.clone();
-            git_url_entry.connect_changed(move |entry| {
-                let text = entry.text().to_string();
-                let is_not_empty = !text.is_empty();
-                obj_clone.imp().git_clone_button.set_sensitive(is_not_empty);
-                obj_clone.imp().git_clone_button.set_can_focus(is_not_empty);
-            });
+            self.git_url_entry
+                .connect_apply(move |_row| obj_clone.imp().git_clone());
 
             let obj_clone = obj.clone();
             let path_entry = self.path_entry.clone();

@@ -289,7 +289,7 @@ impl PassStore {
         }
 
         let mut cipher = Vec::new();
-        gpg.encrypt(&keys, &entry.to_plaintext().into_bytes()[..], &mut cipher)?;
+        gpg.encrypt(&keys, &entry.to_string().into_bytes()[..], &mut cipher)?;
 
         let path = self.root()?.join(format!("{}.gpg", id));
         if let Some(parent) = path.parent() {
@@ -327,7 +327,7 @@ impl PassStore {
 
         // 3. Encrypt de nieuwe content
         let mut cipher = Vec::new();
-        gpg.encrypt(&keys, &entry.to_plaintext().into_bytes()[..], &mut cipher)?;
+        gpg.encrypt(&keys, &entry.to_string().into_bytes()[..], &mut cipher)?;
 
         // 4. Overschrijf het .gpg-bestand, maak dirs indien nodig
         let path = self.root()?.join(format!("{}.gpg", id));

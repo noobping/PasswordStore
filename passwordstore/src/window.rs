@@ -257,7 +257,11 @@ mod imp {
 
         pub fn add_new_password(&self) {
             if self.is_text_page() {
-                self.pop();
+                self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
+                self.password_entry.set_text("");
+                while let Some(child) = self.dynamic_box.first_child() {
+                    self.dynamic_box.remove(&child);
+                }
             }
             let path = self.get_path();
             if !path.is_empty() {
@@ -449,7 +453,7 @@ mod imp {
         fn rename_pass(&self, store: &PassStore, path: &String, new_path: &String) -> bool {
             return match store.rename(&path, &new_path) {
                 Ok(_) => {
-                    self.show_toast(&format!("Password updated and renamed to {}", new_path));
+                    self.show_toast(&format!("Password {} renamed to {}", path, new_path));
                     true
                 }
                 Err(e) => {
@@ -716,9 +720,7 @@ mod imp {
             let obj_clone = obj.clone();
             let path_entry = self.path_entry.clone();
             path_entry.connect_changed(move |entry| {
-                let text = entry.text().to_string();
-                obj_clone.imp().set_path(text.clone());
-                let is_not_empty = !text.is_empty();
+                let is_not_empty = !entry.text().to_string().is_empty();
                 obj_clone.imp().save_button.set_sensitive(is_not_empty);
                 obj_clone.imp().save_button.set_can_focus(is_not_empty);
             });

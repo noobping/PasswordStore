@@ -850,10 +850,7 @@ mod imp {
                 gio::SimpleAction::new("rename-password", Some(&String::static_variant_type()));
             rename.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if obj_clone.imp().is_passphrase_empty() {
-                    obj_clone.imp().set_path(path.clone());
-                    obj_clone.imp().push(Pages::AskPage);
-                } else if obj_clone.imp().rename_pass(&path, &path) {
+                if obj_clone.imp().rename_pass(&path, &path) {
                     obj_clone.imp().refresh_list();
                     obj_clone.imp().update_navigation_buttons();
                 }

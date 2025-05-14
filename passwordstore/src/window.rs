@@ -187,7 +187,7 @@ mod imp {
             self.navigation_view.navigation_stack().n_items() <= 1
         }
 
-        fn is_text_page(&self) -> bool {
+        pub fn is_text_page(&self) -> bool {
             let last_page = self
                 .navigation_view
                 .navigation_stack()
@@ -233,14 +233,13 @@ mod imp {
                     self.dynamic_box.remove(&child);
                 }
             }
-            if !self.is_default_page() {
+            if self.is_default_page() {
+                self.path_entry.set_text("");
+            } else {
                 self.navigation_view
                     .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
             }
             self.update_navigation_buttons();
-            if self.is_default_page() {
-                self.set_path("".to_string());
-            }
         }
 
         pub fn push(&self, page: Pages) {
@@ -257,6 +256,9 @@ mod imp {
         }
 
         pub fn add_new_password(&self) {
+            if self.is_text_page() {
+                self.pop();
+            }
             let path = self.get_path();
             if !path.is_empty() {
                 if path.contains('/') {
@@ -268,7 +270,6 @@ mod imp {
                     self.set_path("".to_string());
                 }
             }
-
             let buffer = gtk::TextBuffer::new(None);
             buffer.set_text(&"username: ");
             let save_button = self.save_button.clone();
@@ -398,7 +399,7 @@ mod imp {
                 Ok(store) => store,
                 Err(e) => {
                     self.show_toast(&format!("Can not save password: {}", e));
-                    PassStore::default()
+                    return;
                 }
             };
             let entry = self.to_store_entry();
@@ -418,37 +419,31 @@ mod imp {
 
         fn to_store_entry(&self) -> passcore::Entry {
             let password = SecretString::from(self.password_entry.text().to_string());
-            let mut extra = vec![];
-            while let Some(child) = self.dynamic_box.first_child() {
-                match child.downcast::<adw::EntryRow>() {
-                    Ok(entry) => {
-                        let field = entry.title().to_string();
-                        let value = entry.text().to_string();
-                        extra.push(SecretString::from(format!(
-                            "{}: {}",
-                            field.trim(),
-                            value.trim()
-                        )));
-                    }
-                    Err(_) => continue,
+
+            let mut children = Vec::new();
+            let mut maybe_child = self.dynamic_box.first_child();
+            while let Some(child) = maybe_child {
+                children.push(child.clone());
+                maybe_child = child.next_sibling();
+            }
+
+            let mut extra = Vec::new();
+            for widget in children {
+                if let Ok(entry) = widget.downcast::<adw::EntryRow>() {
+                    let field = entry.title().trim().to_owned();
+                    let value = entry.text().trim().to_owned();
+                    extra.push(SecretString::from(format!("{}: {}", field, value)));
                 }
             }
             let buffer = self.text_view.buffer();
-            // first line is password, the rest are extra
-            let lines = buffer
+            let mut lines = buffer
                 .text(&buffer.start_iter(), &buffer.end_iter(), false)
                 .lines()
                 .map(|s| SecretString::from(s.to_string()))
-                .collect::<Vec<SecretString>>();
-            let merged = extra
-                .into_iter()
-                .chain(lines.into_iter().map(|l| l))
-                .collect::<Vec<SecretString>>();
+                .collect::<Vec<_>>();
+            extra.append(&mut lines);
 
-            passcore::Entry {
-                password,
-                extra: merged,
-            }
+            passcore::Entry { password, extra }
         }
 
         fn rename_pass(&self, store: &PassStore, path: &String, new_path: &String) -> bool {
@@ -471,7 +466,7 @@ mod imp {
         fn save_pass(&self, store: &PassStore, path: &String, entry: &passcore::Entry) -> bool {
             return match store.add(&path, &entry) {
                 Ok(_) => {
-                    self.show_toast(&format!("Password {} added", path));
+                    self.show_toast(&format!("Password {} saved", path));
                     true
                 }
                 Err(e) => {
@@ -479,7 +474,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    error!("Failed to add password: {}", e);
+                    error!("Failed to save password: {}", e);
                     false
                 }
             };
@@ -767,12 +762,12 @@ impl PasswordstoreWindow {
 
     pub fn decrypt_and_open(&self) {
         self.imp().start_loading();
+        if self.imp().is_text_page() {
+            self.imp().pop();
+        }
         let path = self.imp().get_path();
         self.imp().path_entry.set_text(&path);
         self.imp().path_entry.grab_focus();
-        while let Some(child) = self.imp().dynamic_box.first_child() {
-            self.imp().dynamic_box.remove(&child);
-        }
 
         let passphrase = self.imp().get_passphrase();
         let obj_clone = self.clone();

@@ -3,6 +3,9 @@
 build
 build-dir
 repo
+AppDir
+libs
+*.AppImage
 
 ### Linux ###
 *~

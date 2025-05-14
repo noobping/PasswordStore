@@ -140,12 +140,16 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
             }
         };
 
-        store
-            .list()
-            .unwrap_or_default()
-            .into_iter()
+        let list = match store.list() {
+            Ok(list) => list,
+            Err(e) => {
+                error!("[passwordstore] Failed to list entries: {}", e);
+                return vec![];
+            }
+        };
+        list.into_iter()
             .filter(|id| id.to_lowercase().contains(&needle))
-            .collect()
+            .collect::<Vec<_>>()
     }
 
     fn result_metas(&self, identifiers: &[ResultID]) -> Vec<ResultMeta> {
@@ -160,10 +164,14 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
                 PassStore::default()
             }
         };
-        store
-            .list()
-            .unwrap_or_default()
-            .into_iter()
+        let list = match store.list() {
+            Ok(list) => list,
+            Err(e) => {
+                error!("[passwordstore] Failed to list entries: {}", e);
+                return vec![];
+            }
+        };
+        list.into_iter()
             .filter_map(|path| {
                 if identifiers.contains(&path) {
                     Some(

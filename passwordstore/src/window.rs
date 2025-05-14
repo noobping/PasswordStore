@@ -432,7 +432,11 @@ mod imp {
                     Ok(entry) => {
                         let field = entry.title().to_string();
                         let value = entry.text().to_string();
-                        extra.push(SecretString::from(format!("{}: {}", field, value)));
+                        extra.push(SecretString::from(format!(
+                            "{}: {}",
+                            field.trim(),
+                            value.trim()
+                        )));
                     }
                     Err(_) => continue,
                 }

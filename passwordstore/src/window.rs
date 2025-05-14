@@ -302,13 +302,11 @@ mod imp {
             let lines = buffer
                 .text(&buffer.start_iter(), &buffer.end_iter(), false)
                 .lines()
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>();
-            // merge extra and lines
-            // first is extra and then add lines
+                .map(|s| SecretString::from(s.to_string()))
+                .collect::<Vec<SecretString>>();
             let merged = extra
                 .into_iter()
-                .chain(lines.into_iter().map(|l| SecretString::from(l)))
+                .chain(lines.into_iter().map(|l| l))
                 .collect::<Vec<SecretString>>();
 
             passcore::Entry {

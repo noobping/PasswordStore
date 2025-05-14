@@ -277,6 +277,7 @@ mod imp {
             }
 
             let buffer = gtk::TextBuffer::new(None);
+            buffer.set_text(&"username: \n");
             let save_button = self.save_button.clone();
             buffer.connect_changed(move |buffer| {
                 let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);

@@ -29,7 +29,7 @@ use git2::{
     Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks, Repository,
 };
 use gpgme::{Context as GpgContext, DecryptFlags, KeyListMode, PinentryMode, Protocol};
-use log::{debug, info, warn};
+use log::{info, warn};
 use secrecy::{ExposeSecret, ExposeSecretMut, SecretString};
 use std::cell::RefCell;
 use std::fs::{self, File};
@@ -217,7 +217,6 @@ impl PassStore {
 
         // 3. Decrypt
         let passphrase_owned = passphrase.to_owned();
-        debug!("Using passphrase: {}", passphrase_owned.expose_secret());
         let mut secret = secrecy::SecretBox::<Vec<u8>>::new(Box::new(Vec::new()));
 
         gpg.with_passphrase_provider(

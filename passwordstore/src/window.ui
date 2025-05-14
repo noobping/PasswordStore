@@ -132,23 +132,19 @@
                         <property name="valign">center</property>
                         <property name="orientation">vertical</property>
                         <child>
-                          <object class="GtkImage">
-                            <property name="icon-name">padlock2-open-symbolic</property>
-                            <property name="icon-size">GTK_ICON_SIZE_LARGE</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Enter your decryption passphrase:</property>
-                          </object>
-                        </child>
-                        <child>
                           <object class="AdwPasswordEntryRow" id="passphrase_entry">
                             <property name="title" translatable="yes">Decryption passphrase</property>
                             <property name="show-apply-button">True</property>
                             <style>
                               <class name="suggested-action" />
                             </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwStatusPage">
+                            <property name="icon-name">padlock2-open-symbolic</property>
+                            <property name="title" translatable="yes">Decrypt Password File</property>
+                            <property name="description" translatable="yes">Enter your decryption passphrase.</property>
                           </object>
                         </child>
                       </object>

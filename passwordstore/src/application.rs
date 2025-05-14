@@ -52,7 +52,7 @@ mod imp {
             obj.set_accels_for_action("win.add-password", &["<primary>n"]);
             obj.set_accels_for_action("win.git-page", &["<primary>g"]);
             obj.set_accels_for_action("win.refresh", &["<primary>r"]);
-            obj.set_accels_for_action("win.remove-password", &["<primary>d"]);
+            obj.set_accels_for_action("win.remove-selected-password", &["<primary>d"]);
             obj.set_accels_for_action("win.save-password", &["<primary>w"]);
             obj.set_accels_for_action("win.synchronize", &["<primary>s"]);
             obj.set_accels_for_action("win.toggle-search", &["<primary>f"]);

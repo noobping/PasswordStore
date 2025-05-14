@@ -15,3 +15,6 @@ secrecy = "0.10.3"
 package = "libadwaita"
 version = "0.7"
 features = ["v1_6"]
+
+[package.metadata.appimage]
+auto_link = true

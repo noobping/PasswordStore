@@ -621,6 +621,14 @@ mod imp {
                 obj_clone.imp().init_list(&store); // Initialize store and list
                 obj_clone.imp().update_navigation_buttons();
 
+                // auto update
+                if let Err(e) = store.sync() {
+                    let message = e.to_string();
+                    let idx = message.find(';').unwrap_or(message.len());
+                    let before_semicolon = &message[..idx];
+                    obj_clone.imp().show_toast(before_semicolon);
+                }
+
                 // synchronize action
                 let obj_clone2 = obj_clone.clone();
                 let sync_action = gio::SimpleAction::new("synchronize", None);

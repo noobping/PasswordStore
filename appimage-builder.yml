@@ -1,0 +1,17 @@
+version: 1
+AppDir:
+  path: ./AppDir
+
+  app_info:
+    id: io.github.noobping.PasswordStore
+    name: PasswordStore
+    icon: passwordstore
+    version: "0.1.0"
+    exec: usr/bin/passwordstore
+
+  runtime:
+    env:
+      GSETTINGS_SCHEMA_DIR: $APPDIR/usr/share/glib-2.0/schemas
+
+    path_mappings:
+      - /app:$APPDIR

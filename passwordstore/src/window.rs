@@ -627,6 +627,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     obj_clone.imp().show_toast(before_semicolon);
+                    eprintln!("Failed to update password store: {}", e);
                 }
 
                 // synchronize action

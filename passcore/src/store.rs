@@ -22,11 +22,12 @@ use crate::dir::discover_store_dir;
 use crate::entry::Entry;
 use crate::extension::SecretStringExt;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, anyhow};
 use derivative::Derivative;
-use git2::build::RepoBuilder;
+use git2::build::{CheckoutBuilder, RepoBuilder};
 use git2::{
-    Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks, Repository,
+    BranchType, Cred, CredentialType, FetchOptions, MergeOptions, PushOptions, RemoteCallbacks,
+    Repository,
 };
 use gpgme::{Context as GpgContext, DecryptFlags, KeyListMode, PinentryMode, Protocol};
 use log::{info, warn};
@@ -69,7 +70,7 @@ impl Default for PassStore {
 }
 
 impl PassStore {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         let root = discover_store_dir()?;
         let repo = Repository::discover(&root)?;
         let mut gpg = GpgContext::from_protocol(Protocol::OpenPgp)
@@ -133,7 +134,7 @@ impl PassStore {
     }
 
     /// Read the default recipients from the `.gpg-id` file.
-    fn recipients(&self) -> Result<Vec<String>> {
+    fn recipients(&self) -> anyhow::Result<Vec<String>> {
         let root = self.root().context("Failed to get password store root")?;
         let path = root.join(".gpg-id");
         let content = std::fs::read_to_string(&path)
@@ -152,7 +153,7 @@ impl PassStore {
     ///
     /// Recursively scans the store for `.gpg` files. Hidden files/dirs and “.”/“..” are excluded.
     /// Returns a sorted vector of entry identifiers (e.g. `"folder/sub/entry"`).
-    pub fn list(&self) -> Result<Vec<String>> {
+    pub fn list(&self) -> anyhow::Result<Vec<String>> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -202,7 +203,7 @@ impl PassStore {
     ///
     /// Returns an `Entry` containing the password and any extra lines of metadata.
     /// Errors if the entry file is not found or if decryption fails.
-    pub fn get(&self, id: &str, passphrase: SecretString) -> Result<Entry> {
+    pub fn get(&self, id: &str, passphrase: SecretString) -> anyhow::Result<Entry> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -234,7 +235,7 @@ impl PassStore {
     }
 
     /// Like `get`, but let GPGME/agent ask you for the passphrase via pinentry.
-    pub fn ask(&self, id: &str) -> Result<Entry> {
+    pub fn ask(&self, id: &str) -> anyhow::Result<Entry> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -270,7 +271,7 @@ impl PassStore {
     }
 
     /// Encrypt (for the given recipients) and write an entry. Creates parents as needed.
-    pub fn add(&self, id: &str, entry: &Entry) -> Result<()> {
+    pub fn add(&self, id: &str, entry: &Entry) -> anyhow::Result<()> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -306,7 +307,7 @@ impl PassStore {
     }
 
     /// Remove an entry.
-    pub fn remove(&self, id: &str) -> Result<()> {
+    pub fn remove(&self, id: &str) -> anyhow::Result<()> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -319,7 +320,7 @@ impl PassStore {
     ///
     /// Creates any missing directories for the new path. Returns an error if the source entry
     /// does not exist, if the destination already exists, or if the operation fails.
-    pub fn rename(&self, old_id: &str, new_id: &str) -> Result<()> {
+    pub fn rename(&self, old_id: &str, new_id: &str) -> anyhow::Result<()> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -362,7 +363,9 @@ impl PassStore {
     // Git helpers
 
     /// Fetch all remotes.
-    fn git_fetch(&self) -> Result<()> {
+    fn git_fetch(&self) -> anyhow::Result<()> {
+        println!("Fetching all remotes...");
+
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(Self::callbacks());
         let repo = self.repo();
@@ -377,25 +380,30 @@ impl PassStore {
     /// – No changes…… → Ok
     /// – Fast‑forward… → branch pointer moves
     /// – Diverged………. → real merge commit (errors if conflicts)
-    fn git_pull(&self) -> Result<()> {
+    fn git_pull(&self) -> anyhow::Result<()> {
+        println!("Pulling from upstream...");
+
         let repo = self.repo();
         // 1a. Get the current HEAD (e.g. "refs/heads/master")
         let head_ref = repo.head()?;
         let head_name = head_ref
             .shorthand()
             .ok_or_else(|| anyhow!("Detached HEAD"))?; // e.g. "master"
+        println!("HEAD: {}", head_name);
 
         // 1b. Ask libgit2 for the full remote-tracking ref
         let binding = repo.branch_upstream_name(head_name)?;
         let upstream_refname = binding
             .as_str()
             .ok_or_else(|| anyhow!("No upstream configured"))?; // e.g. "refs/remotes/origin/master"
+        println!("Upstream: {}", upstream_refname);
 
         // 2. Fetching with Default Refspecs
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(Self::callbacks());
 
         for remote_name in repo.remotes()?.iter().flatten() {
+            println!("Fetching remote {}...", remote_name);
             let mut remote = repo.find_remote(remote_name)?;
             // Passing `&[]` → use the base refspecs (same as `git fetch origin`)
             remote.fetch(&[] as &[&str], Some(&mut fo), None)?;
@@ -417,14 +425,17 @@ impl PassStore {
         }
 
         if analysis.is_fast_forward() {
+            println!("Fast-forwarding...");
             // 4b. Fast-forward: move branch pointer + checkout
             let mut head_ref_mut = repo.find_reference(head_ref.name().unwrap())?;
             head_ref_mut.set_target(annotated.id(), "fast-forward")?;
             repo.set_head(head_ref.name().unwrap())?;
             repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+            println!("Fast-forward completed successfully");
             return Ok(());
         }
 
+        println!("Merging...");
         // 4c. True merge: commit a merge in-repo
         let mut merge_opts = MergeOptions::new();
         repo.merge(&[&annotated], Some(&mut merge_opts), None)?;
@@ -455,11 +466,13 @@ impl PassStore {
         // refresh work-tree & clear merge state
         repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
         repo.cleanup_state()?;
+
+        println!("Merge completed successfully");
         Ok(())
     }
 
     /// Commit all staged changes with the given message and push.
-    fn git_add_commit(&self, message: &str) -> Result<()> {
+    fn git_add_commit(&self, message: &str) -> anyhow::Result<()> {
         let repo = self.repo();
         let mut idx = repo.index()?;
         idx.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
@@ -479,7 +492,9 @@ impl PassStore {
     }
 
     /// Push the current branch to its configured upstream.
-    fn git_push(&self) -> Result<()> {
+    fn git_push(&self) -> anyhow::Result<()> {
+        println!("Pushing to upstream...");
+
         let mut cb = RemoteCallbacks::new();
         cb.credentials(|_url, username_from_url, _allowed| {
             Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
@@ -503,7 +518,7 @@ impl PassStore {
         Ok(())
     }
 
-    pub fn sync(&self) -> Result<()> {
+    pub fn sync(&self) -> anyhow::Result<()> {
         if !self.ok() {
             return Err(anyhow!("PassStore is not initialized"));
         }
@@ -515,7 +530,7 @@ impl PassStore {
         Ok(())
     }
 
-    pub fn from_git(repo_url: String) -> Result<PassStore> {
+    pub fn from_git(repo_url: String) -> anyhow::Result<PassStore> {
         // 1. Bepaal waar de store moet staan (bijv. ~/.password-store)
         let root = discover_store_dir()?;
 
@@ -538,6 +553,8 @@ impl PassStore {
             .fetch_options(fo)
             .clone(&repo_url, &root)
             .context("Failed to clone repository")?;
+        PassStore::ensure_local_branch(&repo)?;
+        PassStore::ensure_tracking(&repo)?;
 
         // 4. Zet GPG klaar
         let mut gpg = GpgContext::from_protocol(Protocol::OpenPgp)
@@ -550,5 +567,90 @@ impl PassStore {
             repo: Some(repo.into()),
             gpg: Some(gpg.into()),
         })
+    }
+
+    fn ensure_local_branch(repo: &Repository) -> Result<(), git2::Error> {
+        // 1. Wat zit er nu aan HEAD?
+        if let Ok(head) = repo.head() {
+            if head.is_branch() {
+                // Bestaat die refs/heads/<name> écht?
+                if let Some(name) = head.shorthand() {
+                    if repo.find_branch(name, BranchType::Local).is_ok() {
+                        println!("Local branch '{}' already exists.", name);
+                        return Ok(()); // ✔️ alles in orde
+                    }
+                }
+            }
+        }
+
+        // 2. HEAD is detached of de branchfile ontbreekt → fallback op origin/HEAD
+        let origin_head = repo.find_reference("refs/remotes/origin/HEAD")?;
+        let sym = origin_head
+            .symbolic_target()
+            .ok_or_else(|| git2::Error::from_str("origin/HEAD is not symbolic"))?;
+        let default_branch = sym.trim_start_matches("refs/remotes/origin/"); // b.v. "main"
+
+        // 2a. Maak lokale branch als die er nog niet is
+        if repo.find_branch(default_branch, BranchType::Local).is_err() {
+            println!("Creating local branch '{}' from 'origin/{}'", default_branch, default_branch);
+            let commit = origin_head.peel_to_commit()?;
+            repo.branch(default_branch, &commit, false)?;
+        }
+
+        // 2b. Checkout en HEAD eraan hangen
+        let branch_ref = format!("refs/heads/{}", default_branch);
+        repo.set_head(&branch_ref)?;
+        repo.checkout_head(Some(CheckoutBuilder::default().force()))?;
+        Ok(())
+    }
+
+    /// Zorg dat de huidige lokale branch een geldige upstream heeft.
+    /// – Bestaat er al één? -> niets doen.
+    /// – Anders: koppel hem aan `origin/<branch>`.
+    /// – Mocht zelfs die niet bestaan, val terug op waar `origin/HEAD` naar wijst.
+    fn ensure_tracking(repo: &Repository) -> anyhow::Result<String> {
+        let head = repo.head()?; // current HEAD
+        let name = head
+            .shorthand()
+            .ok_or_else(|| anyhow::anyhow!("detached HEAD"))?;
+
+        // 1. Upstream al geconfigureerd? -> klaar.
+        if repo.branch_upstream_name(name).is_ok() {
+            println!("Upstream for branch '{}' is already configured.", &name);
+            return Ok(name.to_owned());
+        }
+
+        // 2. Probeer origin/<name>
+        let remote_full = format!("refs/remotes/origin/{}", name);
+        if repo.find_reference(&remote_full).is_ok() {
+            println!(
+                "No upstream for branch '{}', setting to '{}'",
+                name, remote_full
+            );
+            let mut local = repo.find_branch(name, BranchType::Local)?;
+            local.set_upstream(Some(&format!("origin/{}", name)))?; // schrijft .git/config
+            return Ok(remote_full);
+        }
+
+        // 3. Laatste redmiddel: pak waar origin/HEAD naartoe wijst (meestal 'main')
+        let origin_head = repo.find_reference("refs/remotes/origin/HEAD")?;
+        if let Some(sym) = origin_head.symbolic_target() {
+            println!(
+                "No upstream for branch '{}', falling back to '{}'",
+                name, sym
+            );
+            let default_branch = sym.trim_start_matches("refs/remotes/origin/");
+            let commit = origin_head.peel_to_commit()?;
+            // maak lokale branch als die nog niet bestaat
+            if repo.find_branch(default_branch, BranchType::Local).is_err() {
+                repo.branch(default_branch, &commit, false)?;
+            }
+            // checkout & HEAD eraan hangen
+            repo.set_head(&format!("refs/heads/{}", default_branch))?;
+            repo.checkout_head(Some(CheckoutBuilder::default().force()))?;
+
+            return Ok(default_branch.to_owned());
+        }
+        Ok(name.to_owned())
     }
 }

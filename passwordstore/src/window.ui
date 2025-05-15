@@ -80,12 +80,11 @@
             <child>
               <object class="GtkPopover" id="passphrase_popover">
                 <property name="position">bottom</property>
-
+                <property name="autohide">false</property>
                 <child>
                   <object class="GtkBox">
                     <property name="spacing">12</property>
                     <property name="orientation">vertical</property>
-
                     <child>
                       <object class="AdwPasswordEntryRow" id="passphrase_entry">
                         <property name="title" translatable="yes">Decryption passphrase</property>

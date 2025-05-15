@@ -127,6 +127,7 @@ mod imp {
             self.passphrase_popover.unparent();
             self.passphrase_popover.set_parent(&widget);
             self.passphrase_popover.popup();
+            self.passphrase_entry.grab_focus();
 
             let self_clone = self.to_owned();
             let cb_clone = callback_cell.clone();

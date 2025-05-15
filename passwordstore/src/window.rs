@@ -836,6 +836,7 @@ mod imp {
                 gio::SimpleAction::new("decrypt-password", Some(&String::static_variant_type()));
             edit.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
+                self_clone.imp().pop();
                 self_clone.imp().set_path(path.clone());
                 let self_clone2 = self_clone.clone();
                 glib::idle_add_local_once(move || {

@@ -50,6 +50,19 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkPopover" id="git_popover">
+                    <property name="position">bottom</property>
+                    <property name="autohide">false</property>
+                    <child>
+                      <object class="AdwEntryRow" id="git_url_entry">
+                        <property name="title" translatable="yes">Git URL</property>
+                        <property name="show-apply-button">True</property>
+                        <property name="action-name">win.git-clone</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="search_button">
                     <property name="icon-name">edit-find-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Search passwords</property>
@@ -134,7 +147,7 @@
 
                         <child>
                           <object class="GtkProgressBar" id="progress_bar">
-                            <property name="visible">true</property>
+                            <property name="visible">false</property>
                             <property name="orientation">horizontal</property>
                             <property name="valign">center</property>
                           </object>
@@ -156,7 +169,7 @@
                                     <property name="title" translatable="yes">No passwords found</property>
                                     <property name="description" translatable="yes">Try a different search, add a new entry or clone an existing password store.</property>
                                     <child>
-                                      <object class="GtkSpinner">
+                                      <object class="GtkSpinner" id="spinner">
                                         <property name="visible">true</property>
                                         <property name="spinning">true</property>
                                       </object>
@@ -217,40 +230,6 @@
                                 <property name="pixels-below-lines">3</property>
                               </object>
                             </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-
-                <!-- Git clone page -->
-                <child>
-                  <object class="AdwNavigationPage" id="git_page">
-                    <property name="title" translatable="yes">Git Clone</property>
-                    <property name="margin-start">15</property>
-                    <property name="margin-end">15</property>
-                    <property name="margin-top">15</property>
-                    <property name="margin-bottom">15</property>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="spacing">15</property>
-                        <property name="valign">center</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="AdwEntryRow" id="git_url_entry">
-                            <property name="title" translatable="yes">Git URL</property>
-                            <property name="show-apply-button">True</property>
-                            <style>
-                              <class name="suggested-action" />
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="AdwStatusPage">
-                            <property name="icon-name">git-symbolic</property>
-                            <property name="title" translatable="yes">Git Clone</property>
-                            <property name="description" translatable="yes">Import a password store from a Git repository.</property>
                           </object>
                         </child>
                       </object>

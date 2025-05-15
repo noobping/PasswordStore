@@ -38,7 +38,6 @@ mod imp {
     pub enum Pages {
         ListPage,
         TextPage,
-        GitPage,
     }
 
     impl Default for Pages {
@@ -87,6 +86,9 @@ mod imp {
         #[template_child]
         pub list: TemplateChild<gtk::ListBox>,
 
+        #[template_child]
+        pub spinner: TemplateChild<gtk::Spinner>,
+
         // Ask for password page
         #[template_child]
         pub passphrase_popover: TemplateChild<gtk::Popover>,
@@ -124,7 +126,7 @@ mod imp {
 
         // Git clone page
         #[template_child]
-        pub git_page: TemplateChild<adw::NavigationPage>,
+        pub git_popover: TemplateChild<gtk::Popover>,
 
         #[template_child]
         pub git_url_entry: TemplateChild<adw::EntryRow>,
@@ -415,7 +417,6 @@ mod imp {
             let page_ref = match page {
                 Pages::ListPage => &self.list_page,
                 Pages::TextPage => &self.text_page,
-                Pages::GitPage => &self.git_page,
             };
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
@@ -469,6 +470,8 @@ mod imp {
             // Set the progress bar to infinite mode (like a horisontal spinner)
             self.progress_bar.pulse();
             self.progress_bar.set_pulse_step(10.0);
+            self.spinner.start();
+            self.spinner.set_visible(true);
             self.add_button.set_can_focus(false);
             self.add_button.set_sensitive(false);
             self.git_button.set_can_focus(false);
@@ -487,6 +490,8 @@ mod imp {
             self.path_entry.set_can_focus(true);
             self.path_entry.set_sensitive(true);
             self.progress_bar.set_visible(false);
+            self.spinner.stop();
+            self.spinner.set_visible(false);
             self.update_navigation_buttons();
         }
 
@@ -755,7 +760,10 @@ mod imp {
 
             let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("git-page", None);
-            add_action.connect_activate(move |_, _| self_clone.imp().push(Pages::GitPage));
+            add_action.connect_activate(move |_, _| {
+                self_clone.imp().git_popover.popup();
+                self_clone.imp().git_url_entry.grab_focus();
+            });
             obj.add_action(&add_action);
 
             let self_clone = obj.clone();
@@ -1063,6 +1071,8 @@ mod imp {
                     );
                 }
             });
+
+            obj.imp().stop_loading();
         }
     }
 

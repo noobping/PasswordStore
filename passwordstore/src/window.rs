@@ -234,7 +234,6 @@ mod imp {
                         });
                         let text_view = self_clone.text_view.clone();
                         text_view.set_buffer(Some(&buffer));
-                        self_clone.stop_loading();
                         self_clone.push(imp::Pages::TextPage);
                     }
                     Err(e) => {
@@ -307,6 +306,7 @@ mod imp {
                 row.add_suffix(&menu_button);
 
                 list.append(&row);
+                self.stop_loading();
             }
         }
 
@@ -322,6 +322,8 @@ mod imp {
                 self.list.remove_all();
                 self.init_list(&store);
                 self.pop();
+            } else {
+                self.stop_loading();
             }
         }
 
@@ -381,7 +383,6 @@ mod imp {
                 self.navigation_view
                     .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
             }
-            self.update_navigation_buttons();
         }
 
         pub fn push(&self, page: Pages) {
@@ -393,7 +394,7 @@ mod imp {
             debug!("Pushing page: {:?}", page);
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
-            self.update_navigation_buttons();
+            self.stop_loading();
         }
 
         pub fn add_new_password(&self) {
@@ -741,9 +742,7 @@ mod imp {
                     if self_clone2.imp().remove_pass(&path) {
                         self_clone2.imp().set_path("".to_string());
                         self_clone2.imp().refresh_list();
-                        self_clone2.imp().update_navigation_buttons();
                     }
-                    self_clone2.imp().stop_loading();
                 });
             });
             obj.add_action(&toggle_action);
@@ -817,7 +816,6 @@ mod imp {
                             error!("Failed to synchronize: {}", e);
                         }
                     }
-                    self_clone2.imp().stop_loading();
                     self_clone2.imp().init_list(&store_clone);
                 });
                 self_clone.add_action(&sync_action);
@@ -852,7 +850,18 @@ mod imp {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
                 if self_clone.imp().is_passphrase_empty() {
                     self_clone.imp().set_path(path.clone());
-                    // self_clone.imp().push(Pages::AskPage);
+                    let self_clone2 = self_clone.clone();
+                    self_clone.imp().ask_passphrase(
+                        self_clone.imp().list.as_ref() as &gtk::Widget,
+                        move || {
+                            let self_clone3 = self_clone2.clone();
+                            glib::idle_add_local_once(move || {
+                                if self_clone3.imp().copy_pass(&path) {
+                                    self_clone3.imp().refresh_list();
+                                }
+                            });
+                        },
+                    );
                 } else {
                     self_clone.imp().copy_pass(&path);
                 }
@@ -867,7 +876,6 @@ mod imp {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
                 if self_clone.imp().rename_pass(&path, &path) {
                     self_clone.imp().refresh_list();
-                    self_clone.imp().update_navigation_buttons();
                 }
             });
             obj.add_action(&rename);
@@ -880,7 +888,6 @@ mod imp {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
                 if self_clone.imp().remove_pass(&path) {
                     self_clone.imp().refresh_list();
-                    self_clone.imp().update_navigation_buttons();
                 }
             });
             obj.add_action(&remove);

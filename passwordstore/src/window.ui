@@ -26,7 +26,25 @@
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Add new password</property>
                     <property name="action-name">win.add-password</property>
-                    <property name="visible">true</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkPopover" id="add_button_popover">
+                    <property name="position">bottom</property>
+                    <property name="autohide">false</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="spacing">12</property>
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="AdwEntryRow" id="path_entry">
+                            <property name="title" translatable="yes">Path or name</property>
+                            <property name="show-apply-button">True</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>
@@ -158,14 +176,6 @@
                           <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <child>
-                              <object class="AdwEntryRow" id="path_entry">
-                                <property name="title" translatable="yes">Path or name</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">6</property>
-                              </object>
-                            </child>
-                            <child>
                               <object class="AdwPasswordEntryRow" id="password_entry">
                                 <property name="title" translatable="yes">Password</property>
                                 <property name="margin-start">15</property>
@@ -244,10 +254,6 @@
       <item>
         <attribute name="label" translatable="yes">_Synchronize with remote</attribute>
         <attribute name="action">win.synchronize</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Remove selected password</attribute>
-        <attribute name="action">win.remove-selected-password</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>

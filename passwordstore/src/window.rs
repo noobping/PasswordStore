@@ -66,6 +66,9 @@ mod imp {
         pub add_button: TemplateChild<gtk::Button>,
 
         #[template_child]
+        pub add_button_popover: TemplateChild<gtk::Popover>,
+
+        #[template_child]
         pub git_button: TemplateChild<gtk::Button>,
 
         #[template_child]
@@ -400,33 +403,6 @@ mod imp {
             self.stop_loading();
         }
 
-        pub fn add_new_password(&self) {
-            if self.is_text_page() {
-                self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
-                self.password_entry.set_text("");
-                while let Some(child) = self.dynamic_box.first_child() {
-                    self.dynamic_box.remove(&child);
-                }
-            }
-            let (path, _) = self.get_path().split_path();
-            let path = path + "/";
-            self.path_entry.set_text(&path);
-            self.set_path(path);
-
-            let buffer = gtk::TextBuffer::new(None);
-            buffer.set_text(&"username: ");
-            let save_button = self.save_button.clone();
-            buffer.connect_changed(move |buffer| {
-                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-                let is_not_empty = !text.is_empty();
-                save_button.set_sensitive(is_not_empty);
-                save_button.set_can_focus(is_not_empty);
-            });
-            self.text_view.set_buffer(Some(&buffer));
-            self.push(Pages::TextPage);
-            self.path_entry.grab_focus();
-        }
-
         pub fn toggle_search(&self) {
             let entry = self.search_entry.clone();
             if !self.is_default_page() {
@@ -724,9 +700,15 @@ mod imp {
             toggle_action.connect_activate(move |_, _| self_clone.imp().toggle_search());
             obj.add_action(&toggle_action);
 
+            obj.imp()
+                .add_button_popover
+                .set_parent(obj.imp().add_button.as_ref() as &gtk::Widget);
             let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("add-password", None);
-            add_action.connect_activate(move |_, _| self_clone.imp().add_new_password());
+            add_action.connect_activate(move |_, _| {
+                self_clone.imp().add_button_popover.popup();
+                self_clone.imp().path_entry.grab_focus();
+            });
             obj.add_action(&add_action);
 
             let self_clone = obj.clone();
@@ -818,9 +800,8 @@ mod imp {
             });
 
             // Real-time filter: hide/show action rows based on search text
-            let list = self.list.clone();
-            let search = self.search_entry.clone();
-            search.connect_changed(move |entry| {
+            let list = obj.imp().list.clone();
+            obj.imp().search_entry.connect_changed(move |entry| {
                 let binding = entry.text().to_string().to_lowercase();
                 let pattern = binding.trim();
 
@@ -893,17 +874,40 @@ mod imp {
             self.git_url_entry
                 .connect_apply(move |_row| self_clone.imp().git_clone());
 
-            let self_clone = obj.clone();
-            let path_entry = self.path_entry.clone();
-            path_entry.connect_changed(move |entry| {
-                let is_not_empty = !entry.text().to_string().is_empty();
-                self_clone.imp().save_button.set_sensitive(is_not_empty);
-                self_clone.imp().save_button.set_can_focus(is_not_empty);
+            obj.imp().path_entry.connect_changed(move |entry| {
+                let store = match PassStore::new() {
+                    Ok(store) => store,
+                    Err(_) => PassStore::default(),
+                };
+                let path = entry.text().to_string();
+                let is_valid = !path.is_empty() && !store.exists(&path);
+                entry.set_show_apply_button(is_valid);
             });
 
             let self_clone = obj.clone();
-            let password_entry = self.password_entry.clone();
-            password_entry.connect_changed(move |entry| {
+            obj.imp().path_entry.connect_apply(move |row| {
+                let path = row.text().to_string();
+                let self_clone2 = self_clone.clone();
+                glib::idle_add_local_once(move || {
+                    self_clone2.imp().set_path(path);
+                    self_clone2.imp().add_button_popover.popdown();
+                    let buffer = gtk::TextBuffer::new(None);
+                    buffer.set_text(&"username: ");
+                    let save_button = self_clone2.imp().save_button.clone();
+                    buffer.connect_changed(move |buffer| {
+                        let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                        let is_not_empty = !text.is_empty();
+                        save_button.set_sensitive(is_not_empty);
+                        save_button.set_can_focus(is_not_empty);
+                    });
+                    self_clone2.imp().text_view.set_buffer(Some(&buffer));
+                    self_clone2.imp().push(Pages::TextPage);
+                    self_clone2.imp().password_entry.grab_focus();
+                });
+            });
+
+            let self_clone = obj.clone();
+            obj.imp().password_entry.connect_changed(move |entry| {
                 let is_not_empty = !entry.text().to_string().is_empty();
                 self_clone.imp().save_button.set_sensitive(is_not_empty);
                 self_clone.imp().save_button.set_can_focus(is_not_empty);

@@ -264,7 +264,11 @@ mod imp {
                 row.connect_activated(move |row| {
                     let title = row.title();
                     let subtitle = row.subtitle().unwrap_or_default();
-                    let id_clone = format!("{}/{}", title, subtitle);
+                    let id_clone = if subtitle.is_empty() {
+                        title.to_string()
+                    } else {
+                        format!("{}/{}", subtitle, title)
+                    };
                     self_clone.set_path(id_clone.clone());
                     self_clone.path_entry.set_text(&id_clone);
                     self_clone.path_entry.grab_focus();

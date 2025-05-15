@@ -375,6 +375,7 @@ mod imp {
                 self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
                 self.path_entry.set_text("");
                 self.password_entry.set_text("");
+                self.set_path("".to_string());
                 while let Some(child) = self.dynamic_box.first_child() {
                     self.dynamic_box.remove(&child);
                 }
@@ -385,6 +386,7 @@ mod imp {
                 self.navigation_view
                     .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
             }
+            self.update_navigation_buttons();
         }
 
         pub fn push(&self, page: Pages) {

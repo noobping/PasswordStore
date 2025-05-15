@@ -130,7 +130,6 @@ mod imp {
         pub fn ask_passphrase<F: FnOnce() + 'static>(&self, parent: &gtk::Widget, callback: F) {
             let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
 
-            self.passphrase_entry.set_text("");
             let widget = parent.clone();
             self.passphrase_popover.unparent();
             self.passphrase_popover.set_parent(&widget);
@@ -140,14 +139,13 @@ mod imp {
             let self_clone = self.to_owned();
             let cb_clone = callback_cell.clone();
             self.passphrase_entry.connect_apply(move |row| {
-                // Haal de callback eruit (take() vervangt met None)
                 if let Some(cb) = cb_clone.borrow_mut().take() {
-                    self_clone.passphrase_entry.set_text("");
                     match self_clone.passphrase.try_lock() {
                         Ok(mut guard) => *guard = row.text().to_string().to_secret(),
                         Err(_) => self_clone.show_toast("Failed to set passphrase"),
                     }
                     self_clone.passphrase_popover.popdown();
+                    self_clone.passphrase_entry.set_text("");
                     cb();
                 }
             });

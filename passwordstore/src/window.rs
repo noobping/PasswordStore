@@ -120,18 +120,15 @@ mod imp {
 
     impl PasswordstoreWindow {
         pub fn ask_passphrase<F: FnOnce() + 'static>(&self, parent: &gtk::Widget, callback: F) {
-            let popover = self.passphrase_popover.clone();
-            let entry = self.passphrase_entry.clone();
-
             let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
 
-            entry.set_text("");
-            popover.set_parent(parent);
-            popover.popup();
+            self.passphrase_entry.set_text("");
+            self.passphrase_popover.set_parent(parent);
+            self.passphrase_popover.popup();
 
             let self_clone = self.to_owned();
             let cb_clone = callback_cell.clone();
-            entry.connect_apply(move |row| {
+            self.passphrase_entry.connect_apply(move |row| {
                 // Haal de callback eruit (take() vervangt met None)
                 if let Some(cb) = cb_clone.borrow_mut().take() {
                     self_clone.passphrase_entry.set_text("");
@@ -139,7 +136,7 @@ mod imp {
                         Ok(mut guard) => *guard = row.text().to_string().to_secret(),
                         Err(_) => self_clone.show_toast("Failed to set passphrase"),
                     }
-                    popover.popdown();
+                    self_clone.passphrase_popover.popdown();
                     cb();
                 }
             });
@@ -163,14 +160,6 @@ mod imp {
             match self.passphrase.try_lock() {
                 Ok(mut guard) => guard.zeroize(),
                 Err(_) => self.show_toast("Failed to clear passphrase"),
-            }
-        }
-
-        fn set_passphrase(&self, secret: SecretString) {
-            self.passphrase_entry.set_text("");
-            match self.passphrase.try_lock() {
-                Ok(mut guard) => *guard = secret,
-                Err(_) => self.show_toast("Failed to set passphrase"),
             }
         }
 
@@ -253,10 +242,7 @@ mod imp {
                         let before_semicolon = &message[..idx];
                         self_clone.stop_loading();
                         self_clone.show_toast(before_semicolon);
-
                         self_clone.clear_passphrase();
-                        // self_clone.push(imp::Pages::AskPage);
-                        self_clone.passphrase_entry.grab_focus();
                     }
                 }
             });
@@ -742,7 +728,10 @@ mod imp {
             let self_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("remove-selected-password", None);
             toggle_action.connect_activate(move |_, _| {
-                info!("Removing selected password: {}", self_clone.imp().get_path());
+                info!(
+                    "Removing selected password: {}",
+                    self_clone.imp().get_path()
+                );
                 let self_clone2 = self_clone.clone();
                 glib::idle_add_local_once(move || {
                     self_clone2.imp().start_loading();
@@ -895,12 +884,6 @@ mod imp {
             obj.add_action(&remove);
 
             // Enable or disable the buttons if the entry is empty
-            let self_clone = obj.clone();
-            self.passphrase_entry.connect_apply(move |row| {
-                self_clone.imp().set_passphrase(row.text().trim().into());
-                self_clone.imp().decrypt_and_open();
-            });
-
             let self_clone = obj.clone();
             self.git_url_entry
                 .connect_apply(move |_row| self_clone.imp().git_clone());

@@ -123,7 +123,9 @@ mod imp {
             let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
 
             self.passphrase_entry.set_text("");
-            self.passphrase_popover.set_parent(parent);
+            let widget = parent.clone();
+            self.passphrase_popover.unparent();
+            self.passphrase_popover.set_parent(&widget);
             self.passphrase_popover.popup();
 
             let self_clone = self.to_owned();

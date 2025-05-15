@@ -25,7 +25,6 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
-use log::{error, info};
 use passcore::PassStore;
 use search_provider::{self, ResultID, ResultMeta, SearchProvider};
 use secrecy::ExposeSecret;
@@ -90,7 +89,7 @@ mod imp {
                     "/io/github/noobping/PasswordStore/SearchProvider",
                 );
                 block_on::block_on(async {
-                    info!("[passwordstore] Registering search provider...");
+                    println!("[passwordstore] Registering search provider...");
                     provider
                         .await
                         .expect("[passwordstore] Failed to register search provider");
@@ -111,31 +110,31 @@ glib::wrapper! {
 
 impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     fn activate_result(&self, identifier: ResultID, _terms: &[String], _timestamp: u32) {
-        info!("[passwordstore] Activating result for `{}`", identifier);
+        println!("[passwordstore] Activating result for `{}`", identifier);
         let store = match PassStore::new() {
             Ok(store) => store,
             Err(e) => {
-                error!("[passwordstore] Failed to create PassStore: {}", e);
+                eprintln!("[passwordstore] Failed to create PassStore: {}", e);
                 PassStore::default()
             }
         };
         if let Ok(_entry) = store.ask(&identifier) {
-            info!(
+            println!(
                 "[passwordstore] Copied password for `{}` to clipboard",
                 identifier
             );
         } else {
-            error!("[passwordstore] Failed to get entry for `{}`", identifier);
+            eprintln!("[passwordstore] Failed to get entry for `{}`", identifier);
         }
     }
 
     fn initial_result_set(&self, terms: &[String]) -> Vec<ResultID> {
-        info!("[passwordstore] Searching for `{}`", terms.join(", "));
+        println!("[passwordstore] Searching for `{}`", terms.join(", "));
         let needle = terms.join(" ").to_lowercase();
         let store = match PassStore::new() {
             Ok(store) => store,
             Err(e) => {
-                error!("[passwordstore] Failed to create PassStore: {}", e);
+                eprintln!("[passwordstore] Failed to create PassStore: {}", e);
                 PassStore::default()
             }
         };
@@ -143,7 +142,7 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
         let list = match store.list() {
             Ok(list) => list,
             Err(e) => {
-                error!("[passwordstore] Failed to list entries: {}", e);
+                eprintln!("[passwordstore] Failed to list entries: {}", e);
                 return vec![];
             }
         };
@@ -153,21 +152,21 @@ impl search_provider::SearchProviderImpl for PasswordstoreApplication {
     }
 
     fn result_metas(&self, identifiers: &[ResultID]) -> Vec<ResultMeta> {
-        info!(
+        println!(
             "[passwordstore] Getting result metas for `{}`",
             identifiers.join(", ")
         );
         let store = match PassStore::new() {
             Ok(store) => store,
             Err(e) => {
-                error!("[passwordstore] Failed to create PassStore: {}", e);
+                eprintln!("[passwordstore] Failed to create PassStore: {}", e);
                 PassStore::default()
             }
         };
         let list = match store.list() {
             Ok(list) => list,
             Err(e) => {
-                error!("[passwordstore] Failed to list entries: {}", e);
+                eprintln!("[passwordstore] Failed to list entries: {}", e);
                 return vec![];
             }
         };

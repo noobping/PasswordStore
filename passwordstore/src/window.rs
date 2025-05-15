@@ -21,7 +21,6 @@
 use adw::subclass::prelude::*;
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use log::{debug, error, info};
 use passcore::{PassStore, StringExt};
 use secrecy::SecretString;
 
@@ -181,7 +180,7 @@ mod imp {
                 let store = match PassStore::new() {
                     Ok(store) => store,
                     Err(e) => {
-                        error!("Failed to open password store: {}", e);
+                        eprintln!("Failed to open password store: {}", e);
                         self_clone.stop_loading();
                         self_clone.show_toast(&format!("Failed to open password store: {}", e));
                         return;
@@ -238,7 +237,7 @@ mod imp {
                         self_clone.push(imp::Pages::TextPage);
                     }
                     Err(e) => {
-                        error!("Failed to open password: {}", e);
+                        eprintln!("Failed to open password: {}", e);
                         let message = e.to_string();
                         let idx = message.find(';').unwrap_or(message.len());
                         let before_semicolon = &message[..idx];
@@ -261,12 +260,11 @@ mod imp {
                     .activatable(true)
                     .build();
 
-                let id_clone = id.clone();
                 let self_clone = self.to_owned();
                 row.connect_activated(move |row| {
                     let title = row.title();
                     let subtitle = row.subtitle().unwrap_or_default();
-                    info!("Select {} in {}", title, subtitle);
+                    let id_clone = format!("{}/{}", title, subtitle);
                     self_clone.set_path(id_clone.clone());
                     self_clone.path_entry.set_text(&id_clone);
                     self_clone.path_entry.grab_focus();
@@ -315,7 +313,7 @@ mod imp {
             let store = match PassStore::new() {
                 Ok(store) => store,
                 Err(e) => {
-                    error!("Failed to open password store: {}", e);
+                    eprintln!("Failed to open password store: {}", e);
                     PassStore::default()
                 }
             };
@@ -369,7 +367,6 @@ mod imp {
         }
 
         pub fn pop(&self) {
-            debug!("Popping page");
             if self.is_text_page() {
                 self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
                 self.path_entry.set_text("");
@@ -392,7 +389,6 @@ mod imp {
                 Pages::TextPage => &self.text_page,
                 Pages::GitPage => &self.git_page,
             };
-            debug!("Pushing page: {:?}", page);
             self.navigation_view
                 .push(page_ref.as_ref() as &adw::NavigationPage);
             self.stop_loading();
@@ -457,7 +453,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    error!("Failed to clone git repository: {}", e);
+                    eprintln!("Failed to clone git repository: {}", e);
                     PassStore::default()
                 }
             };
@@ -468,7 +464,6 @@ mod imp {
         }
 
         pub fn start_loading(&self) {
-            info!("Loading...");
             self.add_button.set_can_focus(false);
             self.add_button.set_sensitive(false);
             self.back_button.set_can_focus(false);
@@ -487,7 +482,6 @@ mod imp {
         }
 
         pub fn stop_loading(&self) {
-            info!("Done!");
             self.passphrase_entry.set_can_focus(true);
             self.passphrase_entry.set_sensitive(true);
             self.passphrase_entry.grab_focus();
@@ -597,7 +591,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    error!("Failed to save password: {}", e);
+                    eprintln!("Failed to save password: {}", e);
                     false
                 }
             };
@@ -625,7 +619,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    error!("Failed to rename password: {}", e);
+                    eprintln!("Failed to rename password: {}", e);
                     false
                 }
             };
@@ -653,7 +647,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    error!("Failed to remove password: {}", e);
+                    eprintln!("Failed to remove password: {}", e);
                     false
                 }
             };
@@ -678,7 +672,7 @@ mod imp {
                     let idx = message.find(';').unwrap_or(message.len());
                     let before_semicolon = &message[..idx];
                     self.show_toast(before_semicolon);
-                    error!("Failed to copy password: {}", e);
+                    eprintln!("Failed to copy password: {}", e);
                     return false;
                 }
             };
@@ -732,10 +726,6 @@ mod imp {
             let self_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("remove-selected-password", None);
             toggle_action.connect_activate(move |_, _| {
-                info!(
-                    "Removing selected password: {}",
-                    self_clone.imp().get_path()
-                );
                 let self_clone2 = self_clone.clone();
                 glib::idle_add_local_once(move || {
                     self_clone2.imp().start_loading();
@@ -790,7 +780,7 @@ mod imp {
                 let store = match PassStore::new() {
                     Ok(store) => store,
                     Err(e) => {
-                        error!("Failed to open password store: {}", e);
+                        eprintln!("Failed to open password store: {}", e);
                         PassStore::default()
                     }
                 };
@@ -805,7 +795,6 @@ mod imp {
                 sync_action.connect_activate(move |_, _| {
                     self_clone2.imp().start_loading();
                     let overlay = self_clone2.imp().toast_overlay.clone();
-                    info!("Synchronizing...");
                     match store_clone.sync() {
                         Ok(_) => overlay.add_toast(adw::Toast::new("Synchronized successfully")),
                         Err(e) => {
@@ -814,7 +803,7 @@ mod imp {
                             let before_semicolon = &message[..idx];
 
                             overlay.add_toast(adw::Toast::new(before_semicolon));
-                            error!("Failed to synchronize: {}", e);
+                            eprintln!("Failed to synchronize: {}", e);
                         }
                     }
                     self_clone2.imp().init_list(&store_clone);

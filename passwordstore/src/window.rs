@@ -54,6 +54,9 @@ mod imp {
         pub window_title: TemplateChild<adw::WindowTitle>,
 
         #[template_child]
+        pub progress_bar: TemplateChild<gtk::ProgressBar>,
+
+        #[template_child]
         pub toast_overlay: TemplateChild<adw::ToastOverlay>,
 
         #[template_child]
@@ -114,6 +117,9 @@ mod imp {
         pub password_entry: TemplateChild<adw::PasswordEntryRow>,
 
         #[template_child]
+        pub copy_password_button: TemplateChild<gtk::Button>,
+
+        #[template_child]
         pub dynamic_box: TemplateChild<gtk::Box>,
 
         // Git clone page
@@ -151,24 +157,10 @@ mod imp {
             });
         }
 
-        pub fn is_passphrase_empty(&self) -> bool {
-            self.passphrase
-                .try_lock()
-                .is_ok_and(|guard| guard.expose_secret().is_empty())
-        }
-
         pub fn get_passphrase(&self) -> SecretString {
             match self.passphrase.try_lock() {
                 Ok(guard) => guard.clone(),
                 Err(_) => SecretString::new("".into()),
-            }
-        }
-
-        pub fn clear_passphrase(&self) {
-            self.passphrase_entry.set_text("");
-            match self.passphrase.try_lock() {
-                Ok(mut guard) => guard.zeroize(),
-                Err(_) => self.show_toast("Failed to clear passphrase"),
             }
         }
 
@@ -247,7 +239,11 @@ mod imp {
                         let before_semicolon = &message[..idx];
                         self_clone.stop_loading();
                         self_clone.show_toast(before_semicolon);
-                        self_clone.clear_passphrase();
+                        self_clone.passphrase_entry.set_text("");
+                        match self_clone.passphrase.try_lock() {
+                            Ok(mut guard) => guard.zeroize(),
+                            Err(_) => self_clone.show_toast("Failed to clear passphrase"),
+                        }
                     }
                 }
             });
@@ -276,14 +272,10 @@ mod imp {
                     self_clone.new_path_entry.set_text(&id_clone);
                     self_clone.new_path_entry.grab_focus();
 
-                    if self_clone.is_passphrase_empty() {
-                        let self_clone2 = self_clone.clone();
-                        self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
-                            self_clone2.decrypt_and_open()
-                        });
-                    } else {
-                        self_clone.decrypt_and_open();
-                    }
+                    let self_clone2 = self_clone.clone();
+                    self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
+                        self_clone2.decrypt_and_open()
+                    });
                 });
 
                 // build the menu model
@@ -452,12 +444,14 @@ mod imp {
         }
 
         pub fn start_loading(&self) {
+            self.progress_bar.set_visible(true);
+            // Set the progress bar to infinite mode (like a horisontal spinner)
+            self.progress_bar.pulse();
+            self.progress_bar.set_pulse_step(10.0);
             self.add_button.set_can_focus(false);
             self.add_button.set_sensitive(false);
             self.git_button.set_can_focus(false);
             self.git_button.set_sensitive(false);
-            self.passphrase_entry.set_can_focus(false);
-            self.passphrase_entry.set_sensitive(false);
             self.search_button.set_can_focus(false);
             self.search_button.set_sensitive(false);
             self.save_button.set_can_focus(false);
@@ -468,12 +462,10 @@ mod imp {
         }
 
         pub fn stop_loading(&self) {
-            self.passphrase_entry.set_can_focus(true);
-            self.passphrase_entry.set_sensitive(true);
-            self.passphrase_entry.grab_focus();
             self.text_view.set_editable(true);
             self.path_entry.set_can_focus(true);
             self.path_entry.set_sensitive(true);
+            self.progress_bar.set_visible(false);
             self.update_navigation_buttons();
         }
 
@@ -679,6 +671,7 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
+            obj.imp().start_loading();
 
             // Actions
             let self_clone = obj.clone();
@@ -820,23 +813,20 @@ mod imp {
                 gio::SimpleAction::new("copy-password", Some(&String::static_variant_type()));
             copy.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if self_clone.imp().is_passphrase_empty() {
-                    self_clone.imp().set_path(path.clone());
-                    let self_clone2 = self_clone.clone();
-                    self_clone.imp().ask_passphrase(
-                        self_clone.imp().list.as_ref() as &gtk::Widget,
-                        move || {
-                            let self_clone3 = self_clone2.clone();
-                            glib::idle_add_local_once(move || {
-                                if self_clone3.imp().copy_pass(&path) {
-                                    self_clone3.imp().refresh_list();
-                                }
-                            });
-                        },
-                    );
-                } else {
-                    self_clone.imp().copy_pass(&path);
-                }
+
+                self_clone.imp().set_path(path.clone());
+                let self_clone2 = self_clone.clone();
+                self_clone.imp().ask_passphrase(
+                    self_clone.imp().list.as_ref() as &gtk::Widget,
+                    move || {
+                        let self_clone3 = self_clone2.clone();
+                        glib::idle_add_local_once(move || {
+                            if self_clone3.imp().copy_pass(&path) {
+                                self_clone3.imp().refresh_list();
+                            }
+                        });
+                    },
+                );
             });
             obj.add_action(&copy);
 
@@ -1023,6 +1013,25 @@ mod imp {
                 let is_not_empty = !entry.text().to_string().is_empty();
                 self_clone.imp().save_button.set_sensitive(is_not_empty);
                 self_clone.imp().save_button.set_can_focus(is_not_empty);
+            });
+
+            let self_clone = obj.clone();
+            obj.imp().copy_password_button.connect_clicked(move |_| {
+                let path = self_clone.imp().get_path();
+
+                self_clone.imp().set_path(path.clone());
+                let self_clone2 = self_clone.clone();
+                self_clone.imp().ask_passphrase(
+                    self_clone.imp().list.as_ref() as &gtk::Widget,
+                    move || {
+                        let self_clone3 = self_clone2.clone();
+                        glib::idle_add_local_once(move || {
+                            if !self_clone3.imp().copy_pass(&path) {
+                                self_clone3.imp().show_toast("Con not copy password");
+                            }
+                        });
+                    },
+                );
             });
         }
     }

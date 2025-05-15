@@ -5,10 +5,8 @@ build
 build-dir
 repo
 AppDir/*
-!AppDir/AppRun
 !AppDir/*.desktop
 !AppDir/*.png
-!AppDir/*.svg
 !AppDir/.DirIcon
 libs
 *.AppImage

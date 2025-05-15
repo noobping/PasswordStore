@@ -19,6 +19,7 @@ impl SecretStringExt for SecretString {
 pub trait StringExt {
     fn split_path(&self) -> (String, String);
     fn split_field(&self) -> (String, String);
+    fn to_secret(&self) -> SecretString;
 }
 
 impl StringExt for String {
@@ -37,5 +38,9 @@ impl StringExt for String {
         let field = parts.next().unwrap().trim().to_string();
         let value = parts.next().unwrap_or("").trim().to_string();
         (field, value)
+    }
+
+    fn to_secret(&self) -> SecretString {
+        SecretString::from(self.to_string())
     }
 }

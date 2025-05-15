@@ -295,6 +295,12 @@ mod imp {
                 copy_item.set_attribute_value("target", Some(&path.to_variant()));
                 menu.append_item(&copy_item);
 
+                // use pinantry to open (edit) the password
+                let edit_item =
+                    gio::MenuItem::new(Some("Edit password"), Some("win.decrypt-password"));
+                edit_item.set_attribute_value("target", Some(&path.to_variant()));
+                menu.append_item(&edit_item);
+
                 // RENAME
                 let rename_item = gio::MenuItem::new(Some("Rename…"), Some("win.rename-password"));
                 let target = (path.to_string(), index as u64);
@@ -833,6 +839,82 @@ mod imp {
                 }
             });
             obj.add_action(&copy);
+
+            // edit password
+            let self_clone = obj.clone();
+            let edit =
+                gio::SimpleAction::new("decrypt-password", Some(&String::static_variant_type()));
+            edit.connect_activate(move |_, param| {
+                let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
+                self_clone.imp().set_path(path.clone());
+                let self_clone2 = self_clone.clone();
+                glib::idle_add_local_once(move || {
+                    let store = match PassStore::new() {
+                        Ok(store) => store,
+                        Err(e) => {
+                            eprintln!("Failed to open password store: {}", e);
+                            PassStore::default()
+                        }
+                    };
+                    if !store.exists(&path) {
+                        self_clone2.imp().show_toast("Password not found");
+                        self_clone2.imp().stop_loading();
+                        return;
+                    }
+                    match store.ask(&path) {
+                        Ok(entry) => {
+                            let password = entry.password.expose_secret();
+                            self_clone2.imp().password_entry.set_text(password);
+
+                            let mut text = String::new();
+                            for line in entry.extra.iter() {
+                                let exposed = line.expose_secret();
+                                if exposed.contains(':') {
+                                    let (field, value) = &exposed.to_string().split_field();
+                                    let row = adw::EntryRow::builder()
+                                        .title(field)
+                                        .margin_start(15)
+                                        .margin_end(15)
+                                        .margin_bottom(5)
+                                        .build();
+                                    row.set_text(value);
+                                    let self_clone3 = self_clone2.imp().to_owned();
+                                    row.connect_changed(move |row| {
+                                        let text = row.text().to_string();
+                                        self_clone3.save_button.set_sensitive(!text.is_empty());
+                                        self_clone3.save_button.set_can_focus(!text.is_empty());
+                                    });
+                                    self_clone2.imp().dynamic_box.append(&row);
+                                } else {
+                                    text.push_str(&format!("{}\n", exposed));
+                                }
+                            }
+                            let buffer = gtk::TextBuffer::new(None);
+                            buffer.set_text(&text);
+                            let save_button = self_clone2.imp().save_button.clone();
+                            buffer.connect_changed(move |buffer| {
+                                let text =
+                                    buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                                let is_not_empty = !text.is_empty();
+                                save_button.set_sensitive(is_not_empty);
+                                save_button.set_can_focus(is_not_empty);
+                            });
+                            let text_view = self_clone2.imp().text_view.clone();
+                            text_view.set_buffer(Some(&buffer));
+                            self_clone2.imp().push(imp::Pages::TextPage);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to open password: {}", e);
+                            let message = e.to_string();
+                            let idx = message.find(';').unwrap_or(message.len());
+                            let before_semicolon = &message[..idx];
+                            self_clone2.imp().stop_loading();
+                            self_clone2.imp().show_toast(before_semicolon);
+                        }
+                    }
+                });
+            });
+            obj.add_action(&edit);
 
             // rename
             let self_clone = obj.clone();

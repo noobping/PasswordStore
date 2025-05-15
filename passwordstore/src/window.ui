@@ -78,6 +78,26 @@
         <property name="content">
           <object class="AdwToastOverlay" id="toast_overlay">
             <child>
+              <object class="GtkPopover" id="passphrase_popover">
+                <property name="position">bottom</property>
+
+                <child>
+                  <object class="GtkBox">
+                    <property name="spacing">12</property>
+                    <property name="orientation">vertical</property>
+
+                    <child>
+                      <object class="AdwPasswordEntryRow" id="passphrase_entry">
+                        <property name="title" translatable="yes">Decryption passphrase</property>
+                        <property name="show-apply-button">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+
+            <child>
               <object class="AdwNavigationView" id="navigation_view">
 
                 <!-- List page -->
@@ -112,40 +132,6 @@
                                 </child>
                               </object>
                             </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-
-                <!-- Ask for password page -->
-                <child>
-                  <object class="AdwNavigationPage" id="ask_page">
-                    <property name="title" translatable="yes">Decrypt Password File</property>
-                    <property name="margin-start">15</property>
-                    <property name="margin-end">15</property>
-                    <property name="margin-top">15</property>
-                    <property name="margin-bottom">15</property>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="spacing">15</property>
-                        <property name="valign">center</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="AdwPasswordEntryRow" id="passphrase_entry">
-                            <property name="title" translatable="yes">Decryption passphrase</property>
-                            <property name="show-apply-button">True</property>
-                            <style>
-                              <class name="suggested-action" />
-                            </style>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="AdwStatusPage">
-                            <property name="icon-name">padlock2-open-symbolic</property>
-                            <property name="title" translatable="yes">Decrypt Password File</property>
-                            <property name="description" translatable="yes">Enter your decryption passphrase.</property>
                           </object>
                         </child>
                       </object>

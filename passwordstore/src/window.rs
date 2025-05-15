@@ -38,7 +38,6 @@ mod imp {
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum Pages {
         ListPage,
-        AskPage,
         TextPage,
         GitPage,
     }
@@ -73,7 +72,7 @@ mod imp {
         #[template_child]
         pub search_button: TemplateChild<gtk::Button>,
 
-        // ① List page
+        // List page
         #[template_child]
         pub list_page: TemplateChild<adw::NavigationPage>,
 
@@ -83,14 +82,14 @@ mod imp {
         #[template_child]
         pub list: TemplateChild<gtk::ListBox>,
 
-        // ② Ask for password page
+        // Ask for password page
         #[template_child]
-        pub ask_page: TemplateChild<adw::NavigationPage>,
+        pub passphrase_popover: TemplateChild<gtk::Popover>,
 
         #[template_child]
         pub passphrase_entry: TemplateChild<adw::PasswordEntryRow>,
 
-        // ③ Text editor page
+        // Text editor page
         #[template_child]
         pub text_page: TemplateChild<adw::NavigationPage>,
 
@@ -109,7 +108,7 @@ mod imp {
         #[template_child]
         pub dynamic_box: TemplateChild<gtk::Box>,
 
-        // ④ Git clone page
+        // Git clone page
         #[template_child]
         pub git_page: TemplateChild<adw::NavigationPage>,
 
@@ -120,6 +119,32 @@ mod imp {
     }
 
     impl PasswordstoreWindow {
+        pub fn ask_passphrase<F: FnOnce() + 'static>(&self, parent: &gtk::Widget, callback: F) {
+            let popover = self.passphrase_popover.clone();
+            let entry = self.passphrase_entry.clone();
+
+            let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
+
+            entry.set_text("");
+            popover.set_parent(parent);
+            popover.popup();
+
+            let self_clone = self.to_owned();
+            let cb_clone = callback_cell.clone();
+            entry.connect_apply(move |row| {
+                // Haal de callback eruit (take() vervangt met None)
+                if let Some(cb) = cb_clone.borrow_mut().take() {
+                    self_clone.passphrase_entry.set_text("");
+                    match self_clone.passphrase.try_lock() {
+                        Ok(mut guard) => *guard = row.text().to_string().to_secret(),
+                        Err(_) => self_clone.show_toast("Failed to set passphrase"),
+                    }
+                    popover.popdown();
+                    cb();
+                }
+            });
+        }
+
         pub fn is_passphrase_empty(&self) -> bool {
             self.passphrase
                 .try_lock()
@@ -149,14 +174,6 @@ mod imp {
             }
         }
 
-        pub fn ask_or_decrypt(&self) {
-            if self.is_passphrase_empty() {
-                self.push(imp::Pages::AskPage);
-                return;
-            }
-            self.decrypt_and_open();
-        }
-
         pub fn decrypt_and_open(&self) {
             self.start_loading();
             if self.is_text_page() {
@@ -167,30 +184,30 @@ mod imp {
             self.path_entry.grab_focus();
 
             let passphrase = self.get_passphrase();
-            let obj_clone = self.to_owned();
+            let self_clone = self.to_owned();
             glib::idle_add_local_once(move || {
                 let store = match PassStore::new() {
                     Ok(store) => store,
                     Err(e) => {
                         error!("Failed to open password store: {}", e);
-                        obj_clone.stop_loading();
-                        obj_clone.show_toast(&format!("Failed to open password store: {}", e));
+                        self_clone.stop_loading();
+                        self_clone.show_toast(&format!("Failed to open password store: {}", e));
                         return;
                     }
                 };
                 if !store.exists(&path) {
-                    obj_clone.show_toast("Password not found");
-                    let list_page = obj_clone.list_page.clone();
-                    obj_clone.stop_loading();
+                    self_clone.show_toast("Password not found");
+                    let list_page = self_clone.list_page.clone();
+                    self_clone.stop_loading();
                     if !&list_page.is_visible() {
-                        obj_clone.pop();
+                        self_clone.pop();
                     }
                     return;
                 }
                 match store.get(&path, passphrase) {
                     Ok(entry) => {
                         let password = entry.password.expose_secret();
-                        obj_clone.password_entry.set_text(password);
+                        self_clone.password_entry.set_text(password);
 
                         let mut text = String::new();
                         for line in entry.extra.iter() {
@@ -204,42 +221,42 @@ mod imp {
                                     .margin_bottom(5)
                                     .build();
                                 row.set_text(value);
-                                let obj_clone2 = obj_clone.clone().to_owned();
+                                let self_clone2 = self_clone.clone().to_owned();
                                 row.connect_changed(move |row| {
                                     let text = row.text().to_string();
-                                    obj_clone2.save_button.set_sensitive(!text.is_empty());
-                                    obj_clone2.save_button.set_can_focus(!text.is_empty());
+                                    self_clone2.save_button.set_sensitive(!text.is_empty());
+                                    self_clone2.save_button.set_can_focus(!text.is_empty());
                                 });
-                                obj_clone.dynamic_box.append(&row);
+                                self_clone.dynamic_box.append(&row);
                             } else {
                                 text.push_str(&format!("{}\n", exposed));
                             }
                         }
                         let buffer = gtk::TextBuffer::new(None);
                         buffer.set_text(&text);
-                        let save_button = obj_clone.save_button.clone();
+                        let save_button = self_clone.save_button.clone();
                         buffer.connect_changed(move |buffer| {
                             let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
                             let is_not_empty = !text.is_empty();
                             save_button.set_sensitive(is_not_empty);
                             save_button.set_can_focus(is_not_empty);
                         });
-                        let text_view = obj_clone.text_view.clone();
+                        let text_view = self_clone.text_view.clone();
                         text_view.set_buffer(Some(&buffer));
-                        obj_clone.stop_loading();
-                        obj_clone.push(imp::Pages::TextPage);
+                        self_clone.stop_loading();
+                        self_clone.push(imp::Pages::TextPage);
                     }
                     Err(e) => {
                         error!("Failed to open password: {}", e);
                         let message = e.to_string();
                         let idx = message.find(';').unwrap_or(message.len());
                         let before_semicolon = &message[..idx];
-                        obj_clone.stop_loading();
-                        obj_clone.show_toast(before_semicolon);
+                        self_clone.stop_loading();
+                        self_clone.show_toast(before_semicolon);
 
-                        obj_clone.clear_passphrase();
-                        obj_clone.push(imp::Pages::AskPage);
-                        obj_clone.passphrase_entry.grab_focus();
+                        self_clone.clear_passphrase();
+                        // self_clone.push(imp::Pages::AskPage);
+                        self_clone.passphrase_entry.grab_focus();
                     }
                 }
             });
@@ -257,15 +274,23 @@ mod imp {
                     .build();
 
                 let id_clone = id.clone();
-                let obj_clone = self.to_owned();
+                let self_clone = self.to_owned();
                 row.connect_activated(move |row| {
                     let title = row.title();
                     let subtitle = row.subtitle().unwrap_or_default();
                     info!("Select {} in {}", title, subtitle);
-                    obj_clone.set_path(id_clone.clone());
-                    obj_clone.path_entry.set_text(&id_clone);
-                    obj_clone.path_entry.grab_focus();
-                    obj_clone.ask_or_decrypt();
+                    self_clone.set_path(id_clone.clone());
+                    self_clone.path_entry.set_text(&id_clone);
+                    self_clone.path_entry.grab_focus();
+
+                    if self_clone.is_passphrase_empty() {
+                        let self_clone2 = self_clone.clone();
+                        self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
+                            self_clone2.decrypt_and_open()
+                        });
+                    } else {
+                        self_clone.decrypt_and_open();
+                    }
                 });
 
                 // build the menu model
@@ -374,7 +399,6 @@ mod imp {
         pub fn push(&self, page: Pages) {
             let page_ref = match page {
                 Pages::ListPage => &self.list_page,
-                Pages::AskPage => &self.ask_page,
                 Pages::TextPage => &self.text_page,
                 Pages::GitPage => &self.git_page,
             };
@@ -544,7 +568,7 @@ mod imp {
         }
 
         fn to_store_entry(&self) -> passcore::Entry {
-            let password = SecretString::from(self.password_entry.text().to_string());
+            let password = self.password_entry.text().to_string().to_secret();
 
             let mut children = Vec::new();
             let mut maybe_child = self.dynamic_box.first_child();
@@ -558,14 +582,14 @@ mod imp {
                 if let Ok(entry) = widget.downcast::<adw::EntryRow>() {
                     let field = entry.title().trim().to_owned();
                     let value = entry.text().trim().to_owned();
-                    extra.push(SecretString::from(format!("{}: {}", field, value)));
+                    extra.push(format!("{}: {}", field, value).to_secret());
                 }
             }
             let buffer = self.text_view.buffer();
             let mut lines = buffer
                 .text(&buffer.start_iter(), &buffer.end_iter(), false)
                 .lines()
-                .map(|s| SecretString::from(s.to_string()))
+                .map(|s| s.to_string().to_secret())
                 .collect::<Vec<_>>();
             extra.append(&mut lines);
 
@@ -697,80 +721,80 @@ mod imp {
             let obj = self.obj();
 
             // Actions
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("refresh", None);
             toggle_action.connect_activate(move |_, _| {
-                let obj_clone2 = obj_clone.clone();
-                glib::idle_add_local_once(move || obj_clone2.imp().refresh_list());
+                let self_clone2 = self_clone.clone();
+                glib::idle_add_local_once(move || self_clone2.imp().refresh_list());
             });
             obj.add_action(&toggle_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("toggle-search", None);
-            toggle_action.connect_activate(move |_, _| obj_clone.imp().toggle_search());
+            toggle_action.connect_activate(move |_, _| self_clone.imp().toggle_search());
             obj.add_action(&toggle_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("add-password", None);
-            add_action.connect_activate(move |_, _| obj_clone.imp().add_new_password());
+            add_action.connect_activate(move |_, _| self_clone.imp().add_new_password());
             obj.add_action(&add_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let toggle_action = gio::SimpleAction::new("remove-selected-password", None);
             toggle_action.connect_activate(move |_, _| {
-                info!("Removing selected password: {}", obj_clone.imp().get_path());
-                let obj_clone2 = obj_clone.clone();
+                info!("Removing selected password: {}", self_clone.imp().get_path());
+                let self_clone2 = self_clone.clone();
                 glib::idle_add_local_once(move || {
-                    obj_clone2.imp().start_loading();
-                    let path = obj_clone2.imp().get_path();
-                    if obj_clone2.imp().remove_pass(&path) {
-                        obj_clone2.imp().set_path("".to_string());
-                        obj_clone2.imp().refresh_list();
-                        obj_clone2.imp().update_navigation_buttons();
+                    self_clone2.imp().start_loading();
+                    let path = self_clone2.imp().get_path();
+                    if self_clone2.imp().remove_pass(&path) {
+                        self_clone2.imp().set_path("".to_string());
+                        self_clone2.imp().refresh_list();
+                        self_clone2.imp().update_navigation_buttons();
                     }
-                    obj_clone2.imp().stop_loading();
+                    self_clone2.imp().stop_loading();
                 });
             });
             obj.add_action(&toggle_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("save-password", None);
             add_action.connect_activate(move |_, _| {
-                let obj_clone2 = obj_clone.clone();
-                glib::idle_add_local_once(move || obj_clone2.imp().add_or_update_password());
+                let self_clone2 = self_clone.clone();
+                glib::idle_add_local_once(move || self_clone2.imp().add_or_update_password());
             });
             obj.add_action(&add_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("decrypt-password", None);
-            add_action.connect_activate(move |_, _| obj_clone.imp().decrypt_and_open());
+            add_action.connect_activate(move |_, _| self_clone.imp().decrypt_and_open());
             obj.add_action(&add_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("back", None);
-            add_action.connect_activate(move |_, _| obj_clone.imp().pop());
+            add_action.connect_activate(move |_, _| self_clone.imp().pop());
             obj.add_action(&add_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("git-page", None);
-            add_action.connect_activate(move |_, _| obj_clone.imp().push(Pages::GitPage));
+            add_action.connect_activate(move |_, _| self_clone.imp().push(Pages::GitPage));
             obj.add_action(&add_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("git-clone", None);
             add_action.connect_activate(move |_, _| {
-                let obj_clone2 = obj_clone.clone();
-                glib::idle_add_local_once(move || obj_clone2.imp().git_clone());
+                let self_clone2 = self_clone.clone();
+                glib::idle_add_local_once(move || self_clone2.imp().git_clone());
             });
             obj.add_action(&add_action);
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             obj.imp().git_url_entry.connect_activate(move |_| {
-                let obj_clone2 = obj_clone.clone();
-                glib::idle_add_local_once(move || obj_clone2.imp().git_clone());
+                let self_clone2 = self_clone.clone();
+                glib::idle_add_local_once(move || self_clone2.imp().git_clone());
             });
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             glib::idle_add_local_once(move || {
                 let store = match PassStore::new() {
                     Ok(store) => store,
@@ -780,16 +804,16 @@ mod imp {
                     }
                 };
 
-                obj_clone.imp().init_list(&store); // Initialize store and list
-                obj_clone.imp().update_navigation_buttons();
+                self_clone.imp().init_list(&store); // Initialize store and list
+                self_clone.imp().update_navigation_buttons();
 
                 // synchronize action
-                let obj_clone2 = obj_clone.clone();
+                let self_clone2 = self_clone.clone();
                 let sync_action = gio::SimpleAction::new("synchronize", None);
                 let store_clone = store.clone();
                 sync_action.connect_activate(move |_, _| {
-                    obj_clone2.imp().start_loading();
-                    let overlay = obj_clone2.imp().toast_overlay.clone();
+                    self_clone2.imp().start_loading();
+                    let overlay = self_clone2.imp().toast_overlay.clone();
                     info!("Synchronizing...");
                     match store_clone.sync() {
                         Ok(_) => overlay.add_toast(adw::Toast::new("Synchronized successfully")),
@@ -802,10 +826,10 @@ mod imp {
                             error!("Failed to synchronize: {}", e);
                         }
                     }
-                    obj_clone2.imp().stop_loading();
-                    obj_clone2.imp().init_list(&store_clone);
+                    self_clone2.imp().stop_loading();
+                    self_clone2.imp().init_list(&store_clone);
                 });
-                obj_clone.add_action(&sync_action);
+                self_clone.add_action(&sync_action);
             });
 
             // Real-time filter: hide/show action rows based on search text
@@ -830,71 +854,71 @@ mod imp {
             });
 
             // COPY
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let copy =
                 gio::SimpleAction::new("copy-password", Some(&String::static_variant_type()));
             copy.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if obj_clone.imp().is_passphrase_empty() {
-                    obj_clone.imp().set_path(path.clone());
-                    obj_clone.imp().push(Pages::AskPage);
+                if self_clone.imp().is_passphrase_empty() {
+                    self_clone.imp().set_path(path.clone());
+                    // self_clone.imp().push(Pages::AskPage);
                 } else {
-                    obj_clone.imp().copy_pass(&path);
+                    self_clone.imp().copy_pass(&path);
                 }
             });
             obj.add_action(&copy);
 
             // rename
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let rename =
                 gio::SimpleAction::new("rename-password", Some(&String::static_variant_type()));
             rename.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if obj_clone.imp().rename_pass(&path, &path) {
-                    obj_clone.imp().refresh_list();
-                    obj_clone.imp().update_navigation_buttons();
+                if self_clone.imp().rename_pass(&path, &path) {
+                    self_clone.imp().refresh_list();
+                    self_clone.imp().update_navigation_buttons();
                 }
             });
             obj.add_action(&rename);
 
             // DELETE
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let remove =
                 gio::SimpleAction::new("remove-password", Some(&String::static_variant_type()));
             remove.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if obj_clone.imp().remove_pass(&path) {
-                    obj_clone.imp().refresh_list();
-                    obj_clone.imp().update_navigation_buttons();
+                if self_clone.imp().remove_pass(&path) {
+                    self_clone.imp().refresh_list();
+                    self_clone.imp().update_navigation_buttons();
                 }
             });
             obj.add_action(&remove);
 
             // Enable or disable the buttons if the entry is empty
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             self.passphrase_entry.connect_apply(move |row| {
-                obj_clone.imp().set_passphrase(row.text().trim().into());
-                obj_clone.imp().decrypt_and_open();
+                self_clone.imp().set_passphrase(row.text().trim().into());
+                self_clone.imp().decrypt_and_open();
             });
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             self.git_url_entry
-                .connect_apply(move |_row| obj_clone.imp().git_clone());
+                .connect_apply(move |_row| self_clone.imp().git_clone());
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let path_entry = self.path_entry.clone();
             path_entry.connect_changed(move |entry| {
                 let is_not_empty = !entry.text().to_string().is_empty();
-                obj_clone.imp().save_button.set_sensitive(is_not_empty);
-                obj_clone.imp().save_button.set_can_focus(is_not_empty);
+                self_clone.imp().save_button.set_sensitive(is_not_empty);
+                self_clone.imp().save_button.set_can_focus(is_not_empty);
             });
 
-            let obj_clone = obj.clone();
+            let self_clone = obj.clone();
             let password_entry = self.password_entry.clone();
             password_entry.connect_changed(move |entry| {
                 let is_not_empty = !entry.text().to_string().is_empty();
-                obj_clone.imp().save_button.set_sensitive(is_not_empty);
-                obj_clone.imp().save_button.set_can_focus(is_not_empty);
+                self_clone.imp().save_button.set_sensitive(is_not_empty);
+                self_clone.imp().save_button.set_can_focus(is_not_empty);
             });
         }
     }

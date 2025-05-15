@@ -130,9 +130,17 @@ mod imp {
         pub git_url_entry: TemplateChild<adw::EntryRow>,
 
         passphrase: Mutex<SecretString>,
+        unlocked: Mutex<bool>,
     }
 
     impl PasswordstoreWindow {
+        pub fn is_unlocked(&self) -> bool {
+            match self.unlocked.try_lock() {
+                Ok(guard) => *guard,
+                Err(_) => false,
+            }
+        }
+
         pub fn ask_passphrase<F: FnOnce() + 'static>(&self, parent: &gtk::Widget, callback: F) {
             let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
 
@@ -147,7 +155,12 @@ mod imp {
             self.passphrase_entry.connect_apply(move |row| {
                 if let Some(cb) = cb_clone.borrow_mut().take() {
                     match self_clone.passphrase.try_lock() {
-                        Ok(mut guard) => *guard = row.text().to_string().to_secret(),
+                        Ok(mut guard) => {
+                            *guard = row.text().to_string().to_secret();
+                            if let Ok(mut lock) = self_clone.unlocked.try_lock() {
+                                *lock = true;
+                            }
+                        }
                         Err(_) => self_clone.show_toast("Failed to set passphrase"),
                     }
                     self_clone.passphrase_popover.popdown();
@@ -240,6 +253,10 @@ mod imp {
                         self_clone.stop_loading();
                         self_clone.show_toast(before_semicolon);
                         self_clone.passphrase_entry.set_text("");
+                        match self_clone.unlocked.try_lock() {
+                            Ok(mut lock) => *lock = false,
+                            Err(_) => self_clone.show_toast("Failed to reset unlocked state"),
+                        }
                         match self_clone.passphrase.try_lock() {
                             Ok(mut guard) => guard.zeroize(),
                             Err(_) => self_clone.show_toast("Failed to clear passphrase"),
@@ -269,13 +286,17 @@ mod imp {
                         format!("{}/{}", subtitle, title)
                     };
                     self_clone.set_path(id_clone.clone());
-                    self_clone.new_path_entry.set_text(&id_clone);
-                    self_clone.new_path_entry.grab_focus();
+                    if self_clone.is_unlocked() {
+                        self_clone.decrypt_and_open()
+                    } else {
+                        self_clone.new_path_entry.set_text(&id_clone);
+                        self_clone.new_path_entry.grab_focus();
 
-                    let self_clone2 = self_clone.clone();
-                    self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
-                        self_clone2.decrypt_and_open()
-                    });
+                        let self_clone2 = self_clone.clone();
+                        self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
+                            self_clone2.decrypt_and_open()
+                        });
+                    }
                 });
 
                 // build the menu model
@@ -813,20 +834,23 @@ mod imp {
                 gio::SimpleAction::new("copy-password", Some(&String::static_variant_type()));
             copy.connect_activate(move |_, param| {
                 let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-
                 self_clone.imp().set_path(path.clone());
-                let self_clone2 = self_clone.clone();
-                self_clone.imp().ask_passphrase(
-                    self_clone.imp().list.as_ref() as &gtk::Widget,
-                    move || {
-                        let self_clone3 = self_clone2.clone();
-                        glib::idle_add_local_once(move || {
-                            if self_clone3.imp().copy_pass(&path) {
-                                self_clone3.imp().refresh_list();
-                            }
-                        });
-                    },
-                );
+                if self_clone.imp().is_unlocked() {
+                    self_clone.imp().copy_pass(&path);
+                } else {
+                    let self_clone2 = self_clone.clone();
+                    self_clone.imp().ask_passphrase(
+                        self_clone.imp().list.as_ref() as &gtk::Widget,
+                        move || {
+                            let self_clone3 = self_clone2.clone();
+                            glib::idle_add_local_once(move || {
+                                if self_clone3.imp().copy_pass(&path) {
+                                    self_clone3.imp().refresh_list();
+                                }
+                            });
+                        },
+                    );
+                }
             });
             obj.add_action(&copy);
 
@@ -1021,20 +1045,23 @@ mod imp {
             let self_clone = obj.clone();
             obj.imp().copy_password_button.connect_clicked(move |_| {
                 let path = self_clone.imp().get_path();
-
                 self_clone.imp().set_path(path.clone());
-                let self_clone2 = self_clone.clone();
-                self_clone.imp().ask_passphrase(
-                    self_clone.imp().list.as_ref() as &gtk::Widget,
-                    move || {
-                        let self_clone3 = self_clone2.clone();
-                        glib::idle_add_local_once(move || {
-                            if !self_clone3.imp().copy_pass(&path) {
-                                self_clone3.imp().show_toast("Con not copy password");
-                            }
-                        });
-                    },
-                );
+                if self_clone.imp().is_unlocked() {
+                    self_clone.imp().copy_pass(&path);
+                } else {
+                    let self_clone2 = self_clone.clone();
+                    self_clone.imp().ask_passphrase(
+                        self_clone.imp().list.as_ref() as &gtk::Widget,
+                        move || {
+                            let self_clone3 = self_clone2.clone();
+                            glib::idle_add_local_once(move || {
+                                if !self_clone3.imp().copy_pass(&path) {
+                                    self_clone3.imp().show_toast("Con not copy password");
+                                }
+                            });
+                        },
+                    );
+                }
             });
         }
     }

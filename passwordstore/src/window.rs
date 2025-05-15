@@ -102,6 +102,12 @@ mod imp {
         pub path_entry: TemplateChild<adw::EntryRow>,
 
         #[template_child]
+        pub new_path_entry: TemplateChild<adw::EntryRow>,
+
+        #[template_child]
+        pub rename_popover: TemplateChild<gtk::Popover>,
+
+        #[template_child]
         pub save_button: TemplateChild<gtk::Button>,
 
         #[template_child]
@@ -173,10 +179,6 @@ mod imp {
             if self.is_text_page() {
                 self.pop();
             }
-            let path = self.get_path();
-            self.path_entry.set_text(&path);
-            self.path_entry.grab_focus();
-
             let passphrase = self.get_passphrase();
             let self_clone = self.to_owned();
             glib::idle_add_local_once(move || {
@@ -189,6 +191,7 @@ mod imp {
                         return;
                     }
                 };
+                let path = self_clone.get_path();
                 if !store.exists(&path) {
                     self_clone.show_toast("Password not found");
                     let list_page = self_clone.list_page.clone();
@@ -272,8 +275,8 @@ mod imp {
                         format!("{}/{}", subtitle, title)
                     };
                     self_clone.set_path(id_clone.clone());
-                    self_clone.path_entry.set_text(&id_clone);
-                    self_clone.path_entry.grab_focus();
+                    self_clone.new_path_entry.set_text(&id_clone);
+                    self_clone.new_path_entry.grab_focus();
 
                     if self_clone.is_passphrase_empty() {
                         let self_clone2 = self_clone.clone();
@@ -378,16 +381,13 @@ mod imp {
         pub fn pop(&self) {
             if self.is_text_page() {
                 self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
-                self.path_entry.set_text("");
                 self.password_entry.set_text("");
                 self.set_path("".to_string());
                 while let Some(child) = self.dynamic_box.first_child() {
                     self.dynamic_box.remove(&child);
                 }
             }
-            if self.is_default_page() {
-                self.path_entry.set_text("");
-            } else {
+            if !self.is_default_page() {
                 self.navigation_view
                     .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
             }
@@ -450,8 +450,6 @@ mod imp {
         pub fn start_loading(&self) {
             self.add_button.set_can_focus(false);
             self.add_button.set_sensitive(false);
-            self.back_button.set_can_focus(false);
-            self.back_button.set_sensitive(false);
             self.git_button.set_can_focus(false);
             self.git_button.set_sensitive(false);
             self.passphrase_entry.set_can_focus(false);
@@ -507,7 +505,6 @@ mod imp {
         pub fn add_or_update_password(&self) {
             self.start_loading();
             let path = self.get_path();
-            let new_path = self.path_entry.text().to_string();
             if path.is_empty() {
                 self.show_toast("Name the new password");
                 self.stop_loading();
@@ -521,18 +518,9 @@ mod imp {
                 }
             };
             let entry = self.to_store_entry();
-            let saved: bool = self.save_pass(&store, &path, &entry);
-            let renamed = if !new_path.is_empty() && path != new_path {
-                self.rename_pass(&path, &new_path)
-            } else {
-                false
-            };
-
-            if saved || renamed {
+            if self.save_pass(&store, &path, &entry) {
                 self.refresh_list();
             }
-            self.stop_loading();
-            self.pop();
         }
 
         fn to_store_entry(&self) -> passcore::Entry {
@@ -867,20 +855,27 @@ mod imp {
                     .row_at_index(index as i32)
                     .and_then(|w| w.downcast::<adw::ActionRow>().ok())
                 {
-                    self_clone.imp().add_button_popover.unparent();
+                    self_clone.imp().rename_popover.unparent();
                     self_clone
                         .imp()
-                        .add_button_popover
+                        .rename_popover
                         .set_parent(row.as_ref() as &gtk::Widget);
                 }
-                self_clone.imp().add_button_popover.popup();
-                self_clone.imp().path_entry.grab_focus();
-                if self_clone
-                    .imp()
-                    .rename_pass(&self_clone.imp().get_path(), &path)
-                {
-                    self_clone.imp().refresh_list();
-                }
+                self_clone.imp().new_path_entry.set_text(&path);
+                self_clone.imp().rename_popover.popup();
+                self_clone.imp().new_path_entry.grab_focus();
+                let self_clone2 = self_clone.clone();
+                let old_path = path.clone();
+                self_clone.imp().new_path_entry.connect_apply(move |row| {
+                    let old_path2 = old_path.clone();
+                    let new_path = row.text().to_string();
+                    let self_clone3 = self_clone2.clone();
+                    glib::idle_add_local_once(move || {
+                        if self_clone3.imp().rename_pass(&old_path2, &new_path) {
+                            self_clone3.imp().refresh_list();
+                        }
+                    });
+                });
             });
             obj.add_action(&rename);
 
@@ -902,6 +897,16 @@ mod imp {
                 .connect_apply(move |_row| self_clone.imp().git_clone());
 
             obj.imp().path_entry.connect_changed(move |entry| {
+                let store = match PassStore::new() {
+                    Ok(store) => store,
+                    Err(_) => PassStore::default(),
+                };
+                let path = entry.text().to_string();
+                let is_valid = !path.is_empty() && !store.exists(&path);
+                entry.set_show_apply_button(is_valid);
+            });
+
+            obj.imp().new_path_entry.connect_changed(move |entry| {
                 let store = match PassStore::new() {
                     Ok(store) => store,
                     Err(_) => PassStore::default(),

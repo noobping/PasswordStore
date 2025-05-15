@@ -115,6 +115,25 @@
             </child>
 
             <child>
+              <object class="GtkPopover" id="rename_popover">
+                <property name="position">bottom</property>
+                <property name="autohide">false</property>
+                <child>
+                  <object class="GtkBox">
+                    <property name="spacing">12</property>
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="AdwEntryRow" id="new_path_entry">
+                        <property name="title" translatable="yes">New path or name</property>
+                        <property name="show-apply-button">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+
+            <child>
               <object class="AdwNavigationView" id="navigation_view">
 
                 <!-- List page -->

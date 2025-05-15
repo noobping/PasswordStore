@@ -254,12 +254,11 @@ mod imp {
 
         fn init_list(&self, store: &PassStore) -> () {
             let items = store.list().unwrap_or_default();
-            let list = self.list.clone();
-            for id in items {
-                let (path, name) = id.clone().split_path();
+            for (index, path) in items.iter().enumerate() {
+                let (folder, name) = path.clone().split_path();
                 let row = adw::ActionRow::builder()
                     .title(&name)
-                    .subtitle(&path.replace("/", " / "))
+                    .subtitle(&folder.replace("/", " / "))
                     .activatable(true)
                     .build();
 
@@ -288,20 +287,23 @@ mod imp {
 
                 // build the menu model
                 let menu = gio::Menu::new();
+
                 // COPY
                 let copy_item =
                     gio::MenuItem::new(Some("Copy password"), Some("win.copy-password"));
-                copy_item.set_attribute_value("target", Some(&id.to_variant()));
+                copy_item.set_attribute_value("target", Some(&path.to_variant()));
                 menu.append_item(&copy_item);
+
                 // RENAME
                 let rename_item = gio::MenuItem::new(Some("Rename…"), Some("win.rename-password"));
-                rename_item.set_attribute_value("target", Some(&id.to_variant()));
+                let target = (path.to_string(), index as u64);
+                rename_item.set_attribute_value("target", Some(&target.to_variant()));
+                // rename_item.set_attribute_value("target", Some(&target.end()));
                 menu.append_item(&rename_item);
-                // DELETE (destructive section)
+
+                // DELETE
                 let delete_item = gio::MenuItem::new(Some("Delete"), Some("win.remove-password"));
-                delete_item.set_attribute_value("target", Some(&id.to_variant()));
-                // mark destructive so it’s red
-                delete_item.set_attribute_value("section", Some(&"destructive".to_variant()));
+                delete_item.set_attribute_value("target", Some(&path.to_variant()));
                 menu.append_item(&delete_item);
 
                 // attach it to a “three-dots” button
@@ -311,7 +313,7 @@ mod imp {
                     .build();
                 row.add_suffix(&menu_button);
 
-                list.append(&row);
+                self.list.append(&row);
                 self.stop_loading();
             }
         }
@@ -579,7 +581,7 @@ mod imp {
             };
         }
 
-        fn rename_pass(&self, path: &String, new_path: &String) -> bool {
+        fn rename_pass(&self, old_path: &String, new_path: &String) -> bool {
             let store = match PassStore::new() {
                 Ok(store) => store,
                 Err(e) => {
@@ -587,13 +589,13 @@ mod imp {
                     return false;
                 }
             };
-            if !store.ok() || !store.exists(&path) {
+            if !store.ok() || !store.exists(&old_path) {
                 self.show_toast("Password not found");
                 return false;
             }
-            return match store.rename(&path, &new_path) {
+            return match store.rename(&old_path, &new_path) {
                 Ok(_) => {
-                    self.show_toast(&format!("Password {} renamed to {}", path, new_path));
+                    self.show_toast(&format!("Password {} renamed to {}", old_path, new_path));
                     true
                 }
                 Err(e) => {
@@ -700,6 +702,7 @@ mod imp {
             toggle_action.connect_activate(move |_, _| self_clone.imp().toggle_search());
             obj.add_action(&toggle_action);
 
+            obj.imp().add_button_popover.unparent();
             obj.imp()
                 .add_button_popover
                 .set_parent(obj.imp().add_button.as_ref() as &gtk::Widget);
@@ -847,11 +850,35 @@ mod imp {
 
             // rename
             let self_clone = obj.clone();
-            let rename =
-                gio::SimpleAction::new("rename-password", Some(&String::static_variant_type()));
+            let rename = gio::SimpleAction::new(
+                "rename-password",
+                Some(&glib::VariantType::new_tuple(&[
+                    String::static_variant_type(),
+                    u64::static_variant_type(),
+                ])),
+            );
             rename.connect_activate(move |_, param| {
-                let path: String = param.and_then(|v| v.str().map(str::to_string)).unwrap();
-                if self_clone.imp().rename_pass(&path, &path) {
+                let params = param.and_then(|v| v.get::<(String, u64)>()).unwrap();
+                let path = params.0;
+                let index = params.1;
+                if let Some(row) = self_clone
+                    .imp()
+                    .list
+                    .row_at_index(index as i32)
+                    .and_then(|w| w.downcast::<adw::ActionRow>().ok())
+                {
+                    self_clone.imp().add_button_popover.unparent();
+                    self_clone
+                        .imp()
+                        .add_button_popover
+                        .set_parent(row.as_ref() as &gtk::Widget);
+                }
+                self_clone.imp().add_button_popover.popup();
+                self_clone.imp().path_entry.grab_focus();
+                if self_clone
+                    .imp()
+                    .rename_pass(&self_clone.imp().get_path(), &path)
+                {
                     self_clone.imp().refresh_list();
                 }
             });

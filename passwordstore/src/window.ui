@@ -128,6 +128,12 @@
                                     <property name="icon-name">io.github.noobping.PasswordStore</property>
                                     <property name="title" translatable="yes">No passwords found</property>
                                     <property name="description" translatable="yes">Try a different search, add a new entry or clone an existing password store.</property>
+                                    <child>
+                                      <object class="GtkSpinner">
+                                        <property name="visible">true</property>
+                                        <property name="spinning">true</property>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>

@@ -136,6 +136,16 @@ mod imp {
     }
 
     impl PasswordstoreWindow {
+        pub fn run<F, R>(&self, work: impl FnOnce() -> R + Send + 'static, update_ui: F)
+        where
+            R: Send + 'static,
+            F: FnOnce(R) + Send + 'static,
+        {
+            std::thread::spawn(move || {
+                glib::MainContext::default().invoke(move || update_ui(work()))
+            });
+        }
+
         pub fn is_unlocked(&self) -> bool {
             match self.unlocked.try_lock() {
                 Ok(guard) => *guard,

@@ -121,11 +121,12 @@ impl Data {
                 if let Err(_) = self_clone.set_path(new_path) {
                     row.set_title("Error");
                     row.set_subtitle("Could not set path");
-                }
-                if self_clone.is_unlocked() {
-                    decrypt_cb();
                 } else {
-                    ask_cb();
+                    if self_clone.is_unlocked() {
+                        decrypt_cb();
+                    } else {
+                        ask_cb();
+                    }
                 }
             });
 

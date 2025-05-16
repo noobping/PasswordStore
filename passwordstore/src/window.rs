@@ -21,8 +21,10 @@
 use adw::subclass::prelude::*;
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use passcore::{PassStore, StringExt};
+use passcore::PassStore;
 use secrecy::SecretString;
+
+use crate::extension::StringExt;
 
 mod imp {
     use adw::prelude::{ActionRowExt, EntryRowExt, PreferencesRowExt};

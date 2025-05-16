@@ -1,6 +1,5 @@
 use adw::prelude::{ActionRowExt, PreferencesRowExt};
 use adw::subclass::prelude::*;
-use anyhow::anyhow;
 use gtk::gio;
 use gtk::prelude::*;
 use passcore::{exists_store_dir, PassStore};
@@ -71,12 +70,12 @@ impl Data {
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&self, path: String) -> anyhow::Result<()> {
+    pub fn set_path(&self, path: String) -> Result<(), String> {
         self.validate_path(&path)?;
         let mut guard = self
             .path
             .try_lock()
-            .map_err(|_| anyhow!("Con not use path"))?;
+            .map_err(|_| "Can not use path".to_string())?;
         *guard = path.clone();
         Ok(())
     }
@@ -88,17 +87,17 @@ impl Data {
         }
     }
 
-    pub fn unlock(&self, passphrase: SecretString) -> anyhow::Result<()> {
+    pub fn unlock(&self, passphrase: SecretString) -> Result<(), String> {
         let mut guard = self
             .passphrase
             .lock()
-            .map_err(|_| anyhow!("Con not use passphrase"))?;
+            .map_err(|_| "Con not use passphrase".to_string())?;
         *guard = passphrase;
 
         let mut unlocked = self
             .unlocked
             .lock()
-            .map_err(|_| anyhow!("Con not remember passphrase"))?;
+            .map_err(|_| "Con not remember passphrase".to_string())?;
         *unlocked = true;
         Ok(())
     }
@@ -332,26 +331,26 @@ impl Data {
         Ok(format!("Password {} copied", path))
     }
 
-    fn validate_store(&self) -> anyhow::Result<()> {
+    fn validate_store(&self) -> Result<(), String> {
         if !self.is_unlocked() {
-            return Err(anyhow!("Store is locked"));
+            return Err("Store is locked".to_string());
         }
         if !exists_store_dir() {
-            return Err(anyhow!("Store directory does not exist"));
+            return Err("Store directory does not exist".to_string());
         }
         if !self.store.ok() {
-            return Err(anyhow!("Password store is not is not initialized"));
+            return Err("Password store is not is not initialized".to_string());
         }
         Ok(())
     }
 
-    fn validate_path(&self, name: &str) -> anyhow::Result<()> {
+    fn validate_path(&self, name: &str) -> Result<(), String> {
         self.validate_store()?;
         if name.is_empty() {
-            return Err(anyhow!("Name is empty"));
+            return Err("Name is empty".to_string());
         }
         if !self.store.exists(name) {
-            return Err(anyhow!("Entry does not exist"));
+            return Err("Entry does not exist".to_string());
         }
         Ok(())
     }

@@ -97,11 +97,11 @@ impl Data {
         ask_cb: G,
     ) -> anyhow::Result<()>
     where
-        F: FnMut() + 'static,
-        G: FnMut() + 'static,
+        F: Fn() + 'static,
+        G: Fn() + 'static,
     {
-        let cb_decrypt = Arc::new(Mutex::new(Some(Box::new(decrypt_cb) as Box<dyn FnMut()>)));
-        let cb_ask = Arc::new(Mutex::new(Some(Box::new(ask_cb) as Box<dyn FnMut()>)));
+        let cb_decrypt = Arc::new(Box::new(decrypt_cb) as Box<dyn Fn()>);
+        let cb_ask = Arc::new(Box::new(ask_cb) as Box<dyn Fn()>);
 
         list.set_selection_mode(gtk::SelectionMode::Single);
         let items = self.store.list()?;
@@ -123,13 +123,9 @@ impl Data {
                     row.set_subtitle("Could not set path");
                 }
                 if self_clone.is_unlocked() {
-                    if let Some(mut decrypt_call_back) = decrypt_cb.lock().unwrap().take() {
-                        decrypt_call_back();
-                    }
+                    decrypt_cb();
                 } else {
-                    if let Some(mut ask_call_back) = ask_cb.lock().unwrap().take() {
-                        ask_call_back();
-                    }
+                    ask_cb();
                 }
             });
 

@@ -1,18 +1,13 @@
-use adw::prelude::{ActionRowExt, EntryRowExt, PreferencesRowExt};
+use adw::prelude::{ActionRowExt, PreferencesRowExt};
 use adw::subclass::prelude::*;
-use anyhow::{anyhow, Context};
-use gettextrs::gettext;
+use anyhow::anyhow;
+use gtk::gio;
 use gtk::prelude::*;
-use gtk::{gio, glib};
-use passcore::{exists_store_dir, Entry, PassStore};
+use passcore::{exists_store_dir, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::extension::{GPairToPath, StringExt};
-use crate::pages::Pages;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {

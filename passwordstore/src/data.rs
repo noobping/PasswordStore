@@ -245,6 +245,71 @@ impl Data {
         passcore::Entry { password, extra }
     }
 
+    pub fn save_pass(&self, entry: &passcore::Entry) -> anyhow::Result<String, String> {
+        let path = self.get_path();
+        return match self.store.add(&path, &entry) {
+            Ok(_) => Ok(format!("Password {} saved", path)),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    pub fn move_pass(&self, new_path: &String) -> anyhow::Result<String, String> {
+        let old_path = self.get_path();
+        if !self.store.exists(&old_path) {
+            return Err("Password not found".to_string());
+        }
+        return match self.store.rename(&old_path, &new_path) {
+            Ok(_) => Ok(format!("Password {} moved to {}", old_path, new_path)),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    pub fn remove_pass(&self) -> anyhow::Result<String, String> {
+        let path = self.get_path();
+        return match self.store.remove(&path) {
+            Ok(_) => Ok(format!("Password {} removed", path)),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    pub fn copy_pass(&self) -> anyhow::Result<String, String> {
+        let path = self.get_path();
+        let entry = match self.store.get(&path, self.get_passphrase()) {
+            Ok(entry) => entry,
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                return Err(before_semicolon.to_owned());
+            }
+        };
+        match gtk::gdk::Display::default() {
+            Some(display) => {
+                let clipboard = display.clipboard();
+                clipboard.set_text(&entry.password.expose_secret());
+            }
+            None => {
+                return Err("Can not copy password".to_string());
+            }
+        }
+        Ok(format!("Password {} copied", path))
+    }
+
     fn validate_store(&self) -> anyhow::Result<()> {
         if !self.is_unlocked() {
             return Err(anyhow!("Store is locked"));

@@ -212,6 +212,39 @@ impl Data {
         Ok(())
     }
 
+    pub fn to_pass(
+        rows: &gtk::Box,
+        password: &TemplateChild<adw::PasswordEntryRow>,
+        view: &TemplateChild<gtk::TextView>,
+    ) -> passcore::Entry {
+        let password = password.text().to_string().to_secret();
+
+        let mut children = Vec::new();
+        let mut maybe_child = rows.first_child();
+        while let Some(child) = maybe_child {
+            children.push(child.clone());
+            maybe_child = child.next_sibling();
+        }
+
+        let mut extra = Vec::new();
+        for widget in children {
+            if let Ok(entry) = widget.downcast::<adw::EntryRow>() {
+                let field = entry.title().trim().to_owned();
+                let value = entry.text().trim().to_owned();
+                extra.push(format!("{}:{}", field, value).to_secret());
+            }
+        }
+        let buffer = view.buffer();
+        let mut lines = buffer
+            .text(&buffer.start_iter(), &buffer.end_iter(), false)
+            .lines()
+            .map(|s| s.to_string().to_secret())
+            .collect::<Vec<_>>();
+        extra.append(&mut lines);
+
+        passcore::Entry { password, extra }
+    }
+
     fn validate_store(&self) -> anyhow::Result<()> {
         if !self.is_unlocked() {
             return Err(anyhow!("Store is locked"));

@@ -44,7 +44,7 @@ impl Data {
         })
     }
 
-    pub fn from_git(url: String) -> anyhow::Result<Self, String> {
+    pub fn from_git(url: String) -> Result<Self, String> {
         if url.is_empty() {
             return Err("Git URL cannot be empty".to_string());
         }
@@ -267,7 +267,7 @@ impl Data {
         passcore::Entry { password, extra }
     }
 
-    pub fn save_pass(&self, entry: &passcore::Entry) -> anyhow::Result<String, String> {
+    pub fn save_pass(&self, entry: &passcore::Entry) -> Result<String, String> {
         let path = self.get_path();
         return match self.store.add(&path, &entry) {
             Ok(_) => Ok(format!("Password {} saved", path)),
@@ -280,7 +280,7 @@ impl Data {
         };
     }
 
-    pub fn move_pass(&self, new_path: &String) -> anyhow::Result<String, String> {
+    pub fn move_pass(&self, new_path: &String) -> Result<String, String> {
         let old_path = self.get_path();
         if !self.store.exists(&old_path) {
             return Err("Password not found".to_string());
@@ -296,7 +296,7 @@ impl Data {
         };
     }
 
-    pub fn remove_pass(&self) -> anyhow::Result<String, String> {
+    pub fn remove_pass(&self) -> Result<String, String> {
         let path = self.get_path();
         return match self.store.remove(&path) {
             Ok(_) => Ok(format!("Password {} removed", path)),
@@ -309,7 +309,7 @@ impl Data {
         };
     }
 
-    pub fn copy_pass(&self) -> anyhow::Result<String, String> {
+    pub fn copy_pass(&self) -> Result<String, String> {
         let path = self.get_path();
         let entry = match self.store.get(&path, self.get_passphrase()) {
             Ok(entry) => entry,

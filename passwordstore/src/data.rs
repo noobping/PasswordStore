@@ -331,6 +331,19 @@ impl Data {
         Ok(format!("Password {} copied", path))
     }
 
+    pub fn sync(&self) -> Result<(), String> {
+        lself.validate_store()?;
+        return match self.store.sync() {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
     fn validate_store(&self) -> Result<(), String> {
         if !self.is_unlocked() {
             return Err("Store is locked".to_string());

@@ -47,6 +47,16 @@ impl Data {
         })
     }
 
+    pub fn set_path(&self, path: String) -> anyhow::Result<()> {
+        self.validate_path(&path)?;
+        let mut guard = self
+            .path
+            .try_lock()
+            .map_err(|_| anyhow!("Con not use path"))?;
+        *guard = path.clone();
+        Ok(())
+    }
+
     pub fn is_unlocked(&self) -> bool {
         match self.unlocked.try_lock() {
             Ok(guard) => *guard,
@@ -160,7 +170,6 @@ impl Data {
         view: &TemplateChild<gtk::TextView>,
     ) -> anyhow::Result<()> {
         let path = self.get_path();
-        self.validate_name(&path)?;
         let entry = if method == Method::Pinantry {
             self.store.ask(&path)?
         } else {
@@ -216,7 +225,7 @@ impl Data {
         Ok(())
     }
 
-    fn validate_name(&self, name: &str) -> anyhow::Result<()> {
+    fn validate_path(&self, name: &str) -> anyhow::Result<()> {
         self.validate_store()?;
         if name.is_empty() {
             return Err(anyhow!("Name is empty"));

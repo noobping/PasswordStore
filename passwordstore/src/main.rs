@@ -24,6 +24,7 @@ mod config;
 mod data;
 mod extension;
 mod pages;
+mod run;
 mod window;
 
 use self::application::PasswordstoreApplication;

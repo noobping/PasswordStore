@@ -90,10 +90,6 @@ impl Data {
         }
     }
 
-    // pub fn ask_passphrase<F: FnOnce() + 'static>(&self, callback: F) {
-    //         let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
-    //         let cb_clone = callback_cell.clone();
-
     pub fn build_list<F, G>(
         self: Arc<Self>,
         list: &TemplateChild<gtk::ListBox>,

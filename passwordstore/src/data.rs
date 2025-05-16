@@ -9,7 +9,7 @@ use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::extension::StringExt;
+use crate::extension::{GPairToPath, StringExt};
 use crate::pages::Pages;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,13 +100,7 @@ impl Data {
                 .build();
 
             row.connect_activated(move |row| {
-                let title = row.title();
-                let subtitle = row.subtitle().unwrap_or_default();
-                let id_clone = if subtitle.is_empty() {
-                    title.to_string()
-                } else {
-                    format!("{}/{}", subtitle, title)
-                };
+                let path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
 
                 // TODO: ...
 

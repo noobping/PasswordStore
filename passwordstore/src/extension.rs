@@ -29,3 +29,33 @@ impl StringExt for String {
         SecretString::from(self.to_string())
     }
 }
+
+pub trait GPairToPath {
+    fn to_path(&self) -> String;
+}
+
+impl GPairToPath for (gtk::glib::GString, gtk::glib::GString) {
+    fn to_path(&self) -> String {
+        let (title, subtitle) = self;
+        if subtitle.is_empty() {
+            title.to_string()
+        } else {
+            format!("{}/{}", subtitle, title)
+        }
+    }
+}
+
+pub trait PairToPath {
+    fn to_path(&self) -> String;
+}
+
+impl PairToPath for (String, String) {
+    fn to_path(&self) -> String {
+        let (file, folder) = self;
+        if folder.is_empty() {
+            file.to_string()
+        } else {
+            format!("{}/{}", folder, file)
+        }
+    }
+}

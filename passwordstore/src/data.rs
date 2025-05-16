@@ -6,8 +6,10 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use passcore::{exists_store_dir, Entry, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::extension::{GPairToPath, StringExt};
 use crate::pages::Pages;
@@ -88,7 +90,23 @@ impl Data {
         }
     }
 
-    pub fn build_list(&self, list: &TemplateChild<gtk::ListBox>) -> anyhow::Result<()> {
+    // pub fn ask_passphrase<F: FnOnce() + 'static>(&self, callback: F) {
+    //         let callback_cell = std::rc::Rc::new(std::cell::RefCell::new(Some(callback)));
+    //         let cb_clone = callback_cell.clone();
+
+    pub fn build_list<F, G>(
+        self: Arc<Self>,
+        list: &TemplateChild<gtk::ListBox>,
+        decrypt_cb: F,
+        ask_cb: G,
+    ) -> anyhow::Result<()>
+    where
+        F: FnMut() + 'static,
+        G: FnMut() + 'static,
+    {
+        let cb_decrypt = Arc::new(Mutex::new(Some(Box::new(decrypt_cb) as Box<dyn FnMut()>)));
+        let cb_ask = Arc::new(Mutex::new(Some(Box::new(ask_cb) as Box<dyn FnMut()>)));
+
         list.set_selection_mode(gtk::SelectionMode::Single);
         let items = self.store.list()?;
         for (index, path) in items.iter().enumerate() {
@@ -99,29 +117,28 @@ impl Data {
                 .activatable(true)
                 .build();
 
+            let self_clone = Arc::clone(&self);
+            let decrypt_cb = Arc::clone(&cb_decrypt);
+            let ask_cb = Arc::clone(&cb_ask);
             row.connect_activated(move |row| {
-                let path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-
-                // TODO: ...
-
-                self_clone.set_path(id_clone.clone());
+                let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
+                if let Err(_) = self_clone.set_path(new_path) {
+                    row.set_title("Error");
+                    row.set_subtitle("Could not set path");
+                }
                 if self_clone.is_unlocked() {
-                    self_clone.decrypt_and_open()
+                    if let Some(mut decrypt_call_back) = decrypt_cb.lock().unwrap().take() {
+                        decrypt_call_back();
+                    }
                 } else {
-                    self_clone.new_path_entry.set_text(&id_clone);
-                    self_clone.new_path_entry.grab_focus();
-
-                    let self_clone2 = self_clone.clone();
-                    self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
-                        self_clone2.decrypt_and_open()
-                    });
+                    if let Some(mut ask_call_back) = ask_cb.lock().unwrap().take() {
+                        ask_call_back();
+                    }
                 }
             });
 
-            // build the menu model
-            let menu = gio::Menu::new();
+            let menu = gio::Menu::new(); // build the menu model
 
-            // COPY
             let copy_item = gio::MenuItem::new(Some("Copy password"), Some("win.copy-password"));
             copy_item.set_attribute_value("target", Some(&path.to_variant()));
             menu.append_item(&copy_item);
@@ -131,19 +148,15 @@ impl Data {
             edit_item.set_attribute_value("target", Some(&path.to_variant()));
             menu.append_item(&edit_item);
 
-            // RENAME
             let rename_item = gio::MenuItem::new(Some("Rename…"), Some("win.rename-password"));
             let target = (path.to_string(), index as u64);
             rename_item.set_attribute_value("target", Some(&target.to_variant()));
-            // rename_item.set_attribute_value("target", Some(&target.end()));
             menu.append_item(&rename_item);
 
-            // DELETE
             let delete_item = gio::MenuItem::new(Some("Delete"), Some("win.remove-password"));
             delete_item.set_attribute_value("target", Some(&path.to_variant()));
             menu.append_item(&delete_item);
 
-            // attach it to a “three-dots” button
             let menu_button = gtk::MenuButton::builder()
                 .icon_name("view-more-symbolic")
                 .menu_model(&menu)

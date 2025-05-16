@@ -8,10 +8,3 @@ where
 {
     thread::spawn(move || MainContext::default().invoke(move || update_ui(work())));
 }
-
-#[macro_export]
-macro_rules! run {
-    (|| $work:block, move |$res:ident| $update:block) => {
-        crate::run(|| $work, move |$res| $update)
-    };
-}

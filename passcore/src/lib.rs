@@ -25,5 +25,4 @@ pub mod store;
 
 pub use dir::exists_store_dir;
 pub use entry::Entry;
-pub use extension::StringExt;
 pub use store::PassStore;

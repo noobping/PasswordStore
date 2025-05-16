@@ -48,9 +48,8 @@ mod imp {
             let obj = self.obj();
             obj.setup_gactions();
             obj.set_accels_for_action("app.quit", &["<primary>q"]);
-            obj.set_accels_for_action("win.add-password", &["<primary>n"]);
-            obj.set_accels_for_action("win.git-page", &["<primary>g"]);
-            obj.set_accels_for_action("win.refresh", &["<primary>r"]);
+            obj.set_accels_for_action("win.new-password-path", &["<primary>n"]);
+            obj.set_accels_for_action("win.git-url", &["<primary>g"]);
             obj.set_accels_for_action("win.remove-selected-password", &["<primary>d"]);
             obj.set_accels_for_action("win.save-password", &["<primary>w"]);
             obj.set_accels_for_action("win.synchronize", &["<primary>s"]);

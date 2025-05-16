@@ -190,6 +190,9 @@ impl Data {
         password: &TemplateChild<adw::PasswordEntryRow>,
         view: &TemplateChild<gtk::TextView>,
     ) -> anyhow::Result<()> {
+        if !self.is_unlocked() {
+            return Err("Store is locked".to_string());
+        }
         let path = self.get_path();
         let entry = if method == Method::Pinantry {
             self.store.ask(&path)?
@@ -309,6 +312,9 @@ impl Data {
     }
 
     pub fn copy_pass(&self) -> Result<String, String> {
+        if !self.is_unlocked() {
+            return Err("Store is locked".to_string());
+        }
         let path = self.get_path();
         let entry = match self.store.get(&path, self.get_passphrase()) {
             Ok(entry) => entry,

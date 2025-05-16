@@ -78,13 +78,77 @@ impl Data {
         }
     }
 
-    pub fn build_list(&self) -> gtk::ListBox {
-        let list = gtk::ListBox::new();
+    pub fn build_list(&self, list: &TemplateChild<gtk::ListBox>) -> anyhow::Result<()> {
         list.set_selection_mode(gtk::SelectionMode::Single);
+        let items = self.store.list()?;
+        for (index, path) in items.iter().enumerate() {
+            let (folder, name) = path.clone().split_path();
+            let row = adw::ActionRow::builder()
+                .title(&name)
+                .subtitle(&folder.replace("/", " / "))
+                .activatable(true)
+                .build();
 
-        // TODO: Build list
+            row.connect_activated(move |row| {
+                let title = row.title();
+                let subtitle = row.subtitle().unwrap_or_default();
+                let id_clone = if subtitle.is_empty() {
+                    title.to_string()
+                } else {
+                    format!("{}/{}", subtitle, title)
+                };
 
-        list
+                // TODO: ...
+
+                self_clone.set_path(id_clone.clone());
+                if self_clone.is_unlocked() {
+                    self_clone.decrypt_and_open()
+                } else {
+                    self_clone.new_path_entry.set_text(&id_clone);
+                    self_clone.new_path_entry.grab_focus();
+
+                    let self_clone2 = self_clone.clone();
+                    self_clone.ask_passphrase(row.as_ref() as &gtk::Widget, move || {
+                        self_clone2.decrypt_and_open()
+                    });
+                }
+            });
+
+            // build the menu model
+            let menu = gio::Menu::new();
+
+            // COPY
+            let copy_item = gio::MenuItem::new(Some("Copy password"), Some("win.copy-password"));
+            copy_item.set_attribute_value("target", Some(&path.to_variant()));
+            menu.append_item(&copy_item);
+
+            // use pinantry to open (edit) the password
+            let edit_item = gio::MenuItem::new(Some("Edit password"), Some("win.decrypt-password"));
+            edit_item.set_attribute_value("target", Some(&path.to_variant()));
+            menu.append_item(&edit_item);
+
+            // RENAME
+            let rename_item = gio::MenuItem::new(Some("Rename…"), Some("win.rename-password"));
+            let target = (path.to_string(), index as u64);
+            rename_item.set_attribute_value("target", Some(&target.to_variant()));
+            // rename_item.set_attribute_value("target", Some(&target.end()));
+            menu.append_item(&rename_item);
+
+            // DELETE
+            let delete_item = gio::MenuItem::new(Some("Delete"), Some("win.remove-password"));
+            delete_item.set_attribute_value("target", Some(&path.to_variant()));
+            menu.append_item(&delete_item);
+
+            // attach it to a “three-dots” button
+            let menu_button = gtk::MenuButton::builder()
+                .icon_name("view-more-symbolic")
+                .menu_model(&menu)
+                .build();
+            row.add_suffix(&menu_button);
+
+            list.append(&row);
+        }
+        Ok(())
     }
 
     pub fn build_form(

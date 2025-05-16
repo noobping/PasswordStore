@@ -44,6 +44,33 @@ impl Data {
         })
     }
 
+    pub fn from_git(url: String) -> anyhow::Result<Self, String> {
+        if url.is_empty() {
+            return Err("Git URL cannot be empty".to_string());
+        }
+        let store = match PassStore::from_git(url) {
+            Ok(store) => store,
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                return Err(before_semicolon.to_owned());
+            }
+        };
+        if store.ok() {
+            let path = Mutex::new(String::new());
+            let passphrase = Mutex::new(SecretString::default());
+            let unlocked = Mutex::new(false);
+            return Ok(Self {
+                store,
+                path,
+                passphrase,
+                unlocked,
+            });
+        }
+        Err("Password store is not initialized".to_string())
+    }
+
     pub fn set_path(&self, path: String) -> anyhow::Result<()> {
         self.validate_path(&path)?;
         let mut guard = self

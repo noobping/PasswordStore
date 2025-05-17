@@ -149,14 +149,6 @@
                         </child>
 
                         <child>
-                          <object class="GtkProgressBar" id="progress_bar">
-                            <property name="visible">false</property>
-                            <property name="orientation">horizontal</property>
-                            <property name="valign">center</property>
-                          </object>
-                        </child>
-
-                        <child>
                           <object class="GtkScrolledWindow">
                             <property name="vscrollbar-policy">automatic</property>
                             <property name="hscrollbar-policy">never</property>

@@ -1,6 +1,5 @@
 use adw::prelude::{ActionRowExt, PreferencesRowExt};
 use adw::subclass::prelude::*;
-use anyhow::anyhow;
 use gtk::gio;
 use gtk::prelude::*;
 use passcore::{exists_store_dir, PassStore};
@@ -9,13 +8,12 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 
 use crate::extension::{GPairToPath, StringExt};
-use crate::method::Method;
 
 #[derive(Debug, Default)]
 pub struct SharedData {
-    pub path: String,
-    pub passphrase: SecretString,
-    pub unlocked: bool,
+    path: String,
+    passphrase: SecretString,
+    unlocked: bool,
 }
 
 impl SharedData {
@@ -83,10 +81,15 @@ impl AppData {
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&self, path: &str) -> bool {
-        match self.validate_path(&path) {
+    // ----------------- path blocking method -----------------
+
+    fn set_path_blocking(&self, path: &str) -> bool {
+        match self.validate_path_blocking(&path) {
             Ok(_) => {
-                let mut shared = self.shared.lock().unwrap();
+                let mut shared = match self.shared.lock() {
+                    Ok(shared) => shared,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 shared.path = path.to_string();
                 true
             }
@@ -94,36 +97,267 @@ impl AppData {
         }
     }
 
-    pub fn is_unlocked(&self) -> bool {
-        let shared = self.shared.lock().unwrap();
+    // ----------------- passphrase blocking methods -----------------
+
+    fn is_unlocked_blocking(&self) -> bool {
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         shared.unlocked
     }
 
-    pub fn unlock(&self, passphrase: SecretString) {
-        let mut shared = self.shared.lock().unwrap();
+    fn unlock_blocking(&self, passphrase: SecretString) {
+        let mut shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         shared.passphrase = passphrase;
         shared.unlocked = true;
     }
 
-    pub fn lock(&self) {
-        let mut shared = self.shared.lock().unwrap();
+    fn lock_blocking(&self) {
+        let mut shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         shared.unlocked = false;
         shared.passphrase.zeroize();
     }
 
-    pub fn build_list<F1, F2>(
+    // ----------------- Store blocking methods -----------------
+
+    fn list_paths_blocking(&self) -> Result<Vec<String>, String> {
+        match self.store.list() {
+            Ok(paths) => {
+                let mut result = Vec::new();
+                for path in paths.iter() {
+                    let path = path.to_string();
+                    if path.ends_with(".gpg") {
+                        result.push(path);
+                    }
+                }
+                Ok(result)
+            }
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        }
+    }
+
+    fn save_pass_blocking(&self, entry: &passcore::Entry) -> Result<String, String> {
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let path = shared.path.clone();
+        self.validate_path_blocking(&path)?;
+        return match self.store.add(&path, &entry) {
+            Ok(_) => Ok(format!("Password {} saved", path)),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    fn move_pass_blocking(&self, new_path: &String) -> Result<String, String> {
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let old_path = shared.path.clone();
+        self.validate_path_blocking(&old_path)?;
+        if !self.store.exists(&old_path) {
+            return Err("Password not found".to_string());
+        }
+        return match self.store.rename(&old_path, &new_path) {
+            Ok(_) => Ok(format!("Password {} moved to {}", old_path, new_path)),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    fn remove_pass_blocking(&self) -> Result<String, String> {
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let path = shared.path.clone();
+        self.validate_path_blocking(&path)?;
+        return match self.store.remove(&path) {
+            Ok(_) => Ok(format!("Password {} removed", path)),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    fn get_pass_entry_blocking(&self) -> Result<passcore::Entry, String> {
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if !self.is_unlocked_blocking() {
+            return Err("Store is locked".to_string());
+        }
+        let path = shared.path.clone();
+        self.validate_path_blocking(&path)?;
+        return match self.store.get(path.as_str(), shared.passphrase.clone()) {
+            Ok(entry) => Ok(entry),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    fn ask_pass_entry_blocking(&self) -> Result<passcore::Entry, String> {
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if !self.is_unlocked_blocking() {
+            return Err("Store is locked".to_string());
+        }
+        let path = shared.path.clone();
+        self.validate_path_blocking(&path)?;
+        return match self.store.ask(path.as_str()) {
+            Ok(entry) => Ok(entry),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    fn copy_pass_blocking(&self) -> Result<String, String> {
+        if !self.is_unlocked_blocking() {
+            return Err("Store is locked".to_string());
+        }
+        let shared = match self.shared.lock() {
+            Ok(shared) => shared,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let path = shared.path.clone();
+        self.validate_path_blocking(&path)?;
+        let entry = match self.store.get(&path, shared.passphrase.clone()) {
+            Ok(entry) => entry,
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                return Err(before_semicolon.to_owned());
+            }
+        };
+        match gtk::gdk::Display::default() {
+            Some(display) => {
+                let clipboard = display.clipboard();
+                clipboard.set_text(&entry.password.expose_secret());
+            }
+            None => {
+                return Err("Can not copy password".to_string());
+            }
+        }
+        Ok(format!("Password {} copied", path))
+    }
+
+    fn sync_store_blocking(&self) -> Result<(), String> {
+        self.validate_store_blocking()?;
+        return match self.store.sync() {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let message = e.to_string();
+                let idx = message.find(';').unwrap_or(message.len());
+                let before_semicolon = &message[..idx];
+                Err(before_semicolon.to_owned())
+            }
+        };
+    }
+
+    fn validate_store_blocking(&self) -> Result<(), String> {
+        if !exists_store_dir() {
+            return Err("Store directory does not exist".to_string());
+        }
+        if !self.store.ok() {
+            return Err("Password store is not is not initialized".to_string());
+        }
+        Ok(())
+    }
+
+    fn validate_path_blocking(&self, name: &str) -> Result<(), String> {
+        self.validate_store_blocking()?;
+        if name.is_empty() {
+            return Err("Name is empty".to_string());
+        }
+        if !self.store.exists(name) {
+            return Err("Entry does not exist".to_string());
+        }
+        Ok(())
+    }
+
+    // ----------------- UI Helpers -----------------
+
+    pub fn ui_to_pass_entry(
+        rows: &gtk::Box,
+        password: &TemplateChild<adw::PasswordEntryRow>,
+        view: &TemplateChild<gtk::TextView>,
+    ) -> passcore::Entry {
+        let password = password.text().to_string().to_secret();
+
+        let mut children = Vec::new();
+        let mut maybe_child = rows.first_child();
+        while let Some(child) = maybe_child {
+            children.push(child.clone());
+            maybe_child = child.next_sibling();
+        }
+
+        let mut extra = Vec::new();
+        for widget in children {
+            if let Ok(entry) = widget.downcast::<adw::EntryRow>() {
+                let field = entry.title().trim().to_owned();
+                let value = entry.text().trim().to_owned();
+                extra.push(format!("{}:{}", field, value).to_secret());
+            }
+        }
+        let buffer = view.buffer();
+        let mut lines = buffer
+            .text(&buffer.start_iter(), &buffer.end_iter(), false)
+            .lines()
+            .map(|s| s.to_string().to_secret())
+            .collect::<Vec<_>>();
+        extra.append(&mut lines);
+
+        passcore::Entry { password, extra }
+    }
+
+    pub fn populate_list<F1, F2>(
         &self,
         list: &gtk::ListBox,
+        items: Vec<String>,
         row_decrypt_callback: F1,
         row_unlock_callback: F2,
-    ) -> anyhow::Result<()>
-    where
+    ) where
         F1: Fn(String) + 'static,
         F2: Fn(String) + 'static,
     {
         list.set_selection_mode(gtk::SelectionMode::Single);
-        let items = self.store.list()?;
-
         let row_decrypt_callback = Arc::new(row_decrypt_callback);
         let row_unlock_callback = Arc::new(row_unlock_callback);
         for (index, path) in items.iter().enumerate() {
@@ -136,12 +370,11 @@ impl AppData {
 
             let row_decrypt_callback = Arc::clone(&row_decrypt_callback);
             let row_unlock_callback = Arc::clone(&row_unlock_callback);
-
             row.connect_activated(move |row| {
                 AppData::instance(|data| {
                     let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-                    if data.set_path(&new_path) {
-                        if data.is_unlocked() {
+                    if data.set_path_blocking(&new_path) {
+                        if data.is_unlocked_blocking() {
                             (row_decrypt_callback)(new_path);
                         } else {
                             (row_unlock_callback)(new_path);
@@ -150,55 +383,37 @@ impl AppData {
                 });
             });
 
-            let menu = gio::Menu::new(); // build the menu model
-
+            let menu = gio::Menu::new();
             let copy_item = gio::MenuItem::new(Some("Copy password"), Some("win.copy-password"));
             copy_item.set_attribute_value("target", Some(&path.to_variant()));
             menu.append_item(&copy_item);
-
-            // use pinantry to open (edit) the password
             let edit_item = gio::MenuItem::new(Some("Edit password"), Some("win.decrypt-password"));
             edit_item.set_attribute_value("target", Some(&path.to_variant()));
             menu.append_item(&edit_item);
-
             let rename_item = gio::MenuItem::new(Some("Rename…"), Some("win.rename-password"));
             let target = (path.to_string(), index as u64);
             rename_item.set_attribute_value("target", Some(&target.to_variant()));
             menu.append_item(&rename_item);
-
             let delete_item = gio::MenuItem::new(Some("Delete"), Some("win.remove-password"));
             delete_item.set_attribute_value("target", Some(&path.to_variant()));
             menu.append_item(&delete_item);
-
             let menu_button = gtk::MenuButton::builder()
                 .icon_name("view-more-symbolic")
                 .menu_model(&menu)
                 .build();
             row.add_suffix(&menu_button);
-
             list.append(&row);
         }
-        Ok(())
     }
 
-    pub fn build_form(
+    pub fn populate_form(
         &self,
-        method: Method,
+        entry: passcore::Entry,
         button: &gtk::Button,
         rows: &gtk::Box,
         password: &adw::PasswordEntryRow,
         view: &gtk::TextView,
-    ) -> anyhow::Result<()> {
-        if !self.is_unlocked() {
-            return Err(anyhow!("Store is locked"));
-        }
-        let shared = self.shared.lock().unwrap();
-        let entry = if method == Method::Pinantry {
-            self.store.ask(shared.path.as_str())?
-        } else {
-            self.store
-                .get(shared.path.as_str(), shared.passphrase.clone())?
-        };
+    ) -> Result<(), String> {
         let mut text = String::new();
         for line in entry.extra.iter() {
             let exposed = line.expose_secret();
@@ -233,148 +448,6 @@ impl AppData {
         });
         view.set_buffer(Some(&buffer));
         password.set_text(entry.password.expose_secret());
-        Ok(())
-    }
-
-    pub fn to_pass(
-        rows: &gtk::Box,
-        password: &TemplateChild<adw::PasswordEntryRow>,
-        view: &TemplateChild<gtk::TextView>,
-    ) -> passcore::Entry {
-        let password = password.text().to_string().to_secret();
-
-        let mut children = Vec::new();
-        let mut maybe_child = rows.first_child();
-        while let Some(child) = maybe_child {
-            children.push(child.clone());
-            maybe_child = child.next_sibling();
-        }
-
-        let mut extra = Vec::new();
-        for widget in children {
-            if let Ok(entry) = widget.downcast::<adw::EntryRow>() {
-                let field = entry.title().trim().to_owned();
-                let value = entry.text().trim().to_owned();
-                extra.push(format!("{}:{}", field, value).to_secret());
-            }
-        }
-        let buffer = view.buffer();
-        let mut lines = buffer
-            .text(&buffer.start_iter(), &buffer.end_iter(), false)
-            .lines()
-            .map(|s| s.to_string().to_secret())
-            .collect::<Vec<_>>();
-        extra.append(&mut lines);
-
-        passcore::Entry { password, extra }
-    }
-
-    pub fn save_pass(&self, entry: &passcore::Entry) -> Result<String, String> {
-        let shared = self.shared.lock().unwrap();
-        let path = shared.path.clone();
-        return match self.store.add(&path, &entry) {
-            Ok(_) => Ok(format!("Password {} saved", path)),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
-    }
-
-    pub fn move_pass(&self, new_path: &String) -> Result<String, String> {
-        let shared = self.shared.lock().unwrap();
-        let old_path = shared.path.clone();
-        if !self.store.exists(&old_path) {
-            return Err("Password not found".to_string());
-        }
-        return match self.store.rename(&old_path, &new_path) {
-            Ok(_) => Ok(format!("Password {} moved to {}", old_path, new_path)),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
-    }
-
-    pub fn remove_pass(&self) -> Result<String, String> {
-        let shared = self.shared.lock().unwrap();
-        let path = shared.path.clone();
-        return match self.store.remove(&path) {
-            Ok(_) => Ok(format!("Password {} removed", path)),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
-    }
-
-    pub fn copy_pass(&self) -> Result<String, String> {
-        if !self.is_unlocked() {
-            return Err("Store is locked".to_string());
-        }
-        let shared = self.shared.lock().unwrap();
-        let path = shared.path.clone();
-        let entry = match self.store.get(&path, shared.passphrase.clone()) {
-            Ok(entry) => entry,
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                return Err(before_semicolon.to_owned());
-            }
-        };
-        match gtk::gdk::Display::default() {
-            Some(display) => {
-                let clipboard = display.clipboard();
-                clipboard.set_text(&entry.password.expose_secret());
-            }
-            None => {
-                return Err("Can not copy password".to_string());
-            }
-        }
-        Ok(format!("Password {} copied", path))
-    }
-
-    pub fn sync(&self) -> Result<(), String> {
-        self.validate_store()?;
-        return match self.store.sync() {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
-    }
-
-    fn validate_store(&self) -> Result<(), String> {
-        if !self.is_unlocked() {
-            return Err("Store is locked".to_string());
-        }
-        if !exists_store_dir() {
-            return Err("Store directory does not exist".to_string());
-        }
-        if !self.store.ok() {
-            return Err("Password store is not is not initialized".to_string());
-        }
-        Ok(())
-    }
-
-    fn validate_path(&self, name: &str) -> Result<(), String> {
-        self.validate_store()?;
-        if name.is_empty() {
-            return Err("Name is empty".to_string());
-        }
-        if !self.store.exists(name) {
-            return Err("Entry does not exist".to_string());
-        }
         Ok(())
     }
 }

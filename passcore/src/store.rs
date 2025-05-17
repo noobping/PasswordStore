@@ -1,23 +1,3 @@
-/* store.rs
- *
- * Copyright 2025 noobping
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
- * SPDX-License-Identifier: GPL-3.0
- */
-
 use crate::dir::discover_store_dir;
 use crate::entry::Entry;
 use crate::extension::SecretStringExt;
@@ -218,6 +198,7 @@ impl PassStore {
 
         // 3. Decrypt
         let passphrase_owned = passphrase.to_owned();
+        println!("Decrypting with {} passphrase: {}", &id, passphrase_owned.expose_secret());
         let mut secret = secrecy::SecretBox::<Vec<u8>>::new(Box::new(Vec::new()));
 
         gpg.with_passphrase_provider(

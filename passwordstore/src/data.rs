@@ -1,7 +1,7 @@
 use adw::prelude::{ActionRowExt, PreferencesRowExt};
 use adw::subclass::prelude::*;
-use gtk::gio;
 use gtk::prelude::*;
+use gtk::{gio, glib::MainContext};
 use passcore::{exists_store_dir, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
 use std::cell::RefCell;
@@ -61,190 +61,216 @@ impl AppData {
         })
     }
 
+    // ---------------- Async API ----------------
+
+    pub async fn list_paths_async() -> Result<Vec<String>, String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.list_paths_blocking()) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn save_pass_async(entry: passcore::Entry) -> Result<String, String> {
+        MainContext::default()
+            .spawn_local(async move { AppData::instance(|data| data.save_pass_blocking(&entry)) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn remove_pass_async() -> Result<String, String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.remove_pass_blocking()) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn get_pass_entry_async() -> Result<passcore::Entry, String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.get_pass_entry_blocking()) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn ask_pass_entry_async() -> Result<passcore::Entry, String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.ask_pass_entry_blocking()) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn copy_pass_async() -> Result<String, String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.copy_pass_blocking()) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn sync_store_async() -> Result<(), String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.sync_store_blocking()) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    // ----------------- Core Methods (Blocking) -----------------
+
     pub fn from_git(url: String) -> Result<Self, String> {
         if url.is_empty() {
             return Err("Git URL cannot be empty".to_string());
         }
-        let store = match PassStore::from_git(url) {
-            Ok(store) => store,
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                return Err(before_semicolon.to_owned());
-            }
-        };
+        let store = PassStore::from_git(url.clone()).map_err(|e| {
+            e.to_string()
+                .split_once(';')
+                .map(|(s, _)| s)
+                .unwrap_or(&e.to_string())
+                .to_string()
+        })?;
         if store.ok() {
             let shared = Arc::new(Mutex::new(SharedData::new()));
-            return Ok(Self { store, shared });
-        }
-        Err("Password store is not initialized".to_string())
-    }
-
-    // ----------------- path blocking method -----------------
-
-    fn set_path_blocking(&self, path: &str) -> bool {
-        match self.validate_path_blocking(&path) {
-            Ok(_) => {
-                let mut shared = match self.shared.lock() {
-                    Ok(shared) => shared,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                shared.path = path.to_string();
-                true
-            }
-            Err(_) => false,
+            Ok(Self { store, shared })
+        } else {
+            Err("Password store is not initialized".to_string())
         }
     }
 
-    // ----------------- passphrase blocking methods -----------------
+    pub fn set_path_blocking(&self, path: &str) -> bool {
+        if self.validate_path_blocking(path).is_err() {
+            return false;
+        }
+        let mut shared = match self.shared.lock() {
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
+        };
+        shared.path = path.to_string();
+        true
+    }
 
-    fn is_unlocked_blocking(&self) -> bool {
+    pub fn is_unlocked_blocking(&self) -> bool {
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
         shared.unlocked
     }
 
-    fn unlock_blocking(&self, passphrase: SecretString) {
+    pub fn unlock_blocking(&self, passphrase: SecretString) {
         let mut shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
         shared.passphrase = passphrase;
         shared.unlocked = true;
     }
 
-    fn lock_blocking(&self) {
+    pub fn lock_blocking(&self) {
         let mut shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
         shared.unlocked = false;
         shared.passphrase.zeroize();
     }
 
-    // ----------------- Store blocking methods -----------------
-
     fn list_paths_blocking(&self) -> Result<Vec<String>, String> {
-        match self.store.list() {
-            Ok(paths) => {
-                let mut result = Vec::new();
-                for path in paths.iter() {
-                    let path = path.to_string();
-                    if path.ends_with(".gpg") {
-                        result.push(path);
-                    }
-                }
-                Ok(result)
-            }
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        }
+        self.store
+            .list()
+            .map(|paths| paths.into_iter().filter(|p| p.ends_with(".gpg")).collect())
+            .map_err(|e| {
+                e.to_string()
+                    .split_once(';')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&e.to_string())
+                    .to_string()
+            })
     }
 
     fn save_pass_blocking(&self, entry: &passcore::Entry) -> Result<String, String> {
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
         let path = shared.path.clone();
         self.validate_path_blocking(&path)?;
-        return match self.store.add(&path, &entry) {
-            Ok(_) => Ok(format!("Password {} saved", path)),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
+        self.store
+            .add(&path, entry)
+            .map(|_| format!("Password {} saved", path))
+            .map_err(|e| {
+                e.to_string()
+                    .split_once(';')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&e.to_string())
+                    .to_string()
+            })
     }
 
     fn move_pass_blocking(&self, new_path: &String) -> Result<String, String> {
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
-        let old_path = shared.path.clone();
-        self.validate_path_blocking(&old_path)?;
-        if !self.store.exists(&old_path) {
-            return Err("Password not found".to_string());
-        }
-        return match self.store.rename(&old_path, &new_path) {
-            Ok(_) => Ok(format!("Password {} moved to {}", old_path, new_path)),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
+        let path = shared.path.clone();
+        self.validate_path_blocking(&path)?;
+        self.store
+            .rename(&path, new_path)
+            .map(|_| format!("Password {} moved to {}", path, new_path))
+            .map_err(|e| {
+                e.to_string()
+                    .split_once(';')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&e.to_string())
+                    .to_string()
+            })
     }
 
     fn remove_pass_blocking(&self) -> Result<String, String> {
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
         let path = shared.path.clone();
         self.validate_path_blocking(&path)?;
-        return match self.store.remove(&path) {
-            Ok(_) => Ok(format!("Password {} removed", path)),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
+        self.store
+            .remove(&path)
+            .map(|_| format!("Password {} removed", path))
+            .map_err(|e| {
+                e.to_string()
+                    .split_once(';')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&e.to_string())
+                    .to_string()
+            })
     }
 
     fn get_pass_entry_blocking(&self) -> Result<passcore::Entry, String> {
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
-        if !self.is_unlocked_blocking() {
-            return Err("Store is locked".to_string());
-        }
-        let path = shared.path.clone();
-        self.validate_path_blocking(&path)?;
-        return match self.store.get(path.as_str(), shared.passphrase.clone()) {
-            Ok(entry) => Ok(entry),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
+        self.validate_path_blocking(&shared.path)?;
+        self.store
+            .get(&shared.path, shared.passphrase.clone())
+            .map_err(|e| {
+                e.to_string()
+                    .split_once(';')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&e.to_string())
+                    .to_string()
+            })
     }
 
     fn ask_pass_entry_blocking(&self) -> Result<passcore::Entry, String> {
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
-        if !self.is_unlocked_blocking() {
-            return Err("Store is locked".to_string());
-        }
-        let path = shared.path.clone();
-        self.validate_path_blocking(&path)?;
-        return match self.store.ask(path.as_str()) {
-            Ok(entry) => Ok(entry),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
+        self.validate_path_blocking(&shared.path)?;
+        self.store.ask(&shared.path).map_err(|e| {
+            e.to_string()
+                .split_once(';')
+                .map(|(s, _)| s)
+                .unwrap_or(&e.to_string())
+                .to_string()
+        })
     }
 
     fn copy_pass_blocking(&self) -> Result<String, String> {
@@ -252,51 +278,43 @@ impl AppData {
             return Err("Store is locked".to_string());
         }
         let shared = match self.shared.lock() {
-            Ok(shared) => shared,
-            Err(poisoned) => poisoned.into_inner(),
+            Ok(guard) => guard,
+            Err(p) => p.into_inner(),
         };
-        let path = shared.path.clone();
-        self.validate_path_blocking(&path)?;
-        let entry = match self.store.get(&path, shared.passphrase.clone()) {
-            Ok(entry) => entry,
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                return Err(before_semicolon.to_owned());
-            }
-        };
-        match gtk::gdk::Display::default() {
-            Some(display) => {
-                let clipboard = display.clipboard();
-                clipboard.set_text(&entry.password.expose_secret());
-            }
-            None => {
-                return Err("Can not copy password".to_string());
-            }
-        }
-        Ok(format!("Password {} copied", path))
+        let entry = self
+            .store
+            .get(&shared.path, shared.passphrase.clone())
+            .map_err(|e| {
+                e.to_string()
+                    .split_once(';')
+                    .map(|(s, _)| s)
+                    .unwrap_or(&e.to_string())
+                    .to_string()
+            })?;
+        gtk::gdk::Display::default()
+            .ok_or_else(|| "Cannot access clipboard".to_string())?
+            .clipboard()
+            .set_text(&entry.password.expose_secret());
+        Ok(format!("Password {} copied", shared.path))
     }
 
     fn sync_store_blocking(&self) -> Result<(), String> {
         self.validate_store_blocking()?;
-        return match self.store.sync() {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                let message = e.to_string();
-                let idx = message.find(';').unwrap_or(message.len());
-                let before_semicolon = &message[..idx];
-                Err(before_semicolon.to_owned())
-            }
-        };
+        self.store.sync().map_err(|e| {
+            e.to_string()
+                .split_once(';')
+                .map(|(s, _)| s)
+                .unwrap_or(&e.to_string())
+                .to_string()
+        })
     }
 
     fn validate_store_blocking(&self) -> Result<(), String> {
         if !exists_store_dir() {
-            return Err("Store directory does not exist".to_string());
+            return Err("Store directory missing".to_string());
         }
         if !self.store.ok() {
-            return Err("Password store is not is not initialized".to_string());
+            return Err("Password store not initialized".to_string());
         }
         Ok(())
     }
@@ -347,42 +365,41 @@ impl AppData {
         passcore::Entry { password, extra }
     }
 
-    pub fn populate_list<F1, F2>(
+    pub fn populate_list(
         &self,
         list: &gtk::ListBox,
         items: Vec<String>,
-        row_decrypt_callback: F1,
-        row_unlock_callback: F2,
-    ) where
-        F1: Fn(String) + 'static,
-        F2: Fn(String) + 'static,
-    {
+        row_decrypt_callback: impl Fn(String) + 'static,
+        row_unlock_callback: impl Fn(String) + 'static,
+    ) {
         list.set_selection_mode(gtk::SelectionMode::Single);
-        let row_decrypt_callback = Arc::new(row_decrypt_callback);
-        let row_unlock_callback = Arc::new(row_unlock_callback);
-        for (index, path) in items.iter().enumerate() {
-            let (folder, name) = path.clone().split_path();
+        let decrypt = Arc::new(row_decrypt_callback);
+        let unlock = Arc::new(row_unlock_callback);
+        for (index, path) in items.into_iter().enumerate() {
+            let path = path.clone();
+            let (folder, name) = path.split_path();
             let row = adw::ActionRow::builder()
                 .title(&name)
                 .subtitle(&folder.replace("/", " / "))
                 .activatable(true)
                 .build();
-
-            let row_decrypt_callback = Arc::clone(&row_decrypt_callback);
-            let row_unlock_callback = Arc::clone(&row_unlock_callback);
-            row.connect_activated(move |row| {
-                AppData::instance(|data| {
-                    let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-                    if data.set_path_blocking(&new_path) {
-                        if data.is_unlocked_blocking() {
-                            (row_decrypt_callback)(new_path);
-                        } else {
-                            (row_unlock_callback)(new_path);
+            let d_cb = decrypt.clone();
+            let u_cb = unlock.clone();
+            row.connect_activated({
+                let path = path.clone();
+                move |_| {
+                    AppData::instance(|data| {
+                        if data.set_path_blocking(&path) {
+                            if data.is_unlocked_blocking() {
+                                d_cb(path.clone());
+                            } else {
+                                u_cb(path.clone());
+                            }
                         }
-                    }
-                });
+                    });
+                }
             });
-
+            // context menu
             let menu = gio::Menu::new();
             let copy_item = gio::MenuItem::new(Some("Copy password"), Some("win.copy-password"));
             copy_item.set_attribute_value("target", Some(&path.to_variant()));

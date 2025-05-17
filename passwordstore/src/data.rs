@@ -87,7 +87,7 @@ impl AppData {
         match self.validate_path(&path) {
             Ok(_) => {
                 let mut shared = self.shared.lock().unwrap();
-                shared.path = path;
+                shared.path = path.to_string();
                 true
             }
             Err(_) => false,

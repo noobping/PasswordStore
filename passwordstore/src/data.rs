@@ -83,7 +83,7 @@ impl AppData {
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&self, path: &String) -> bool {
+    pub fn set_path(&self, path: &str) -> bool {
         match self.validate_path(&path) {
             Ok(_) => {
                 let mut shared = self.shared.lock().unwrap();

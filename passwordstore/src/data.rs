@@ -5,8 +5,8 @@ use gtk::gio;
 use gtk::prelude::*;
 use passcore::{exists_store_dir, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
-use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use crate::extension::{GPairToPath, StringExt};
 use crate::method::Method;
@@ -134,18 +134,19 @@ impl Data {
             let ask_callback = Arc::clone(&ask_callback);
 
             row.connect_activated(move |row| {
-                let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-                let data = Data::instance(); // use the instance method
-                if let Err(_) = self_clone.set_path(new_path) {
-                    row.set_title("Error");
-                    row.set_subtitle("Could not set path");
-                } else {
-                    if self_clone.is_unlocked() {
-                        (decrypt_callback)();
+                Data::instance(|data| {
+                    let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
+                    if let Err(_) = data.set_path(new_path) {
+                        row.set_title("Error");
+                        row.set_subtitle("Could not set path");
                     } else {
-                        (ask_callback)();
+                        if data.is_unlocked() {
+                            (decrypt_callback)();
+                        } else {
+                            (ask_callback)();
+                        }
                     }
-                }
+                });
             });
 
             let menu = gio::Menu::new(); // build the menu model
@@ -194,7 +195,8 @@ impl Data {
         let entry = if method == Method::Pinantry {
             self.store.ask(shared.path.as_str())?
         } else {
-            self.store.get(shared.path.as_str(), shared.passphrase.clone())?
+            self.store
+                .get(shared.path.as_str(), shared.passphrase.clone())?
         };
         let mut text = String::new();
         for line in entry.extra.iter() {

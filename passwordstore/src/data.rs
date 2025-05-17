@@ -1,12 +1,19 @@
 use adw::prelude::{ActionRowExt, PreferencesRowExt};
 use adw::subclass::prelude::*;
+use anyhow::anyhow;
 use gtk::gio;
 use gtk::prelude::*;
+use once_cell::sync::Lazy;
 use passcore::{exists_store_dir, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
 use std::sync::{Arc, Mutex};
 
 use crate::extension::{GPairToPath, StringExt};
+
+static GLOBAL_DATA: Lazy<Mutex<Data>> = Lazy::new(|| {
+    let d = Data::default();
+    Mutex::new(d)
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
@@ -20,20 +27,20 @@ impl Default for Method {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Data {
     store: PassStore,
-    path: Mutex<String>,
-    passphrase: Mutex<SecretString>,
-    unlocked: Mutex<bool>,
+    path: String,
+    passphrase: SecretString,
+    unlocked: bool,
 }
 
 impl Data {
     pub fn new() -> anyhow::Result<Self> {
         let store = PassStore::new()?;
-        let path = Mutex::new(String::new());
-        let passphrase = Mutex::new(SecretString::default());
-        let unlocked = Mutex::new(false);
+        let path = String::new();
+        let passphrase = SecretString::default();
+        let unlocked = false;
 
         Ok(Self {
             store,
@@ -41,6 +48,13 @@ impl Data {
             passphrase,
             unlocked,
         })
+    }
+
+    pub fn instance() -> Result<std::sync::MutexGuard<'static, Data>, String> {
+        match GLOBAL_DATA.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(_) => Err("Application is busy".to_string()),
+        }
     }
 
     pub fn from_git(url: String) -> Result<Self, String> {
@@ -57,9 +71,9 @@ impl Data {
             }
         };
         if store.ok() {
-            let path = Mutex::new(String::new());
-            let passphrase = Mutex::new(SecretString::default());
-            let unlocked = Mutex::new(false);
+            let path = String::new();
+            let passphrase = SecretString::default();
+            let unlocked = false;
             return Ok(Self {
                 store,
                 path,
@@ -70,62 +84,41 @@ impl Data {
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&self, path: String) -> Result<(), String> {
+    pub fn set_path(&mut self, path: String) -> Result<(), String> {
         self.validate_path(&path)?;
-        let mut guard = self
-            .path
-            .try_lock()
-            .map_err(|_| "Can not use path".to_string())?;
-        *guard = path.clone();
+        self.path = path;
         Ok(())
     }
 
     pub fn is_unlocked(&self) -> bool {
-        match self.unlocked.try_lock() {
-            Ok(guard) => *guard,
-            Err(_) => false,
-        }
+        self.unlocked
     }
 
-    pub fn unlock(&self, passphrase: SecretString) -> Result<(), String> {
-        let mut guard = self
-            .passphrase
-            .lock()
-            .map_err(|_| "Con not use passphrase".to_string())?;
-        *guard = passphrase;
-
-        let mut unlocked = self
-            .unlocked
-            .lock()
-            .map_err(|_| "Con not remember passphrase".to_string())?;
-        *unlocked = true;
-        Ok(())
+    pub fn unlock(&mut self, passphrase: SecretString) {
+        self.passphrase = passphrase;
+        self.unlocked = true;
     }
 
-    pub fn lock(&self) {
-        if let Ok(mut unlocked) = self.unlocked.lock() {
-            *unlocked = false;
-            if let Ok(mut guard) = self.passphrase.lock() {
-                guard.zeroize();
-            }
-        }
+    pub fn lock(&mut self) {
+        self.unlocked = false;
+        self.passphrase.zeroize();
     }
 
-    pub fn build_list<F, G>(
-        self: Arc<Self>,
-        list: &TemplateChild<gtk::ListBox>,
-        decrypt_cb: F,
-        ask_cb: G,
+    pub fn build_list<F1, F2>(
+        &self,
+        list: gtk::ListBox,
+        decrypt_callback: F1,
+        ask_callback: F2,
     ) -> anyhow::Result<()>
     where
-        F: Fn() + 'static,
-        G: Fn() + 'static,
+        F1: Fn() + 'static,
+        F2: Fn() + 'static,
     {
-        let cb_decrypt = Arc::new(Box::new(decrypt_cb) as Box<dyn Fn()>);
-        let cb_ask = Arc::new(Box::new(ask_cb) as Box<dyn Fn()>);
-
         list.set_selection_mode(gtk::SelectionMode::Single);
         let items = self.store.list()?;
+
+        let decrypt_callback = Arc::new(decrypt_callback);
+        let ask_callback = Arc::new(ask_callback);
         for (index, path) in items.iter().enumerate() {
             let (folder, name) = path.clone().split_path();
             let row = adw::ActionRow::builder()
@@ -134,19 +127,21 @@ impl Data {
                 .activatable(true)
                 .build();
 
-            let self_clone = Arc::clone(&self);
-            let decrypt_cb = Arc::clone(&cb_decrypt);
-            let ask_cb = Arc::clone(&cb_ask);
+            let self_clone = self.clone();
+            let decrypt_callback = Arc::clone(&decrypt_callback);
+            let ask_callback = Arc::clone(&ask_callback);
+
             row.connect_activated(move |row| {
                 let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
+                let mut self_clone = self_clone.clone();
                 if let Err(_) = self_clone.set_path(new_path) {
                     row.set_title("Error");
                     row.set_subtitle("Could not set path");
                 } else {
                     if self_clone.is_unlocked() {
-                        decrypt_cb();
+                        (decrypt_callback)();
                     } else {
-                        ask_cb();
+                        (ask_callback)();
                     }
                 }
             });
@@ -191,13 +186,12 @@ impl Data {
         view: &TemplateChild<gtk::TextView>,
     ) -> anyhow::Result<()> {
         if !self.is_unlocked() {
-            return Err("Store is locked".to_string());
+            return Err(anyhow!("Store is locked"));
         }
-        let path = self.get_path();
         let entry = if method == Method::Pinantry {
-            self.store.ask(&path)?
+            self.store.ask(self.path.as_str())?
         } else {
-            self.store.get(&path, self.get_passphrase())?
+            self.store.get(self.path.as_str(), self.passphrase.clone())?
         };
         let mut text = String::new();
         for line in entry.extra.iter() {
@@ -270,7 +264,7 @@ impl Data {
     }
 
     pub fn save_pass(&self, entry: &passcore::Entry) -> Result<String, String> {
-        let path = self.get_path();
+        let path = self.path.clone();
         return match self.store.add(&path, &entry) {
             Ok(_) => Ok(format!("Password {} saved", path)),
             Err(e) => {
@@ -283,7 +277,7 @@ impl Data {
     }
 
     pub fn move_pass(&self, new_path: &String) -> Result<String, String> {
-        let old_path = self.get_path();
+        let old_path = self.path.clone();
         if !self.store.exists(&old_path) {
             return Err("Password not found".to_string());
         }
@@ -299,7 +293,7 @@ impl Data {
     }
 
     pub fn remove_pass(&self) -> Result<String, String> {
-        let path = self.get_path();
+        let path = self.path.clone();
         return match self.store.remove(&path) {
             Ok(_) => Ok(format!("Password {} removed", path)),
             Err(e) => {
@@ -315,8 +309,8 @@ impl Data {
         if !self.is_unlocked() {
             return Err("Store is locked".to_string());
         }
-        let path = self.get_path();
-        let entry = match self.store.get(&path, self.get_passphrase()) {
+        let path = self.path.clone();
+        let entry = match self.store.get(&path, self.passphrase.clone()) {
             Ok(entry) => entry,
             Err(e) => {
                 let message = e.to_string();
@@ -338,7 +332,7 @@ impl Data {
     }
 
     pub fn sync(&self) -> Result<(), String> {
-        lself.validate_store()?;
+        self.validate_store()?;
         return match self.store.sync() {
             Ok(_) => Ok(()),
             Err(e) => {
@@ -372,19 +366,5 @@ impl Data {
             return Err("Entry does not exist".to_string());
         }
         Ok(())
-    }
-
-    fn get_passphrase(&self) -> SecretString {
-        match self.passphrase.try_lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => SecretString::default(),
-        }
-    }
-
-    fn get_path(&self) -> String {
-        match self.path.try_lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => String::new(),
-        }
     }
 }

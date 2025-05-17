@@ -110,8 +110,8 @@ impl AppData {
     pub fn build_list<F1, F2>(
         &self,
         list: &gtk::ListBox,
-        decrypt_callback: F1,
-        ask_callback: F2,
+        row_decrypt_callback: F1,
+        row_unlock_callback: F2,
     ) -> anyhow::Result<()>
     where
         F1: Fn() + 'static,
@@ -120,8 +120,8 @@ impl AppData {
         list.set_selection_mode(gtk::SelectionMode::Single);
         let items = self.store.list()?;
 
-        let decrypt_callback = Arc::new(decrypt_callback);
-        let ask_callback = Arc::new(ask_callback);
+        let row_decrypt_callback = Arc::new(row_decrypt_callback);
+        let row_unlock_callback = Arc::new(row_unlock_callback);
         for (index, path) in items.iter().enumerate() {
             let (folder, name) = path.clone().split_path();
             let row = adw::ActionRow::builder()
@@ -130,8 +130,8 @@ impl AppData {
                 .activatable(true)
                 .build();
 
-            let decrypt_callback = Arc::clone(&decrypt_callback);
-            let ask_callback = Arc::clone(&ask_callback);
+            let row_decrypt_callback = Arc::clone(&row_decrypt_callback);
+            let row_unlock_callback = Arc::clone(&row_unlock_callback);
 
             row.connect_activated(move |row| {
                 AppData::instance(|data| {
@@ -141,9 +141,9 @@ impl AppData {
                         row.set_subtitle("Could not set path");
                     } else {
                         if data.is_unlocked() {
-                            (decrypt_callback)();
+                            (row_decrypt_callback)();
                         } else {
-                            (ask_callback)();
+                            (row_unlock_callback)();
                         }
                     }
                 });

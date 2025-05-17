@@ -1,4 +1,4 @@
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::SecretString;
 use std::string::String;
 
 pub trait StringExt {

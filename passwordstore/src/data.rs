@@ -29,16 +29,16 @@ impl SharedData {
 }
 
 thread_local! {
-    static THREAD_DATA: RefCell<Data> = RefCell::new(Data::new().unwrap_or_default());
+    static THREAD_DATA: RefCell<AppData> = RefCell::new(AppData::new().unwrap_or_default());
 }
 
 #[derive(Debug)]
-pub struct Data {
+pub struct AppData {
     store: PassStore,
     shared: Arc<Mutex<SharedData>>,
 }
 
-impl Default for Data {
+impl Default for AppData {
     fn default() -> Self {
         let store = PassStore::default();
         let shared = Arc::new(Mutex::new(SharedData::new()));
@@ -46,8 +46,8 @@ impl Default for Data {
     }
 }
 
-impl Data {
-    pub fn new() -> anyhow::Result<Self> {
+impl AppData {
+    fn new() -> anyhow::Result<Self> {
         let store = PassStore::new()?;
         let shared = Arc::new(Mutex::new(SharedData::new()));
         Ok(Self { store, shared })
@@ -55,7 +55,7 @@ impl Data {
 
     pub fn instance<F, R>(f: F) -> R
     where
-        F: FnOnce(&mut Data) -> R,
+        F: FnOnce(&mut AppData) -> R,
     {
         THREAD_DATA.with(|data| {
             let mut data = data.borrow_mut();
@@ -134,7 +134,7 @@ impl Data {
             let ask_callback = Arc::clone(&ask_callback);
 
             row.connect_activated(move |row| {
-                Data::instance(|data| {
+                AppData::instance(|data| {
                     let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
                     if let Err(_) = data.set_path(new_path) {
                         row.set_title("Error");

@@ -83,7 +83,7 @@ impl AppData {
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&self, path: String) -> bool {
+    pub fn set_path(&self, path: &String) -> bool {
         match self.validate_path(&path) {
             Ok(_) => {
                 let mut shared = self.shared.lock().unwrap();
@@ -118,8 +118,8 @@ impl AppData {
         row_unlock_callback: F2,
     ) -> anyhow::Result<()>
     where
-        F1: Fn() + 'static,
-        F2: Fn() + 'static,
+        F1: Fn(String) + 'static,
+        F2: Fn(String) + 'static,
     {
         list.set_selection_mode(gtk::SelectionMode::Single);
         let items = self.store.list()?;
@@ -140,11 +140,11 @@ impl AppData {
             row.connect_activated(move |row| {
                 AppData::instance(|data| {
                     let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-                    if data.set_path(new_path) {
+                    if data.set_path(&new_path) {
                         if data.is_unlocked() {
-                            (row_decrypt_callback)();
+                            (row_decrypt_callback)(new_path);
                         } else {
-                            (row_unlock_callback)();
+                            (row_unlock_callback)(new_path);
                         }
                     }
                 });

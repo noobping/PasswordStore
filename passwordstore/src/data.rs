@@ -109,7 +109,7 @@ impl Data {
 
     pub fn build_list<F1, F2>(
         &self,
-        list: gtk::ListBox,
+        list: &gtk::ListBox,
         decrypt_callback: F1,
         ask_callback: F2,
     ) -> anyhow::Result<()>
@@ -185,8 +185,8 @@ impl Data {
         method: Method,
         button: &gtk::Button,
         rows: &gtk::Box,
-        password: &TemplateChild<adw::PasswordEntryRow>,
-        view: &TemplateChild<gtk::TextView>,
+        password: &adw::PasswordEntryRow,
+        view: &gtk::TextView,
     ) -> anyhow::Result<()> {
         if !self.is_unlocked() {
             return Err(anyhow!("Store is locked"));

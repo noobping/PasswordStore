@@ -3,58 +3,64 @@ use adw::subclass::prelude::*;
 use anyhow::anyhow;
 use gtk::gio;
 use gtk::prelude::*;
-use once_cell::sync::Lazy;
 use passcore::{exists_store_dir, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
 use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
 
 use crate::extension::{GPairToPath, StringExt};
+use crate::method::Method;
 
-static GLOBAL_DATA: Lazy<Mutex<Data>> = Lazy::new(|| {
-    let d = Data::default();
-    Mutex::new(d)
-});
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Method {
-    Passphrase,
-    Pinantry,
+#[derive(Debug, Default)]
+pub struct SharedData {
+    pub path: String,
+    pub passphrase: SecretString,
+    pub unlocked: bool,
 }
 
-impl Default for Method {
-    fn default() -> Self {
-        Self::Passphrase
+impl SharedData {
+    pub fn new() -> Self {
+        Self {
+            path: String::new(),
+            passphrase: SecretString::default(),
+            unlocked: false,
+        }
     }
 }
 
-#[derive(Debug, Clone, Default)]
+thread_local! {
+    static THREAD_DATA: RefCell<Data> = RefCell::new(Data::new().unwrap_or_default());
+}
+
+#[derive(Debug)]
 pub struct Data {
     store: PassStore,
-    path: String,
-    passphrase: SecretString,
-    unlocked: bool,
+    shared: Arc<Mutex<SharedData>>,
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        let store = PassStore::default();
+        let shared = Arc::new(Mutex::new(SharedData::new()));
+        Self { store, shared }
+    }
 }
 
 impl Data {
     pub fn new() -> anyhow::Result<Self> {
         let store = PassStore::new()?;
-        let path = String::new();
-        let passphrase = SecretString::default();
-        let unlocked = false;
-
-        Ok(Self {
-            store,
-            path,
-            passphrase,
-            unlocked,
-        })
+        let shared = Arc::new(Mutex::new(SharedData::new()));
+        Ok(Self { store, shared })
     }
 
-    pub fn instance() -> Result<std::sync::MutexGuard<'static, Data>, String> {
-        match GLOBAL_DATA.try_lock() {
-            Ok(guard) => Ok(guard),
-            Err(_) => Err("Application is busy".to_string()),
-        }
+    pub fn instance<F, R>(f: F) -> R
+    where
+        F: FnOnce(&mut Data) -> R,
+    {
+        THREAD_DATA.with(|data| {
+            let mut data = data.borrow_mut();
+            f(&mut *data)
+        })
     }
 
     pub fn from_git(url: String) -> Result<Self, String> {
@@ -71,37 +77,34 @@ impl Data {
             }
         };
         if store.ok() {
-            let path = String::new();
-            let passphrase = SecretString::default();
-            let unlocked = false;
-            return Ok(Self {
-                store,
-                path,
-                passphrase,
-                unlocked,
-            });
+            let shared = Arc::new(Mutex::new(SharedData::new()));
+            return Ok(Self { store, shared });
         }
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&mut self, path: String) -> Result<(), String> {
+    pub fn set_path(&self, path: String) -> Result<(), String> {
         self.validate_path(&path)?;
-        self.path = path;
+        let mut shared = self.shared.lock().unwrap();
+        shared.path = path;
         Ok(())
     }
 
     pub fn is_unlocked(&self) -> bool {
-        self.unlocked
+        let shared = self.shared.lock().unwrap();
+        shared.unlocked
     }
 
-    pub fn unlock(&mut self, passphrase: SecretString) {
-        self.passphrase = passphrase;
-        self.unlocked = true;
+    pub fn unlock(&self, passphrase: SecretString) {
+        let mut shared = self.shared.lock().unwrap();
+        shared.passphrase = passphrase;
+        shared.unlocked = true;
     }
 
-    pub fn lock(&mut self) {
-        self.unlocked = false;
-        self.passphrase.zeroize();
+    pub fn lock(&self) {
+        let mut shared = self.shared.lock().unwrap();
+        shared.unlocked = false;
+        shared.passphrase.zeroize();
     }
 
     pub fn build_list<F1, F2>(
@@ -127,13 +130,12 @@ impl Data {
                 .activatable(true)
                 .build();
 
-            let self_clone = self.clone();
             let decrypt_callback = Arc::clone(&decrypt_callback);
             let ask_callback = Arc::clone(&ask_callback);
 
             row.connect_activated(move |row| {
                 let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-                let mut self_clone = self_clone.clone();
+                let data = Data::instance(); // use the instance method
                 if let Err(_) = self_clone.set_path(new_path) {
                     row.set_title("Error");
                     row.set_subtitle("Could not set path");
@@ -188,10 +190,11 @@ impl Data {
         if !self.is_unlocked() {
             return Err(anyhow!("Store is locked"));
         }
+        let shared = self.shared.lock().unwrap();
         let entry = if method == Method::Pinantry {
-            self.store.ask(self.path.as_str())?
+            self.store.ask(shared.path.as_str())?
         } else {
-            self.store.get(self.path.as_str(), self.passphrase.clone())?
+            self.store.get(shared.path.as_str(), shared.passphrase.clone())?
         };
         let mut text = String::new();
         for line in entry.extra.iter() {
@@ -264,7 +267,8 @@ impl Data {
     }
 
     pub fn save_pass(&self, entry: &passcore::Entry) -> Result<String, String> {
-        let path = self.path.clone();
+        let shared = self.shared.lock().unwrap();
+        let path = shared.path.clone();
         return match self.store.add(&path, &entry) {
             Ok(_) => Ok(format!("Password {} saved", path)),
             Err(e) => {
@@ -277,7 +281,8 @@ impl Data {
     }
 
     pub fn move_pass(&self, new_path: &String) -> Result<String, String> {
-        let old_path = self.path.clone();
+        let shared = self.shared.lock().unwrap();
+        let old_path = shared.path.clone();
         if !self.store.exists(&old_path) {
             return Err("Password not found".to_string());
         }
@@ -293,7 +298,8 @@ impl Data {
     }
 
     pub fn remove_pass(&self) -> Result<String, String> {
-        let path = self.path.clone();
+        let shared = self.shared.lock().unwrap();
+        let path = shared.path.clone();
         return match self.store.remove(&path) {
             Ok(_) => Ok(format!("Password {} removed", path)),
             Err(e) => {
@@ -309,8 +315,9 @@ impl Data {
         if !self.is_unlocked() {
             return Err("Store is locked".to_string());
         }
-        let path = self.path.clone();
-        let entry = match self.store.get(&path, self.passphrase.clone()) {
+        let shared = self.shared.lock().unwrap();
+        let path = shared.path.clone();
+        let entry = match self.store.get(&path, shared.passphrase.clone()) {
             Ok(entry) => entry,
             Err(e) => {
                 let message = e.to_string();

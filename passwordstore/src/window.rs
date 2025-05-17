@@ -147,8 +147,6 @@ mod imp {
 
         #[template_child]
         pub git_url_entry: TemplateChild<adw::EntryRow>,
-
-        data: Data,
     }
 
     impl PasswordstoreWindow {
@@ -272,11 +270,11 @@ mod imp {
 
         fn refresh_list(&self) {
             self.list.remove_all();
-            self.data.build_list(
-                self.list,
-                || self.toast("Decrypt callback..."),
-                || self.toast("Ask callback..."),
-            );
+            // self.data.build_list(
+            //     &self.list,
+            //     || self.toast("Decrypt callback..."),
+            //     || self.toast("Ask callback..."),
+            // );
             self.pop();
             self.done();
         }

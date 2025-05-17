@@ -23,6 +23,7 @@ mod block_on;
 mod config;
 mod data;
 mod extension;
+mod method;
 mod pages;
 mod window;
 

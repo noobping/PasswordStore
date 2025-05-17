@@ -83,11 +83,15 @@ impl AppData {
         Err("Password store is not initialized".to_string())
     }
 
-    pub fn set_path(&self, path: String) -> Result<(), String> {
-        self.validate_path(&path)?;
-        let mut shared = self.shared.lock().unwrap();
-        shared.path = path;
-        Ok(())
+    pub fn set_path(&self, path: String) -> bool {
+        match self.validate_path(&path) {
+            Ok(_) => {
+                let mut shared = self.shared.lock().unwrap();
+                shared.path = path;
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     pub fn is_unlocked(&self) -> bool {
@@ -136,10 +140,7 @@ impl AppData {
             row.connect_activated(move |row| {
                 AppData::instance(|data| {
                     let new_path = (row.title(), row.subtitle().unwrap_or_default()).to_path();
-                    if let Err(_) = data.set_path(new_path) {
-                        row.set_title("Error");
-                        row.set_subtitle("Could not set path");
-                    } else {
+                    if data.set_path(new_path) {
                         if data.is_unlocked() {
                             (row_decrypt_callback)();
                         } else {

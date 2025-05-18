@@ -45,6 +45,18 @@ impl GPairToPath for (gtk::glib::GString, gtk::glib::GString) {
     }
 }
 
+impl GPairToPath for (gtk::glib::GString, Option<gtk::glib::GString>) {
+    fn to_path(&self) -> String {
+        let (title, subtitle) = self;
+        let folder = subtitle.clone().unwrap_or_default();
+        if folder.is_empty() {
+            title.to_string()
+        } else {
+            format!("{}/{}", folder, title)
+        }
+    }
+}
+
 pub trait PairToPath {
     fn to_path(&self) -> String;
 }

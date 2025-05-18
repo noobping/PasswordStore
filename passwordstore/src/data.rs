@@ -1,7 +1,7 @@
 use adw::prelude::{ActionRowExt, PreferencesRowExt};
 use adw::subclass::prelude::*;
+use gtk::gio;
 use gtk::prelude::*;
-use gtk::{gio, glib::MainContext};
 use passcore::{exists_store_dir, PassStore};
 use secrecy::{zeroize::Zeroize, ExposeSecret, SecretString};
 use std::cell::RefCell;
@@ -80,68 +80,10 @@ impl AppData {
         }
     }
 
-    // ---------------- Async API ----------------
+    // ----------------- Core Methods -----------------
 
-    pub async fn list_paths_async() -> Result<Vec<String>, String> {
-        MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.list_paths_blocking()) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn save_pass_async(entry: passcore::Entry) -> Result<String, String> {
-        MainContext::default()
-            .spawn_local(async move { AppData::instance(|data| data.save_pass_blocking(&entry)) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn move_pass_async(new_path: String) -> Result<String, String> {
-        MainContext::default()
-            .spawn_local(async move { AppData::instance(|data| data.move_pass_blocking(&new_path)) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn delete_pass_async() -> Result<String, String> {
-        MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.delete_pass_blocking()) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn get_pass_entry_async() -> Result<passcore::Entry, String> {
-        MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.get_pass_entry_blocking()) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn ask_pass_entry_async() -> Result<passcore::Entry, String> {
-        MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.ask_pass_entry_blocking()) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn copy_pass_async() -> Result<String, String> {
-        MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.copy_pass_blocking()) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    pub async fn sync_store_async() -> Result<(), String> {
-        MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.sync_store_blocking()) })
-            .await
-            .unwrap_or_else(|e| Err(e.to_string()))
-    }
-
-    // ----------------- Core Methods (Blocking) -----------------
-
-    pub fn set_path_blocking(&self, path: &str) -> bool {
-        if self.validate_path_blocking(path).is_err() {
+    pub fn set_path(&self, path: &str) -> bool {
+        if self.validate_path(path).is_err() {
             return false;
         }
         let mut shared = match self.shared.lock() {
@@ -152,7 +94,7 @@ impl AppData {
         true
     }
 
-    pub fn is_unlocked_blocking(&self) -> bool {
+    pub fn is_unlocked(&self) -> bool {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
@@ -160,7 +102,7 @@ impl AppData {
         shared.unlocked
     }
 
-    pub fn unlock_blocking(&self, passphrase: SecretString) {
+    pub fn unlock(&self, passphrase: SecretString) {
         let mut shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
@@ -169,7 +111,7 @@ impl AppData {
         shared.unlocked = true;
     }
 
-    pub fn lock_blocking(&self) {
+    pub fn lock(&self) {
         let mut shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
@@ -178,26 +120,23 @@ impl AppData {
         shared.passphrase.zeroize();
     }
 
-    fn list_paths_blocking(&self) -> Result<Vec<String>, String> {
-        self.store
-            .list()
-            .map(|paths| paths.into_iter().filter(|p| p.ends_with(".gpg")).collect())
-            .map_err(|e| {
-                e.to_string()
-                    .split_once(';')
-                    .map(|(s, _)| s)
-                    .unwrap_or(&e.to_string())
-                    .to_string()
-            })
+    pub fn list_paths(&self) -> Result<Vec<String>, String> {
+        self.store.list().map_err(|e| {
+            e.to_string()
+                .split_once(';')
+                .map(|(s, _)| s)
+                .unwrap_or(&e.to_string())
+                .to_string()
+        })
     }
 
-    fn save_pass_blocking(&self, entry: &passcore::Entry) -> Result<String, String> {
+    pub fn save_pass(&self, entry: &passcore::Entry) -> Result<String, String> {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
         };
         let path = shared.path.clone();
-        self.validate_path_blocking(&path)?;
+        self.validate_path(&path)?;
         self.store
             .add(&path, entry)
             .map(|_| format!("Password {} saved", path))
@@ -210,13 +149,13 @@ impl AppData {
             })
     }
 
-    fn move_pass_blocking(&self, new_path: &String) -> Result<String, String> {
+    pub fn move_pass(&self, new_path: &String) -> Result<String, String> {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
         };
         let path = shared.path.clone();
-        self.validate_path_blocking(&path)?;
+        self.validate_path(&path)?;
         self.store
             .rename(&path, new_path)
             .map(|_| format!("Password {} moved to {}", path, new_path))
@@ -229,13 +168,13 @@ impl AppData {
             })
     }
 
-    fn delete_pass_blocking(&self) -> Result<String, String> {
+    pub fn delete_pass(&self) -> Result<String, String> {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
         };
         let path = shared.path.clone();
-        self.validate_path_blocking(&path)?;
+        self.validate_path(&path)?;
         self.store
             .remove(&path)
             .map(|_| format!("Password {} removed", path))
@@ -248,12 +187,12 @@ impl AppData {
             })
     }
 
-    fn get_pass_entry_blocking(&self) -> Result<passcore::Entry, String> {
+    pub fn get_pass_entry(&self) -> Result<passcore::Entry, String> {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
         };
-        self.validate_path_blocking(&shared.path)?;
+        self.validate_path(&shared.path)?;
         self.store
             .get(&shared.path, shared.passphrase.clone())
             .map_err(|e| {
@@ -265,12 +204,12 @@ impl AppData {
             })
     }
 
-    fn ask_pass_entry_blocking(&self) -> Result<passcore::Entry, String> {
+    pub fn ask_pass_entry(&self) -> Result<passcore::Entry, String> {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),
         };
-        self.validate_path_blocking(&shared.path)?;
+        self.validate_path(&shared.path)?;
         self.store.ask(&shared.path).map_err(|e| {
             e.to_string()
                 .split_once(';')
@@ -280,8 +219,8 @@ impl AppData {
         })
     }
 
-    fn copy_pass_blocking(&self) -> Result<String, String> {
-        if !self.is_unlocked_blocking() {
+    pub fn copy_pass(&self) -> Result<String, String> {
+        if !self.is_unlocked() {
             return Err("Store is locked".to_string());
         }
         let shared = match self.shared.lock() {
@@ -305,8 +244,8 @@ impl AppData {
         Ok(format!("Password {} copied", shared.path))
     }
 
-    fn sync_store_blocking(&self) -> Result<(), String> {
-        self.validate_store_blocking()?;
+    pub fn sync_store(&self) -> Result<(), String> {
+        self.validate_store()?;
         self.store.sync().map_err(|e| {
             e.to_string()
                 .split_once(';')
@@ -316,7 +255,7 @@ impl AppData {
         })
     }
 
-    fn validate_store_blocking(&self) -> Result<(), String> {
+    fn validate_store(&self) -> Result<(), String> {
         if !exists_store_dir() {
             return Err("Store directory missing".to_string());
         }
@@ -326,8 +265,8 @@ impl AppData {
         Ok(())
     }
 
-    fn validate_path_blocking(&self, name: &str) -> Result<(), String> {
-        self.validate_store_blocking()?;
+    fn validate_path(&self, name: &str) -> Result<(), String> {
+        self.validate_store()?;
         if name.is_empty() {
             return Err("Name is empty".to_string());
         }
@@ -375,15 +314,16 @@ impl AppData {
     pub fn populate_list(
         &self,
         list: &gtk::ListBox,
-        items: Vec<String>,
+        paths: Vec<String>,
         row_decrypt_callback: impl Fn(String) + 'static,
-        row_unlock_callback: impl Fn(String) + 'static,
+        row_unlock_callback: impl Fn(usize, String) + 'static,
     ) {
         list.set_selection_mode(gtk::SelectionMode::Single);
         let decrypt = Arc::new(row_decrypt_callback);
         let unlock = Arc::new(row_unlock_callback);
-        for (index, path) in items.into_iter().enumerate() {
+        for (index, path) in paths.into_iter().enumerate() {
             let path = path.clone();
+            let index = index.clone();
             let (folder, name) = path.split_path();
             let row = adw::ActionRow::builder()
                 .title(&name)
@@ -394,13 +334,14 @@ impl AppData {
             let u_cb = unlock.clone();
             row.connect_activated({
                 let path = path.clone();
+                let index = index.clone();
                 move |_| {
                     AppData::instance(|data| {
-                        if data.set_path_blocking(&path) {
-                            if data.is_unlocked_blocking() {
+                        if data.set_path(&path) {
+                            if data.is_unlocked() {
                                 d_cb(path.clone());
                             } else {
-                                u_cb(path.clone());
+                                u_cb(index.clone(), path.clone());
                             }
                         }
                     });

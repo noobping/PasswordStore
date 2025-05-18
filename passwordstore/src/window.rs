@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::data::AppData;
+use crate::extension::{GPairToPath, StringExt};
 
 pub fn run<F, R>(work: impl FnOnce() -> R + Send + 'static, update_ui: F)
 where
@@ -24,9 +25,10 @@ where
 }
 
 mod imp {
-    use adw::prelude::{EntryRowExt, PreferencesRowExt};
+    use adw::prelude::{ActionRowExt, EntryRowExt, PreferencesRowExt};
     use gettextrs::gettext;
     use passcore::exists_store_dir;
+    use secrecy::ExposeSecret;
 
     use super::*;
 
@@ -127,56 +129,113 @@ mod imp {
     }
 
     impl PasswordstoreWindow {
-        pub fn toggle_search(&self) {
-            let visible = !self.search_entry.is_visible();
-            self.search_entry.set_visible(visible);
-            if (visible) {
-                self.search_entry.grab_focus();
-            } else {
-                self.search_entry.set_text("");
+        fn populate_form(&self, entry: passcore::Entry) {
+            let mut text = String::new();
+            for line in entry.extra.iter() {
+                let exposed = line.expose_secret();
+                if exposed.contains(':') {
+                    let (field, value) = &exposed.to_string().split_field();
+                    let row: adw::EntryRow = adw::EntryRow::builder()
+                        .title(field)
+                        .margin_start(15)
+                        .margin_end(15)
+                        .margin_bottom(5)
+                        .build();
+                    row.set_text(value);
+                    let button_clone = self.save_button.clone();
+                    row.connect_changed(move |row| {
+                        let is_not_empty = !row.text().to_string().is_empty();
+                        button_clone.set_sensitive(is_not_empty);
+                        button_clone.set_can_focus(is_not_empty);
+                    });
+                    self.dynamic_box.append(&row);
+                } else {
+                    text.push_str(&format!("{}\n", exposed));
+                }
             }
+            let buffer = gtk::TextBuffer::new(None);
+            buffer.set_text(&text);
+            let button_clone = self.save_button.clone();
+            buffer.connect_changed(move |buffer| {
+                let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+                let is_not_empty: bool = !text.is_empty();
+                button_clone.set_sensitive(is_not_empty);
+                button_clone.set_can_focus(is_not_empty);
+            });
+            self.text_view.set_buffer(Some(&buffer));
+            self.password_entry.set_text(entry.password.expose_secret());
         }
 
-        pub fn page_form(&self) {
-            self.text_view.set_buffer(Some(&gtk::TextBuffer::new(None)));
-            self.password_entry.set_text("");
-            Self::update_title(&self.window_title, "".to_string());
-            // AppData::instance(|data: &mut AppData| data.set_path(""));
-            while let Some(child) = self.dynamic_box.first_child() {
-                self.dynamic_box.remove(&child);
-            }
-            self.navigation_view
-                .push(self.text_page.as_ref() as &adw::NavigationPage);
-            self.update_navigation_buttons(false);
+        fn populate_list(&self, paths: Vec<String>) {
+            let obj_weak = self.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(obj) = obj_weak.upgrade() {
+                    for (index, path) in paths.into_iter().enumerate() {
+                        let (folder, name) = path.split_path();
+                        let row = adw::ActionRow::builder()
+                            .title(&name)
+                            .subtitle(&folder.replace("/", " / "))
+                            .activatable(true)
+                            .build();
+
+                        let cloned = obj.clone();
+                        row.connect_activated(move |activated_row| {
+                            let active_path = (activated_row.title(), activated_row.subtitle()).to_path();
+                            AppData::instance(|data| {
+                                if data.set_path(&active_path) {
+                                    PasswordstoreWindow::update_title(&cloned.window_title, active_path.clone());
+                                    if data.is_unlocked() {
+                                        cloned.populate_form(data.get_pass_entry().unwrap_or_default());
+                                        cloned.navigation_view.push(cloned.text_page.as_ref() as &adw::NavigationPage);
+                                        cloned.update_navigation_buttons(false);
+                                    } else {
+                                        cloned.passphrase_popover
+                                            .set_parent(activated_row.upcast_ref::<gtk::Widget>());
+                                        cloned.passphrase_popover.popup();
+                                        cloned.passphrase_entry.grab_focus();
+                                    }
+                                }
+                            });
+                        });
+
+                        // context menu
+                        let menu = gio::Menu::new();
+                        let copy_item =
+                            gio::MenuItem::new(Some("Copy password"), Some("win.copy-password"));
+                        copy_item.set_attribute_value("target", Some(&path.to_variant()));
+                        menu.append_item(&copy_item);
+                        let edit_item =
+                            gio::MenuItem::new(Some("Edit password"), Some("win.decrypt-password"));
+                        edit_item.set_attribute_value("target", Some(&path.to_variant()));
+                        menu.append_item(&edit_item);
+                        let rename_item =
+                            gio::MenuItem::new(Some("Rename…"), Some("win.rename-password"));
+                        let target = (path.to_string(), index as u64);
+                        rename_item.set_attribute_value("target", Some(&target.to_variant()));
+                        menu.append_item(&rename_item);
+                        let delete_item =
+                            gio::MenuItem::new(Some("Delete"), Some("win.remove-password"));
+                        delete_item.set_attribute_value("target", Some(&path.to_variant()));
+                        menu.append_item(&delete_item);
+                        let menu_button = gtk::MenuButton::builder()
+                            .icon_name("view-more-symbolic")
+                            .menu_model(&menu)
+                            .build();
+                        row.add_suffix(&menu_button);
+
+                        obj.list.append(&row);
+                    }
+                }
+            });
         }
 
-        pub fn page_list(&self) {
-            self.navigation_view
-                .pop_to_page(&self.list_page.as_ref() as &adw::NavigationPage);
-            self.update_navigation_buttons(true);
-        }
-
-        fn update_navigation_buttons(&self, default_page: bool) {
-            self.save_button.set_can_focus(false);
-            self.save_button.set_sensitive(false);
-            self.save_button.set_visible(!default_page);
-
-            self.add_button.set_can_focus(default_page);
-            self.add_button.set_sensitive(default_page);
-            self.add_button.set_visible(default_page);
-            self.back_button.set_can_focus(!default_page);
-            self.back_button.set_sensitive(!default_page);
-            self.back_button.set_visible(!default_page);
-
-            let exists_store = default_page && exists_store_dir();
-            self.git_button.set_can_focus(default_page && !exists_store);
-            self.git_button.set_sensitive(default_page && !exists_store);
-            self.git_button.set_visible(default_page && !exists_store);
-            self.search_button
-                .set_can_focus(default_page && exists_store);
-            self.search_button
-                .set_sensitive(default_page && exists_store);
-            self.search_button.set_visible(default_page && exists_store);
+        fn rebuild_list(&self) {
+            self.load();
+            self.list.remove_all();
+            self.list.set_selection_mode(gtk::SelectionMode::Single);
+            let paths = AppData::instance(|data| data.list_paths()).unwrap_or_default();
+            self.populate_list(paths);
+            self.done();
         }
 
         fn load(&self) {
@@ -203,72 +262,27 @@ mod imp {
             self.spinner.set_visible(false);
         }
 
-        fn rebuild_list(&self) {
-            self.load();
-            self.list.remove_all();
+        fn update_navigation_buttons(&self, default_page: bool) {
+            self.save_button.set_can_focus(false);
+            self.save_button.set_sensitive(false);
+            self.save_button.set_visible(!default_page);
 
-            let work = || {
-                AppData::instance(|data| data.list_paths())
-            };
-            let update_ui = {
-                let list_clone = self.list.clone();
-                let title_clone = self.window_title.clone();
-                let title_clone2 = self.window_title.clone();
-                let toast_overlay = self.toast_overlay.clone();
-                move |result: Result<Vec<String>, String>| {
-                    match result {
-                        Ok(paths) => {
-                            AppData::instance(|data| {
-                                data.populate_list(
-                                    &list_clone,
-                                    paths,
-                                    move |path| PasswordstoreWindow::update_title(&title_clone, path.clone()),
-                                    move |path| PasswordstoreWindow::update_title(&title_clone2, path.clone()),
-                                );
-                            });
-                            self.done();
-                        }
-                        Err(e) => {
-                            toast_overlay.add_toast(adw::Toast::new(&e.to_string()));
-                            self.done();
-                        }
-                    }
-                }
-            };
-            run(work, update_ui);
+            self.add_button.set_can_focus(default_page);
+            self.add_button.set_sensitive(default_page);
+            self.add_button.set_visible(default_page);
+            self.back_button.set_can_focus(!default_page);
+            self.back_button.set_sensitive(!default_page);
+            self.back_button.set_visible(!default_page);
 
-            //     // Only pass Send types to the background thread
-            //     run(
-            //         || AppData::instance(|data| data.list_paths()),
-            //         {
-            //             // All UI objects are cloned and used only in the main thread closure
-            //             let list_clone = self.list.clone();
-            //             let title_clone = self.window_title.clone();
-            //             let title_clone2 = self.window_title.clone();
-            //             let toast_overlay = self.toast_overlay.clone();
-            //             let this = self.clone();
-            //             move |result: Result<Vec<String>, String>| {
-            //                 match result {
-            //                     Ok(paths) => {
-            //                         AppData::instance(|data| {
-            //                             data.populate_list(
-            //                                 &list_clone,
-            //                                 paths,
-            //                                 move |path| PasswordstoreWindow::update_title(&title_clone, path.clone()),
-            //                                 move |path| PasswordstoreWindow::update_title(&title_clone2, path.clone()),
-            //                             );
-            //                         });
-            //                         this.done();
-            //                     }
-            //                     Err(e) => {
-            //                         toast_overlay.add_toast(adw::Toast::new(&e.to_string()));
-            //                         this.done();
-            //                     }
-            //                 }
-            //             }
-            //         },
-            //     );
-            //     self.pop();
+            let exists_store = default_page && exists_store_dir();
+            self.git_button.set_can_focus(default_page && !exists_store);
+            self.git_button.set_sensitive(default_page && !exists_store);
+            self.git_button.set_visible(default_page && !exists_store);
+            self.search_button
+                .set_can_focus(default_page && exists_store);
+            self.search_button
+                .set_sensitive(default_page && exists_store);
+            self.search_button.set_visible(default_page && exists_store);
         }
 
         fn update_title(title: &adw::WindowTitle, path: String) {
@@ -313,20 +327,32 @@ mod imp {
                 .set_parent(obj.imp().add_button.as_ref() as &gtk::Widget);
 
             let action = gio::SimpleAction::new("toggle-search", None);
-            let self_clone = obj.clone();
-            action.connect_activate(move |_, _| self_clone.imp().toggle_search());
+            let search_entry = obj.imp().search_entry.clone();
+            action.connect_activate(move |_, _| {
+                let visible = !search_entry.is_visible();
+                search_entry.set_visible(visible);
+                if visible {
+                    search_entry.grab_focus();
+                } else {
+                    search_entry.set_text("");
+                }
+            });
             obj.add_action(&action);
 
-            let self_clone = obj.clone();
             let add_action = gio::SimpleAction::new("back", None);
-            add_action.connect_activate(move |_, _| self_clone.imp().page_list());
+            let navigation_view = obj.imp().navigation_view.clone();
+            let list_page = obj.imp().list_page.clone();
+            add_action.connect_activate(move |_, _| {
+                navigation_view.pop_to_page(&list_page.as_ref() as &adw::NavigationPage);
+            });
             obj.add_action(&add_action);
 
-            let add_action = gio::SimpleAction::new("git-page", None);
-            let self_clone = obj.clone();
+            let add_action = gio::SimpleAction::new("git-url", None);
+            let git_popover = obj.imp().git_popover.clone();
+            let git_url_entry = obj.imp().git_url_entry.clone();
             add_action.connect_activate(move |_, _| {
-                self_clone.imp().git_popover.popup();
-                self_clone.imp().git_url_entry.grab_focus();
+                git_popover.popup();
+                git_url_entry.grab_focus();
             });
             obj.add_action(&add_action);
             obj.add_action(&add_action);
@@ -351,6 +377,19 @@ mod imp {
             });
 
             // ...
+
+            let self_clone = obj.clone();
+            glib::idle_add_local_once(move || {
+                let self_clone2 = self_clone.clone();
+                glib::MainContext::default().spawn_local(async move {
+                    self_clone2
+                        .imp()
+                        .list
+                        .set_selection_mode(gtk::SelectionMode::Single);
+                    let paths = AppData::instance(|data| data.list_paths()).unwrap_or_default();
+                    self_clone2.imp().populate_list(paths);
+                });
+            });
         }
     }
 

@@ -21,6 +21,7 @@
 mod application;
 mod block_on;
 mod config;
+mod extension;
 mod window;
 
 use self::application::PasswordstoreApplication;

@@ -21,8 +21,10 @@
 use adw::subclass::prelude::*;
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use passcore::{PassStore, StringExt};
+use passcore::PassStore;
 use secrecy::SecretString;
+
+use crate::extension::*;
 
 mod imp {
     use adw::prelude::{ActionRowExt, EntryRowExt, PreferencesRowExt};
@@ -51,9 +53,6 @@ mod imp {
     pub struct PasswordstoreWindow {
         #[template_child]
         pub window_title: TemplateChild<adw::WindowTitle>,
-
-        #[template_child]
-        pub progress_bar: TemplateChild<gtk::ProgressBar>,
 
         #[template_child]
         pub toast_overlay: TemplateChild<adw::ToastOverlay>,
@@ -336,7 +335,7 @@ mod imp {
                 row.add_suffix(&menu_button);
 
                 self.list.append(&row);
-                self.stop_loading();
+
             }
         }
 
@@ -466,10 +465,6 @@ mod imp {
         }
 
         pub fn start_loading(&self) {
-            self.progress_bar.set_visible(true);
-            // Set the progress bar to infinite mode (like a horisontal spinner)
-            self.progress_bar.pulse();
-            self.progress_bar.set_pulse_step(10.0);
             self.spinner.start();
             self.spinner.set_visible(true);
             self.add_button.set_can_focus(false);
@@ -489,7 +484,6 @@ mod imp {
             self.text_view.set_editable(true);
             self.path_entry.set_can_focus(true);
             self.path_entry.set_sensitive(true);
-            self.progress_bar.set_visible(false);
             self.spinner.stop();
             self.spinner.set_visible(false);
             self.update_navigation_buttons();
@@ -1071,8 +1065,6 @@ mod imp {
                     );
                 }
             });
-
-            obj.imp().stop_loading();
         }
     }
 

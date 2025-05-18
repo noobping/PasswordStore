@@ -2,7 +2,7 @@
 
 # Password Store for GNOME
 
-A lightweight GTK4 front‑end for **pass**, written in Rust and distributed as a Flatpak.
+A GTK4 front‑end for **pass**, written in Rust and distributed as a Flatpak.
 
 ![password store](image/list.png)
 

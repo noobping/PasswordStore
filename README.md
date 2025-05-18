@@ -25,23 +25,6 @@ This application delivers a GNOME‑native experience while remaining fully comp
 2. **Offline operation** — all core functionality (CRUD Encrypted files) works without network access.
 3. **Minimal dependencies** — no need for external libraries or tools beyond the Flatpak runtime.
 
-## Building and Running
-
-### Prerequisites
-
-* **GNOME Builder** 47 or later (recommended) — automatically installs the required Flatpak SDK.
-* **Flatpak** with the GNOME 47 runtime and the Rust stable extension:
-
-```bash
-flatpak install org.gnome.Sdk//47 org.freedesktop.Sdk.Extension.rust-stable
-```
-
-### Development workflow in GNOME Builder
-
-1. Clone or open the project in GNOME Builder.
-2. Select the *Flatpak* build target.
-3. Press **Run** to build and start the application in a sandbox.
-
 ## Contributing
 
 Issues, feature requests, and pull requests are welcome. If you plan to introduce a substantial change, please open an issue first to discuss the proposed approach.

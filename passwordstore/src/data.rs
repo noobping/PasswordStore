@@ -61,6 +61,25 @@ impl AppData {
         })
     }
 
+    pub fn from_git(url: String) -> Result<Self, String> {
+        if url.is_empty() {
+            return Err("Git URL cannot be empty".to_string());
+        }
+        let store = PassStore::from_git(url.clone()).map_err(|e| {
+            e.to_string()
+                .split_once(';')
+                .map(|(s, _)| s)
+                .unwrap_or(&e.to_string())
+                .to_string()
+        })?;
+        if store.ok() {
+            let shared = Arc::new(Mutex::new(SharedData::new()));
+            Ok(Self { store, shared })
+        } else {
+            Err("Password store is not initialized".to_string())
+        }
+    }
+
     // ---------------- Async API ----------------
 
     pub async fn list_paths_async() -> Result<Vec<String>, String> {
@@ -77,9 +96,16 @@ impl AppData {
             .unwrap_or_else(|e| Err(e.to_string()))
     }
 
-    pub async fn remove_pass_async() -> Result<String, String> {
+    pub async fn move_pass_async(new_path: String) -> Result<String, String> {
         MainContext::default()
-            .spawn_local(async { AppData::instance(|data| data.remove_pass_blocking()) })
+            .spawn_local(async move { AppData::instance(|data| data.move_pass_blocking(&new_path)) })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+    }
+
+    pub async fn delete_pass_async() -> Result<String, String> {
+        MainContext::default()
+            .spawn_local(async { AppData::instance(|data| data.delete_pass_blocking()) })
             .await
             .unwrap_or_else(|e| Err(e.to_string()))
     }
@@ -113,25 +139,6 @@ impl AppData {
     }
 
     // ----------------- Core Methods (Blocking) -----------------
-
-    pub fn from_git(url: String) -> Result<Self, String> {
-        if url.is_empty() {
-            return Err("Git URL cannot be empty".to_string());
-        }
-        let store = PassStore::from_git(url.clone()).map_err(|e| {
-            e.to_string()
-                .split_once(';')
-                .map(|(s, _)| s)
-                .unwrap_or(&e.to_string())
-                .to_string()
-        })?;
-        if store.ok() {
-            let shared = Arc::new(Mutex::new(SharedData::new()));
-            Ok(Self { store, shared })
-        } else {
-            Err("Password store is not initialized".to_string())
-        }
-    }
 
     pub fn set_path_blocking(&self, path: &str) -> bool {
         if self.validate_path_blocking(path).is_err() {
@@ -222,7 +229,7 @@ impl AppData {
             })
     }
 
-    fn remove_pass_blocking(&self) -> Result<String, String> {
+    fn delete_pass_blocking(&self) -> Result<String, String> {
         let shared = match self.shared.lock() {
             Ok(guard) => guard,
             Err(p) => p.into_inner(),

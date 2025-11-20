@@ -2,8 +2,8 @@
 <interface>
   <requires lib="gtk" version="4.0" />
   <requires lib="Adw" version="1.0" />
-  <template class="AdwApplicationWindow">
-    <property name="title" translatable="yes">PasswordStore</property>
+  <object class="AdwApplicationWindow" id="main_window">
+    <property name="title">Password Store</property>
     <property name="default-width">600</property>
     <property name="default-height">450</property>
     <property name="icon-name">io.github.noobping.PasswordStore</property>
@@ -101,7 +101,7 @@
           </object>
         </child>
         <property name="content">
-          <object class="AdwToastOverlay" id="toast_overlay">
+              <object class="AdwToastOverlay" id="toast_overlay">
             <child>
               <object class="GtkPopover" id="passphrase_popover">
                 <property name="position">bottom</property>
@@ -235,7 +235,7 @@
         </property>
       </object>
     </property>
-  </template>
+  </object>
   <menu id="primary_menu">
     <section>
       <item>

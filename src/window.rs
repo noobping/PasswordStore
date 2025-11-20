@@ -55,8 +55,6 @@ pub struct Window {
     pub copy_password_button: Button,
     pub dynamic_box: GtkBox,
     pub text_view: TextView,
-
-    pub primary_menu: Menu,
 }
 
 pub fn create_main_window(app: &Application) -> Window {
@@ -152,11 +150,6 @@ pub fn create_main_window(app: &Application) -> Window {
         .object("text_view")
         .expect("Failed to get text_view");
 
-    // Menu model
-    let primary_menu: Menu = builder
-        .object("primary_menu")
-        .expect("Failed to get primary_menu");
-
     // actions
     {
         let nav = navigation_view.clone();
@@ -218,6 +211,5 @@ pub fn create_main_window(app: &Application) -> Window {
         copy_password_button,
         dynamic_box,
         text_view,
-        primary_menu,
     }
 }

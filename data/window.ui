@@ -6,7 +6,7 @@
     <property name="title">Password Store</property>
     <property name="default-width">600</property>
     <property name="default-height">450</property>
-    <property name="icon-name">io.github.noobping.PasswordStore</property>
+    <property name="icon-name">dev.noobping.passadw</property>
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
@@ -157,7 +157,7 @@
                                 <property name="vexpand">true</property>
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
-                                    <property name="icon-name">io.github.noobping.PasswordStore</property>
+                                    <property name="icon-name">dev.noobping.passadw</property>
                                     <property name="title" translatable="yes">No passwords found</property>
                                     <property name="description" translatable="yes">Try a different search, add a new entry or clone an existing password store.</property>
                                     <child>

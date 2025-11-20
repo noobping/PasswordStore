@@ -1,60 +1,30 @@
-use gtk4::prelude::*;
-use gtk4::{gio, Application};
-
 mod window;
-use crate::window::build_ui;
+
+use adw::prelude::*;
+use adw::Application;
+use gtk4::{gio, glib};
 
 const APP_ID: &str = "dev.noobping.passadw";
 
-fn main() -> anyhow::Result<()> {
-    // Register compiled GResources (from build.rs)
+fn main() -> glib::ExitCode {
+    // Make the compiled GResource available at runtime.
+    // Name must match the one in build.rs.
     gio::resources_register_include!("resources.gresource")
-        .expect("Failed to register resources");
+        .expect("Failed to register resources.gresource");
 
-    // If you want to *force* Wayland:
-    // std::env::set_var("GDK_BACKEND", "wayland");
+    // Initialize libadwaita
+    adw::init().expect("Failed to initialize libadwaita");
 
+    // Create the application
     let app = Application::builder()
         .application_id(APP_ID)
-        // We handle command line ourselves so GLib doesn't complain
-        .flags(gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
-    // Ignore CLI args like "gui" and just activate
-    app.connect_command_line(|app, _cmd| {
-        app.activate();
-        0.into()
+    // When the app is activated, create and show the main window
+    app.connect_activate(|app| {
+        let win = window::create_main_window(app);
+        win.present();
     });
 
-    app.connect_activate(build_ui);
-
-    if let Ok(backend) = std::env::var("GDK_BACKEND") {
-        eprintln!("GDK_BACKEND = {backend}");
-    }
-
-    app.run();
-    Ok(())
+    app.run()
 }
-
-// fn main() -> anyhow::Result<()> {
-//     // Register compiled GResources (from build.rs)
-//     gio::resources_register_include!("resources.gresource")
-//         .expect("Failed to register resources");
-
-//     // Initialize libadwaita
-//     adw::init().expect("Failed to init libadwaita");
-
-//     let app = Application::builder()
-//         .application_id(APP_ID)
-//         .build();
-
-//     app.connect_activate(|app| {
-//         // Create and show the main window from the template in window.ui
-//         let win = window::PasswordstoreWindow::new(app);
-//         win.present();
-//     });
-
-//     // Run the application
-//     let _exit_code = app.run();
-//     Ok(())
-// }

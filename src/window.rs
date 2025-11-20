@@ -174,6 +174,26 @@ pub fn create_main_window(app: &Application) -> Window {
         window.add_action(&toggle_search_action);
     }
 
+    {
+        let nav = navigation_view.clone();
+        let page = list_page.clone();
+        let list_page_action = SimpleAction::new("home-page", None);
+        list_page_action.connect_activate(move |_, _| {
+            nav.push(&page);
+        });
+        window.add_action(&list_page_action);
+    }
+
+    {
+        let nav = navigation_view.clone();
+        let page = text_page.clone();
+        let text_page_action = SimpleAction::new("text-page", None);
+        text_page_action.connect_activate(move |_, _| {
+            nav.push(&page);
+        });
+        window.add_action(&text_page_action);
+    }
+
     // TODO: Actions
     // win.add-password
     // win.git-page

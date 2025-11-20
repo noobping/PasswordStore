@@ -1,5 +1,6 @@
 <gresources>
   <gresource prefix="/dev/noobping/passadw">
     <file>window.ui</file>
+    <file>icons/passadw.svg</file>
   </gresource>
 </gresources>

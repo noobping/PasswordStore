@@ -101,7 +101,7 @@
           </object>
         </child>
         <property name="content">
-              <object class="AdwToastOverlay" id="toast_overlay">
+          <object class="AdwToastOverlay" id="toast_overlay">
             <child>
               <object class="GtkPopover" id="passphrase_popover">
                 <property name="position">bottom</property>

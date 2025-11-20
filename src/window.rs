@@ -8,8 +8,9 @@ use adw::{
     PasswordEntryRow,
     ToastOverlay,
     WindowTitle,
+    glib::clone,
 };
-use gtk4::gio::Menu;
+use adw::gio::{Menu, SimpleAction, prelude::*};
 use gtk4::{
     Box as GtkBox,
     Builder,

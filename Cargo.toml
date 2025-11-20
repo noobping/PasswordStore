@@ -1,6 +1,7 @@
 [package]
 name = "passwordstore"
 description = "The default Unix password store"
+authors = ["noobping"]
 version = "0.1.0"
 edition = "2021"
 

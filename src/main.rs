@@ -26,12 +26,19 @@ fn main() -> glib::ExitCode {
     let app_for_about = app.clone();
     about_action.connect_activate(move |_, _| {
         if let Some(win) = app_for_about.active_window() {
+            let authors_raw = env!("CARGO_PKG_AUTHORS");
+            let authors: Vec<&str> = authors_raw
+                .split(':')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
             let about = adw::AboutWindow::builder()
                 .transient_for(&win)
-                .application_name("Password Store")
+                .application_name(env!("CARGO_PKG_NAME"))
                 .application_icon("passadw")
-                .version("0.1.0")
-                .developer_name("noobping")
+                .version(env!("CARGO_PKG_VERSION"))
+                .developers(&authors[..])
+                .comments(option_env!("CARGO_PKG_DESCRIPTION").unwrap_or(""))
                 .build();
             about.present();
         }

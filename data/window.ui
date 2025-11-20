@@ -26,7 +26,7 @@
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Add new password</property>
                     <property name="action-name">win.add-password</property>
-                    <property name="visible">false</property>
+                    <property name="visible">true</property>
                   </object>
                 </child>
                 <child>

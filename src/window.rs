@@ -152,62 +152,71 @@ pub fn create_main_window(app: &Application) -> Window {
 
     // actions
     {
-        let git_popover = git_popover.clone();
-        let git_page_action = SimpleAction::new("git-page", None);
-        git_page_action.connect_activate(move |_, _| {
-            git_popover.popup();
+        let popover = add_button_popover.clone();
+        let action = SimpleAction::new("add-password", None);
+        action.connect_activate(move |_, _| {
+            popover.popup();
         });
-        window.add_action(&git_page_action);
+        window.add_action(&action);
+    }
+    
+    {
+        let popover = git_popover.clone();
+        let action = SimpleAction::new("git-page", None);
+        action.connect_activate(move |_, _| {
+            popover.popup();
+        });
+        window.add_action(&action);
     }
 
     {
-        let git_url_entry = git_url_entry.clone();
-        let toast_overlay = toast_overlay.clone(); // if you want feedback
-        let git_clone_action = SimpleAction::new("git-clone", None);
-        git_clone_action.connect_activate(move |_, _| {
-            let url = git_url_entry.text().to_string();
+        let entry = git_url_entry.clone();
+        let overlay = toast_overlay.clone();
+        let action = SimpleAction::new("git-clone", None);
+        action.connect_activate(move |_, _| {
+            let url = entry.text().to_string();
 
             // TODO: run your clone logic here
             // e.g. spawn a task, then show a toast:
             if !url.is_empty() {
                 let toast = adw::Toast::new(&format!("Cloning from {url}…"));
-                toast_overlay.add_toast(toast);
+                overlay.add_toast(toast);
             }
         });
-        window.add_action(&git_clone_action);
+        window.add_action(&action);
     }
 
     {
         let search = search_entry.clone();
-        let toggle_search_action = SimpleAction::new("toggle-search", None);
-        toggle_search_action.connect_activate(move |_, _| {
+        let action = SimpleAction::new("toggle-search", None);
+        action.connect_activate(move |_, _| {
             let visible = search.is_visible();
             search.set_visible(!visible);
             if !visible {
                 search.grab_focus();
             }
         });
-        window.add_action(&toggle_search_action);
+        window.add_action(&action);
     }
 
     {
         let nav = navigation_view.clone();
         let page = list_page.clone();
-        let list_page_action = SimpleAction::new("home-page", None);
-        list_page_action.connect_activate(move |_, _| {
+        let action = SimpleAction::new("home-page", None);
+        action.connect_activate(move |_, _| {
             nav.push(&page);
         });
-        window.add_action(&list_page_action);
+        window.add_action(&action);
     }
 
     {
         let nav = navigation_view.clone();
         let page = text_page.clone();
-        let text_page_action = SimpleAction::new("text-page", None);
-        text_page_action.connect_activate(move |_, _| {
+        let action = SimpleAction::new("text-page", None);
+        action.connect_activate(move |_, _| {
             nav.push(&page);
         });
-        window.add_action(&text_page_action);
+        window.add_action(&action);
     }
 
     // TODO: Actions

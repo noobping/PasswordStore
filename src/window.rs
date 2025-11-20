@@ -152,13 +152,29 @@ pub fn create_main_window(app: &Application) -> Window {
 
     // actions
     {
-        let nav = navigation_view.clone();
-        let list = list_page.clone();
-        let back_action = SimpleAction::new("home-page", None);
-        back_action.connect_activate(move |_, _| {
-            nav.push(&list);
+        let git_popover = git_popover.clone();
+        let git_page_action = SimpleAction::new("git-page", None);
+        git_page_action.connect_activate(move |_, _| {
+            git_popover.popup();
         });
-        window.add_action(&back_action);
+        window.add_action(&git_page_action);
+    }
+
+    {
+        let git_url_entry = git_url_entry.clone();
+        let toast_overlay = toast_overlay.clone(); // if you want feedback
+        let git_clone_action = SimpleAction::new("git-clone", None);
+        git_clone_action.connect_activate(move |_, _| {
+            let url = git_url_entry.text().to_string();
+
+            // TODO: run your clone logic here
+            // e.g. spawn a task, then show a toast:
+            if !url.is_empty() {
+                let toast = adw::Toast::new(&format!("Cloning from {url}…"));
+                toast_overlay.add_toast(toast);
+            }
+        });
+        window.add_action(&git_clone_action);
     }
 
     {

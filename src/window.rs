@@ -150,6 +150,30 @@ pub fn create_main_window(app: &Application) -> Window {
         .object("text_view")
         .expect("Failed to get text_view");
 
+    // Input
+    {
+        let nav = navigation_view.clone();
+        let page = text_page.clone();
+        let popover = add_button_popover.clone();
+        let overlay = toast_overlay.clone();
+        path_entry.connect_apply(move |row| {
+            let path = row.text().to_string(); // Get the text from the entry
+
+            // Do your “apply” logic here:
+            if path.is_empty() {
+                // example: warn the user
+                let toast = adw::Toast::new("Path cannot be empty");
+                overlay.add_toast(toast);
+                return;
+            }
+
+            // TODO: create the password / entry at `path`
+            nav.push(&page);
+
+            popover.popdown(); // Close the popover once we've handled it
+        });
+    }
+
     // actions
     {
         let popover = add_button_popover.clone();

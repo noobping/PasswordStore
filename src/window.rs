@@ -235,22 +235,6 @@ pub fn create_main_window(app: &Application) -> Window {
         let add = add_button.clone();
         let nav = navigation_view.clone();
         let page = list_page.clone();
-        let action = SimpleAction::new("home-page", None);
-        action.connect_activate(move |_, _| {
-            add.set_visible(true);
-            git.set_visible(true);
-            back.set_visible(false);
-            nav.push(&page);
-        });
-        window.add_action(&action);
-    }
-
-    {
-        let back = back_button.clone();
-        let git = git_button.clone();
-        let add = add_button.clone();
-        let nav = navigation_view.clone();
-        let page = list_page.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
             add.set_visible(true);

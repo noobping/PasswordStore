@@ -1,0 +1,14 @@
+[package]
+name = "passwordstore"
+description = "The default Unix password store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "^1.0"
+thiserror = "^2.0"
+gtk4 = { version = "^0.10", package = "gtk4" }
+adw = { version = "^0.8.0", package = "libadwaita", features = ["v1_8"] }
+
+[build-dependencies]
+glib-build-tools = "^0.21.0"

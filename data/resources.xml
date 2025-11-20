@@ -1,0 +1,5 @@
+<gresources>
+  <gresource prefix="/io/github/noobping/PasswordStore">
+    <file>window.ui</file>
+  </gresource>
+</gresources>

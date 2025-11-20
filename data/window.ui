@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0" />
+  <requires lib="Adw" version="1.0" />
+  <template class="AdwApplicationWindow">
+    <property name="title" translatable="yes">PasswordStore</property>
+    <property name="default-width">600</property>
+    <property name="default-height">450</property>
+    <property name="icon-name">io.github.noobping.PasswordStore</property>
+    <property name="content">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <child type="start">
+              <object class="GtkBox">
+                <child>
+                  <object class="GtkButton" id="back_button">
+                    <property name="icon-name">left-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Back</property>
+                    <property name="action-name">win.back</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="add_button">
+                    <property name="icon-name">list-add-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Add new password</property>
+                    <property name="action-name">win.add-password</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkPopover" id="add_button_popover">
+                    <property name="position">bottom</property>
+                    <property name="autohide">false</property>
+                    <child>
+                      <object class="AdwEntryRow" id="path_entry">
+                        <property name="title" translatable="yes">Path or name</property>
+                        <property name="show-apply-button">True</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="git_button">
+                    <property name="icon-name">git-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Restore from Git repository</property>
+                    <property name="action-name">win.git-page</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkPopover" id="git_popover">
+                    <property name="position">bottom</property>
+                    <property name="autohide">false</property>
+                    <child>
+                      <object class="AdwEntryRow" id="git_url_entry">
+                        <property name="title" translatable="yes">Git URL</property>
+                        <property name="show-apply-button">True</property>
+                        <property name="action-name">win.git-clone</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkButton" id="search_button">
+                    <property name="icon-name">edit-find-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Search passwords</property>
+                    <property name="action-name">win.toggle-search</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="title">
+              <object class="AdwWindowTitle" id="window_title">
+                <property name="title" translatable="yes">Password Store</property>
+                <property name="subtitle" translatable="yes">Manage your passwords</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkBox">
+                <child>
+                  <object class="GtkButton" id="save_button">
+                    <property name="icon-name">document-save-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Save password</property>
+                    <property name="action-name">win.save-password</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkMenuButton">
+                    <property name="primary">True</property>
+                    <property name="icon-name">open-menu-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Main Menu</property>
+                    <property name="menu-model">primary_menu</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwToastOverlay" id="toast_overlay">
+            <child>
+              <object class="GtkPopover" id="passphrase_popover">
+                <property name="position">bottom</property>
+                <property name="autohide">false</property>
+                <child>
+                  <object class="AdwPasswordEntryRow" id="passphrase_entry">
+                    <property name="title" translatable="yes">Decryption passphrase</property>
+                    <property name="show-apply-button">True</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkPopover" id="rename_popover">
+                <property name="position">bottom</property>
+                <property name="autohide">false</property>
+                <child>
+                  <object class="AdwEntryRow" id="new_path_entry">
+                    <property name="title" translatable="yes">New path or name</property>
+                    <property name="show-apply-button">True</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+
+            <child>
+              <object class="AdwNavigationView" id="navigation_view">
+
+                <!-- List page -->
+                <child>
+                  <object class="AdwNavigationPage" id="list_page">
+                    <property name="title" translatable="yes">Password List</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkSearchEntry" id="search_entry">
+                            <property name="visible">false</property>
+                            <property name="placeholder-text" translatable="yes">Search...</property>
+                          </object>
+                        </child>
+
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="vscrollbar-policy">automatic</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="GtkListBox" id="list">
+                                <property name="hexpand">true</property>
+                                <property name="vexpand">true</property>
+                                <child type="placeholder">
+                                  <object class="AdwStatusPage">
+                                    <property name="icon-name">io.github.noobping.PasswordStore</property>
+                                    <property name="title" translatable="yes">No passwords found</property>
+                                    <property name="description" translatable="yes">Try a different search, add a new entry or clone an existing password store.</property>
+                                    <child>
+                                      <object class="GtkSpinner" id="spinner">
+                                        <property name="visible">true</property>
+                                        <property name="spinning">true</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <!-- Text editor page -->
+                <child>
+                  <object class="AdwNavigationPage" id="text_page">
+                    <property name="title" translatable="yes">Text Editor</property>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vscrollbar-policy">automatic</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="propagate-natural-width">true</property>
+                        <property name="propagate-natural-height">true</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <child>
+                              <object class="AdwPasswordEntryRow" id="password_entry">
+                                <property name="title" translatable="yes">Password</property>
+                                <property name="margin-start">15</property>
+                                <property name="margin-end">15</property>
+                                <property name="margin-bottom">6</property>
+                                <child>
+                                  <object class="GtkButton" id="copy_password_button">
+                                    <property name="icon-name">edit-copy-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Copy password</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="dynamic_box">
+                                <property name="orientation">vertical</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkTextView" id="text_view">
+                                <property name="editable">true</property>
+                                <property name="wrap-mode">word</property>
+                                <property name="cursor-visible">true</property>
+                                <property name="hexpand">true</property>
+                                <property name="vexpand">true</property>
+                                <property name="left-margin">15</property>
+                                <property name="right-margin">15</property>
+                                <property name="pixels-above-lines">3</property>
+                                <property name="pixels-below-lines">3</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Synchronize with remote</attribute>
+        <attribute name="action">win.synchronize</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
+        <attribute name="action">win.show-help-overlay</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_About PasswordStore</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

@@ -3,11 +3,11 @@ use adw::Application;
 use adw::ApplicationWindow;
 use gtk4::Builder;
 
-const UI_RESOURCE: &str = "/dev/noobping/passadw/window.ui";
+const UI_SRC: &str = include_str!("../data/window.ui");
 
 pub fn create_main_window(app: &Application) -> ApplicationWindow {
     // The resources are registered in main.rs
-    let builder = Builder::from_resource(UI_RESOURCE);
+    let builder = Builder::from_string(UI_SRC);
 
     // `main_window` id comes from window.ui
     let window: ApplicationWindow = builder

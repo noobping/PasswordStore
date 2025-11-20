@@ -1,22 +1,188 @@
 use adw::prelude::*;
-use adw::Application;
-use adw::ApplicationWindow;
-use gtk4::Builder;
+use adw::{
+    Application,
+    ApplicationWindow,
+    EntryRow,
+    NavigationView,
+    NavigationPage,
+    PasswordEntryRow,
+    ToastOverlay,
+    WindowTitle,
+};
+use gtk4::gio::Menu;
+use gtk4::{
+    Box as GtkBox,
+    Builder,
+    Button,
+    ListBox,
+    Popover,
+    SearchEntry,
+    Spinner,
+    TextView,
+};
 
 const UI_SRC: &str = include_str!("../data/window.ui");
 
-pub fn create_main_window(app: &Application) -> ApplicationWindow {
+pub struct Window {
+    pub window: ApplicationWindow,
+
+    pub back_button: Button,
+    pub add_button: Button,
+    pub add_button_popover: Popover,
+    pub path_entry: EntryRow,
+    pub git_button: Button,
+    pub git_popover: Popover,
+    pub git_url_entry: EntryRow,
+    pub search_button: Button,
+    pub window_title: WindowTitle,
+    pub save_button: Button,
+
+    pub toast_overlay: ToastOverlay,
+    pub passphrase_popover: Popover,
+    pub passphrase_entry: EntryRow,
+    pub rename_popover: Popover,
+    pub new_path_entry: EntryRow,
+
+    pub navigation_view: NavigationView,
+    pub list_page: NavigationPage,
+    pub search_entry: SearchEntry,
+    pub list: ListBox,
+    pub spinner: Spinner,
+
+    pub text_page: NavigationPage,
+    pub password_entry: PasswordEntryRow,
+    pub copy_password_button: Button,
+    pub dynamic_box: GtkBox,
+    pub text_view: TextView,
+
+    pub primary_menu: Menu,
+}
+
+pub fn create_main_window(app: &Application) -> Window {
     // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
 
-    // `main_window` id comes from window.ui
+    // Root window
     let window: ApplicationWindow = builder
         .object("main_window")
         .expect("Failed to get main_window from UI");
-
     window.set_application(Some(app));
 
-    // ...
-    
-    window
+    // Headerbar + top controls
+    let back_button: Button = builder
+        .object("back_button")
+        .expect("Failed to get back_button");
+    let add_button: Button = builder
+        .object("add_button")
+        .expect("Failed to get add_button");
+    let add_button_popover: Popover = builder
+        .object("add_button_popover")
+        .expect("Failed to get add_button_popover");
+    let path_entry: EntryRow = builder
+        .object("path_entry")
+        .expect("Failed to get path_entry");
+    let git_button: Button = builder
+        .object("git_button")
+        .expect("Failed to get git_button");
+    let git_popover: Popover = builder
+        .object("git_popover")
+        .expect("Failed to get git_popover");
+    let git_url_entry: EntryRow = builder
+        .object("git_url_entry")
+        .expect("Failed to get git_url_entry");
+    let search_button: Button = builder
+        .object("search_button")
+        .expect("Failed to get search_button");
+    let window_title: WindowTitle = builder
+        .object("window_title")
+        .expect("Failed to get window_title");
+    let save_button: Button = builder
+        .object("save_button")
+        .expect("Failed to get save_button");
+
+    // Toast overlay + popovers
+    let toast_overlay: ToastOverlay = builder
+        .object("toast_overlay")
+        .expect("Failed to get toast_overlay");
+    let passphrase_popover: Popover = builder
+        .object("passphrase_popover")
+        .expect("Failed to get passphrase_popover");
+    let passphrase_entry: EntryRow = builder
+        .object("passphrase_entry")
+        .expect("Failed to get passphrase_entry");
+    let rename_popover: Popover = builder
+        .object("rename_popover")
+        .expect("Failed to get rename_popover");
+    let new_path_entry: EntryRow = builder
+        .object("new_path_entry")
+        .expect("Failed to get new_path_entry");
+
+    // Navigation + list page
+    let navigation_view: NavigationView = builder
+        .object("navigation_view")
+        .expect("Failed to get navigation_view");
+    let list_page: NavigationPage = builder
+        .object("list_page")
+        .expect("Failed to get list_page");
+    let search_entry: SearchEntry = builder
+        .object("search_entry")
+        .expect("Failed to get search_entry");
+    let list: ListBox = builder
+        .object("list")
+        .expect("Failed to get list");
+    let spinner: Spinner = builder
+        .object("spinner")
+        .expect("Failed to get spinner");
+
+    // Text editor page
+    let text_page: NavigationPage = builder
+        .object("text_page")
+        .expect("Failed to get text_page");
+    let password_entry: PasswordEntryRow = builder
+        .object("password_entry")
+        .expect("Failed to get password_entry");
+    let copy_password_button: Button = builder
+        .object("copy_password_button")
+        .expect("Failed to get copy_password_button");
+    let dynamic_box: GtkBox = builder
+        .object("dynamic_box")
+        .expect("Failed to get dynamic_box");
+    let text_view: TextView = builder
+        .object("text_view")
+        .expect("Failed to get text_view");
+
+    // Menu model
+    let primary_menu: Menu = builder
+        .object("primary_menu")
+        .expect("Failed to get primary_menu");
+
+    Window {
+        window,
+        back_button,
+        add_button,
+        add_button_popover,
+        path_entry,
+        git_button,
+        git_popover,
+        git_url_entry,
+        search_button,
+        window_title,
+        save_button,
+        toast_overlay,
+        passphrase_popover,
+        passphrase_entry,
+        rename_popover,
+        new_path_entry,
+        navigation_view,
+        list_page,
+        search_entry,
+        list,
+        spinner,
+        text_page,
+        password_entry,
+        copy_password_button,
+        dynamic_box,
+        text_view,
+        primary_menu,
+    }
 }

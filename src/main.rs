@@ -23,7 +23,7 @@ fn main() -> glib::ExitCode {
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
         let win = window::create_main_window(app);
-        win.present();
+        win.window.present();
     });
 
     app.run()

@@ -152,6 +152,9 @@ pub fn create_main_window(app: &Application) -> Window {
 
     // Input
     {
+        let back = back_button.clone();
+        let git = git_button.clone();
+        let add = add_button.clone();
         let nav = navigation_view.clone();
         let page = text_page.clone();
         let popover = add_button_popover.clone();
@@ -168,6 +171,9 @@ pub fn create_main_window(app: &Application) -> Window {
             }
 
             // TODO: create the password / entry at `path`
+            add.set_visible(false);
+            git.set_visible(false);
+            back.set_visible(true);
             nav.push(&page);
 
             popover.popdown(); // Close the popover once we've handled it
@@ -224,11 +230,33 @@ pub fn create_main_window(app: &Application) -> Window {
     }
 
     {
+        let back = back_button.clone();
+        let git = git_button.clone();
+        let add = add_button.clone();
         let nav = navigation_view.clone();
         let page = list_page.clone();
         let action = SimpleAction::new("home-page", None);
         action.connect_activate(move |_, _| {
+            add.set_visible(true);
+            git.set_visible(true);
+            back.set_visible(false);
             nav.push(&page);
+        });
+        window.add_action(&action);
+    }
+
+    {
+        let back = back_button.clone();
+        let git = git_button.clone();
+        let add = add_button.clone();
+        let nav = navigation_view.clone();
+        let page = list_page.clone();
+        let action = SimpleAction::new("back", None);
+        action.connect_activate(move |_, _| {
+            add.set_visible(true);
+            git.set_visible(true);
+            back.set_visible(false);
+            nav.pop();
         });
         window.add_action(&action);
     }

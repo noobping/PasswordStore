@@ -250,7 +250,7 @@ pub fn create_main_window(app: &Application) -> Window {
     // win.save-password
 
     // keyboard shortcuts
-    app.set_accels_for_action("win.home-page", &["Escape"]);
+    app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
 
     Window {

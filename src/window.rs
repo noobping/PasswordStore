@@ -154,7 +154,7 @@ pub fn create_main_window(app: &Application) -> Window {
     {
         let nav = navigation_view.clone();
         let list = list_page.clone();
-        let back_action = SimpleAction::new("back", None);
+        let back_action = SimpleAction::new("home-page", None);
         back_action.connect_activate(move |_, _| {
             nav.push(&list);
         });
@@ -201,7 +201,7 @@ pub fn create_main_window(app: &Application) -> Window {
     // win.save-password
 
     // keyboard shortcuts
-    app.set_accels_for_action("win.back", &["Escape"]);
+    app.set_accels_for_action("win.home-page", &["Escape"]);
     app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
 
     Window {

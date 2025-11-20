@@ -157,7 +157,8 @@ pub fn create_main_window(app: &Application) -> Window {
         let add = add_button.clone();
         let nav = navigation_view.clone();
         let page = text_page.clone();
-        let popover = add_button_popover.clone();
+        let popover_add = add_button_popover.clone();
+        let popover_git = git_popover.clone();
         let overlay = toast_overlay.clone();
         path_entry.connect_apply(move |row| {
             let path = row.text().to_string(); // Get the text from the entry
@@ -176,7 +177,8 @@ pub fn create_main_window(app: &Application) -> Window {
             back.set_visible(true);
             nav.push(&page);
 
-            popover.popdown(); // Close the popover once we've handled it
+            popover_add.popdown(); // Close the popover once we've handled it
+            popover_git.popdown();
         });
     }
 

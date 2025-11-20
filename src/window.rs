@@ -157,6 +157,40 @@ pub fn create_main_window(app: &Application) -> Window {
         .object("primary_menu")
         .expect("Failed to get primary_menu");
 
+    // actions
+    {
+        let nav = navigation_view.clone();
+        let list = list_page.clone();
+        let back_action = SimpleAction::new("back", None);
+        back_action.connect_activate(move |_, _| {
+            nav.push(&list);
+        });
+        window.add_action(&back_action);
+    }
+
+    {
+        let search = search_entry.clone();
+        let toggle_search_action = SimpleAction::new("toggle-search", None);
+        toggle_search_action.connect_activate(move |_, _| {
+            let visible = search.is_visible();
+            search.set_visible(!visible);
+            if !visible {
+                search.grab_focus();
+            }
+        });
+        window.add_action(&toggle_search_action);
+    }
+
+    // TODO: Actions
+    // win.add-password
+    // win.git-page
+    // win.git-clone
+    // win.save-password
+
+    // keyboard shortcuts
+    app.set_accels_for_action("win.back", &["Escape"]);
+    app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
+
     Window {
         window,
         back_button,

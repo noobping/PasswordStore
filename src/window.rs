@@ -187,7 +187,7 @@ pub fn create_main_window(app: &Application) -> Window {
         let popover = add_button_popover.clone();
         let action = SimpleAction::new("add-password", None);
         action.connect_activate(move |_, _| {
-            popover.popup();
+            if popover.is_visible() { popover.popdown() } else { popover.popup() }
         });
         window.add_action(&action);
     }
@@ -196,7 +196,7 @@ pub fn create_main_window(app: &Application) -> Window {
         let popover = git_popover.clone();
         let action = SimpleAction::new("git-page", None);
         action.connect_activate(move |_, _| {
-            popover.popup();
+            if popover.is_visible() { popover.popdown() } else { popover.popup() }
         });
         window.add_action(&action);
     }

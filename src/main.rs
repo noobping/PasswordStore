@@ -1,8 +1,9 @@
+mod item;
 mod window;
 
+use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use adw::gio::SimpleAction;
 use gtk4::{gio, glib};
 
 const APP_ID: &str = "dev.noobping.passadw";
@@ -16,9 +17,7 @@ fn main() -> glib::ExitCode {
     adw::init().expect("Failed to initialize libadwaita");
 
     // Create the application
-    let app = Application::builder()
-        .application_id(APP_ID)
-        .build();
+    let app = Application::builder().application_id(APP_ID).build();
 
     // app.about
     let about_action = SimpleAction::new("about", None);

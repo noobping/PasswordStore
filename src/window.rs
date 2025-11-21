@@ -1,26 +1,11 @@
+use adw::gio::{prelude::*, Menu, SimpleAction};
+use adw::glib::{clone, Continue, MainContext};
 use adw::prelude::*;
 use adw::{
-    Application,
-    ApplicationWindow,
-    EntryRow,
-    NavigationView,
-    NavigationPage,
-    PasswordEntryRow,
-    ToastOverlay,
-    WindowTitle,
-    glib::clone,
+    Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
+    ToastOverlay, WindowTitle,
 };
-use adw::gio::{Menu, SimpleAction, prelude::*};
-use gtk4::{
-    Box as GtkBox,
-    Builder,
-    Button,
-    ListBox,
-    Popover,
-    SearchEntry,
-    Spinner,
-    TextView,
-};
+use gtk4::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, Spinner, TextView};
 
 const UI_SRC: &str = include_str!("../data/window.ui");
 
@@ -126,12 +111,8 @@ pub fn create_main_window(app: &Application) -> Window {
     let search_entry: SearchEntry = builder
         .object("search_entry")
         .expect("Failed to get search_entry");
-    let list: ListBox = builder
-        .object("list")
-        .expect("Failed to get list");
-    let spinner: Spinner = builder
-        .object("spinner")
-        .expect("Failed to get spinner");
+    let list: ListBox = builder.object("list").expect("Failed to get list");
+    let spinner: Spinner = builder.object("spinner").expect("Failed to get spinner");
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -187,16 +168,24 @@ pub fn create_main_window(app: &Application) -> Window {
         let popover = add_button_popover.clone();
         let action = SimpleAction::new("add-password", None);
         action.connect_activate(move |_, _| {
-            if popover.is_visible() { popover.popdown() } else { popover.popup() }
+            if popover.is_visible() {
+                popover.popdown()
+            } else {
+                popover.popup()
+            }
         });
         window.add_action(&action);
     }
-    
+
     {
         let popover = git_popover.clone();
         let action = SimpleAction::new("git-page", None);
         action.connect_activate(move |_, _| {
-            if popover.is_visible() { popover.popdown() } else { popover.popup() }
+            if popover.is_visible() {
+                popover.popdown()
+            } else {
+                popover.popup()
+            }
         });
         window.add_action(&action);
     }

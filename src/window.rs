@@ -1,6 +1,5 @@
 use crate::item::{collect_all_password_items, PasswordItem};
 use adw::gio::{prelude::*, SimpleAction};
-use adw::glib::{clone, prelude::*, MainContext};
 use adw::{
     glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
     PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
@@ -9,7 +8,9 @@ use gtk4::{
     Box as GtkBox, Builder, Button, Label, ListBox, ListBoxRow, Orientation, Popover, SearchEntry,
     Spinner, TextView,
 };
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
@@ -244,7 +245,6 @@ pub fn create_main_window(app: &Application) -> Window {
         let git = git_button.clone();
         let add = add_button.clone();
         let nav = navigation_view.clone();
-        let page = list_page.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
             add.set_visible(true);
@@ -276,6 +276,8 @@ pub fn create_main_window(app: &Application) -> Window {
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
 
+    setup_search_filter(&list, &search_entry);
+
     Window {
         window,
         back_button,
@@ -305,12 +307,6 @@ pub fn create_main_window(app: &Application) -> Window {
     }
 }
 
-fn clear_list(list: &gtk4::ListBox) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-}
-
 fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
@@ -325,7 +321,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
         .icon_name("passadw")
         .child(&bussy)
         .build();
-    list.set_placeholder(Some(&bussy));
+    list.set_placeholder(Some(&placeholder));
 
     // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PasswordItem>>();
@@ -419,5 +415,55 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
                 glib::ControlFlow::Break
             }
         }
+    });
+}
+
+fn non_null_to_string(label_opt: Option<std::ptr::NonNull<String>>) -> Result<String, ()> {
+    if let Some(ptr) = label_opt {
+        // SAFETY: caller must guarantee the pointer is valid and points to a valid String
+        let s: &String = unsafe { ptr.as_ref() };
+        Ok(s.clone())
+    } else {
+        Err(())
+    }
+}
+
+fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
+    // shared state for the current query
+    let query = Rc::new(RefCell::new(String::new()));
+
+    // 1) Filter function for the ListBox
+    let query_for_filter = query.clone();
+    list.set_filter_func(move |row: &ListBoxRow| {
+        let q_ref = query_for_filter.borrow();
+        let q = q_ref.as_str();
+
+        // empty query → show everything
+        if q.is_empty() {
+            return true;
+        }
+
+        if let Ok(label) = non_null_to_string(unsafe { row.data::<String>("label") }) {
+            let query_lower = q.to_lowercase();
+            return label.contains(&query_lower);
+        }
+
+        true
+    });
+
+    // 2) Update query when the user types, then invalidate the filter
+    let query_for_entry = query.clone();
+    let list_for_entry = list.clone();
+
+    search_entry.connect_search_changed(move |entry| {
+        let text = entry.text().to_string();
+
+        {
+            let mut q_mut = query_for_entry.borrow_mut();
+            *q_mut = text;
+        }
+
+        // trigger re-evaluation of filter_func for all rows
+        list_for_entry.invalidate_filter();
     });
 }

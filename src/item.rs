@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 pub struct PasswordItem {
     pub path: PathBuf, // full path to the .gpg
     pub label: String, // relative path without .gpg
+    pub base: String,
 }
 
 pub fn collect_all_password_items(roots: &[PathBuf]) -> io::Result<Vec<PasswordItem>> {
@@ -63,6 +64,7 @@ fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PasswordItem>) -
             out.push(PasswordItem {
                 path: path.clone(),
                 label,
+                base: base.to_string_lossy().to_string(),
             });
         }
     }

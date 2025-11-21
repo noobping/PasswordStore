@@ -158,11 +158,9 @@
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
                                     <property name="icon-name">passadw</property>
-                                    <property name="title" translatable="yes">No passwords found</property>
-                                    <property name="description" translatable="yes">Try a different search, add a new entry or clone an existing password store.</property>
                                     <child>
-                                      <object class="GtkSpinner" id="spinner">
-                                        <property name="visible">false</property>
+                                      <object class="GtkSpinner">
+                                        <property name="visible">true</property>
                                         <property name="spinning">true</property>
                                       </object>
                                     </child>

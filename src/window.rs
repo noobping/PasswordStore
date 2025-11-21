@@ -3,7 +3,7 @@ use adw::gio::{prelude::*, SimpleAction};
 use adw::glib::{clone, prelude::*, MainContext};
 use adw::{
     glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
-    PasswordEntryRow, ToastOverlay, WindowTitle,
+    PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
 };
 use gtk4::{
     Box as GtkBox, Builder, Button, Label, ListBox, ListBoxRow, Orientation, Popover, SearchEntry,
@@ -41,7 +41,6 @@ pub struct Window {
     pub list_page: NavigationPage,
     pub search_entry: SearchEntry,
     pub list: ListBox,
-    pub spinner: Spinner,
 
     pub text_page: NavigationPage,
     pub password_entry: PasswordEntryRow,
@@ -120,13 +119,12 @@ pub fn create_main_window(app: &Application) -> Window {
         .object("search_entry")
         .expect("Failed to get search_entry");
     let list: ListBox = builder.object("list").expect("Failed to get list");
-    let spinner: Spinner = builder.object("spinner").expect("Failed to get spinner");
 
     let home = std::env::var("HOME").unwrap_or(String::new());
     let mut roots: Vec<PathBuf> = Vec::new();
     roots.push(PathBuf::from(format!("{}/.password-store", home)));
 
-    load_passwords_async(&list, &spinner, roots);
+    load_passwords_async(&list, roots);
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -291,7 +289,6 @@ pub fn create_main_window(app: &Application) -> Window {
         list_page,
         search_entry,
         list,
-        spinner,
         text_page,
         password_entry,
         copy_password_button,
@@ -306,18 +303,22 @@ fn clear_list(list: &gtk4::ListBox) {
     }
 }
 
-fn load_passwords_async(list: &ListBox, spinner: &Spinner, roots: Vec<PathBuf>) {
+fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
-    spinner.set_visible(true);
-    spinner.start();
+    let placeholder = StatusPage::builder()
+        .icon_name("passadw")
+        .title("No passwords found")
+        .description("Create a new password to get started.")
+        .build();
+    list.set_placeholder(Some(&placeholder));
 
-    // 3) Standard library channel: main thread will own `rx`, worker gets `tx`
+    // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PasswordItem>>();
 
-    // 4) Spawn worker thread – ONLY data goes in here (roots + tx)
+    // Spawn worker thread – ONLY data goes in here (roots + tx)
     thread::spawn(move || {
         let mut all_items: Vec<PasswordItem> = Vec::new();
 
@@ -345,21 +346,16 @@ fn load_passwords_async(list: &ListBox, spinner: &Spinner, roots: Vec<PathBuf>) 
         let _ = tx.send(all_items);
     });
 
-    // 5) Clone GTK widgets on the main thread (they stay on this thread)
+    // Clone GTK widgets on the main thread (they stay on this thread)
     let list_clone = list.clone();
-    let spinner_clone = spinner.clone();
 
-    // 6) Poll the channel from the main thread using a GLib timeout
+    // Poll the channel from the main thread using a GLib timeout
     //
     //   - timeout_add_local does NOT require Send
     //   - closure runs on the GTK main loop thread
     glib::timeout_add_local(Duration::from_millis(50), move || {
         match rx.try_recv() {
             Ok(items) => {
-                // Got results → stop spinner and populate the list
-                spinner_clone.stop();
-                spinner_clone.set_visible(false);
-
                 let mut index = 0;
                 let len = items.len();
                 while index < len {
@@ -393,8 +389,6 @@ fn load_passwords_async(list: &ListBox, spinner: &Spinner, roots: Vec<PathBuf>) 
             }
             Err(TryRecvError::Disconnected) => {
                 // Worker died / channel closed → stop spinner, bail out
-                spinner_clone.stop();
-                spinner_clone.set_visible(false);
                 glib::ControlFlow::Break
             }
         }

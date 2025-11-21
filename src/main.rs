@@ -30,12 +30,13 @@ fn main() -> glib::ExitCode {
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {
             let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
+            let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
             let about = adw::AboutDialog::builder()
                 .application_name(env!("CARGO_PKG_NAME"))
                 .application_icon("passadw")
                 .version(env!("CARGO_PKG_VERSION"))
                 .developers(&authors[..])
-                .comments(option_env!("CARGO_PKG_DESCRIPTION").unwrap_or(""))
+                .comments(comments)
                 .build();
             about.present(Some(&win.window));
         });

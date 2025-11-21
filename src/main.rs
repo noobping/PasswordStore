@@ -19,31 +19,6 @@ fn main() -> glib::ExitCode {
     // Create the application
     let app = Application::builder().application_id(APP_ID).build();
 
-    // app.about
-    let about_action = SimpleAction::new("about", None);
-
-    let app_for_about = app.clone();
-    about_action.connect_activate(move |_, _| {
-        if let Some(win) = app_for_about.active_window() {
-            let authors_raw = env!("CARGO_PKG_AUTHORS");
-            let authors: Vec<&str> = authors_raw
-                .split(':')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect();
-            let about = adw::AboutWindow::builder()
-                .transient_for(&win)
-                .application_name(env!("CARGO_PKG_NAME"))
-                .application_icon("passadw")
-                .version(env!("CARGO_PKG_VERSION"))
-                .developers(&authors[..])
-                .comments(option_env!("CARGO_PKG_DESCRIPTION").unwrap_or(""))
-                .build();
-            about.present();
-        }
-    });
-    app.add_action(&about_action);
-
     // keyboard shortcuts
     app.set_accels_for_action("app.about", &["F1"]);
 
@@ -51,6 +26,20 @@ fn main() -> glib::ExitCode {
     app.connect_activate(|app| {
         let win = window::create_main_window(app);
         win.window.present();
+
+        let about_action = SimpleAction::new("about", None);
+        about_action.connect_activate(move |_, _| {
+            let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
+            let about = adw::AboutDialog::builder()
+                .application_name(env!("CARGO_PKG_NAME"))
+                .application_icon("passadw")
+                .version(env!("CARGO_PKG_VERSION"))
+                .developers(&authors[..])
+                .comments(option_env!("CARGO_PKG_DESCRIPTION").unwrap_or(""))
+                .build();
+            about.present(Some(&win.window));
+        });
+        app.add_action(&about_action);
     });
 
     app.run()

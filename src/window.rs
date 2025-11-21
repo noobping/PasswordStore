@@ -124,7 +124,7 @@ pub fn create_main_window(app: &Application) -> Window {
     let mut roots: Vec<PathBuf> = Vec::new();
     roots.push(PathBuf::from(format!("{}/.password-store", home)));
 
-    load_passwords_async(&list, roots, search_button.clone(), git_button.clone());
+    load_passwords_async(&list, roots.clone(), search_button.clone(), git_button.clone());
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -172,7 +172,7 @@ pub fn create_main_window(app: &Application) -> Window {
             back.set_visible(true);
             nav.push(&page);
 
-            popover_add.popdown(); // Close the popover once we've handled it
+            popover_add.popdown();
             popover_git.popdown();
         });
     }
@@ -235,7 +235,11 @@ pub fn create_main_window(app: &Application) -> Window {
     }
 
     {
+        let list_clone = list.clone();
+        let roots_clone = roots.clone();
         let back = back_button.clone();
+        let search = search_button.clone();
+        let git = git_button.clone();
         let add = add_button.clone();
         let nav = navigation_view.clone();
         let page = list_page.clone();
@@ -244,6 +248,7 @@ pub fn create_main_window(app: &Application) -> Window {
             add.set_visible(true);
             back.set_visible(false);
             nav.pop();
+            load_passwords_async(&list_clone, roots_clone.clone(), search.clone(), git.clone());
         });
         window.add_action(&action);
     }

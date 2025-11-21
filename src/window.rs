@@ -124,7 +124,7 @@ pub fn create_main_window(app: &Application) -> Window {
     let mut roots: Vec<PathBuf> = Vec::new();
     roots.push(PathBuf::from(format!("{}/.password-store", home)));
 
-    load_passwords_async(&list, roots);
+    load_passwords_async(&list, roots, search_button.clone(), git_button.clone());
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -146,6 +146,7 @@ pub fn create_main_window(app: &Application) -> Window {
     // Input
     {
         let back = back_button.clone();
+        let search = search_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
         let nav = navigation_view.clone();
@@ -165,6 +166,7 @@ pub fn create_main_window(app: &Application) -> Window {
             }
 
             // TODO: create the password / entry at `path`
+            search.set_visible(false);
             add.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
@@ -234,14 +236,12 @@ pub fn create_main_window(app: &Application) -> Window {
 
     {
         let back = back_button.clone();
-        let git = git_button.clone();
         let add = add_button.clone();
         let nav = navigation_view.clone();
         let page = list_page.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
             add.set_visible(true);
-            git.set_visible(true);
             back.set_visible(false);
             nav.pop();
         });
@@ -258,11 +258,7 @@ pub fn create_main_window(app: &Application) -> Window {
         window.add_action(&action);
     }
 
-    // TODO: Actions
-    // win.add-password
-    // win.git-page
-    // win.git-clone
-    // win.save-password
+    // TODO: Action: win.save-password
 
     // keyboard shortcuts
     app.set_accels_for_action("win.back", &["Escape"]);
@@ -303,17 +299,16 @@ fn clear_list(list: &gtk4::ListBox) {
     }
 }
 
-fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>) {
+fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
-    let placeholder = StatusPage::builder()
-        .icon_name("passadw")
-        .title("No passwords found")
-        .description("Create a new password to get started.")
-        .build();
-    list.set_placeholder(Some(&placeholder));
+    git.set_visible(false);
+    search.set_visible(false);
+    let bussy = Spinner::new();
+    bussy.start();
+    list.set_placeholder(Some(&bussy));
 
     // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PasswordItem>>();
@@ -333,6 +328,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>) {
 
     // Clone GTK widgets on the main thread (they stay on this thread)
     let list_clone = list.clone();
+    let search_clone = search.clone();
+    let git_clone = git.clone();
 
     // Poll the channel from the main thread using a GLib timeout
     //
@@ -365,6 +362,24 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>) {
                     index += 1;
                 }
 
+                let empty = items.is_empty();
+                git_clone.set_visible(empty);
+                search_clone.set_visible(!empty);
+                let placeholder = if empty {
+                    StatusPage::builder()
+                        .icon_name("passadw")
+                        .title("No passwords found")
+                        .description("Create a new password to get started.")
+                        .build()
+                } else {
+                    StatusPage::builder()
+                        .icon_name("edit-find-symbolic")
+                        .title("No passwords found")
+                        .description("Try another search query.")
+                        .build()
+                };
+                list_clone.set_placeholder(Some(&placeholder));
+
                 // One-shot: stop calling this timeout
                 glib::ControlFlow::Break
             }
@@ -373,7 +388,13 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>) {
                 glib::ControlFlow::Continue
             }
             Err(TryRecvError::Disconnected) => {
-                // Worker died / channel closed → stop spinner, bail out
+                // Worker died
+
+                // TODO: Add placeholder, remove spinner, show search btn and hide git btn
+
+                git_clone.set_visible(true);
+                search_clone.set_visible(false);
+
                 glib::ControlFlow::Break
             }
         }

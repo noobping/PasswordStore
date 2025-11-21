@@ -371,7 +371,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
 
                     // Store full path on row for later use
                     unsafe {
-                        row.set_data("pass-path", item.path.to_string_lossy().to_string());
+                        row.set_data("pass-path", item.path());
                     }
 
                     list_clone.append(&row);

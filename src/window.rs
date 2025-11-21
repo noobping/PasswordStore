@@ -1,4 +1,4 @@
-use crate::item::{scan_pass_root, PasswordItem};
+use crate::item::{collect_all_password_items, PasswordItem};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::glib::{clone, prelude::*, MainContext};
 use adw::{
@@ -320,28 +320,13 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>) {
 
     // Spawn worker thread – ONLY data goes in here (roots + tx)
     thread::spawn(move || {
-        let mut all_items: Vec<PasswordItem> = Vec::new();
-
-        let mut i = 0;
-        let len = roots.len();
-        while i < len {
-            let root = &roots[i];
-            match scan_pass_root(root.as_path()) {
-                Ok(mut items) => {
-                    let mut j = 0;
-                    let inner_len = items.len();
-                    while j < inner_len {
-                        all_items.push(items[j].clone());
-                        j += 1;
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Failed to scan {:?}: {err}", root);
-                }
+        let all_items = match collect_all_password_items(&roots) {
+            Ok(v) => v,
+            Err(err) => {
+                eprintln!("Error scanning pass roots: {err}");
+                Vec::new()
             }
-            i += 1;
-        }
-
+        };
         // Send everything back to main thread
         let _ = tx.send(all_items);
     });

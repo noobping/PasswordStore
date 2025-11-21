@@ -32,11 +32,12 @@ fn main() -> glib::ExitCode {
         about_action.connect_activate(move |_, _| {
             let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
             let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
-            let pass_version = get_pass_version().unwrap_or_else(|| "unknown".to_string());
+            let pass_version =
+                get_pass_version().unwrap_or_else(|| "pass version unknown".to_string());
             let full_comments = if comments.is_empty() {
                 format!("pass: {pass_version}")
             } else {
-                format!("{comments}\npass: {pass_version}")
+                format!("{comments}\n\n{pass_version}")
             };
             let about = adw::AboutDialog::builder()
                 .application_name(env!("CARGO_PKG_NAME"))
@@ -54,18 +55,27 @@ fn main() -> glib::ExitCode {
 }
 
 fn get_pass_version() -> Option<String> {
-    let output = Command::new("pass").arg("--version").output().ok()?; // command failed to spawn
+    let output = Command::new("pass").arg("--version").output().ok()?; // failed to spawn? -> None
 
     if !output.status.success() {
         return None;
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Usually first line is enough, trim to be safe
-    let line = stdout.lines().next().unwrap_or("").trim();
-    if line.is_empty() {
+
+    // Collect cleaned, non-empty lines
+    let lines: Vec<String> = stdout
+        .lines()
+        .map(str::trim) // trim whitespace
+        .map(|line| line.trim_matches('=')) // remove leading/trailing '='
+        .map(str::trim) // trim again after removing '='
+        .filter(|line| !line.is_empty()) // skip borders/empty lines
+        .map(|s| s.to_string())
+        .collect();
+
+    if lines.is_empty() {
         None
     } else {
-        Some(line.to_string())
+        Some(lines.join("\n"))
     }
 }

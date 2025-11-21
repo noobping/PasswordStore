@@ -1,38 +1,45 @@
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::ffi::OsStr;
 
 #[derive(Debug, Clone)]
 pub struct PasswordItem {
-    path: PathBuf, // full path to the .gpg file
-    label: String, // what you show in the list (relative path without .gpg)
+    pub path: PathBuf,
+    pub label: String,
 }
 
-/// Recursively walk a pass root and collect all *.gpg files.
 pub fn scan_pass_root(root: &Path) -> std::io::Result<Vec<PasswordItem>> {
-    let mut items = Vec::new();
+    let mut items: Vec<PasswordItem> = Vec::new();
 
     if !root.exists() {
         return Ok(items);
     }
 
-    // If you’re okay with an extra dep, this is super nice:
-    // walkdir = "2"
-    for entry in walkdir::WalkDir::new(root)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
+    // Using walkdir is convenient but optional:
+    // walkdir = "2" in Cargo.toml
+    for entry_result in walkdir::WalkDir::new(root) {
+        let entry = match entry_result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
         if !entry.file_type().is_file() {
             continue;
         }
+
         if entry.path().extension() != Some(OsStr::new("gpg")) {
             continue;
         }
 
-        let rel = entry.path().strip_prefix(root).unwrap_or(entry.path());
-        let mut label = rel.to_string_lossy().to_string();
-        if let Some(stripped) = label.strip_suffix(".gpg") {
-            label = stripped.to_string();
-        }
+        let rel = match entry.path().strip_prefix(root) {
+            Ok(r) => r,
+            Err(_) => entry.path(),
+        };
+
+        let rel_str = rel.to_string_lossy().to_string();
+        let label = match rel_str.strip_suffix(".gpg") {
+            Some(s) => s.to_string(),
+            None => rel_str,
+        };
 
         items.push(PasswordItem {
             path: entry.path().to_path_buf(),

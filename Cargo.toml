@@ -10,12 +10,7 @@ anyhow = "^1.0"
 thiserror = "^2.0"
 gtk4 = { version = "^0.10", package = "gtk4" }
 adw = { version = "^0.8.0", package = "libadwaita", features = ["v1_8"] }
+walkdir = "2.5.0"
 
 [build-dependencies]
 glib-build-tools = "^0.21.0"
-
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = [
-  "-C", "link-arg=-fuse-ld=mold"
-]

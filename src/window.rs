@@ -1,11 +1,16 @@
+use crate::item::{scan_pass_root, PasswordItem};
 use adw::gio::{prelude::*, Menu, SimpleAction};
-use adw::glib::{clone, Continue, MainContext};
-use adw::prelude::*;
+use adw::glib::{clone, prelude::*, MainContext};
 use adw::{
-    Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
-    ToastOverlay, WindowTitle,
+    glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
+    PasswordEntryRow, ToastOverlay, WindowTitle,
 };
-use gtk4::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, Spinner, TextView};
+use gtk4::{
+    Box as GtkBox, Builder, Button, Label, ListBox, ListBoxRow, Orientation, Popover, SearchEntry,
+    Spinner, TextView,
+};
+use std::path::PathBuf;
+use std::thread;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
 
@@ -284,4 +289,88 @@ pub fn create_main_window(app: &Application) -> Window {
         dynamic_box,
         text_view,
     }
+}
+
+fn clear_list(list: &gtk4::ListBox) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+}
+
+fn load_passwords_async(list: &ListBox, spinner: &Spinner, roots: Vec<PathBuf>) {
+    // 1) Clear current rows
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+
+    // 2) Show spinner
+    spinner.set_visible(true);
+    spinner.start();
+
+    // 3) Channel from worker → main
+    let main_context = MainContext::default();
+    let (sender, receiver) = main_context.channel::<Vec<PasswordItem>>(glib::PRIORITY_DEFAULT);
+
+    // 4) Spawn worker thread
+    thread::spawn(move || {
+        let mut all_items: Vec<PasswordItem> = Vec::new();
+
+        let length = roots.len();
+        let mut index = 0;
+        while index < length {
+            let root = &roots[index];
+            match scan_pass_root(root.as_path()) {
+                Ok(mut items) => {
+                    let mut inner_index = 0;
+                    let inner_len = items.len();
+                    while inner_index < inner_len {
+                        all_items.push(items[inner_index].clone());
+                        inner_index += 1;
+                    }
+                }
+                Err(_) => {
+                    // ignore errors here, or handle as you like
+                }
+            }
+            index += 1;
+        }
+
+        // Send all items back to main thread
+        let _ = sender.send(all_items);
+    });
+
+    // 5) Attach receiver on main thread
+    let list_clone = list.clone();
+    let spinner_clone = spinner.clone();
+
+    receiver.attach(None, move |items: Vec<PasswordItem>| {
+        // Stop spinner
+        spinner_clone.stop();
+        spinner_clone.set_visible(false);
+
+        // Build rows
+        let mut index = 0;
+        let len = items.len();
+        while index < len {
+            let item = &items[index];
+
+            let row = ListBoxRow::new();
+            let hbox = gtk4::Box::new(Orientation::Horizontal, 6);
+
+            let label = Label::new(Some(&item.label));
+            label.set_xalign(0.0);
+
+            hbox.append(&label);
+            row.set_child(Some(&hbox));
+
+            // store the full path for later
+            unsafe { row.set_data("pass-path", item.path.to_string_lossy().to_string()) };
+
+            list_clone.append(&row);
+
+            index += 1;
+        }
+
+        glib::ControlFlow::Continue(false) // detach receiver
+    });
 }

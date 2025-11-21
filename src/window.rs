@@ -1,5 +1,5 @@
 use crate::item::{scan_pass_root, PasswordItem};
-use adw::gio::{prelude::*, Menu, SimpleAction};
+use adw::gio::{prelude::*, SimpleAction};
 use adw::glib::{clone, prelude::*, MainContext};
 use adw::{
     glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
@@ -121,6 +121,12 @@ pub fn create_main_window(app: &Application) -> Window {
         .expect("Failed to get search_entry");
     let list: ListBox = builder.object("list").expect("Failed to get list");
     let spinner: Spinner = builder.object("spinner").expect("Failed to get spinner");
+
+    let home = std::env::var("HOME").unwrap_or(String::new());
+    let mut roots: Vec<PathBuf> = Vec::new();
+    roots.push(PathBuf::from(format!("{}/.password-store", home)));
+
+    load_passwords_async(&list, &spinner, roots);
 
     // Text editor page
     let text_page: NavigationPage = builder

@@ -21,33 +21,10 @@ const UI_SRC: &str = include_str!("../data/window.ui");
 pub struct Window {
     pub window: ApplicationWindow,
 
-    pub back_button: Button,
-    pub add_button: Button,
-    pub add_button_popover: Popover,
-    pub path_entry: EntryRow,
-    pub git_button: Button,
-    pub git_popover: Popover,
-    pub git_url_entry: EntryRow,
-    pub search_button: Button,
-    pub window_title: WindowTitle,
-    pub save_button: Button,
-
     pub toast_overlay: ToastOverlay,
-    pub passphrase_popover: Popover,
-    pub passphrase_entry: EntryRow,
-    pub rename_popover: Popover,
-    pub new_path_entry: EntryRow,
-
     pub navigation_view: NavigationView,
     pub list_page: NavigationPage,
-    pub search_entry: SearchEntry,
-    pub list: ListBox,
-
     pub text_page: NavigationPage,
-    pub password_entry: PasswordEntryRow,
-    pub copy_password_button: Button,
-    pub dynamic_box: GtkBox,
-    pub text_view: TextView,
 }
 
 pub fn create_main_window(app: &Application) -> Window {
@@ -280,30 +257,10 @@ pub fn create_main_window(app: &Application) -> Window {
 
     Window {
         window,
-        back_button,
-        add_button,
-        add_button_popover,
-        path_entry,
-        git_button,
-        git_popover,
-        git_url_entry,
-        search_button,
-        window_title,
-        save_button,
         toast_overlay,
-        passphrase_popover,
-        passphrase_entry,
-        rename_popover,
-        new_path_entry,
         navigation_view,
         list_page,
-        search_entry,
-        list,
         text_page,
-        password_entry,
-        copy_password_button,
-        dynamic_box,
-        text_view,
     }
 }
 

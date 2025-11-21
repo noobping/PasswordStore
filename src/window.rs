@@ -359,6 +359,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
                 let len = items.len();
                 while index < len {
                     let item = &items[index];
+                    let label_text = item.label.clone();
+                    let base_text = item.base.clone();
 
                     let row = ListBoxRow::new();
                     let hbox = gtk4::Box::new(Orientation::Horizontal, 6);
@@ -371,7 +373,9 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
 
                     // Store full path on row for later use
                     unsafe {
-                        row.set_data("pass-path", item.path());
+                        row.set_data("path", item.path());
+                        row.set_data("base", base_text);
+                        row.set_data("label", label_text);
                     }
 
                     list_clone.append(&row);

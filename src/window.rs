@@ -161,16 +161,11 @@ pub fn create_main_window(app: &Application) -> Window {
         let overlay = toast_overlay.clone();
         path_entry.connect_apply(move |row| {
             let path = row.text().to_string(); // Get the text from the entry
-
-            // Do your “apply” logic here:
             if path.is_empty() {
-                // example: warn the user
                 let toast = adw::Toast::new("Path cannot be empty");
                 overlay.add_toast(toast);
                 return;
             }
-
-            // TODO: create the password / entry at `path`
             search.set_visible(false);
             add.set_visible(false);
             git.set_visible(false);
@@ -179,6 +174,8 @@ pub fn create_main_window(app: &Application) -> Window {
 
             popover_add.popdown();
             popover_git.popdown();
+
+            // TODO: create the password / entry at `path`
         });
     }
 

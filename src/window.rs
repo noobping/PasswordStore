@@ -10,7 +10,10 @@ use gtk4::{
     Spinner, TextView,
 };
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
 use std::thread;
+use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
 
@@ -298,79 +301,96 @@ fn clear_list(list: &gtk4::ListBox) {
 }
 
 fn load_passwords_async(list: &ListBox, spinner: &Spinner, roots: Vec<PathBuf>) {
-    // 1) Clear current rows
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
-    // 2) Show spinner
     spinner.set_visible(true);
     spinner.start();
 
-    // 3) Channel from worker → main
-    let main_context = MainContext::default();
-    let (sender, receiver) = main_context.channel::<Vec<PasswordItem>>(glib::PRIORITY_DEFAULT);
+    // 3) Standard library channel: main thread will own `rx`, worker gets `tx`
+    let (tx, rx) = mpsc::channel::<Vec<PasswordItem>>();
 
-    // 4) Spawn worker thread
+    // 4) Spawn worker thread – ONLY data goes in here (roots + tx)
     thread::spawn(move || {
         let mut all_items: Vec<PasswordItem> = Vec::new();
 
-        let length = roots.len();
-        let mut index = 0;
-        while index < length {
-            let root = &roots[index];
+        let mut i = 0;
+        let len = roots.len();
+        while i < len {
+            let root = &roots[i];
             match scan_pass_root(root.as_path()) {
                 Ok(mut items) => {
-                    let mut inner_index = 0;
+                    let mut j = 0;
                     let inner_len = items.len();
-                    while inner_index < inner_len {
-                        all_items.push(items[inner_index].clone());
-                        inner_index += 1;
+                    while j < inner_len {
+                        all_items.push(items[j].clone());
+                        j += 1;
                     }
                 }
-                Err(_) => {
-                    // ignore errors here, or handle as you like
+                Err(err) => {
+                    eprintln!("Failed to scan {:?}: {err}", root);
                 }
             }
-            index += 1;
+            i += 1;
         }
 
-        // Send all items back to main thread
-        let _ = sender.send(all_items);
+        // Send everything back to main thread
+        let _ = tx.send(all_items);
     });
 
-    // 5) Attach receiver on main thread
+    // 5) Clone GTK widgets on the main thread (they stay on this thread)
     let list_clone = list.clone();
     let spinner_clone = spinner.clone();
 
-    receiver.attach(None, move |items: Vec<PasswordItem>| {
-        // Stop spinner
-        spinner_clone.stop();
-        spinner_clone.set_visible(false);
+    // 6) Poll the channel from the main thread using a GLib timeout
+    //
+    //   - timeout_add_local does NOT require Send
+    //   - closure runs on the GTK main loop thread
+    glib::timeout_add_local(Duration::from_millis(50), move || {
+        match rx.try_recv() {
+            Ok(items) => {
+                // Got results → stop spinner and populate the list
+                spinner_clone.stop();
+                spinner_clone.set_visible(false);
 
-        // Build rows
-        let mut index = 0;
-        let len = items.len();
-        while index < len {
-            let item = &items[index];
+                let mut index = 0;
+                let len = items.len();
+                while index < len {
+                    let item = &items[index];
 
-            let row = ListBoxRow::new();
-            let hbox = gtk4::Box::new(Orientation::Horizontal, 6);
+                    let row = ListBoxRow::new();
+                    let hbox = gtk4::Box::new(Orientation::Horizontal, 6);
 
-            let label = Label::new(Some(&item.label));
-            label.set_xalign(0.0);
+                    let label = Label::new(Some(&item.label));
+                    label.set_xalign(0.0);
 
-            hbox.append(&label);
-            row.set_child(Some(&hbox));
+                    hbox.append(&label);
+                    row.set_child(Some(&hbox));
 
-            // store the full path for later
-            unsafe { row.set_data("pass-path", item.path.to_string_lossy().to_string()) };
+                    // Store full path on row for later use
+                    unsafe {
+                        row.set_data("pass-path", item.path.to_string_lossy().to_string());
+                    }
 
-            list_clone.append(&row);
+                    list_clone.append(&row);
 
-            index += 1;
+                    index += 1;
+                }
+
+                // One-shot: stop calling this timeout
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => {
+                // Worker not done yet → check again later
+                glib::ControlFlow::Continue
+            }
+            Err(TryRecvError::Disconnected) => {
+                // Worker died / channel closed → stop spinner, bail out
+                spinner_clone.stop();
+                spinner_clone.set_visible(false);
+                glib::ControlFlow::Break
+            }
         }
-
-        glib::ControlFlow::Continue(false) // detach receiver
     });
 }

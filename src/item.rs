@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct PasswordItem {
@@ -14,25 +14,24 @@ pub fn scan_pass_root(root: &Path) -> std::io::Result<Vec<PasswordItem>> {
         return Ok(items);
     }
 
-    // Using walkdir is convenient but optional:
-    // walkdir = "2" in Cargo.toml
-    for entry_result in walkdir::WalkDir::new(root) {
+    // You can use walkdir here if you want; this is a stub.
+    for entry_result in std::fs::read_dir(root)? {
         let entry = match entry_result {
             Ok(e) => e,
             Err(_) => continue,
         };
-
-        if !entry.file_type().is_file() {
+        let path = entry.path();
+        if path.is_dir() {
+            // TODO: recurse if you want full tree
+            continue;
+        }
+        if path.extension() != Some(OsStr::new("gpg")) {
             continue;
         }
 
-        if entry.path().extension() != Some(OsStr::new("gpg")) {
-            continue;
-        }
-
-        let rel = match entry.path().strip_prefix(root) {
+        let rel = match path.strip_prefix(root) {
             Ok(r) => r,
-            Err(_) => entry.path(),
+            Err(_) => path.as_path(),
         };
 
         let rel_str = rel.to_string_lossy().to_string();
@@ -41,10 +40,7 @@ pub fn scan_pass_root(root: &Path) -> std::io::Result<Vec<PasswordItem>> {
             None => rel_str,
         };
 
-        items.push(PasswordItem {
-            path: entry.path().to_path_buf(),
-            label,
-        });
+        items.push(PasswordItem { path, label });
     }
 
     Ok(items)

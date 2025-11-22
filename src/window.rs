@@ -88,7 +88,12 @@ pub fn create_main_window(app: &Application) -> Window {
     let mut roots: Vec<PathBuf> = Vec::new();
     roots.push(PathBuf::from(format!("{}/.password-store", home)));
 
-    load_passwords_async(&list, roots.clone(), git_button.clone());
+    load_passwords_async(
+        &list,
+        roots.clone(),
+        git_button.clone(),
+        save_button.clone(),
+    );
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -110,10 +115,11 @@ pub fn create_main_window(app: &Application) -> Window {
     // Selecting an item from the list → decrypt with `pass`
     {
         let nav = navigation_view.clone();
-        let text_page = text_page.clone();
-        let back_button = back_button.clone();
-        let add_button = add_button.clone();
-        let git_button = git_button.clone();
+        let page = text_page.clone();
+        let back = back_button.clone();
+        let add = add_button.clone();
+        let git = git_button.clone();
+        let save = save_button.clone();
         let password_entry = password_entry.clone();
         let text_view = text_view.clone();
         let overlay = toast_overlay.clone();
@@ -138,11 +144,11 @@ pub fn create_main_window(app: &Application) -> Window {
             };
 
             // Navigate to the text editor page and update header buttons
-            add_button.set_visible(false);
-            git_button.set_visible(false);
-            back_button.set_visible(true);
+            add.set_visible(false);
+            git.set_visible(false);
+            back.set_visible(true);
             window_title.set_subtitle(&label);
-            nav.push(&text_page);
+            nav.push(&page);
 
             // Background worker: run `pass <label>`
             let (tx, rx) = mpsc::channel::<Result<String, String>>();
@@ -209,6 +215,7 @@ pub fn create_main_window(app: &Application) -> Window {
         let back = back_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
+        let save = save_button.clone();
         let nav = navigation_view.clone();
         let page = text_page.clone();
         let popover_add = add_button_popover.clone();
@@ -296,16 +303,18 @@ pub fn create_main_window(app: &Application) -> Window {
         let back = back_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
+        let save = save_button.clone();
         let nav = navigation_view.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
-            add.set_visible(true);
             back.set_visible(false);
+            save.set_visible(false);
+            add.set_visible(true);
             nav.pop();
 
             // TODO: Clear password and text fields
 
-            load_passwords_async(&list_clone, roots_clone.clone(), git.clone());
+            load_passwords_async(&list_clone, roots_clone.clone(), git.clone(), save.clone());
         });
         window.add_action(&action);
     }
@@ -412,7 +421,7 @@ pub fn create_main_window(app: &Application) -> Window {
     }
 }
 
-fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
+fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -450,6 +459,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
     // Clone GTK widgets on the main thread (they stay on this thread)
     let list_clone = list.clone();
     let git_clone = git.clone();
+    let save_clone = save.clone();
 
     // Poll the channel from the main thread using a GLib timeout
     //
@@ -583,6 +593,9 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
                     index += 1;
                 }
 
+                if empty {
+                    save_clone.set_visible(false);
+                } 
                 git_clone.set_visible(empty);
                 let project = env!("CARGO_PKG_NAME");
                 let symbolic = format!("{project}-symbolic");
@@ -615,6 +628,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
                 let placeholder = StatusPage::builder().icon_name(symbolic).build();
                 list_clone.set_placeholder(Some(&placeholder));
 
+                save_clone.set_visible(false);
                 git_clone.set_visible(true);
 
                 glib::ControlFlow::Break

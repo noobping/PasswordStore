@@ -42,6 +42,14 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="save_button">
+                    <property name="icon-name">document-save-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Save password</property>
+                    <property name="action-name">win.save-password</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Restore from Git repository</property>
@@ -71,23 +79,11 @@
               </object>
             </child>
             <child type="end">
-              <object class="GtkBox">
-                <child>
-                  <object class="GtkButton" id="save_button">
-                    <property name="icon-name">document-save-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Save password</property>
-                    <property name="action-name">win.save-password</property>
-                    <property name="visible">false</property>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkMenuButton">
-                    <property name="primary">True</property>
-                    <property name="icon-name">open-menu-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Main Menu</property>
-                    <property name="menu-model">primary_menu</property>
-                  </object>
-                </child>
+              <object class="GtkMenuButton">
+                <property name="primary">True</property>
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Main Menu</property>
+                <property name="menu-model">primary_menu</property>
               </object>
             </child>
           </object>

@@ -311,12 +311,17 @@ pub fn create_main_window(app: &Application) -> Window {
     }
 
     {
+        let overlay_clone = toast_overlay.clone();
         let roots_clone = roots.clone();
         let action = SimpleAction::new("synchronize", None);
         action.connect_activate(move |_, _| {
             let roots = roots_clone.clone();
+            let overlay = overlay_clone.clone();
 
-            // Run in background so we don't block the GTK main loop
+            // Channel from worker → main thread
+            let (tx, rx) = mpsc::channel::<String>();
+
+            // Background worker
             thread::spawn(move || {
                 for root in roots {
                     // List of git operations we want to run for each store
@@ -332,28 +337,51 @@ pub fn create_main_window(app: &Application) -> Window {
                             .args(args)
                             .status();
 
-                        match status {
+                        let msg = match &status {
                             Ok(s) if s.success() => {
-                                // ok, continue with next command
+                                // Success message
+                                format!("{}: pass {} ok ({s})", root.display(), args.join(" "))
                             }
                             Ok(s) => {
-                                eprintln!(
-                                    "pass {} failed for {}: {s}",
-                                    args.join(" "),
-                                    root.display()
-                                );
-                                // stop further commands for this store
-                                break;
+                                // pass exited with non-zero status
+                                format!("{}: pass {} failed: {s}", root.display(), args.join(" "))
                             }
                             Err(e) => {
-                                eprintln!(
-                                    "Failed to run `pass {}` for {}: {e}",
-                                    args.join(" "),
-                                    root.display()
-                                );
-                                break;
+                                // failed to spawn pass
+                                format!(
+                                    "{}: failed to run pass {}: {e}",
+                                    root.display(),
+                                    args.join(" ")
+                                )
                             }
+                        };
+
+                        // Ignore send errors (UI may have gone away)
+                        let _ = tx.send(msg);
+
+                        // On failure, stop further commands for this store
+                        if !status.map(|s| s.success()).unwrap_or(false) {
+                            break;
                         }
+                    }
+                }
+            });
+
+            // Main-thread: poll for messages and show toasts
+            glib::timeout_add_local(Duration::from_millis(100), move || {
+                match rx.try_recv() {
+                    Ok(msg) => {
+                        let toast = adw::Toast::new(&msg);
+                        overlay.add_toast(toast);
+                        glib::ControlFlow::Continue
+                    }
+                    Err(TryRecvError::Empty) => {
+                        // No message yet, keep polling
+                        glib::ControlFlow::Continue
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        // Worker is done and channel closed
+                        glib::ControlFlow::Break
                     }
                 }
             });

@@ -114,12 +114,19 @@ pub fn create_main_window(app: &Application) -> ApplicationWindow {
         let password_entry = password_entry.clone();
         let text_view = text_view.clone();
         let overlay = toast_overlay.clone();
-        let window_title = window_title.clone();
+        let win = window_title.clone();
 
         list.connect_row_activated(move |_list, row| {
             // Retrieve the pass entry name (relative label) stored on the row
+            let title = non_null_to_string_option(row, "name");
             let label = non_null_to_string_option(row, "label");
             let root = non_null_to_string_option(row, "root");
+
+            let Some(title) = title else {
+                let toast = adw::Toast::new("Can not find password file name.");
+                overlay.add_toast(toast);
+                return;
+            };
 
             let Some(label) = label else {
                 let toast = adw::Toast::new("Can not find password file.");
@@ -139,7 +146,8 @@ pub fn create_main_window(app: &Application) -> ApplicationWindow {
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
-            window_title.set_subtitle(&label);
+            win.set_title(&title);
+            win.set_subtitle(&label);
             nav.push(&page);
 
             // Background worker: run `pass <label>`
@@ -293,6 +301,7 @@ pub fn create_main_window(app: &Application) -> ApplicationWindow {
     {
         let list_clone = list.clone();
         let roots_clone = roots.clone();
+        let win = window_title.clone();
         let back = back_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
@@ -304,6 +313,8 @@ pub fn create_main_window(app: &Application) -> ApplicationWindow {
             save.set_visible(false);
             add.set_visible(true);
             nav.pop();
+            win.set_title("Password Store");
+            win.set_subtitle("Manage your passwords");
 
             // TODO: Clear password and text fields
 

@@ -131,7 +131,7 @@
                                 <property name="vexpand">true</property>
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
-                                    <property name="icon-name">passadw</property>
+                                    <property name="icon-name">passwordstore-symbolic</property>
                                     <child>
                                       <object class="GtkSpinner">
                                         <property name="visible">true</property>

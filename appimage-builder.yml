@@ -36,6 +36,7 @@ AppDir:
       - libxkbcommon-dev
       - pass
       - pass-otp
+      - gnupg2
       - pinentry-gnome3
     exclude:
       - build-essential

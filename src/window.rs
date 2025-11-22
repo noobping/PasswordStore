@@ -1,4 +1,4 @@
-use crate::item::{collect_all_password_items, PasswordItem};
+use crate::item::{collect_all_password_items, PassEntry};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
@@ -131,9 +131,37 @@ pub fn create_main_window(app: &Application) -> Window {
         list.connect_row_activated(move |_list, row| {
             // Retrieve the pass entry name (relative label) stored on the row
             let label = non_null_to_string_option(row, "label");
+            let name = non_null_to_string_option(row, "name");
+            let dir = non_null_to_string_option(row, "dir");
+            let root = non_null_to_string_option(row, "root");
 
             let Some(label) = label else {
-                let toast = adw::Toast::new("Internal error: missing label for row");
+                let toast =
+                    adw::Toast::new("Can not find password file.");
+                overlay.add_toast(toast);
+                return;
+            };
+
+            let Some(name) = name else {
+                let toast = adw::Toast::new(
+                    "Can not open unknown password file.",
+                );
+                overlay.add_toast(toast);
+                return;
+            };
+
+            let Some(dir) = dir else {
+                let toast = adw::Toast::new(
+                    "Can not open password file form a unknown directory.",
+                );
+                overlay.add_toast(toast);
+                return;
+            };
+
+            let Some(root) = root else {
+                let toast = adw::Toast::new(
+                    "Can not open password file form a unknown password store.",
+                );
                 overlay.add_toast(toast);
                 return;
             };
@@ -149,8 +177,12 @@ pub fn create_main_window(app: &Application) -> Window {
             // Background worker: run `pass <label>`
             let (tx, rx) = mpsc::channel::<Result<String, String>>();
             let label_for_thread = label.clone();
+            let store_for_thread = root.clone();
             thread::spawn(move || {
-                let output = Command::new("pass").arg(&label_for_thread).output();
+                let output = Command::new("pass")
+                    .env("PASSWORD_STORE_DIR", store_for_thread)
+                    .arg(&label_for_thread)
+                    .output();
                 let result = match output {
                     Ok(o) if o.status.success() => {
                         Ok(String::from_utf8_lossy(&o.stdout).to_string())
@@ -352,7 +384,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
     list.set_placeholder(Some(&placeholder));
 
     // Standard library channel: main thread will own `rx`, worker gets `tx`
-    let (tx, rx) = mpsc::channel::<Vec<PasswordItem>>();
+    let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
 
     // Spawn worker thread – ONLY data goes in here (roots + tx)
     thread::spawn(move || {
@@ -383,13 +415,14 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
                 let len = items.len();
                 while index < len {
                     let item = &items[index];
-                    let label_text = item.label.clone();
-                    let base_text = item.base.clone();
+                    let item_name = item.basename.clone();
+                    let item_dir = item.relative_path.clone();
+                    let item_root = item.store_path.clone();
 
                     let row = ListBoxRow::new();
                     let hbox = gtk4::Box::new(Orientation::Horizontal, 6);
 
-                    let label = Label::new(Some(&item.label));
+                    let label = Label::new(Some(&item.label()));
                     label.set_xalign(0.0);
 
                     hbox.append(&label);
@@ -397,9 +430,10 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
 
                     // Store full path on row for later use
                     unsafe {
-                        row.set_data("path", item.path());
-                        row.set_data("base", base_text);
-                        row.set_data("label", label_text);
+                        row.set_data("name", item_name);
+                        row.set_data("dir", item_dir);
+                        row.set_data("root", item_root);
+                        row.set_data("label", item.label());
                     }
 
                     list_clone.append(&row);

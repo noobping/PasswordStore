@@ -4,20 +4,29 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
-pub struct PasswordItem {
-    pub label: String, // relative path without .gpg
-    pub base: String,
+pub struct PassEntry {
+    pub basename: String,
+    pub relative_path: String,
+    pub store_path: String,
 }
 
-impl PasswordItem {
+impl PassEntry {
+    pub fn label(&self) -> String {
+        let name = &self.basename;
+        let dir = &self.relative_path;
+        format!("{dir}{name}")
+    }
+
     pub fn path(&self) -> String {
-        format!("{}{}", self.label, self.base)
+        let name = &self.basename;
+        let dir = &self.relative_path;
+        let root = &self.store_path;
+        format!("{root}{dir}{name}")
     }
 }
 
-
-pub fn collect_all_password_items(roots: &[PathBuf]) -> io::Result<Vec<PasswordItem>> {
-    let mut result: Vec<PasswordItem> = Vec::new();
+pub fn collect_all_password_items(roots: &[PathBuf]) -> io::Result<Vec<PassEntry>> {
+    let mut result: Vec<PassEntry> = Vec::new();
 
     let mut i = 0;
     let len = roots.len();
@@ -30,7 +39,7 @@ pub fn collect_all_password_items(roots: &[PathBuf]) -> io::Result<Vec<PasswordI
     Ok(result)
 }
 
-fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PasswordItem>) -> io::Result<()> {
+fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PassEntry>) -> io::Result<()> {
     if !root.exists() {
         return Ok(());
     }
@@ -55,21 +64,37 @@ fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PasswordItem>) -
         if file_type.is_dir() {
             let _ = collect_items_in_dir(path.as_path(), base, out);
         } else if file_type.is_file() && path.extension() == Some(OsStr::new("gpg")) {
-            // relative to the pass root
+            // Path relative to store root
             let rel = match path.strip_prefix(base) {
                 Ok(r) => r,
                 Err(_) => path.as_path(),
             };
 
-            let rel_str = rel.to_string_lossy().to_string();
-            let label = match rel_str.strip_suffix(".gpg") {
-                Some(s) => s.to_string(),
-                None => rel_str,
-            };
+            // Get the file stem (filename without extension)
+            let basename = rel
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
 
-            out.push(PasswordItem {
-                label,
-                base: base.to_string_lossy().to_string(),
+            // Extract the directory path (may be empty)
+            let relative_path = rel
+                .parent()
+                .map(|p| {
+                    let mut s = p.to_string_lossy().to_string();
+                    if !s.is_empty() && !s.ends_with('/') {
+                        s.push('/');
+                    }
+                    s
+                })
+                .unwrap_or_else(|| "".to_string());
+
+            let store_path = base.to_string_lossy().to_string();
+
+            out.push(PassEntry {
+                basename,
+                relative_path,
+                store_path,
             });
         }
     }

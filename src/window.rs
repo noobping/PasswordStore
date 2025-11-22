@@ -131,29 +131,11 @@ pub fn create_main_window(app: &Application) -> Window {
         list.connect_row_activated(move |_list, row| {
             // Retrieve the pass entry name (relative label) stored on the row
             let label = non_null_to_string_option(row, "label");
-            let name = non_null_to_string_option(row, "name");
-            let dir = non_null_to_string_option(row, "dir");
             let root = non_null_to_string_option(row, "root");
 
             let Some(label) = label else {
                 let toast =
                     adw::Toast::new("Can not find password file.");
-                overlay.add_toast(toast);
-                return;
-            };
-
-            let Some(name) = name else {
-                let toast = adw::Toast::new(
-                    "Can not open unknown password file.",
-                );
-                overlay.add_toast(toast);
-                return;
-            };
-
-            let Some(dir) = dir else {
-                let toast = adw::Toast::new(
-                    "Can not open password file form a unknown directory.",
-                );
                 overlay.add_toast(toast);
                 return;
             };

@@ -60,9 +60,6 @@ pub fn create_main_window(app: &Application) -> Window {
     let git_url_entry: EntryRow = builder
         .object("git_url_entry")
         .expect("Failed to get git_url_entry");
-    let search_button: Button = builder
-        .object("search_button")
-        .expect("Failed to get search_button");
     let window_title: WindowTitle = builder
         .object("window_title")
         .expect("Failed to get window_title");
@@ -91,12 +88,7 @@ pub fn create_main_window(app: &Application) -> Window {
     let mut roots: Vec<PathBuf> = Vec::new();
     roots.push(PathBuf::from(format!("{}/.password-store", home)));
 
-    load_passwords_async(
-        &list,
-        roots.clone(),
-        search_button.clone(),
-        git_button.clone(),
-    );
+    load_passwords_async(&list, roots.clone(), git_button.clone());
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -121,7 +113,6 @@ pub fn create_main_window(app: &Application) -> Window {
         let text_page = text_page.clone();
         let back_button = back_button.clone();
         let add_button = add_button.clone();
-        let search_button = search_button.clone();
         let git_button = git_button.clone();
         let password_entry = password_entry.clone();
         let text_view = text_view.clone();
@@ -134,23 +125,20 @@ pub fn create_main_window(app: &Application) -> Window {
             let root = non_null_to_string_option(row, "root");
 
             let Some(label) = label else {
-                let toast =
-                    adw::Toast::new("Can not find password file.");
+                let toast = adw::Toast::new("Can not find password file.");
                 overlay.add_toast(toast);
                 return;
             };
 
             let Some(root) = root else {
-                let toast = adw::Toast::new(
-                    "Can not open password file form a unknown password store.",
-                );
+                let toast =
+                    adw::Toast::new("Can not open password file form a unknown password store.");
                 overlay.add_toast(toast);
                 return;
             };
 
             // Navigate to the text editor page and update header buttons
             add_button.set_visible(false);
-            search_button.set_visible(false);
             git_button.set_visible(false);
             back_button.set_visible(true);
             window_title.set_subtitle(&label);
@@ -219,7 +207,6 @@ pub fn create_main_window(app: &Application) -> Window {
     // Input
     {
         let back = back_button.clone();
-        let search = search_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
         let nav = navigation_view.clone();
@@ -234,7 +221,6 @@ pub fn create_main_window(app: &Application) -> Window {
                 overlay.add_toast(toast);
                 return;
             }
-            search.set_visible(false);
             add.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
@@ -308,7 +294,6 @@ pub fn create_main_window(app: &Application) -> Window {
         let list_clone = list.clone();
         let roots_clone = roots.clone();
         let back = back_button.clone();
-        let search = search_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
         let nav = navigation_view.clone();
@@ -320,12 +305,58 @@ pub fn create_main_window(app: &Application) -> Window {
 
             // TODO: Clear password and text fields
 
-            load_passwords_async(
-                &list_clone,
-                roots_clone.clone(),
-                search.clone(),
-                git.clone(),
-            );
+            load_passwords_async(&list_clone, roots_clone.clone(), git.clone());
+        });
+        window.add_action(&action);
+    }
+
+    {
+        let roots_clone = roots.clone();
+        let action = SimpleAction::new("synchronize", None);
+        action.connect_activate(move |_, _| {
+            let roots = roots_clone.clone();
+
+            // Run in background so we don't block the GTK main loop
+            thread::spawn(move || {
+                for root in roots {
+                    // List of git operations we want to run for each store
+                    let commands: [&[&str]; 3] = [
+                        &["git", "fetch", "--all"],
+                        &["git", "pull", "--rebase"],
+                        &["git", "push"],
+                    ];
+
+                    for args in commands {
+                        let status = Command::new("pass")
+                            .env("PASSWORD_STORE_DIR", &root)
+                            .args(args)
+                            .status();
+
+                        match status {
+                            Ok(s) if s.success() => {
+                                // ok, continue with next command
+                            }
+                            Ok(s) => {
+                                eprintln!(
+                                    "pass {} failed for {}: {s}",
+                                    args.join(" "),
+                                    root.display()
+                                );
+                                // stop further commands for this store
+                                break;
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "Failed to run `pass {}` for {}: {e}",
+                                    args.join(" "),
+                                    root.display()
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
         });
         window.add_action(&action);
     }
@@ -347,13 +378,12 @@ pub fn create_main_window(app: &Application) -> Window {
     }
 }
 
-fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git: Button) {
+fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
     git.set_visible(false);
-    search.set_visible(false);
 
     let bussy = Spinner::new();
     bussy.start();
@@ -383,7 +413,6 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
 
     // Clone GTK widgets on the main thread (they stay on this thread)
     let list_clone = list.clone();
-    let search_clone = search.clone();
     let git_clone = git.clone();
 
     // Poll the channel from the main thread using a GLib timeout
@@ -425,7 +454,6 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
 
                 let empty = items.is_empty();
                 git_clone.set_visible(empty);
-                search_clone.set_visible(!empty);
                 let project = env!("CARGO_PKG_NAME");
                 let symbolic = format!("{project}-symbolic");
                 let placeholder = if empty {
@@ -452,11 +480,12 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
             }
             Err(TryRecvError::Disconnected) => {
                 // Worker died
-
-                // TODO: Add placeholder, remove spinner, show search btn and hide git btn
+                let project = env!("CARGO_PKG_NAME");
+                let symbolic = format!("{project}-symbolic");
+                let placeholder = StatusPage::builder().icon_name(symbolic).build();
+                list_clone.set_placeholder(Some(&placeholder));
 
                 git_clone.set_visible(true);
-                search_clone.set_visible(false);
 
                 glib::ControlFlow::Break
             }

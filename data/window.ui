@@ -62,14 +62,6 @@
                     </child>
                   </object>
                 </child>
-                <child>
-                  <object class="GtkButton" id="search_button">
-                    <property name="icon-name">edit-find-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Search passwords</property>
-                    <property name="action-name">win.toggle-search</property>
-                    <property name="visible">false</property>
-                  </object>
-                </child>
               </object>
             </child>
             <child type="title">
@@ -204,6 +196,10 @@
   </object>
   <menu id="primary_menu">
     <section>
+      <item>
+        <attribute name="label" translatable="yes">_Find password file</attribute>
+        <attribute name="action">win.toggle-search</attribute>
+      </item>
       <item>
         <attribute name="label" translatable="yes">_Synchronize with remote</attribute>
         <attribute name="action">win.synchronize</attribute>

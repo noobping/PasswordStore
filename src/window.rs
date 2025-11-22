@@ -473,7 +473,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
 
                     // 3) Per-row menu button on the right
                     let menu_button = MenuButton::builder()
-                        .icon_name("open-menu-symbolic") // you already ship this icon :contentReference[oaicite:1]{index=1}
+                        .icon_name("view-more-symbolic") // you already ship this icon :contentReference[oaicite:1]{index=1}
                         .has_frame(false)
                         .build();
 

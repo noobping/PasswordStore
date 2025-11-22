@@ -316,16 +316,6 @@ pub fn create_main_window(app: &Application) -> Window {
         window.add_action(&action);
     }
 
-    {
-        let nav = navigation_view.clone();
-        let page = text_page.clone();
-        let action = SimpleAction::new("text-page", None);
-        action.connect_activate(move |_, _| {
-            nav.push(&page);
-        });
-        window.add_action(&action);
-    }
-
     // TODO: Action: win.save-password
 
     // keyboard shortcuts

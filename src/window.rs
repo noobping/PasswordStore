@@ -327,41 +327,43 @@ pub fn create_main_window(app: &Application) -> Window {
                     // List of git operations we want to run for each store
                     let commands: [&[&str]; 3] = [
                         &["git", "fetch", "--all"],
-                        &["git", "pull", "--rebase"],
+                        &["git", "pull"],
                         &["git", "push"],
                     ];
 
                     for args in commands {
-                        let status = Command::new("pass")
+                        let output = Command::new("pass")
                             .env("PASSWORD_STORE_DIR", &root)
                             .args(args)
-                            .status();
+                            .output();
 
-                        let msg = match &status {
-                            Ok(s) if s.success() => {
-                                // Success message
-                                format!("{}: pass {} ok ({s})", root.display(), args.join(" "))
-                            }
-                            Ok(s) => {
-                                // pass exited with non-zero status
-                                format!("{}: pass {} failed: {s}", root.display(), args.join(" "))
+                        match output {
+                            Ok(out) => {
+                                if !out.status.success() {
+                                    // git wrote its messages to stderr
+                                    let stderr = String::from_utf8_lossy(&out.stderr);
+
+                                    // try to find the last line containing "fatal:"
+                                    let fatal_line = stderr
+                                        .lines()
+                                        .rev() // start from the bottom
+                                        .find(|line| line.contains("fatal:"))
+                                        // fallback: whole stderr if no "fatal:" found
+                                        .unwrap_or(stderr.trim());
+                                    let message = format!("{} Using: {}", fatal_line, root.display());
+                                    eprintln!("{}", message);
+                                    let _ = tx.send(message);
+
+                                    // stop further commands for this store
+                                    break;
+                                }
                             }
                             Err(e) => {
-                                // failed to spawn pass
-                                format!(
-                                    "{}: failed to run pass {}: {e}",
-                                    root.display(),
-                                    args.join(" ")
-                                )
+                                let message = format!("Failed: {} with {e}", root.display());
+                                eprintln!("{}", message);
+                                let _ = tx.send(message);
+                                break;
                             }
-                        };
-
-                        // Ignore send errors (UI may have gone away)
-                        let _ = tx.send(msg);
-
-                        // On failure, stop further commands for this store
-                        if !status.map(|s| s.success()).unwrap_or(false) {
-                            break;
                         }
                     }
                 }

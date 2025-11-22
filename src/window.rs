@@ -396,6 +396,9 @@ pub fn create_main_window(app: &Application) -> Window {
     // keyboard shortcuts
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
+    app.set_accels_for_action("win.synchronize", &["<primary>s"]);
+    app.set_accels_for_action("win.add-password", &["<primary>n"]);
+    app.set_accels_for_action("win.git-page", &["<primary>i"]);
 
     setup_search_filter(&list, &search_entry);
 

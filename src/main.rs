@@ -42,7 +42,7 @@ fn main() -> glib::ExitCode {
             };
             let about = adw::AboutDialog::builder()
                 .application_name(project)
-                .application_icon("passadw")
+                .application_icon(project)
                 .version(env!("CARGO_PKG_VERSION"))
                 .developers(&authors[..])
                 .comments(full_comments)

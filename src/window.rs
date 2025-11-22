@@ -262,8 +262,10 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
 
     let bussy = Spinner::new();
     bussy.start();
+    let project = env!("CARGO_PKG_NAME");
+    let symbolic = format!("{project}-symbolic", icon);
     let placeholder = StatusPage::builder()
-        .icon_name("passadw")
+        .icon_name(symbolic)
         .child(&bussy)
         .build();
     list.set_placeholder(Some(&placeholder));
@@ -327,9 +329,11 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
                 let empty = items.is_empty();
                 git_clone.set_visible(empty);
                 search_clone.set_visible(!empty);
+                let project = env!("CARGO_PKG_NAME");
+                let symbolic = format!("{project}-symbolic", icon);
                 let placeholder = if empty {
                     StatusPage::builder()
-                        .icon_name("passadw")
+                        .icon_name(symbolic)
                         .title("No passwords found")
                         .description("Create a new password to get started.")
                         .build()

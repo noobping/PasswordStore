@@ -27,17 +27,18 @@ AppDir:
       - sourceline: "deb http://deb.debian.org/debian trixie main"
         key_url: "https://ftp-master.debian.org/keys/archive-key-12.asc"
     include:
-      - pkg-config
-      - libglib2.0-dev
-      - libcairo2-dev
-      - libpango1.0-dev
-      - libgtk-4-dev
+      - git
+      - gnupg2
       - libadwaita-1-dev
+      - libcairo2-dev
+      - libglib2.0-dev
+      - libgtk-4-dev
+      - libpango1.0-dev
       - libxkbcommon-dev
       - pass
       - pass-otp
-      - gnupg2
       - pinentry-gnome3
+      - pkg-config
     exclude:
       - build-essential
       - libssl3

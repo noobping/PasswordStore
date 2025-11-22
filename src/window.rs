@@ -263,7 +263,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
     let bussy = Spinner::new();
     bussy.start();
     let project = env!("CARGO_PKG_NAME");
-    let symbolic = format!("{project}-symbolic", project);
+    let symbolic = format!("{project}-symbolic");
     let placeholder = StatusPage::builder()
         .icon_name(symbolic)
         .child(&bussy)
@@ -330,7 +330,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
                 git_clone.set_visible(empty);
                 search_clone.set_visible(!empty);
                 let project = env!("CARGO_PKG_NAME");
-                let symbolic = format!("{project}-symbolic", project);
+                let symbolic = format!("{project}-symbolic");
                 let placeholder = if empty {
                     StatusPage::builder()
                         .icon_name(symbolic)

@@ -1,6 +1,6 @@
 [package]
 name = "passwordstore"
-description = "The default Unix password store"
+description = "a password manager that uses the pass command"
 authors = ["noobping"]
 version = "0.1.0"
 edition = "2021"

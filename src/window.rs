@@ -21,11 +21,7 @@ const UI_SRC: &str = include_str!("../data/window.ui");
 
 pub struct Window {
     pub window: ApplicationWindow,
-
-    pub toast_overlay: ToastOverlay,
-    pub navigation_view: NavigationView,
-    pub list_page: NavigationPage,
-    pub text_page: NavigationPage,
+    pub overlay: ToastOverlay,
 }
 
 pub fn create_main_window(app: &Application) -> Window {
@@ -414,10 +410,7 @@ pub fn create_main_window(app: &Application) -> Window {
 
     Window {
         window,
-        toast_overlay,
-        navigation_view,
-        list_page,
-        text_page,
+        overlay: toast_overlay,
     }
 }
 
@@ -595,7 +588,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
 
                 if empty {
                     save_clone.set_visible(false);
-                } 
+                }
                 git_clone.set_visible(empty);
                 let project = env!("CARGO_PKG_NAME");
                 let symbolic = format!("{project}-symbolic");

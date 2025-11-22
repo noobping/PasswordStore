@@ -69,22 +69,10 @@ pub fn create_main_window(app: &Application) -> Window {
         .object("save_button")
         .expect("Failed to get save_button");
 
-    // Toast overlay + popovers
+    // Toast overlay
     let toast_overlay: ToastOverlay = builder
         .object("toast_overlay")
         .expect("Failed to get toast_overlay");
-    let passphrase_popover: Popover = builder
-        .object("passphrase_popover")
-        .expect("Failed to get passphrase_popover");
-    let passphrase_entry: EntryRow = builder
-        .object("passphrase_entry")
-        .expect("Failed to get passphrase_entry");
-    let rename_popover: Popover = builder
-        .object("rename_popover")
-        .expect("Failed to get rename_popover");
-    let new_path_entry: EntryRow = builder
-        .object("new_path_entry")
-        .expect("Failed to get new_path_entry");
 
     // Navigation + list page
     let navigation_view: NavigationView = builder

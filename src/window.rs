@@ -19,12 +19,7 @@ use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
 
-pub struct Window {
-    pub window: ApplicationWindow,
-    pub overlay: ToastOverlay,
-}
-
-pub fn create_main_window(app: &Application) -> Window {
+pub fn create_main_window(app: &Application) -> ApplicationWindow {
     // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
 
@@ -410,10 +405,7 @@ pub fn create_main_window(app: &Application) -> Window {
 
     setup_search_filter(&list, &search_entry);
 
-    Window {
-        window,
-        overlay: toast_overlay,
-    }
+    window
 }
 
 fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: Button) {

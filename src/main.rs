@@ -38,7 +38,7 @@ fn main() -> glib::ExitCode {
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
         let win = window::create_main_window(app);
-        win.window.present();
+        win.present();
 
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {
@@ -59,7 +59,7 @@ fn main() -> glib::ExitCode {
                 .developers(&authors[..])
                 .comments(full_comments)
                 .build();
-            about.present(Some(&win.window));
+            about.present(Some(&win));
         });
         app.add_action(&about_action);
     });

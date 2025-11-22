@@ -7,7 +7,7 @@ use adw::Application;
 use gtk4::{gio, glib};
 use std::process::Command;
 
-const APP_ID: &str = "dev.noobping.passadw";
+const APP_ID: &str = "dev.noobping.passwordstore";
 
 fn main() -> glib::ExitCode {
     // Make the compiled GResource available at runtime.

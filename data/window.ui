@@ -6,7 +6,7 @@
     <property name="title">Password Store</property>
     <property name="default-width">600</property>
     <property name="default-height">450</property>
-    <property name="icon-name">passadw</property>
+    <property name="icon-name">passwordstore</property>
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">

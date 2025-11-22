@@ -27,7 +27,7 @@ fn main() {
     // Generate resources.xml content
     let mut xml = String::from(
         r#"<gresources>
-  <gresource prefix="/dev/noobping/passadw">
+  <gresource prefix="/dev/noobping/passwordstore">
 "#,
     );
 

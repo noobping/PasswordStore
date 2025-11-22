@@ -16,13 +16,6 @@ impl PassEntry {
         let dir = &self.relative_path;
         format!("{dir}{name}")
     }
-
-    pub fn path(&self) -> String {
-        let name = &self.basename;
-        let dir = &self.relative_path;
-        let root = &self.store_path;
-        format!("{root}{dir}{name}")
-    }
 }
 
 pub fn collect_all_password_items(roots: &[PathBuf]) -> io::Result<Vec<PassEntry>> {

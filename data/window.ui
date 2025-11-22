@@ -205,10 +205,6 @@
         <attribute name="action">win.synchronize</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
-        <attribute name="action">win.show-help-overlay</attribute>
-      </item>
-      <item>
         <attribute name="label" translatable="yes">_About PasswordStore</attribute>
         <attribute name="action">app.about</attribute>
       </item>

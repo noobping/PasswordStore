@@ -10,6 +10,7 @@ use gtk4::{
 };
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::process::Command;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
@@ -113,6 +114,97 @@ pub fn create_main_window(app: &Application) -> Window {
     let text_view: TextView = builder
         .object("text_view")
         .expect("Failed to get text_view");
+
+    // Selecting an item from the list → decrypt with `pass`
+    {
+        let nav = navigation_view.clone();
+        let text_page = text_page.clone();
+        let back_button = back_button.clone();
+        let add_button = add_button.clone();
+        let search_button = search_button.clone();
+        let git_button = git_button.clone();
+        let password_entry = password_entry.clone();
+        let text_view = text_view.clone();
+        let overlay = toast_overlay.clone();
+        let window_title = window_title.clone();
+
+        list.connect_row_activated(move |_list, row| {
+            // Retrieve the pass entry name (relative label) stored on the row
+            // let label = match non_null_to_string_result(unsafe { row.data::<String>("label") }) {
+            //     Ok(label) => Some(label),
+            //     Err(()) => None,
+            // };
+            let label = non_null_to_string_option(row, "label");
+
+            let Some(label) = label else {
+                let toast = adw::Toast::new("Internal error: missing label for row");
+                overlay.add_toast(toast);
+                return;
+            };
+
+            // Navigate to the text editor page and update header buttons
+            add_button.set_visible(false);
+            search_button.set_visible(false);
+            git_button.set_visible(false);
+            back_button.set_visible(true);
+            window_title.set_subtitle(&label);
+            nav.push(&text_page);
+
+            // Background worker: run `pass <label>`
+            let (tx, rx) = mpsc::channel::<Result<String, String>>();
+            let label_for_thread = label.clone();
+            thread::spawn(move || {
+                let output = Command::new("pass").arg(&label_for_thread).output();
+                let result = match output {
+                    Ok(o) if o.status.success() => {
+                        Ok(String::from_utf8_lossy(&o.stdout).to_string())
+                    }
+                    Ok(o) => Err(format!("pass failed: {}", o.status)),
+                    Err(e) => Err(format!("Failed to run pass: {e}")),
+                };
+
+                let _ = tx.send(result);
+            });
+
+            // UI updater: poll the channel from the main thread
+            let password_entry = password_entry.clone();
+            let text_view = text_view.clone();
+            let overlay = overlay.clone();
+
+            glib::timeout_add_local(Duration::from_millis(50), move || {
+                use std::sync::mpsc::TryRecvError;
+
+                match rx.try_recv() {
+                    Ok(Ok(output)) => {
+                        // Split into first line (password) and rest (notes)
+                        let mut lines = output.lines();
+                        if let Some(first) = lines.next() {
+                            password_entry.set_text(first);
+                        } else {
+                            password_entry.set_text("");
+                        }
+
+                        let rest = lines.collect::<Vec<_>>().join("\n");
+                        let buffer = text_view.buffer();
+                        buffer.set_text(&rest);
+
+                        glib::ControlFlow::Break
+                    }
+                    Ok(Err(msg)) => {
+                        let toast = adw::Toast::new(&msg);
+                        overlay.add_toast(toast);
+                        glib::ControlFlow::Break
+                    }
+                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
+                        let toast = adw::Toast::new("Failed to decrypt password entry");
+                        overlay.add_toast(toast);
+                        glib::ControlFlow::Break
+                    }
+                }
+            });
+        });
+    }
 
     // Input
     {
@@ -367,16 +459,6 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, search: Button, git
     });
 }
 
-fn non_null_to_string(label_opt: Option<std::ptr::NonNull<String>>) -> Result<String, ()> {
-    if let Some(ptr) = label_opt {
-        // SAFETY: caller must guarantee the pointer is valid and points to a valid String
-        let s: &String = unsafe { ptr.as_ref() };
-        Ok(s.clone())
-    } else {
-        Err(())
-    }
-}
-
 fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
     // shared state for the current query
     let query = Rc::new(RefCell::new(String::new()));
@@ -392,7 +474,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
             return true;
         }
 
-        if let Ok(label) = non_null_to_string(unsafe { row.data::<String>("label") }) {
+        if let Some(label) = non_null_to_string_option(row, "label") {
             let query_lower = q.to_lowercase();
             return label.contains(&query_lower);
         }
@@ -415,4 +497,18 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
         // trigger re-evaluation of filter_func for all rows
         list_for_entry.invalidate_filter();
     });
+}
+
+fn non_null_to_string_option(row: &ListBoxRow, key: &str) -> Option<String> {
+    non_null_to_string_result(unsafe { row.data::<String>(key) }).ok()
+}
+
+fn non_null_to_string_result(label_opt: Option<std::ptr::NonNull<String>>) -> Result<String, ()> {
+    if let Some(ptr) = label_opt {
+        // SAFETY: caller must guarantee the pointer is valid and points to a valid String
+        let s: &String = unsafe { ptr.as_ref() };
+        Ok(s.clone())
+    } else {
+        Err(())
+    }
 }

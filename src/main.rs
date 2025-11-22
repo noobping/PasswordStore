@@ -7,21 +7,33 @@ use adw::Application;
 use gtk4::{gio, glib};
 use std::process::Command;
 
+#[allow(unused_imports)]
+use gtk4::prelude::*; // Required for icons in a App Image
+
 const APP_ID: &str = "dev.noobping.passwordstore";
 
 fn main() -> glib::ExitCode {
     // Make the compiled GResource available at runtime.
-    gio::resources_register_include!("resources.gresource")
-        .expect("Failed to register resources.gresource");
+    gio::resources_register_include!("resources.gresource").expect("Failed to register resources");
 
     // Initialize libadwaita
     adw::init().expect("Failed to initialize libadwaita");
 
     // Create the application
-    let app = Application::builder().application_id(APP_ID).build();
+    let app = Application::builder()
+        .application_id(APP_ID)
+        .flags(gio::ApplicationFlags::HANDLES_OPEN)
+        .build();
 
     // keyboard shortcuts
     app.set_accels_for_action("app.about", &["F1"]);
+
+    // When the desktop/AppImage asks us to "open" something, just activate the app
+    {
+        app.connect_open(|app, _files, _hint| {
+            app.activate();
+        });
+    }
 
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {

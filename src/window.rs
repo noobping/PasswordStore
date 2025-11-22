@@ -481,7 +481,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
 
         if let Some(label) = non_null_to_string_option(row, "label") {
             let query_lower = q.to_lowercase();
-            return label.contains(&query_lower);
+            return label.to_lowercase().contains(&query_lower);
         }
 
         true

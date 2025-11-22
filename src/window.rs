@@ -475,6 +475,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
                     let menu_button = MenuButton::builder()
                         .icon_name("view-more-symbolic") // you already ship this icon :contentReference[oaicite:1]{index=1}
                         .has_frame(false)
+                        .css_classes(vec!["flat"])
                         .build();
 
                     // 4) Popover with actions
@@ -482,9 +483,13 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
                     let popover_box = GtkBox::new(Orientation::Vertical, 0);
 
                     let open_btn = Button::with_label("Open");
+                    open_btn.add_css_class("flat");
                     let copy_btn = Button::with_label("Copy password");
+                    copy_btn.add_css_class("flat");
                     let rename_btn = Button::with_label("Rename / move");
+                    rename_btn.add_css_class("flat");
                     let delete_btn = Button::with_label("Delete");
+                    delete_btn.add_css_class("flat");
 
                     popover_box.append(&open_btn);
                     popover_box.append(&copy_btn);

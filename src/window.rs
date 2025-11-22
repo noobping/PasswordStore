@@ -130,10 +130,6 @@ pub fn create_main_window(app: &Application) -> Window {
 
         list.connect_row_activated(move |_list, row| {
             // Retrieve the pass entry name (relative label) stored on the row
-            // let label = match non_null_to_string_result(unsafe { row.data::<String>("label") }) {
-            //     Ok(label) => Some(label),
-            //     Err(()) => None,
-            // };
             let label = non_null_to_string_option(row, "label");
 
             let Some(label) = label else {
@@ -307,6 +303,9 @@ pub fn create_main_window(app: &Application) -> Window {
             add.set_visible(true);
             back.set_visible(false);
             nav.pop();
+
+            // TODO: Clear password and text fields
+
             load_passwords_async(
                 &list_clone,
                 roots_clone.clone(),

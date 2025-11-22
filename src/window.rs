@@ -143,6 +143,7 @@ pub fn create_main_window(app: &Application) -> Window {
             add.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
+            save.set_visible(true);
             window_title.set_subtitle(&label);
             nav.push(&page);
 
@@ -227,6 +228,7 @@ pub fn create_main_window(app: &Application) -> Window {
             add.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
+            save.set_visible(true);
             nav.push(&page);
 
             popover_add.popdown();

@@ -30,6 +30,7 @@ fn main() -> glib::ExitCode {
 
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {
+            let project = env!("CARGO_PKG_NAME");
             let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
             let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
             let pass_version =
@@ -37,10 +38,10 @@ fn main() -> glib::ExitCode {
             let full_comments = if comments.is_empty() {
                 format!("pass: {pass_version}")
             } else {
-                format!("{comments}\n\n{pass_version}")
+                format!("{project}: {comments}\n\n{pass_version}")
             };
             let about = adw::AboutDialog::builder()
-                .application_name(env!("CARGO_PKG_NAME"))
+                .application_name(project)
                 .application_icon("passadw")
                 .version(env!("CARGO_PKG_VERSION"))
                 .developers(&authors[..])

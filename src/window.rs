@@ -1,12 +1,12 @@
 use crate::item::{collect_all_password_items, PassEntry};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
-    glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
-    PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
+    glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
+    NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
 };
 use gtk4::{
-    Box as GtkBox, Builder, Button, Label, ListBox, ListBoxRow, Orientation, Popover, SearchEntry,
-    Spinner, TextView,
+    Box as GtkBox, Builder, Button, Label, ListBox, ListBoxRow, MenuButton, Orientation, Popover,
+    SearchEntry, Spinner, TextView,
 };
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -350,7 +350,8 @@ pub fn create_main_window(app: &Application) -> Window {
                                         .find(|line| line.contains("fatal:"))
                                         // fallback: whole stderr if no "fatal:" found
                                         .unwrap_or(stderr.trim());
-                                    let message = format!("{} Using: {}", fatal_line, root.display());
+                                    let message =
+                                        format!("{} Using: {}", fatal_line, root.display());
                                     eprintln!("{}", message);
                                     let _ = tx.send(message);
 
@@ -428,6 +429,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
         .build();
     list.set_placeholder(Some(&placeholder));
 
+    let roots_clone = roots.clone();
+
     // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
 
@@ -457,35 +460,124 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button) {
             Ok(items) => {
                 let mut index = 0;
                 let len = items.len();
+                let empty = items.is_empty();
                 while index < len {
-                    let item = &items[index];
-                    let item_name = item.basename.clone();
-                    let item_dir = item.relative_path.clone();
-                    let item_root = item.store_path.clone();
+                    let item = items[index].clone();
 
                     let row = ListBoxRow::new();
-                    let hbox = gtk4::Box::new(Orientation::Horizontal, 6);
+                    let action_row = ActionRow::builder()
+                        .title(item.basename.clone()) // first column: basename
+                        .subtitle(item.relative_path.clone()) // second line: relative_path
+                        .activatable(true) // makes row respond to double-click/Enter
+                        .build();
 
-                    let label = Label::new(Some(&item.label()));
-                    label.set_xalign(0.0);
+                    // 3) Per-row menu button on the right
+                    let menu_button = MenuButton::builder()
+                        .icon_name("open-menu-symbolic") // you already ship this icon :contentReference[oaicite:1]{index=1}
+                        .has_frame(false)
+                        .build();
 
-                    hbox.append(&label);
-                    row.set_child(Some(&hbox));
+                    // 4) Popover with actions
+                    let popover = Popover::new();
+                    let popover_box = GtkBox::new(Orientation::Vertical, 0);
+
+                    let open_btn = Button::with_label("Open");
+                    let copy_btn = Button::with_label("Copy password");
+                    let rename_btn = Button::with_label("Rename / move");
+                    let delete_btn = Button::with_label("Delete");
+
+                    popover_box.append(&open_btn);
+                    popover_box.append(&copy_btn);
+                    popover_box.append(&rename_btn);
+                    popover_box.append(&delete_btn);
+
+                    popover.set_child(Some(&popover_box));
+                    menu_button.set_popover(Some(&popover));
+
+                    // Attach menu button as suffix (right side) of the row
+                    action_row.add_suffix(&menu_button);
+
+                    // Put the ActionRow inside the ListBoxRow
+                    row.set_child(Some(&action_row));
 
                     // Store full path on row for later use
                     unsafe {
-                        row.set_data("name", item_name);
-                        row.set_data("dir", item_dir);
-                        row.set_data("root", item_root);
+                        row.set_data("name", item.basename.clone());
+                        row.set_data("dir", item.relative_path.clone());
+                        row.set_data("root", item.store_path.clone());
                         row.set_data("label", item.label());
+                    }
+                    // Open pass file
+                    {
+                        let row_for_open = row.clone();
+                        open_btn.connect_clicked(move |_| {
+                            row_for_open.activate(); // calls your existing row_activated handler
+                        });
+                    }
+                    // Copy password
+                    {
+                        let entry = item.clone();
+                        copy_btn.connect_clicked(move |_| {
+                            let _ = Command::new("pass")
+                                .env("PASSWORD_STORE_DIR", &entry.store_path)
+                                .arg("-c")
+                                .arg(&entry.label())
+                                .status();
+                            // You probably want to show a Toast on success/failure here.
+                        });
+                    }
+                    // rename pass file
+                    {
+                        let entry = item.clone();
+                        let list = list_clone.clone();
+                        let roots = roots_clone.clone(); // whatever you’re passing into load_passwords_async
+                        rename_btn.connect_clicked(move |_| {
+                            // TODO: show an AdwMessageDialog + EntryRow to get new_label from user
+                            let new_label = ""; // user input
+                            let old = entry.clone();
+                            std::thread::spawn({
+                                let root = old.store_path.clone();
+                                move || {
+                                    let _ = Command::new("pass")
+                                        .env("PASSWORD_STORE_DIR", root)
+                                        .arg("mv")
+                                        .arg(&old.label())
+                                        .arg(&new_label)
+                                        .status();
+                                }
+                            });
+
+                            // After success, call load_passwords_async(&list_for_refresh, roots_for_refresh.clone(), git_button.clone());
+                            // (You may want to schedule that back on the main thread with glib::MainContext)
+                        });
+                    }
+                    // delete pass file
+                    {
+                        let entry = item.clone();
+                        let roots = roots_clone.clone();
+                        delete_btn.connect_clicked(move |_| {
+                            // TODO: confirm in dialog first
+
+                            std::thread::spawn({
+                                let root = entry.store_path.clone();
+                                let label = entry.label();
+                                move || {
+                                    let _ = Command::new("pass")
+                                        .env("PASSWORD_STORE_DIR", root)
+                                        .arg("rm")
+                                        .arg(&label)
+                                        .status();
+                                }
+                            });
+
+                            // reload list afterwards
+                        });
                     }
 
                     list_clone.append(&row);
-
                     index += 1;
                 }
 
-                let empty = items.is_empty();
                 git_clone.set_visible(empty);
                 let project = env!("CARGO_PKG_NAME");
                 let symbolic = format!("{project}-symbolic");

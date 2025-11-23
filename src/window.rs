@@ -1,11 +1,12 @@
 use crate::item::{collect_all_password_items, PassEntry};
+use crate::methods::non_null_to_string_option;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
 };
 use gtk4::{
-    Box as GtkBox, Builder, Button, Label, ListBox, ListBoxRow, MenuButton, Orientation, Popover,
+    Box as GtkBox, Builder, Button, ListBox, ListBoxRow, MenuButton, Orientation, Popover,
     SearchEntry, Spinner, TextView,
 };
 use std::cell::RefCell;
@@ -19,7 +20,7 @@ use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
 
-pub fn create_main_window(app: &Application) -> ApplicationWindow {
+pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
 
@@ -67,9 +68,6 @@ pub fn create_main_window(app: &Application) -> ApplicationWindow {
     let navigation_view: NavigationView = builder
         .object("navigation_view")
         .expect("Failed to get navigation_view");
-    let list_page: NavigationPage = builder
-        .object("list_page")
-        .expect("Failed to get list_page");
     let search_entry: SearchEntry = builder
         .object("search_entry")
         .expect("Failed to get search_entry");
@@ -416,6 +414,14 @@ pub fn create_main_window(app: &Application) -> ApplicationWindow {
 
     setup_search_filter(&list, &search_entry);
 
+    if let Some(q) = startup_query {
+        if !q.is_empty() {
+            search_entry.set_visible(true); // make the field appear
+            search_entry.set_text(&q); // fill text
+            list.invalidate_filter(); // re-run filter for all rows
+        }
+    }
+
     window
 }
 
@@ -542,8 +548,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     // rename pass file
                     {
                         let entry = item.clone();
-                        let list = list_clone.clone();
-                        let roots = roots_clone.clone(); // whatever you’re passing into load_passwords_async
+                        let _list = list_clone.clone();
+                        let _roots = roots_clone.clone(); // whatever you’re passing into load_passwords_async
                         rename_btn.connect_clicked(move |_| {
                             // TODO: show an AdwMessageDialog + EntryRow to get new_label from user
                             let new_label = ""; // user input
@@ -567,7 +573,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     // delete pass file
                     {
                         let entry = item.clone();
-                        let roots = roots_clone.clone();
+                        let _roots = roots_clone.clone();
                         delete_btn.connect_clicked(move |_| {
                             // TODO: confirm in dialog first
 
@@ -673,18 +679,4 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
         // trigger re-evaluation of filter_func for all rows
         list_for_entry.invalidate_filter();
     });
-}
-
-fn non_null_to_string_option(row: &ListBoxRow, key: &str) -> Option<String> {
-    non_null_to_string_result(unsafe { row.data::<String>(key) }).ok()
-}
-
-fn non_null_to_string_result(label_opt: Option<std::ptr::NonNull<String>>) -> Result<String, ()> {
-    if let Some(ptr) = label_opt {
-        // SAFETY: caller must guarantee the pointer is valid and points to a valid String
-        let s: &String = unsafe { ptr.as_ref() };
-        Ok(s.clone())
-    } else {
-        Err(())
-    }
 }

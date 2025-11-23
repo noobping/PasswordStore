@@ -95,7 +95,7 @@
 
                 <!-- List page -->
                 <child>
-                  <object class="AdwNavigationPage" id="list_page">
+                  <object class="AdwNavigationPage">
                     <property name="title" translatable="yes">Password List</property>
                     <child>
                       <object class="GtkBox">

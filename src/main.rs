@@ -1,11 +1,16 @@
 mod item;
+mod methods;
 mod window;
+
+use crate::methods::non_null_to_string_option;
 
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
 use gtk4::{gio, glib};
+use std::ffi::OsString;
 use std::process::Command;
+use std::result::Result::Ok;
 
 #[allow(unused_imports)]
 use gtk4::prelude::*; // Required for icons in a App Image
@@ -22,7 +27,7 @@ fn main() -> glib::ExitCode {
     // Create the application
     let app = Application::builder()
         .application_id(APP_ID)
-        .flags(gio::ApplicationFlags::HANDLES_OPEN)
+        .flags(gio::ApplicationFlags::HANDLES_OPEN | gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
     // keyboard shortcuts
@@ -35,9 +40,28 @@ fn main() -> glib::ExitCode {
         });
     }
 
+    // Handle command-line arguments
+    {
+        app.connect_command_line(|app, cmd| {
+            let args = cmd.arguments();
+            if args.len() > 1 {
+                // Everything after the program name becomes the query
+                let query = args[1..].join(&OsString::from(" ")).into_string();
+                if let Ok(query) = query {
+                    // Stash it on the Application so we can read it in activate
+                    unsafe { app.set_data("query", query) };
+                }
+            }
+            app.activate(); // continue normal startup path
+
+            0.into()
+        });
+    }
+
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
-        let win = window::create_main_window(app);
+        let query = non_null_to_string_option(app, "query");
+        let win = window::create_main_window(app, query);
         win.present();
 
         let about_action = SimpleAction::new("about", None);

@@ -208,12 +208,13 @@
                                 <child>
                                   <object class="GtkListBox" id="password_stores">
                                     <property name="hexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
                                     <child type="placeholder">
                                       <object class="AdwActionRow" id="stores_row">
                                         <property name="title">~/.password-store</property>
-                                        <property name="subtitle"></property>
-                                        <property name="activatable">false</property>
-                                        <property name="selectable">false</property>
                                         <child type="suffix">
                                           <object class="GtkButton" id="add_password_store">
                                             <property name="icon-name">document-edit-symbolic</property>

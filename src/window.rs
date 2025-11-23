@@ -341,6 +341,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .map(|p| p == &text)
                     .unwrap_or(false);
                 save.set_visible(is_text_page);
+
+                // TODO: What pass file is opeded?
             } else {
                 back.set_visible(false);
                 save.set_visible(false);

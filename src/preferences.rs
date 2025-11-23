@@ -129,14 +129,13 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
     let path = config_path();
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| bool_error!(format!("Failed to create config dir: {e}")))?;
+        fs::create_dir_all(parent).map_err(|e| bool_error!("Failed to create config dir: {e}"))?;
     }
 
-    let toml = toml::to_string_pretty(cfg)
-        .map_err(|e| bool_error!(format!("Failed to serialize config: {e}")))?;
+    let toml =
+        toml::to_string_pretty(cfg).map_err(|e| bool_error!("Failed to serialize config: {e}"))?;
 
-    fs::write(&path, toml).map_err(|e| bool_error!(format!("Failed to write config file: {e}")))?;
+    fs::write(&path, toml).map_err(|e| bool_error!("Failed to write config file: {e}"))?;
 
     Ok(())
 }

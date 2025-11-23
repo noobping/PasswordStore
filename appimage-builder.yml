@@ -15,7 +15,6 @@ AppDir:
     icon: passwordstore
     version: "0.1.3"
     exec: usr/bin/passwordstore
-    exec_args: gui
 
   files:
     include:

@@ -1,9 +1,9 @@
 version: 1
 
 script:
-  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/bin AppDir/usr/share/icons/Adwaita/symbolic/actions
+  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/share/icons/hicolor/symbolic/actions
   - cp data/passwordstore.png AppDir/usr/share/icons/hicolor/256x256/apps/passwordstore.png
-  - cp -r data/icons/* AppDir/usr/share/icons/Adwaita/symbolic/actions/
+  - cp -r data/icons/* AppDir/usr/share/icons/hicolor/symbolic/actions/
   - cp target/release/passwordstore AppDir/usr/bin/
 
 AppDir:

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="dev.noobping.passwordstore" path="/dev/noobping/passwordstore/">
+    <key name="password-store-dirs" type="as">
+      <summary>Password store paths</summary>
+      <description>
+        List of password store directories.
+      </description>
+      <default>[]</default>
+    </key>
+
+    <key name="pass-command" type="s">
+      <default>'pass'</default>
+      <summary>Pass command</summary>
+      <description>
+        Command used to invoke pass. Can be "pass" or a full wrapper like a podman command.
+      </description>
+    </key>
+  </schema>
+</schemalist>

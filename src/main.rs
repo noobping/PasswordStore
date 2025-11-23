@@ -1,5 +1,6 @@
 mod item;
 mod methods;
+mod settings;
 mod window;
 
 use crate::methods::non_null_to_string_option;

@@ -70,15 +70,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     // Settings
     let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
     pass_row.set_text(&settings.command());
-    let stores_button: gtk::Button = builder.object("edit_stores_button").unwrap();
-    {
-        let settings = settings.clone();
-        edit_button.connect_clicked(move |_| {
-            let stores = settings.stores();
-            // TODO: open dialog / editor with `stores`
-            // and call `settings.set_stores(updated_stores)` on save
-        });
-    }
 
     // Navigation + list page
     let navigation_view: NavigationView = builder
@@ -369,7 +360,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         // fallback: whole stderr if no "fatal:" found
                                         .unwrap_or(stderr.trim());
                                     let message =
-                                        format!("{} Using: {}", fatal_line, root.display());
+                                        format!("{} Using: {}", fatal_line, root);
                                     eprintln!("{}", message);
                                     let _ = tx.send(message);
 
@@ -378,7 +369,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                 }
                             }
                             Err(e) => {
-                                let message = format!("Failed: {} with {e}", root.display());
+                                let message = format!("Failed: {} with {e}", root);
                                 eprintln!("{}", message);
                                 let _ = tx.send(message);
                                 break;

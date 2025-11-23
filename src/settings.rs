@@ -1,10 +1,11 @@
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::BoolError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const APP_ID: &str = "dev.noobping.passwordstore";
 const DEFAULT_CMD: &str = "pass";
 
+#[derive(Debug, Clone)]
 pub struct AppSettings {
     settings: Option<Settings>,
 }
@@ -39,6 +40,23 @@ impl AppSettings {
             None => {
                 if let Ok(home) = std::env::var("HOME") {
                     vec![format!("{home}/.password-store")]
+                } else {
+                    Vec::new()
+                }
+            }
+        }
+    }
+
+    pub fn paths(&self) -> Vec<PathBuf> {
+        match &self.settings {
+            Some(s) => s
+                .strv("password-store-dirs")
+                .iter()
+                .map(|g| PathBuf::from(g.as_str()))
+                .collect(),
+            None => {
+                if let Ok(home) = std::env::var("HOME") {
+                    vec![PathBuf::from(format!("{home}/.password-store"))]
                 } else {
                     Vec::new()
                 }

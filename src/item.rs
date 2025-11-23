@@ -22,7 +22,7 @@ impl PassEntry {
 
 pub fn collect_all_password_items() -> io::Result<Vec<PassEntry>> {
     let settings = AppSettings::new();
-    let roots = settings.stores();
+    let roots = settings.paths();
     let mut result: Vec<PassEntry> = Vec::new();
 
     let mut i = 0;

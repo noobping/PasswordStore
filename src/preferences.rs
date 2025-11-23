@@ -1,9 +1,17 @@
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::BoolError;
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const APP_ID: &str = "dev.noobping.passwordstore";
 const DEFAULT_CMD: &str = "pass";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct PreferenceFile {
+    pass_command: Option<String>,
+    password_store_dirs: Option<Vec<String>>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Preferences {
@@ -98,4 +106,32 @@ fn config_path() -> PathBuf {
         // Super fallback: current dir
         PathBuf::from(format!("{}.toml", APP_ID))
     }
+}
+
+fn load_file_prefs() -> FilePreferences {
+    let path = config_path();
+
+    if let Ok(data) = fs::read_to_string(&path) {
+        toml::from_str(&data).unwrap_or_default()
+    } else {
+        FilePreferences::default()
+    }
+}
+
+fn save_file_prefs(cfg: &FilePreferences) -> Result<(), BoolError> {
+    use adw::glib::bool_error; // macro to construct BoolError
+
+    let path = config_path();
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| bool_error!(format!("Failed to create config dir: {e}")))?;
+    }
+
+    let toml = toml::to_string_pretty(cfg)
+        .map_err(|e| bool_error!(format!("Failed to serialize config: {e}")))?;
+
+    fs::write(&path, toml).map_err(|e| bool_error!(format!("Failed to write config file: {e}")))?;
+
+    Ok(())
 }

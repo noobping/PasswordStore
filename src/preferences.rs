@@ -32,25 +32,28 @@ impl Preferences {
     }
 
     pub fn command(&self) -> String {
-        match &self.settings {
-            Some(s) => s.string("pass-command").to_string(),
-            None => DEFAULT_CMD.to_string(),
+        if let Some(s) = &self.settings {
+            s.string("pass-command").to_string()
+        } else {
+            let cfg = load_file_prefs();
+            cfg.pass_command.unwrap_or_else(|| DEFAULT_CMD.to_string())
         }
     }
 
     pub fn stores(&self) -> Vec<String> {
-        match &self.settings {
-            Some(s) => s
-                .strv("password-store-dirs")
+        if let Some(s) = &self.settings {
+            s.strv("password-store-dirs")
                 .iter()
                 .map(|g| g.to_string())
-                .collect(),
-            None => {
-                if let Ok(home) = std::env::var("HOME") {
-                    vec![format!("{home}/.password-store")]
-                } else {
-                    Vec::new()
-                }
+                .collect()
+        } else {
+            let cfg = load_file_prefs();
+            if let Some(dirs) = cfg.password_store_dirs {
+                dirs
+            } else if let Ok(home) = std::env::var("HOME") {
+                vec![format!("{home}/.password-store")]
+            } else {
+                Vec::new()
             }
         }
     }
@@ -76,17 +79,19 @@ impl Preferences {
         if let Some(s) = &self.settings {
             s.set_string("pass-command", cmd)
         } else {
-            // TODO: Save settings
-            Ok(())
+            let mut cfg = load_file_prefs();
+            cfg.pass_command = Some(cmd.to_string());
+            save_file_prefs(&cfg)
         }
     }
 
     pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
-            s.set_strv("password-store-dirs", stores)
+            s.set_strv("password-store-dirs", stores.clone())
         } else {
-            // TODO: Save settings
-            Ok(())
+            let mut cfg = load_file_prefs();
+            cfg.password_store_dirs = Some(stores);
+            save_file_prefs(&cfg)
         }
     }
 

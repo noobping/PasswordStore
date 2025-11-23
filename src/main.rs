@@ -7,7 +7,7 @@ use crate::methods::non_null_to_string_option;
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use gtk4::{gio, glib};
+use gtk4::{gdk::Display, gio, glib, IconTheme};
 use std::ffi::OsString;
 use std::process::Command;
 use std::result::Result::Ok;
@@ -63,6 +63,10 @@ fn main() -> glib::ExitCode {
         let query = non_null_to_string_option(app, "query");
         let win = window::create_main_window(app, query);
         win.present();
+
+        let display = Display::default().expect("No display");
+        let theme = IconTheme::for_display(&display);
+        theme.add_resource_path("/dev/noobping/passwordstore/icons");
 
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {

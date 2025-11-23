@@ -1,9 +1,13 @@
 version: 1
 
 script:
-  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/bin
+  - mkdir -p AppDir/usr/bin \
+            AppDir/usr/share/icons/hicolor/256x256/apps \
+            AppDir/usr/share/icons/hicolor/scalable/actions
   - cp data/passwordstore.png AppDir/usr/share/icons/hicolor/256x256/apps/passwordstore.png
+  - cp data/icons/*.svg AppDir/usr/share/icons/hicolor/scalable/actions/
   - cp target/release/passwordstore AppDir/usr/bin/
+  - gtk-update-icon-cache AppDir/usr/share/icons/hicolor || true
 
 AppDir:
   path: ./AppDir
@@ -26,6 +30,7 @@ AppDir:
       - sourceline: "deb http://deb.debian.org/debian trixie main"
         key_url: "https://ftp-master.debian.org/keys/archive-key-12.asc"
     include:
+      - adwaita-icon-theme
       - git
       - gnupg2
       - libadwaita-1-dev

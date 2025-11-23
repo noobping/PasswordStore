@@ -2,12 +2,9 @@ version: 1
 
 script:
   - mkdir -p AppDir/usr/bin \
-            AppDir/usr/share/icons/hicolor/256x256/apps \
-            AppDir/usr/share/icons/hicolor/scalable/actions
+            AppDir/usr/share/icons/hicolor/256x256/apps
   - cp data/passwordstore.png AppDir/usr/share/icons/hicolor/256x256/apps/passwordstore.png
-  - cp data/icons/*.svg AppDir/usr/share/icons/hicolor/scalable/actions/
   - cp target/release/passwordstore AppDir/usr/bin/
-  - gtk-update-icon-cache AppDir/usr/share/icons/hicolor || true
 
 AppDir:
   path: ./AppDir
@@ -22,6 +19,7 @@ AppDir:
   files:
     include:
       - /usr/share/icons/Adwaita
+      - /usr/share/icons/hicolor
       - /usr/share/themes/Adwaita
 
   apt:

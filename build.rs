@@ -1,5 +1,7 @@
 use std::{fs, path::Path};
 
+const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
+
 fn main() {
     // Directories
     let data_dir = Path::new("data");
@@ -8,6 +10,10 @@ fn main() {
     // Tell Cargo when to rerun the build script
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=data");
+
+    // Ensure data/ exists
+    fs::create_dir_all(&data_dir).unwrap();
+    fs::create_dir_all(&icons_dir).unwrap();
 
     // Collect all .svg icon files in data/icons/
     let mut icons: Vec<String> = fs::read_dir(&icons_dir)
@@ -25,21 +31,17 @@ fn main() {
     icons.sort();
 
     // Generate resources.xml content
-    let mut xml = String::from(
-        r#"<gresources>
-  <gresource prefix="/dev/noobping/passwordstore">
-"#,
-    );
+    let mut xml = String::from("<gresources>\n");
+    xml.push_str(&format!("\t<gresource prefix=\"{RESOURCE_ID}\">\n"));
 
-    // Add icons as files under icons/
+    // Add files
     for f in &icons {
-        xml.push_str(&format!("    <file>icons/{}</file>\n", f));
+        xml.push_str(&format!("\t\t<file>icons/{}</file>\n", f));
     }
 
-    xml.push_str("  </gresource>\n</gresources>\n");
+    xml.push_str("\t</gresource>\n</gresources>\n");
 
-    // Ensure data/ exists and write resources.xml there
-    fs::create_dir_all(&data_dir).unwrap();
+    // Write resources.xml there
     fs::write(data_dir.join("resources.xml"), xml).unwrap();
 
     // Compile GResources from data/resources.xml into resources.gresource

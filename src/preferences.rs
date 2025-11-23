@@ -80,7 +80,7 @@ impl Preferences {
         }
     }
 
-    pub fn has_gsettings(&self) -> bool {
+    pub fn has_references(&self) -> bool {
         self.settings.is_some()
     }
 }

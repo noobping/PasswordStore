@@ -68,6 +68,7 @@ impl Preferences {
         if let Some(s) = &self.settings {
             s.set_string("pass-command", cmd)
         } else {
+            // TODO: Save settings
             Ok(())
         }
     }
@@ -76,6 +77,7 @@ impl Preferences {
         if let Some(s) = &self.settings {
             s.set_strv("password-store-dirs", stores)
         } else {
+            // TODO: Save settings
             Ok(())
         }
     }

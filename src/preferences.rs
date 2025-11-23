@@ -113,17 +113,17 @@ fn config_path() -> PathBuf {
     }
 }
 
-fn load_file_prefs() -> FilePreferences {
+fn load_file_prefs() -> PreferenceFile {
     let path = config_path();
 
     if let Ok(data) = fs::read_to_string(&path) {
         toml::from_str(&data).unwrap_or_default()
     } else {
-        FilePreferences::default()
+        PreferenceFile::default()
     }
 }
 
-fn save_file_prefs(cfg: &FilePreferences) -> Result<(), BoolError> {
+fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
     use adw::glib::bool_error; // macro to construct BoolError
 
     let path = config_path();

@@ -181,6 +181,45 @@
                   </object>
                 </child>
 
+                <child>
+                  <object class="AdwNavigationPage" id="settings_page">
+                    <property name="title" translatable="yes">Settings</property>
+                    <child>
+                      <object class="AdwPreferencesPage">
+                        <child>
+                          <object class="AdwPreferencesGroup">
+                            <property name="title" translatable="yes">Pass</property>
+
+                            <child>
+                              <object class="AdwEntryRow" id="pass_command_row">
+                                <property name="title" translatable="yes">Pass command</property>
+                                <property name="show-apply-button">true</property>
+                              </object>
+                            </child>
+
+                            <child>
+                              <object class="AdwActionRow" id="stores_row">
+                                <property name="title" translatable="yes">Password stores</property>
+                                <property name="subtitle" translatable="yes">Directories with
+                                  password-store repos</property>
+
+                                <!-- You can later open a dialog / picker from this -->
+                                <child type="suffix">
+                                  <object class="GtkButton" id="edit_stores_button">
+                                    <property name="icon-name">document-edit-symbolic</property>
+                                    <property name="valign">center</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
               </object>
             </child>
           </object>

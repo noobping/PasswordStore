@@ -25,6 +25,7 @@ const UI_SRC: &str = include_str!("../data/window.ui");
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
+    let settings = AppSettings::new();
 
     // Root window
     let window: ApplicationWindow = builder
@@ -61,6 +62,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("save_button")
         .expect("Failed to get save_button");
 
+    // Settings
+    let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
+    pass_row.set_text(&settings.command());
+    let stores_button: gtk::Button = builder.object("edit_stores_button").unwrap();
+
     // Toast overlay
     let toast_overlay: ToastOverlay = builder
         .object("toast_overlay")
@@ -75,13 +81,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get search_entry");
     let list: ListBox = builder.object("list").expect("Failed to get list");
 
-    let home = std::env::var("HOME").unwrap_or(String::new());
-    let mut roots: Vec<PathBuf> = Vec::new();
-    roots.push(PathBuf::from(format!("{}/.password-store", home)));
-
     load_passwords_async(
         &list,
-        roots.clone(),
         git_button.clone(),
         save_button.clone(),
     );
@@ -301,7 +302,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let list_clone = list.clone();
-        let roots_clone = roots.clone();
         let win = window_title.clone();
         let back = back_button.clone();
         let git = git_button.clone();
@@ -319,17 +319,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             // TODO: Clear password and text fields
 
-            load_passwords_async(&list_clone, roots_clone.clone(), git.clone(), save.clone());
+            load_passwords_async(&list_clone, git.clone(), save.clone());
         });
         window.add_action(&action);
     }
 
     {
         let overlay_clone = toast_overlay.clone();
-        let roots_clone = roots.clone();
         let action = SimpleAction::new("synchronize", None);
         action.connect_activate(move |_, _| {
-            let roots = roots_clone.clone();
             let overlay = overlay_clone.clone();
 
             // Channel from worker → main thread
@@ -338,6 +336,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             // Background worker
             thread::spawn(move || {
                 let settings = AppSettings::new();
+                let roots = settings.stores();
                 for root in roots {
                     // List of git operations we want to run for each store
                     let commands: [&[&str]; 3] = [
@@ -429,7 +428,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     window
 }
 
-fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: Button) {
+fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -446,17 +445,15 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
         .build();
     list.set_placeholder(Some(&placeholder));
 
-    let roots_clone = roots.clone();
-
     // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
 
-    // Spawn worker thread – ONLY data goes in here (roots + tx)
+    // Spawn worker thread – ONLY data goes in here
     thread::spawn(move || {
-        let all_items = match collect_all_password_items(&roots) {
+        let all_items = match collect_all_password_items() {
             Ok(v) => v,
             Err(err) => {
-                eprintln!("Error scanning pass roots: {err}");
+                eprintln!("Error scanning pass stores: {err}");
                 Vec::new()
             }
         };
@@ -558,7 +555,6 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     {
                         let entry = item.clone();
                         let _list = list_clone.clone();
-                        let _roots = roots_clone.clone(); // whatever you’re passing into load_passwords_async
                         rename_btn.connect_clicked(move |_| {
                             // TODO: show an AdwMessageDialog + EntryRow to get new_label from user
                             let new_label = ""; // user input
@@ -576,14 +572,13 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                                 }
                             });
 
-                            // After success, call load_passwords_async(&list_for_refresh, roots_for_refresh.clone(), git_button.clone());
+                            // After success, call load_passwords_async
                             // (You may want to schedule that back on the main thread with glib::MainContext)
                         });
                     }
                     // delete pass file
                     {
                         let entry = item.clone();
-                        let _roots = roots_clone.clone();
                         delete_btn.connect_clicked(move |_| {
                             // TODO: confirm in dialog first
 

@@ -185,34 +185,47 @@
                   <object class="AdwNavigationPage" id="settings_page">
                     <property name="title" translatable="yes">Preferences</property>
                     <child>
-                      <object class="AdwPreferencesPage">
+                      <object class="GtkScrolledWindow">
+                        <property name="vscrollbar-policy">automatic</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="propagate-natural-width">true</property>
+                        <property name="propagate-natural-height">true</property>
                         <child>
-                          <object class="AdwPreferencesGroup">
-                            <property name="title" translatable="yes">Pass</property>
+                          <object class="AdwPreferencesPage">
 
                             <child>
-                              <object class="AdwEntryRow" id="pass_command_row">
-                                <property name="title" translatable="yes">Pass command</property>
-                                <property name="show-apply-button">true</property>
-                              </object>
-                            </child>
-
-                            <child>
-                              <object class="AdwActionRow" id="stores_row">
-                                <property name="title" translatable="yes">Password stores</property>
-                                <property name="subtitle" translatable="yes">Directories with
-                                  password-store repos</property>
-
-                                <!-- You can later open a dialog / picker from this -->
-                                <child type="suffix">
-                                  <object class="GtkButton" id="edit_stores_button">
-                                    <property name="icon-name">document-edit-symbolic</property>
-                                    <property name="valign">center</property>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="AdwEntryRow" id="pass_command_row">
+                                    <property name="title" translatable="yes">Pass command</property>
+                                    <property name="show-apply-button">true</property>
                                   </object>
                                 </child>
                               </object>
                             </child>
-
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="GtkListBox" id="password_stores">
+                                    <property name="hexpand">true</property>
+                                    <child type="placeholder">
+                                      <object class="AdwActionRow" id="stores_row">
+                                        <property name="title">~/.password-store</property>
+                                        <property name="subtitle"></property>
+                                        <property name="activatable">false</property>
+                                        <property name="selectable">false</property>
+                                        <child type="suffix">
+                                          <object class="GtkButton" id="add_password_store">
+                                            <property name="icon-name">document-edit-symbolic</property>
+                                            <property name="valign">center</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>

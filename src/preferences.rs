@@ -86,3 +86,16 @@ impl Preferences {
         self.settings.is_some()
     }
 }
+
+fn config_path() -> PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
+        PathBuf::from(dir).join(format!("{}/config.toml", APP_ID))
+    } else if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home)
+            .join(".config")
+            .join(format!("{}/config.toml", APP_ID))
+    } else {
+        // Super fallback: current dir
+        PathBuf::from(format!("{}.toml", APP_ID))
+    }
+}

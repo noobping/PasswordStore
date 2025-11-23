@@ -62,15 +62,23 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("save_button")
         .expect("Failed to get save_button");
 
-    // Settings
-    let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
-    pass_row.set_text(&settings.command());
-    let stores_button: gtk::Button = builder.object("edit_stores_button").unwrap();
-
     // Toast overlay
     let toast_overlay: ToastOverlay = builder
         .object("toast_overlay")
         .expect("Failed to get toast_overlay");
+
+    // Settings
+    let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
+    pass_row.set_text(&settings.command());
+    let stores_button: gtk::Button = builder.object("edit_stores_button").unwrap();
+    {
+        let settings = settings.clone();
+        edit_button.connect_clicked(move |_| {
+            let stores = settings.stores();
+            // TODO: open dialog / editor with `stores`
+            // and call `settings.set_stores(updated_stores)` on save
+        });
+    }
 
     // Navigation + list page
     let navigation_view: NavigationView = builder
@@ -81,11 +89,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get search_entry");
     let list: ListBox = builder.object("list").expect("Failed to get list");
 
-    load_passwords_async(
-        &list,
-        git_button.clone(),
-        save_button.clone(),
-    );
+    load_passwords_async(&list, git_button.clone(), save_button.clone());
 
     // Text editor page
     let text_page: NavigationPage = builder

@@ -12,8 +12,8 @@ use std::ffi::OsString;
 use std::process::Command;
 use std::result::Result::Ok;
 
-#[allow(unused_imports)]
-use gtk4::prelude::*; // Required for icons in a App Image
+// #[allow(unused_imports)]
+// use gtk4::prelude::*; // Required for icons in a App Image
 
 const APP_ID: &str = "dev.noobping.passwordstore";
 

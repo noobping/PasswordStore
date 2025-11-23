@@ -1,5 +1,6 @@
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
+use crate::settings::AppSettings;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
@@ -18,6 +19,7 @@ use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::time::Duration;
 
+const APP_ID: &str = "dev.noobping.passwordstore";
 const UI_SRC: &str = include_str!("../data/window.ui");
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
@@ -153,7 +155,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let label_for_thread = label.clone();
             let store_for_thread = root.clone();
             thread::spawn(move || {
-                let output = Command::new("pass")
+                let settings = AppSettings::with_schema(APP_ID);
+                let output = Command::new(settings.command())
                     .env("PASSWORD_STORE_DIR", store_for_thread)
                     .arg(&label_for_thread)
                     .output();
@@ -334,6 +337,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             // Background worker
             thread::spawn(move || {
+                let settings = AppSettings::with_schema(APP_ID);
                 for root in roots {
                     // List of git operations we want to run for each store
                     let commands: [&[&str]; 3] = [
@@ -343,7 +347,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     ];
 
                     for args in commands {
-                        let output = Command::new("pass")
+                        let output = Command::new(settings.command())
                             .env("PASSWORD_STORE_DIR", &root)
                             .args(args)
                             .output();
@@ -541,7 +545,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     {
                         let entry = item.clone();
                         copy_btn.connect_clicked(move |_| {
-                            let _ = Command::new("pass")
+                            let settings = AppSettings::with_schema(APP_ID);
+                            let _ = Command::new(settings.command())
                                 .env("PASSWORD_STORE_DIR", &entry.store_path)
                                 .arg("-c")
                                 .arg(&entry.label())
@@ -561,7 +566,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                             std::thread::spawn({
                                 let root = old.store_path.clone();
                                 move || {
-                                    let _ = Command::new("pass")
+                                    let settings = AppSettings::with_schema(APP_ID);
+                                    let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("mv")
                                         .arg(&old.label())
@@ -585,7 +591,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                                 let root = entry.store_path.clone();
                                 let label = entry.label();
                                 move || {
-                                    let _ = Command::new("pass")
+                                    let settings = AppSettings::with_schema(APP_ID);
+                                    let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")
                                         .arg(&label)

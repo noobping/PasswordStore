@@ -1,6 +1,7 @@
 use adw::gio::{prelude::*, Settings};
 use adw::glib::BoolError;
 
+#[derive(Debug, Clone)]
 pub struct AppSettings {
     settings: Settings,
 }

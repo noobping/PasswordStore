@@ -4,6 +4,7 @@ mod settings;
 mod window;
 
 use crate::methods::non_null_to_string_option;
+use crate::settings::AppSettings;
 
 use adw::gio::SimpleAction;
 use adw::prelude::*;
@@ -98,7 +99,8 @@ fn main() -> glib::ExitCode {
 }
 
 fn get_pass_version() -> Option<String> {
-    let output = Command::new("pass").arg("--version").output().ok()?; // failed to spawn? -> None
+    let settings = AppSettings::with_schema(APP_ID);
+    let output = Command::new(settings.command()).arg("--version").output().ok()?; // failed to spawn? -> None
 
     if !output.status.success() {
         return None;

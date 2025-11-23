@@ -66,6 +66,7 @@ fn main() -> glib::ExitCode {
 
         let display = Display::default().expect("No display");
         let theme = IconTheme::for_display(&display);
+        theme.add_resource_path("/dev/noobping/passwordstore");
         theme.add_resource_path("/dev/noobping/passwordstore/icons");
 
         let about_action = SimpleAction::new("about", None);

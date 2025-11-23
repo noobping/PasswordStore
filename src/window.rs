@@ -320,6 +320,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
+        let text = text_page.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
         let back = back_button.clone();
@@ -329,15 +330,27 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let nav = navigation_view.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
-            back.set_visible(false);
-            save.set_visible(false);
-            add.set_visible(true);
             nav.pop();
-            win.set_title("Password Store");
-            win.set_subtitle("Manage your passwords");
+            let stack = nav.navigation_stack();
+            if stack.n_items() > 1 {
+                back.set_visible(true);
+                add.set_visible(false);
+                let is_text_page = nav
+                    .visible_page()
+                    .as_ref()
+                    .map(|p| p == &text)
+                    .unwrap_or(false);
+                save.set_visible(is_text_page);
+            } else {
+                back.set_visible(false);
+                save.set_visible(false);
+                add.set_visible(true);
 
-            // TODO: Clear password and text fields
+                win.set_title("Password Store");
+                win.set_subtitle("Manage your passwords");
 
+                // TODO: Clear password and text fields
+            }
             load_passwords_async(&list_clone, git.clone(), save.clone());
         });
         window.add_action(&action);
@@ -383,8 +396,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         .find(|line| line.contains("fatal:"))
                                         // fallback: whole stderr if no "fatal:" found
                                         .unwrap_or(stderr.trim());
-                                    let message =
-                                        format!("{} Using: {}", fatal_line, root);
+                                    let message = format!("{} Using: {}", fatal_line, root);
                                     eprintln!("{}", message);
                                     let _ = tx.send(message);
 

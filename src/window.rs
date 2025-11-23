@@ -498,12 +498,16 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
 
                     let open_btn = Button::with_label("Open");
                     open_btn.add_css_class("flat");
+                    open_btn.add_css_class("linked");
                     let copy_btn = Button::with_label("Copy password");
                     copy_btn.add_css_class("flat");
+                    copy_btn.add_css_class("linked");
                     let rename_btn = Button::with_label("Rename / move");
                     rename_btn.add_css_class("flat");
+                    rename_btn.add_css_class("linked");
                     let delete_btn = Button::with_label("Delete");
                     delete_btn.add_css_class("flat");
+                    delete_btn.add_css_class("linked");
 
                     popover_box.append(&open_btn);
                     popover_box.append(&copy_btn);

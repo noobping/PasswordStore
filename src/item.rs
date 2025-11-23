@@ -1,4 +1,4 @@
-use crate::settings::AppSettings;
+use crate::preferences::Preferences;
 
 use std::ffi::OsStr;
 use std::fs;
@@ -21,7 +21,7 @@ impl PassEntry {
 }
 
 pub fn collect_all_password_items() -> io::Result<Vec<PassEntry>> {
-    let settings = AppSettings::new();
+    let settings = Preferences::new();
     let roots = settings.paths();
     let mut result: Vec<PassEntry> = Vec::new();
 

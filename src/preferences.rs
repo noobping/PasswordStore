@@ -6,11 +6,11 @@ const APP_ID: &str = "dev.noobping.passwordstore";
 const DEFAULT_CMD: &str = "pass";
 
 #[derive(Debug, Clone)]
-pub struct AppSettings {
+pub struct Preferences {
     settings: Option<Settings>,
 }
 
-impl AppSettings {
+impl Preferences {
     pub fn new() -> Self {
         Self {
             settings: Self::try_settings(),

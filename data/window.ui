@@ -23,7 +23,7 @@
                   <object class="GtkButton" id="add_button">
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Add new password</property>
-                    <property name="action-name">win.add-password</property>
+                    <property name="action-name">win.open-new-password</property>
                     <property name="visible">true</property>
                   </object>
                 </child>
@@ -51,7 +51,7 @@
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Restore from Git repository</property>
-                    <property name="action-name">win.git-page</property>
+                    <property name="action-name">win.open-git</property>
                     <property name="visible">true</property>
                   </object>
                 </child>
@@ -183,7 +183,7 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="settings_page">
-                    <property name="title" translatable="yes">Settings</property>
+                    <property name="title" translatable="yes">Preferences</property>
                     <child>
                       <object class="AdwPreferencesPage">
                         <child>
@@ -229,6 +229,10 @@
   </object>
   <menu id="primary_menu">
     <section>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.open-preferences</attribute>
+      </item>
       <item>
         <attribute name="label" translatable="yes">_Find password file</attribute>
         <attribute name="action">win.toggle-search</attribute>

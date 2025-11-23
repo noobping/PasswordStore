@@ -1,6 +1,6 @@
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
-use crate::settings::AppSettings;
+use crate::preferences::Preferences;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
@@ -25,7 +25,7 @@ const UI_SRC: &str = include_str!("../data/window.ui");
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
-    let settings = AppSettings::new();
+    let settings = Preferences::new();
 
     // Root window
     let window: ApplicationWindow = builder
@@ -68,6 +68,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get toast_overlay");
 
     // Settings
+    let settings_page: NavigationPage = builder
+        .object("settings_page")
+        .expect("Failed to get settings page");
     let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
     pass_row.set_text(&settings.command());
 
@@ -151,7 +154,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let label_for_thread = label.clone();
             let store_for_thread = root.clone();
             thread::spawn(move || {
-                let settings = AppSettings::new();
+                let settings = Preferences::new();
                 let output = Command::new(settings.command())
                     .env("PASSWORD_STORE_DIR", store_for_thread)
                     .arg(&label_for_thread)
@@ -240,8 +243,29 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     // actions
     {
+        let nav = navigation_view.clone();
+        let page = settings_page.clone();
+        let back = back_button.clone();
+        let add = add_button.clone();
+        let git = git_button.clone();
+        let save = save_button.clone();
+        let win = window_title.clone();
+        let action = SimpleAction::new("open-preferences", None);
+        action.connect_activate(move |_, _| {
+            add.set_visible(false);
+            git.set_visible(false);
+            back.set_visible(true);
+            save.set_visible(false);
+            win.set_title("Preferences");
+            win.set_subtitle("Password Store");
+            nav.push(&page);
+        });
+        window.add_action(&action);
+    }
+
+    {
         let popover = add_button_popover.clone();
-        let action = SimpleAction::new("add-password", None);
+        let action = SimpleAction::new("open-new-password", None);
         action.connect_activate(move |_, _| {
             if popover.is_visible() {
                 popover.popdown()
@@ -254,7 +278,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let popover = git_popover.clone();
-        let action = SimpleAction::new("git-page", None);
+        let action = SimpleAction::new("open-git", None);
         action.connect_activate(move |_, _| {
             if popover.is_visible() {
                 popover.popdown()
@@ -330,7 +354,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             // Background worker
             thread::spawn(move || {
-                let settings = AppSettings::new();
+                let settings = Preferences::new();
                 let roots = settings.stores();
                 for root in roots {
                     // List of git operations we want to run for each store
@@ -407,8 +431,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
     app.set_accels_for_action("win.synchronize", &["<primary>s"]);
-    app.set_accels_for_action("win.add-password", &["<primary>n"]);
-    app.set_accels_for_action("win.git-page", &["<primary>i"]);
+    app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
+    app.set_accels_for_action("win.open-git", &["<primary>i"]);
+    app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
 
     setup_search_filter(&list, &search_entry);
 
@@ -537,7 +562,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                     {
                         let entry = item.clone();
                         copy_btn.connect_clicked(move |_| {
-                            let settings = AppSettings::new();
+                            let settings = Preferences::new();
                             let _ = Command::new(settings.command())
                                 .env("PASSWORD_STORE_DIR", &entry.store_path)
                                 .arg("-c")
@@ -557,7 +582,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                             std::thread::spawn({
                                 let root = old.store_path.clone();
                                 move || {
-                                    let settings = AppSettings::new();
+                                    let settings = Preferences::new();
                                     let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("mv")
@@ -581,7 +606,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                                 let root = entry.store_path.clone();
                                 let label = entry.label();
                                 move || {
-                                    let settings = AppSettings::new();
+                                    let settings = Preferences::new();
                                     let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")

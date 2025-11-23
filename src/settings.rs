@@ -18,8 +18,8 @@ impl AppSettings {
 
     fn try_settings() -> Option<Settings> {
         let source = gio::SettingsSchemaSource::default()?;
-        let schema = source.lookup(APP_ID, true)?;
-        Some(Settings::new_full(&schema, None, None))
+        let _schema = source.lookup(APP_ID, true)?;
+        Some(Settings::new(APP_ID))
     }
 
     pub fn command(&self) -> String {
@@ -37,9 +37,11 @@ impl AppSettings {
                 .map(|g| g.to_string())
                 .collect(),
             None => {
-                let home = std::env::var("HOME").unwrap_or(String::new());
-                let mut stores: Vec<PathBuf> = Vec::new();
-                stores.push(PathBuf::from(format!("{}/.password-store", home)))
+                if let Ok(home) = std::env::var("HOME") {
+                    vec![format!("{home}/.password-store")]
+                } else {
+                    Vec::new()
+                }
             }
         }
     }
@@ -48,7 +50,6 @@ impl AppSettings {
         if let Some(s) = &self.settings {
             s.set_string("pass-command", cmd)
         } else {
-            // no schema → just pretend it worked
             Ok(())
         }
     }
@@ -57,7 +58,6 @@ impl AppSettings {
         if let Some(s) = &self.settings {
             s.set_strv("password-store-dirs", stores)
         } else {
-            // same: no-op in fallback mode
             Ok(())
         }
     }

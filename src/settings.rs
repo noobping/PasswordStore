@@ -1,46 +1,68 @@
-use adw::gio::{prelude::*, Settings};
+use adw::gio::{self, prelude::*, Settings};
 use adw::glib::BoolError;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+const APP_ID: &str = "dev.noobping.passwordstore";
+const DEFAULT_CMD: &str = "pass";
+
 pub struct AppSettings {
-    settings: Settings,
+    settings: Option<Settings>,
 }
 
 impl AppSettings {
-    /// Create from an existing `Settings` (you can also add a schema-based ctor below).
-    pub fn new(settings: Settings) -> Self {
-        Self { settings }
+    pub fn new() -> Self {
+        Self {
+            settings: Self::try_settings(),
+        }
     }
 
-    /// Optional convenience ctor if you want to construct the Settings here:
-    pub fn with_schema(schema_id: &str) -> Self {
-        let settings = Settings::new(schema_id);
-        Self { settings }
+    fn try_settings() -> Option<Settings> {
+        let source = gio::SettingsSchemaSource::default()?;
+        let schema = source.lookup(APP_ID, true)?;
+        Some(Settings::new_full(&schema, None, None))
     }
 
     pub fn command(&self) -> String {
-        self.settings.string("pass-command").to_string()
+        match &self.settings {
+            Some(s) => s.string("pass-command").to_string(),
+            None => DEFAULT_CMD.to_string(),
+        }
     }
 
     pub fn stores(&self) -> Vec<String> {
-        self.settings
-            .strv("password-store-dirs")
-            .iter()
-            .map(|g| g.to_string())
-            .collect()
+        match &self.settings {
+            Some(s) => s
+                .strv("password-store-dirs")
+                .iter()
+                .map(|g| g.to_string())
+                .collect(),
+            None => {
+                let home = std::env::var("HOME").unwrap_or(String::new());
+                let mut stores: Vec<PathBuf> = Vec::new();
+                stores.push(PathBuf::from(format!("{}/.password-store", home)))
+            }
+        }
     }
 
     pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
-        self.settings.set_string("pass-command", cmd)
+        if let Some(s) = &self.settings {
+            s.set_string("pass-command", cmd)
+        } else {
+            // no schema → just pretend it worked
+            Ok(())
+        }
     }
 
     pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
-        // `Vec<String>` implements `IntoStrV`
-        self.settings.set_strv("password-store-dirs", stores)
+        if let Some(s) = &self.settings {
+            s.set_strv("password-store-dirs", stores)
+        } else {
+            // same: no-op in fallback mode
+            Ok(())
+        }
     }
 
-    /// If you ever need to access the raw gio::Settings.
-    pub fn inner(&self) -> &Settings {
-        &self.settings
+    pub fn has_gsettings(&self) -> bool {
+        self.settings.is_some()
     }
 }

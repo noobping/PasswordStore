@@ -155,7 +155,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let label_for_thread = label.clone();
             let store_for_thread = root.clone();
             thread::spawn(move || {
-                let settings = AppSettings::with_schema(APP_ID);
+                let settings = AppSettings::new();
                 let output = Command::new(settings.command())
                     .env("PASSWORD_STORE_DIR", store_for_thread)
                     .arg(&label_for_thread)
@@ -337,7 +337,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             // Background worker
             thread::spawn(move || {
-                let settings = AppSettings::with_schema(APP_ID);
+                let settings = AppSettings::new();
                 for root in roots {
                     // List of git operations we want to run for each store
                     let commands: [&[&str]; 3] = [
@@ -545,7 +545,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     {
                         let entry = item.clone();
                         copy_btn.connect_clicked(move |_| {
-                            let settings = AppSettings::with_schema(APP_ID);
+                            let settings = AppSettings::new();
                             let _ = Command::new(settings.command())
                                 .env("PASSWORD_STORE_DIR", &entry.store_path)
                                 .arg("-c")
@@ -566,7 +566,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                             std::thread::spawn({
                                 let root = old.store_path.clone();
                                 move || {
-                                    let settings = AppSettings::with_schema(APP_ID);
+                                    let settings = AppSettings::new();
                                     let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("mv")
@@ -591,7 +591,7 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                                 let root = entry.store_path.clone();
                                 let label = entry.label();
                                 move || {
-                                    let settings = AppSettings::with_schema(APP_ID);
+                                    let settings = AppSettings::new();
                                     let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")

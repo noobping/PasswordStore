@@ -99,7 +99,7 @@ fn main() -> glib::ExitCode {
 }
 
 fn get_pass_version() -> Option<String> {
-    let settings = AppSettings::with_schema(APP_ID);
+    let settings = AppSettings::new();
     let output = Command::new(settings.command()).arg("--version").output().ok()?; // failed to spawn? -> None
 
     if !output.status.success() {

@@ -1,6 +1,7 @@
 use adw::gio::{self, prelude::*, Settings};
-use adw::glib::BoolError;
+use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -147,8 +148,7 @@ impl Preferences {
     #[cfg(target_os = "linux")]
     pub fn is_installed_locally(&self, stores: Vec<String>) -> bool {
         let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
-        let desktop: PathBuf =
-            local_applications_path().join(format!("{}.desktop", APP_ID));
+        let desktop: PathBuf = local_applications_path().join(format!("{}.desktop", APP_ID));
         bin.exists() && desktop.exists()
     }
 
@@ -162,16 +162,19 @@ impl Preferences {
         let project = env!("CARGO_PKG_NAME");
         let exe_path = std::env::current_exe()?;
         let bin_dir = local_bin_path();
+        let app_dir = local_applications_path();
         let dest = bin_dir.join(project);
-        
+
         std::fs::create_dir_all(&bin_dir)?; // Create ~/.local/bin if missing
+        std::fs::create_dir_all(&app_dir)?;
         std::fs::copy(&exe_path, &dest)?; // Copy the current binary to ~/.local/bin/<appname>
 
         // Ensure it's executable
-        use std::os::unix::fs::PermissionsExt;
         let mut perms = std::fs::metadata(&dest)?.permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&dest, perms)?;
+
+        write_desktop_file(&app_dir, &dest)?;
 
         Ok(())
     }
@@ -230,8 +233,6 @@ fn load_file_prefs() -> PreferenceFile {
 
 #[cfg(target_os = "linux")]
 fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
-    use adw::glib::bool_error; // macro to construct BoolError
-
     let path = config_path();
 
     if let Some(parent) = path.parent() {
@@ -261,4 +262,39 @@ fn is_writable(dir: &Path) -> bool {
         }
         Err(_) => false,
     }
+}
+
+#[cfg(target_os = "linux")]
+fn write_desktop_file(app_dir: &Path, exe_path: &Path) -> std::io::Result<()> {
+    let project = env!("CARGO_PKG_NAME");
+    let desktop_path = app_dir.join(format!("{project}.desktop"));
+
+    // You can tweak these as you like
+    let name = env!("CARGO_PKG_NAME");
+    let version = env!("CARGO_PKG_VERSION");
+    let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
+    let exec = exe_path.display(); // absolute path to the installed binary
+    let icon = project;
+
+    let contents = format!(
+        "[Desktop Entry]
+Type=Application
+Version={version}
+Name={name}
+Comment={comment}
+Exec={exec} %u
+Icon={icon}
+Terminal=false
+Categories=Utility;
+",
+    );
+
+    fs::write(&desktop_path, contents)?;
+
+    // Make sure it's readable by the user (and others) – 0644
+    let mut perms = fs::metadata(&desktop_path)?.permissions();
+    perms.set_mode(0o644);
+    fs::set_permissions(&desktop_path, perms)?;
+
+    Ok(())
 }

@@ -1,7 +1,7 @@
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
-use adw::gio::{prelude::*, SimpleAction};
+use adw::gio::{prelude::*, SimpleAction, Menu, MenuItem};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
@@ -31,6 +31,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("main_window")
         .expect("Failed to get main_window from UI");
     window.set_application(Some(app));
+
+    let primary_menu: Menu = builder
+        .object("primary_menu")
+        .expect("Failed to get primary menu");
+    if settings.can_install_locally() {
+        let item = MenuItem::new(Some("(Un)Install locally"), Some("win.install-locally"));
+        primary_menu.append_item(&item);
+    }
 
     // Headerbar + top controls
     let back_button: Button = builder

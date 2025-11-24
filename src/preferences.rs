@@ -129,7 +129,7 @@ impl Preferences {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn can_install_locally(&self) -> bool {
+    pub fn can_install_locally() -> bool {
         let bin: PathBuf = local_bin_path();
         let desktop: PathBuf = local_applications_path();
         !bin.exists()
@@ -141,19 +141,19 @@ impl Preferences {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn can_install_locally(&self) -> Bool {
+    pub fn can_install_locally() -> Bool {
         false
     }
 
     #[cfg(target_os = "linux")]
-    pub fn is_installed_locally(&self) -> bool {
+    pub fn is_installed_locally() -> bool {
         let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
         let desktop: PathBuf = local_applications_path().join(format!("{}.desktop", APP_ID));
         bin.exists() && desktop.exists()
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn is_installed_locally(&self) -> Bool {
+    pub fn is_installed_locally() -> Bool {
         false
     }
 

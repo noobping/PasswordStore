@@ -1,7 +1,7 @@
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
-use adw::gio::{prelude::*, SimpleAction, Menu, MenuItem};
+use adw::gio::{prelude::*, Menu, MenuItem, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
@@ -35,8 +35,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let primary_menu: Menu = builder
         .object("primary_menu")
         .expect("Failed to get primary menu");
-    if settings.can_install_locally() {
-        let item = MenuItem::new(Some("(Un)Install locally"), Some("win.install-locally"));
+    if Preferences::can_install_locally() {
+        let item = if !Preferences::is_installed_locally() {
+            MenuItem::new(Some("Uninstall locally"), Some("win.install-locally"))
+        } else {
+            MenuItem::new(Some("Install locally"), Some("win.install-locally"))
+        };
         primary_menu.append_item(&item);
     }
 
@@ -266,6 +270,29 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             win.set_title("Preferences");
             win.set_subtitle("Password Store");
             nav.push(&page);
+        });
+        window.add_action(&action);
+    }
+
+    {
+        let menu = primary_menu.clone();
+        let action = SimpleAction::new("install-locally", None);
+        action.connect_activate(move |_, _| {
+            if Preferences::can_install_locally() {
+                return;
+            }
+            let items = menu.n_items();
+            if items > 0 {
+                menu.remove(items - 1);
+            }
+            let installed =
+                !Preferences::is_installed_locally() && Preferences::install_locally().is_err();
+            let item = if installed {
+                MenuItem::new(Some("Uninstall locally"), Some("win.install-locally"))
+            } else {
+                MenuItem::new(Some("Install locally"), Some("win.install-locally"))
+            };
+            menu.append_item(&item);
         });
         window.add_action(&action);
     }

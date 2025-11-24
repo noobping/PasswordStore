@@ -17,6 +17,7 @@ walkdir = "^2.5.0"
 toml = "^0.9.8"
 serde = { version = "^1.0.228", features = ["derive"] }
 ripasso = { version = "^0.8.0", optional = true}
+dirs = "6.0.0"
 
 [build-dependencies]
 glib-build-tools = "^0.21.0"

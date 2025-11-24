@@ -1,3 +1,4 @@
+use crate::app::*;
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
@@ -35,8 +36,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let primary_menu: Menu = builder
         .object("primary_menu")
         .expect("Failed to get primary menu");
-    if Preferences::can_install_locally() {
-        let item = if Preferences::is_installed_locally() {
+    if can_install_locally() {
+        let item = if is_installed_locally() {
             MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
         } else {
             MenuItem::new(Some("Install this App"), Some("win.install-locally"))
@@ -279,7 +280,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let action = SimpleAction::new("install-locally", None);
         action.connect_activate(move |_, _| {
-            if !Preferences::can_install_locally() {
+            if !can_install_locally() {
                 let toast = adw::Toast::new(&format!("Can not install this App locally"));
                 overlay.add_toast(toast);
                 return;
@@ -288,9 +289,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             if items > 0 {
                 menu.remove(items - 1);
             }
-            let installed = Preferences::is_installed_locally();
-            let ok: bool = !installed && Preferences::install_locally().is_ok();
-            let uninstalled = installed && Preferences::uninstall_locally().is_ok();
+            let installed = is_installed_locally();
+            let ok: bool = !installed && install_locally().is_ok();
+            let uninstalled = installed && uninstall_locally().is_ok();
             let item = if ok || !uninstalled {
                 MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
             } else {

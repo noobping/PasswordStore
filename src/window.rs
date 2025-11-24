@@ -341,6 +341,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .map(|p| p == &text)
                     .unwrap_or(false);
                 save.set_visible(is_text_page);
+                if is_text_page {
+                    win.set_title("Password Store");
+                    win.set_subtitle("Unknown pass file");
+                }
 
                 // TODO: What pass file is opeded?
             } else {

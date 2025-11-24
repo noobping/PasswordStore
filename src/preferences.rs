@@ -131,8 +131,12 @@ impl Preferences {
     pub fn can_install_locally(&self, stores: Vec<String>) -> bool {
         let bin: PathBuf = local_bin_path();
         let desktop: PathBuf = local_desktop_file_path();
-        !bin.exists() && !bin.is_dir() && is_writable(&bin) &&
-        !desktop.exists() && !desktop.is_dir() && is_writable(&desktop)
+        !bin.exists()
+            && !bin.is_dir()
+            && is_writable(&bin)
+            && !desktop.exists()
+            && !desktop.is_dir()
+            && is_writable(&desktop)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -143,7 +147,8 @@ impl Preferences {
     #[cfg(target_os = "linux")]
     pub fn is_installed_locally(&self, stores: Vec<String>) -> bool {
         let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
-        let desktop: PathBuf = local_applications_path().join(format!("{}.toml", env!("CARGO_PKG_NAME")));
+        let desktop: PathBuf =
+            local_applications_path().join(format!("{}.toml", env!("CARGO_PKG_NAME")));
         bin.exists() && desktop.exists()
     }
 
@@ -165,9 +170,10 @@ fn config_path() -> PathBuf {
         PathBuf::from(home)
             .join(".config")
             .join(format!("{}/config.toml", APP_ID))
+    } else if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(format!(".{}.toml", env!("CARGO_PKG_NAME")))
     } else {
-        // Super fallback: current dir
-        PathBuf::from(format!("{}.toml", APP_ID))
+        PathBuf::from(format!("{}.toml", env!("CARGO_PKG_NAME")))
     }
 }
 

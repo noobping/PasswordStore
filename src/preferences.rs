@@ -1,8 +1,8 @@
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::BoolError;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 const APP_ID: &str = "dev.noobping.passwordstore";
 const DEFAULT_CMD: &str = "pass";
@@ -31,6 +31,7 @@ impl Preferences {
         Some(Settings::new(APP_ID))
     }
 
+    #[cfg(target_os = "linux")]
     pub fn command(&self) -> String {
         if let Some(s) = &self.settings {
             s.string("pass-command").to_string()
@@ -40,6 +41,16 @@ impl Preferences {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
+    pub fn command(&self) -> String {
+        if let Some(s) = &self.settings {
+            s.string("pass-command").to_string()
+        } else {
+            DEFAULT_CMD.to_string()
+        }
+    }
+
+    #[cfg(target_os = "linux")]
     pub fn stores(&self) -> Vec<String> {
         if let Some(s) = &self.settings {
             s.strv("password-store-dirs")
@@ -58,23 +69,25 @@ impl Preferences {
         }
     }
 
-    pub fn paths(&self) -> Vec<PathBuf> {
-        match &self.settings {
-            Some(s) => s
-                .strv("password-store-dirs")
+    #[cfg(not(target_os = "linux"))]
+    pub fn stores(&self) -> Vec<String> {
+        if let Some(s) = &self.settings {
+            s.strv("password-store-dirs")
                 .iter()
-                .map(|g| PathBuf::from(g.as_str()))
-                .collect(),
-            None => {
-                if let Ok(home) = std::env::var("HOME") {
-                    vec![PathBuf::from(format!("{home}/.password-store"))]
-                } else {
-                    Vec::new()
-                }
-            }
+                .map(|g| g.to_string())
+                .collect()
+        } else if let Ok(home) = std::env::var("HOME") {
+            vec![format!("{home}/.password-store")]
+        } else {
+            Vec::new()
         }
     }
 
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.stores().into_iter().map(PathBuf::from).collect()
+    }
+
+    #[cfg(target_os = "linux")]
     pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
             s.set_string("pass-command", cmd)
@@ -85,6 +98,16 @@ impl Preferences {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
+    pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
+        if let Some(s) = &self.settings {
+            s.set_string("pass-command", cmd)
+        } else {
+            Err(false)
+        }
+    }
+
+    #[cfg(target_os = "linux")]
     pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
             s.set_strv("password-store-dirs", stores.clone())
@@ -95,11 +118,21 @@ impl Preferences {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
+    pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
+        if let Some(s) = &self.settings {
+            s.set_strv("password-store-dirs", stores.clone())
+        } else {
+            Err(false)
+        }
+    }
+
     pub fn has_references(&self) -> bool {
         self.settings.is_some()
     }
 }
 
+#[cfg(target_os = "linux")]
 fn config_path() -> PathBuf {
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
         PathBuf::from(dir).join(format!("{}/config.toml", APP_ID))
@@ -113,6 +146,17 @@ fn config_path() -> PathBuf {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn local_bin_path() -> PathBuf {
+    if let Some(home) = std::env::var_os("HOME") {
+        PathBuf::from(home).join(".local/bin")
+    } else {
+        // Weird environment, fallback to current dir
+        PathBuf::from("bin")
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn load_file_prefs() -> PreferenceFile {
     let path = config_path();
 
@@ -123,6 +167,7 @@ fn load_file_prefs() -> PreferenceFile {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
     use adw::glib::bool_error; // macro to construct BoolError
 
@@ -136,6 +181,16 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
         toml::to_string_pretty(cfg).map_err(|e| bool_error!("Failed to serialize config: {e}"))?;
 
     fs::write(&path, toml).map_err(|e| bool_error!("Failed to write config file: {e}"))?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn rename_application() -> std::io::Result<()> {
+    let project = env!("CARGO_PKG_NAME");
+    let exe = env::current_exe()?;
+    let new = exe.with_file_name(project);
+    fs::rename(&exe, &new)?;
 
     Ok(())
 }

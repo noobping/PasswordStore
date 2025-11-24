@@ -128,7 +128,11 @@ impl Preferences {
             return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
         };
         let apps = data.join("applications");
-        let icons = data.join("icons").join("hicolor").join("256x256").join("apps");
+        let icons = data
+            .join("icons")
+            .join("hicolor")
+            .join("256x256")
+            .join("apps");
         let dest = bin.join(project);
 
         std::fs::create_dir_all(&bin)?;
@@ -157,7 +161,13 @@ impl Preferences {
         let Some(data) = dirs::data_dir() else {
             return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
         };
-        let icons = data.join("icons").join("hicolor").join("256x256").join("apps");
+        let bin = bin.join(env!("CARGO_PKG_NAME"));
+        let icon = data
+            .join("icons")
+            .join("hicolor")
+            .join("256x256")
+            .join("apps")
+            .join(format!("{}.svg", env!("CARGO_PKG_NAME")));
         let desktop = data
             .join("applications")
             .join(format!("{}.desktop", APP_ID));
@@ -166,6 +176,9 @@ impl Preferences {
         }
         if desktop.exists() {
             fs::remove_file(desktop)?;
+        }
+        if icon.exists() {
+            fs::remove_file(icon)?;
         }
         Ok(())
     }

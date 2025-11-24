@@ -36,10 +36,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("primary_menu")
         .expect("Failed to get primary menu");
     if Preferences::can_install_locally() {
-        let item = if !Preferences::is_installed_locally() {
-            MenuItem::new(Some("Uninstall locally"), Some("win.install-locally"))
+        let item = if Preferences::is_installed_locally() {
+            MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
         } else {
-            MenuItem::new(Some("Install locally"), Some("win.install-locally"))
+            MenuItem::new(Some("Install this App"), Some("win.install-locally"))
         };
         primary_menu.append_item(&item);
     }
@@ -285,12 +285,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             if items > 0 {
                 menu.remove(items - 1);
             }
-            let installed =
-                !Preferences::is_installed_locally() && Preferences::install_locally().is_err();
+            let installed = Preferences::is_installed_locally() && Preferences::install_locally().is_err();
             let item = if installed {
-                MenuItem::new(Some("Uninstall locally"), Some("win.install-locally"))
+                MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
             } else {
-                MenuItem::new(Some("Install locally"), Some("win.install-locally"))
+                MenuItem::new(Some("Install this App"), Some("win.install-locally"))
             };
             menu.append_item(&item);
         });

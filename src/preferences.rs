@@ -132,11 +132,11 @@ impl Preferences {
     pub fn can_install_locally() -> bool {
         let bin: PathBuf = local_bin_path();
         let desktop: PathBuf = local_applications_path();
-        !bin.exists()
-            && !bin.is_dir()
+        bin.exists()
+            && bin.is_dir()
             && is_writable(&bin)
-            && !desktop.exists()
-            && !desktop.is_dir()
+            && desktop.exists()
+            && desktop.is_dir()
             && is_writable(&desktop)
     }
 
@@ -149,7 +149,7 @@ impl Preferences {
     pub fn is_installed_locally() -> bool {
         let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
         let desktop: PathBuf = local_applications_path().join(format!("{}.desktop", APP_ID));
-        bin.exists() && desktop.exists()
+        bin.exists() && bin.is_file() && desktop.exists() && desktop.is_file()
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -267,7 +267,7 @@ fn is_writable(dir: &Path) -> bool {
 #[cfg(target_os = "linux")]
 fn write_desktop_file(app_dir: &Path, exe_path: &Path) -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
-    let desktop_path = app_dir.join(format!("{project}.desktop"));
+    let desktop_path = app_dir.join(format!("{}.desktop", APP_ID));
 
     // You can tweak these as you like
     let name = env!("CARGO_PKG_NAME");

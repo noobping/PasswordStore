@@ -147,8 +147,8 @@ impl Preferences {
 
     #[cfg(target_os = "linux")]
     pub fn is_installed_locally() -> bool {
-        let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
-        let desktop: PathBuf = local_applications_path().join(format!("{}.desktop", APP_ID));
+        let bin: PathBuf = bin_file_path();
+        let desktop: PathBuf = desktop_file_path();
         bin.exists() && bin.is_file() && desktop.exists() && desktop.is_file()
     }
 
@@ -174,7 +174,7 @@ impl Preferences {
         perms.set_mode(0o755);
         std::fs::set_permissions(&dest, perms)?;
 
-        write_desktop_file(&app_dir, &dest)?;
+        write_desktop_file(&dest)?;
 
         Ok(())
     }
@@ -218,6 +218,23 @@ fn local_applications_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     base.join(".local/share/applications")
+}
+
+#[cfg(target_os = "linux")]
+fn home_path() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(target_os = "linux")]
+fn desktop_file_path() -> PathBuf {
+    local_applications_path().join(format!("{}.desktop", APP_ID))
+}
+
+#[cfg(target_os = "linux")]
+fn bin_file_path() -> PathBuf {
+    local_bin_path().join(env!("CARGO_PKG_NAME"))
 }
 
 #[cfg(target_os = "linux")]
@@ -265,25 +282,23 @@ fn is_writable(dir: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn write_desktop_file(app_dir: &Path, exe_path: &Path) -> std::io::Result<()> {
+fn write_desktop_file(exe_path: &Path) -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
-    let desktop_path = app_dir.join(format!("{}.desktop", APP_ID));
+    let desktop_path = desktop_file_path();
 
     // You can tweak these as you like
-    let name = env!("CARGO_PKG_NAME");
     let version = env!("CARGO_PKG_VERSION");
     let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
     let exec = exe_path.display(); // absolute path to the installed binary
-    let icon = project;
 
     let contents = format!(
         "[Desktop Entry]
 Type=Application
 Version={version}
-Name={name}
+Name={project}
 Comment={comment}
 Exec={exec} %u
-Icon={icon}
+Icon={project}
 Terminal=false
 Categories=Utility;
 ",

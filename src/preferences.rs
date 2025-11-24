@@ -140,6 +140,18 @@ impl Preferences {
         false
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn is_installed_locally(&self, stores: Vec<String>) -> bool {
+        let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
+        let desktop: PathBuf = local_applications_path().join(format!("{}.toml", env!("CARGO_PKG_NAME")));
+        bin.exists() && desktop.exists()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn is_installed_locally(&self, stores: Vec<String>) -> Bool {
+        false
+    }
+
     pub fn has_references(&self) -> bool {
         self.settings.is_some()
     }
@@ -168,7 +180,7 @@ fn local_bin_path() -> PathBuf {
 }
 
 #[cfg(target_os = "linux")]
-fn local_desktop_file_path() -> PathBuf {
+fn local_applications_path() -> PathBuf {
     let base = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));

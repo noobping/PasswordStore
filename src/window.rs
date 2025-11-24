@@ -289,8 +289,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 menu.remove(items - 1);
             }
             let installed = Preferences::is_installed_locally();
-            let ok = !installed && Preferences::install_locally().is_ok();
-            let item = if installed || ok {
+            let ok: bool = !installed && Preferences::install_locally().is_ok();
+            let uninstalled = installed && Preferences::uninstall_locally().is_ok();
+            let item = if ok || !uninstalled {
                 MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
             } else {
                 MenuItem::new(Some("Install this App"), Some("win.install-locally"))

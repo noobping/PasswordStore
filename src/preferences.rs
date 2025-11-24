@@ -184,6 +184,24 @@ impl Preferences {
         Err(())
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn uninstall_locally() -> std::io::Result<()> {
+        let bin: PathBuf = bin_file_path();
+        let desktop: PathBuf = desktop_file_path();
+        if bin.exists() {
+            fs::remove_file(bin)?;
+        }
+        if desktop.exists() {
+            fs::remove_file(desktop)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn uninstall_locally() -> std::io::Result<()> {
+        Ok(())
+    }
+
     pub fn has_references(&self) -> bool {
         self.settings.is_some()
     }

@@ -19,7 +19,6 @@ use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::time::Duration;
 
-const APP_ID: &str = "dev.noobping.passwordstore";
 const UI_SRC: &str = include_str!("../data/window.ui");
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {

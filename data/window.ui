@@ -195,6 +195,8 @@
 
                             <child>
                               <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Backend</property>
+                                <property name="description" translatable="yes">The method that your system uses to run the password manager. Usually this is just the pass command, but you can replace it with a custom wrapper (for example, a container or script).</property>
                                 <child>
                                   <object class="AdwEntryRow" id="pass_command_row">
                                     <property name="title" translatable="yes">Pass command</property>
@@ -205,6 +207,8 @@
                             </child>
                             <child>
                               <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Password Stores</property>
+                                <property name="description" translatable="yes">A list of folders that contain your password data. Each entry should be an absolute path to a password store directory. You can add multiple stores if you manage passwords in several locations.</property>
                                 <child>
                                   <object class="GtkListBox" id="password_stores">
                                     <property name="hexpand">true</property>
@@ -227,6 +231,7 @@
                                 </child>
                               </object>
                             </child>
+
                           </object>
                         </child>
                       </object>

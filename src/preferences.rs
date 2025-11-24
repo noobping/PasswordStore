@@ -108,6 +108,7 @@ impl Preferences {
         let Some(data) = dirs::data_dir() else {
             return false;
         };
+        let bin = bin.join(env!("CARGO_PKG_NAME"));
         let desktop = data
             .join("applications")
             .join(format!("{}.desktop", APP_ID));
@@ -156,6 +157,7 @@ impl Preferences {
         let Some(data) = dirs::data_dir() else {
             return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
         };
+        let icons = data.join("icons").join("hicolor").join("256x256").join("apps");
         let desktop = data
             .join("applications")
             .join(format!("{}.desktop", APP_ID));

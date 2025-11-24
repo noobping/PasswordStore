@@ -127,6 +127,19 @@ impl Preferences {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn can_install_locally(&self, stores: Vec<String>) -> bool {
+        let bin: PathBuf = local_bin_path();
+        let desktop: PathBuf = local_desktop_file_path();
+        !bin.exists() && !bin.is_dir() && is_writable(&bin) &&
+        !desktop.exists() && !desktop.is_dir() && is_writable(&desktop)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn can_install_locally(&self, stores: Vec<String>) -> Bool {
+        false
+    }
+
     pub fn has_references(&self) -> bool {
         self.settings.is_some()
     }
@@ -148,12 +161,18 @@ fn config_path() -> PathBuf {
 
 #[cfg(target_os = "linux")]
 fn local_bin_path() -> PathBuf {
-    if let Some(home) = std::env::var_os("HOME") {
-        PathBuf::from(home).join(".local/bin")
-    } else {
-        // Weird environment, fallback to current dir
-        PathBuf::from("bin")
-    }
+    let base = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join(".local/bin")
+}
+
+#[cfg(target_os = "linux")]
+fn local_desktop_file_path() -> PathBuf {
+    let base = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join(".local/share/applications")
 }
 
 #[cfg(target_os = "linux")]
@@ -193,4 +212,21 @@ fn rename_application() -> std::io::Result<()> {
     fs::rename(&exe, &new)?;
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn is_writable(dir: &Path) -> bool {
+    // Try to open a temp file for writing
+    let test_path = dir.join(".perm_test");
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&test_path)
+    {
+        Ok(_) => {
+            let _ = std::fs::remove_file(test_path);
+            true
+        }
+        Err(_) => false,
+    }
 }

@@ -91,7 +91,7 @@ pub fn uninstall_locally() -> std::io::Result<()> {
         .join("hicolor")
         .join("256x256")
         .join("apps")
-        .join(format!("{}.svg", env!("CARGO_PKG_NAME")));
+        .join(format!("{}.svg", APP_ID));
     let desktop = data
         .join("applications")
         .join(format!("{}.desktop", APP_ID));
@@ -136,6 +136,7 @@ fn write_desktop_file(exe_path: &Path) -> std::io::Result<()> {
     let version = env!("CARGO_PKG_VERSION");
     let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
     let exec = exe_path.display(); // absolute path to the installed binary
+    let icon = APP_ID;
 
     let contents = format!(
         "[Desktop Entry]
@@ -144,7 +145,7 @@ Version={version}
 Name={project}
 Comment={comment}
 Exec={exec} %u
-Icon={project}
+Icon={icon}
 Terminal=false
 Categories=Utility;
 ",
@@ -162,10 +163,10 @@ Categories=Utility;
 
 fn extract_icon(data: &Path) -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
-    let resource_path = format!("{}/icons/{project}.svg", RESOURCE_ID);
+    let resource_path = format!("{}/icons/{}.svg", RESOURCE_ID, APP_ID);
     let bytes = gio::resources_lookup_data(&resource_path, ResourceLookupFlags::NONE)
         .map_err(|e| Error::new(ErrorKind::NotFound, format!("Resource not found: {e}")))?;
-    let out_path = data.join(format!("{project}.svg"));
+    let out_path = data.join(format!("{}.svg", APP_ID));
     std::fs::write(&out_path, bytes.as_ref())?;
     Ok(())
 }

@@ -130,7 +130,7 @@ impl Preferences {
     #[cfg(target_os = "linux")]
     pub fn can_install_locally(&self, stores: Vec<String>) -> bool {
         let bin: PathBuf = local_bin_path();
-        let desktop: PathBuf = local_desktop_file_path();
+        let desktop: PathBuf = local_applications_path();
         !bin.exists()
             && !bin.is_dir()
             && is_writable(&bin)
@@ -148,13 +148,37 @@ impl Preferences {
     pub fn is_installed_locally(&self, stores: Vec<String>) -> bool {
         let bin: PathBuf = local_bin_path().join(env!("CARGO_PKG_NAME"));
         let desktop: PathBuf =
-            local_applications_path().join(format!("{}.toml", env!("CARGO_PKG_NAME")));
+            local_applications_path().join(format!("{}.desktop", APP_ID));
         bin.exists() && desktop.exists()
     }
 
     #[cfg(not(target_os = "linux"))]
     pub fn is_installed_locally(&self, stores: Vec<String>) -> Bool {
         false
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn install_locally() -> std::io::Result<()> {
+        let project = env!("CARGO_PKG_NAME");
+        let exe_path = std::env::current_exe()?;
+        let bin_dir = local_bin_path();
+        let dest = bin_dir.join(project);
+        
+        std::fs::create_dir_all(&bin_dir)?; // Create ~/.local/bin if missing
+        std::fs::copy(&exe_path, &dest)?; // Copy the current binary to ~/.local/bin/<appname>
+
+        // Ensure it's executable
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&dest)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&dest, perms)?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn install_locally() -> std::io::Result<()> {
+        Err(())
     }
 
     pub fn has_references(&self) -> bool {
@@ -218,16 +242,6 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
         toml::to_string_pretty(cfg).map_err(|e| bool_error!("Failed to serialize config: {e}"))?;
 
     fs::write(&path, toml).map_err(|e| bool_error!("Failed to write config file: {e}"))?;
-
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn rename_application() -> std::io::Result<()> {
-    let project = env!("CARGO_PKG_NAME");
-    let exe = env::current_exe()?;
-    let new = exe.with_file_name(project);
-    fs::rename(&exe, &new)?;
 
     Ok(())
 }

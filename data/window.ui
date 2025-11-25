@@ -143,8 +143,24 @@
                           <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <child>
+                              <object class="adwStatusPage" id="password_status">
+                                <property name="title" translatable="yes">Pass file</property>
+                                <property name="visible">true</property>
+                                <property name="icon-name">paper-symbolic</property>
+                                <property name="hexpand">true</property>
+                                <property name="vexpand">true</property>
+                                <child>
+                                  <object class="GtkSpinner">
+                                    <property name="spinning">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
                               <object class="AdwPasswordEntryRow" id="password_entry">
                                 <property name="title" translatable="yes">Password</property>
+                                <property name="visible">false</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>
                                 <property name="margin-bottom">6</property>
@@ -159,10 +175,12 @@
                             <child>
                               <object class="GtkBox" id="dynamic_box">
                                 <property name="orientation">vertical</property>
+                                <property name="visible">false</property>
                               </object>
                             </child>
                             <child>
                               <object class="GtkTextView" id="text_view">
+                                <property name="visible">false</property>
                                 <property name="editable">true</property>
                                 <property name="wrap-mode">word</property>
                                 <property name="cursor-visible">true</property>
@@ -196,7 +214,10 @@
                             <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Backend</property>
-                                <property name="description" translatable="yes">The method that your system uses to run the password manager. Usually this is just the pass command, but you can replace it with a custom wrapper (for example, a container or script).</property>
+                                <property name="description" translatable="yes">The method that your
+                                  system uses to run the password manager. Usually this is just the
+                                  pass command, but you can replace it with a custom wrapper (for
+                                  example, a container or script).</property>
                                 <child>
                                   <object class="AdwEntryRow" id="pass_command_row">
                                     <property name="title" translatable="yes">Pass command</property>
@@ -208,7 +229,10 @@
                             <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Password Stores</property>
-                                <property name="description" translatable="yes">A list of folders that contain your password data. Each entry should be an absolute path to a password store directory. You can add multiple stores if you manage passwords in several locations.</property>
+                                <property name="description" translatable="yes">A list of folders
+                                  that contain your password data. Each entry should be an absolute
+                                  path to a password store directory. You can add multiple stores if
+                                  you manage passwords in several locations.</property>
                                 <child>
                                   <object class="GtkListBox" id="password_stores">
                                     <property name="hexpand">true</property>

@@ -101,6 +101,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let text_page: NavigationPage = builder
         .object("text_page")
         .expect("Failed to get text_page");
+    let password_status: StatusPage = builder
+        .object("password_status")
+        .expect("Failed to get password_status");
     let password_entry: PasswordEntryRow = builder
         .object("password_entry")
         .expect("Failed to get password_entry");
@@ -122,8 +125,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let add = add_button.clone();
         let git = git_button.clone();
         let save = save_button.clone();
-        let password_entry = password_entry.clone();
-        let text_view = text_view.clone();
+        let entry = password_entry.clone();
+        let status = password_status.clone();
+        let text = text_view.clone();
         let overlay = toast_overlay.clone();
         let win = window_title.clone();
 
@@ -159,6 +163,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             save.set_visible(true);
             win.set_title(&title);
             win.set_subtitle(&label);
+            text.set_visible(false);
+            entry.set_visible(false);
+            status.set_visible(true);
             nav.push(&page);
 
             // Background worker: run `pass <label>`
@@ -183,8 +190,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             });
 
             // UI updater: poll the channel from the main thread
-            let password_entry = password_entry.clone();
-            let text_view = text_view.clone();
+            let password_status = status.clone();
+            let password_entry = entry.clone();
+            let text_view = text.clone();
             let overlay = overlay.clone();
 
             glib::timeout_add_local(Duration::from_millis(50), move || {
@@ -192,6 +200,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
                 match rx.try_recv() {
                     Ok(Ok(output)) => {
+                        password_status.set_visible(false);
+                        password_entry.set_visible(true);
+                        text_view.set_visible(true);
+
                         // Split into first line (password) and rest (notes)
                         let mut lines = output.lines();
                         if let Some(first) = lines.next() {

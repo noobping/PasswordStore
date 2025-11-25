@@ -162,7 +162,6 @@ Categories=Utility;
 }
 
 fn extract_icon(data: &Path) -> std::io::Result<()> {
-    let project = env!("CARGO_PKG_NAME");
     let resource_path = format!("{}/icons/{}.svg", RESOURCE_ID, APP_ID);
     let bytes = gio::resources_lookup_data(&resource_path, ResourceLookupFlags::NONE)
         .map_err(|e| Error::new(ErrorKind::NotFound, format!("Resource not found: {e}")))?;

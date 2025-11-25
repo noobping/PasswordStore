@@ -55,7 +55,7 @@ pub fn install_locally() -> std::io::Result<()> {
     let icons = data
         .join("icons")
         .join("hicolor")
-        .join("256x256")
+        .join("scalable")
         .join("apps");
     let dest = bin.join(project);
 
@@ -89,7 +89,7 @@ pub fn uninstall_locally() -> std::io::Result<()> {
     let icon = data
         .join("icons")
         .join("hicolor")
-        .join("256x256")
+        .join("scalable")
         .join("apps")
         .join(format!("{}.svg", APP_ID));
     let desktop = data

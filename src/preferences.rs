@@ -1,0 +1,123 @@
+use adw::gio::{self, prelude::*, ResourceLookupFlags, Settings};
+use adw::glib::{bool_error, BoolError};
+use serde::{Deserialize, Serialize};
+use std::io::{Error, ErrorKind};
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
+
+const APP_ID: &str = "dev.noobping.passwordstore";
+const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
+const DEFAULT_CMD: &str = "pass";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct PreferenceFile {
+    pass_command: Option<String>,
+    password_store_dirs: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Preferences {
+    settings: Option<Settings>,
+}
+
+impl Preferences {
+    pub fn new() -> Self {
+        Self {
+            settings: Self::try_settings(),
+        }
+    }
+
+    fn try_settings() -> Option<Settings> {
+        let source = gio::SettingsSchemaSource::default()?;
+        let _schema = source.lookup(APP_ID, true)?;
+        Some(Settings::new(APP_ID))
+    }
+
+    pub fn command(&self) -> String {
+        if let Some(s) = &self.settings {
+            s.string("pass-command").to_string()
+        } else {
+            let cfg = load_file_prefs();
+            cfg.pass_command.unwrap_or_else(|| DEFAULT_CMD.to_string())
+        }
+    }
+
+    pub fn stores(&self) -> Vec<String> {
+        if let Some(s) = &self.settings {
+            s.strv("password-store-dirs")
+                .iter()
+                .map(|g| g.to_string())
+                .collect()
+        } else {
+            let cfg = load_file_prefs();
+            if let Some(dirs) = cfg.password_store_dirs {
+                dirs
+            } else if let Ok(home) = std::env::var("HOME") {
+                vec![format!("{home}/.password-store")]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.stores().into_iter().map(PathBuf::from).collect()
+    }
+
+    pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
+        if let Some(s) = &self.settings {
+            s.set_string("pass-command", cmd)
+        } else {
+            let mut cfg = load_file_prefs();
+            cfg.pass_command = Some(cmd.to_string());
+            save_file_prefs(&cfg)
+        }
+    }
+
+    pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
+        if let Some(s) = &self.settings {
+            s.set_strv("password-store-dirs", stores.clone())
+        } else {
+            let mut cfg = load_file_prefs();
+            cfg.password_store_dirs = Some(stores);
+            save_file_prefs(&cfg)
+        }
+    }
+
+    pub fn has_references(&self) -> bool {
+        self.settings.is_some()
+    }
+}
+
+fn config_path() -> PathBuf {
+    if let Some(dir) = dirs::preference_dir() {
+        dir.join(format!("{}.toml", env!("CARGO_PKG_NAME")))
+    } else {
+        PathBuf::from(format!("{}.toml", env!("CARGO_PKG_NAME")))
+    }
+}
+
+fn load_file_prefs() -> PreferenceFile {
+    let path = config_path();
+    if let Ok(data) = fs::read_to_string(&path) {
+        toml::from_str(&data).unwrap_or_default()
+    } else {
+        PreferenceFile::default()
+    }
+}
+
+fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
+    let path = config_path();
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| bool_error!("Failed to create config dir: {e}"))?;
+    }
+
+    let toml =
+        toml::to_string_pretty(cfg).map_err(|e| bool_error!("Failed to serialize config: {e}"))?;
+
+    fs::write(&path, toml).map_err(|e| bool_error!("Failed to write config file: {e}"))?;
+
+    Ok(())
+}

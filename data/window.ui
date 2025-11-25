@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
-  <requires lib="gtk" version="4.0" />
-  <requires lib="Adw" version="1.0" />
   <object class="AdwApplicationWindow" id="main_window">
     <property name="title">Password Store</property>
     <property name="default-width">600</property>
     <property name="default-height">450</property>
-    <property name="icon-name">passwordstore</property>
+    <property name="icon-name">dev.noobping.passwordstore</property>
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
@@ -25,7 +23,7 @@
                   <object class="GtkButton" id="add_button">
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Add new password</property>
-                    <property name="action-name">win.add-password</property>
+                    <property name="action-name">win.open-new-password</property>
                     <property name="visible">true</property>
                   </object>
                 </child>
@@ -53,7 +51,7 @@
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Restore from Git repository</property>
-                    <property name="action-name">win.git-page</property>
+                    <property name="action-name">win.open-git</property>
                     <property name="visible">true</property>
                   </object>
                 </child>
@@ -145,8 +143,24 @@
                           <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <child>
+                              <object class="adwStatusPage" id="password_status">
+                                <property name="title" translatable="yes">Pass file</property>
+                                <property name="visible">true</property>
+                                <property name="icon-name">paper-symbolic</property>
+                                <property name="hexpand">true</property>
+                                <property name="vexpand">true</property>
+                                <child>
+                                  <object class="GtkSpinner">
+                                    <property name="spinning">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
                               <object class="AdwPasswordEntryRow" id="password_entry">
                                 <property name="title" translatable="yes">Password</property>
+                                <property name="visible">false</property>
                                 <property name="margin-start">15</property>
                                 <property name="margin-end">15</property>
                                 <property name="margin-bottom">6</property>
@@ -161,10 +175,12 @@
                             <child>
                               <object class="GtkBox" id="dynamic_box">
                                 <property name="orientation">vertical</property>
+                                <property name="visible">false</property>
                               </object>
                             </child>
                             <child>
                               <object class="GtkTextView" id="text_view">
+                                <property name="visible">false</property>
                                 <property name="editable">true</property>
                                 <property name="wrap-mode">word</property>
                                 <property name="cursor-visible">true</property>
@@ -176,6 +192,70 @@
                                 <property name="pixels-below-lines">3</property>
                               </object>
                             </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="settings_page">
+                    <property name="title" translatable="yes">Preferences</property>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vscrollbar-policy">automatic</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="propagate-natural-width">true</property>
+                        <property name="propagate-natural-height">true</property>
+                        <child>
+                          <object class="AdwPreferencesPage">
+
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Backend</property>
+                                <property name="description" translatable="yes">The method that your
+                                  system uses to run the password manager. Usually this is just the
+                                  pass command, but you can replace it with a custom wrapper (for
+                                  example, a container or script).</property>
+                                <child>
+                                  <object class="AdwEntryRow" id="pass_command_row">
+                                    <property name="title" translatable="yes">Pass command</property>
+                                    <property name="show-apply-button">true</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Password Stores</property>
+                                <property name="description" translatable="yes">A list of folders
+                                  that contain your password data. Each entry should be an absolute
+                                  path to a password store directory. You can add multiple stores if
+                                  you manage passwords in several locations.</property>
+                                <child>
+                                  <object class="GtkListBox" id="password_stores">
+                                    <property name="hexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                    <child type="placeholder">
+                                      <object class="AdwActionRow" id="stores_row">
+                                        <property name="title">~/.password-store</property>
+                                        <child type="suffix">
+                                          <object class="GtkButton" id="add_password_store">
+                                            <property name="icon-name">document-edit-symbolic</property>
+                                            <property name="valign">center</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
                           </object>
                         </child>
                       </object>
@@ -199,6 +279,10 @@
       <item>
         <attribute name="label" translatable="yes">_Synchronize with remote</attribute>
         <attribute name="action">win.synchronize</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.open-preferences</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_About PasswordStore</attribute>

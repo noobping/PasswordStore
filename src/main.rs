@@ -1,13 +1,16 @@
+mod app;
 mod item;
 mod methods;
+mod preferences;
 mod window;
 
 use crate::methods::non_null_to_string_option;
+use crate::preferences::Preferences;
 
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use gtk4::{gio, glib};
+use gtk4::{gdk::Display, gio, glib, IconTheme};
 use std::ffi::OsString;
 use std::process::Command;
 use std::result::Result::Ok;
@@ -64,6 +67,11 @@ fn main() -> glib::ExitCode {
         let win = window::create_main_window(app, query);
         win.present();
 
+        let display = Display::default().expect("No display");
+        let theme = IconTheme::for_display(&display);
+        theme.add_resource_path("/dev/noobping/passwordstore");
+        theme.add_resource_path("/dev/noobping/passwordstore/icons");
+
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {
             let project = env!("CARGO_PKG_NAME");
@@ -78,7 +86,7 @@ fn main() -> glib::ExitCode {
             };
             let about = adw::AboutDialog::builder()
                 .application_name(project)
-                .application_icon(project)
+                .application_icon(APP_ID)
                 .version(env!("CARGO_PKG_VERSION"))
                 .developers(&authors[..])
                 .comments(full_comments)
@@ -92,7 +100,8 @@ fn main() -> glib::ExitCode {
 }
 
 fn get_pass_version() -> Option<String> {
-    let output = Command::new("pass").arg("--version").output().ok()?; // failed to spawn? -> None
+    let settings = Preferences::new();
+    let output = Command::new(settings.command()).arg("--version").output().ok()?; // failed to spawn? -> None
 
     if !output.status.success() {
         return None;

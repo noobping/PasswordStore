@@ -1,6 +1,8 @@
+use crate::app::*;
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
-use adw::gio::{prelude::*, SimpleAction};
+use crate::preferences::Preferences;
+use adw::gio::{prelude::*, Menu, MenuItem, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
@@ -23,12 +25,25 @@ const UI_SRC: &str = include_str!("../data/window.ui");
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
+    let settings = Preferences::new();
 
     // Root window
     let window: ApplicationWindow = builder
         .object("main_window")
         .expect("Failed to get main_window from UI");
     window.set_application(Some(app));
+
+    let primary_menu: Menu = builder
+        .object("primary_menu")
+        .expect("Failed to get primary menu");
+    if can_install_locally() {
+        let item = if is_installed_locally() {
+            MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
+        } else {
+            MenuItem::new(Some("Install this App"), Some("win.install-locally"))
+        };
+        primary_menu.append_item(&item);
+    }
 
     // Headerbar + top controls
     let back_button: Button = builder
@@ -64,6 +79,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("toast_overlay")
         .expect("Failed to get toast_overlay");
 
+    // Settings
+    let settings_page: NavigationPage = builder
+        .object("settings_page")
+        .expect("Failed to get settings page");
+    let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
+    pass_row.set_text(&settings.command());
+
     // Navigation + list page
     let navigation_view: NavigationView = builder
         .object("navigation_view")
@@ -73,21 +95,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get search_entry");
     let list: ListBox = builder.object("list").expect("Failed to get list");
 
-    let home = std::env::var("HOME").unwrap_or(String::new());
-    let mut roots: Vec<PathBuf> = Vec::new();
-    roots.push(PathBuf::from(format!("{}/.password-store", home)));
-
-    load_passwords_async(
-        &list,
-        roots.clone(),
-        git_button.clone(),
-        save_button.clone(),
-    );
+    load_passwords_async(&list, git_button.clone(), save_button.clone());
 
     // Text editor page
     let text_page: NavigationPage = builder
         .object("text_page")
         .expect("Failed to get text_page");
+    let password_status: StatusPage = builder
+        .object("password_status")
+        .expect("Failed to get password_status");
     let password_entry: PasswordEntryRow = builder
         .object("password_entry")
         .expect("Failed to get password_entry");
@@ -109,8 +125,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let add = add_button.clone();
         let git = git_button.clone();
         let save = save_button.clone();
-        let password_entry = password_entry.clone();
-        let text_view = text_view.clone();
+        let entry = password_entry.clone();
+        let status = password_status.clone();
+        let text = text_view.clone();
         let overlay = toast_overlay.clone();
         let win = window_title.clone();
 
@@ -146,6 +163,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             save.set_visible(true);
             win.set_title(&title);
             win.set_subtitle(&label);
+            text.set_visible(false);
+            entry.set_visible(false);
+            status.set_visible(true);
             nav.push(&page);
 
             // Background worker: run `pass <label>`
@@ -153,7 +173,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let label_for_thread = label.clone();
             let store_for_thread = root.clone();
             thread::spawn(move || {
-                let output = Command::new("pass")
+                let settings = Preferences::new();
+                let output = Command::new(settings.command())
                     .env("PASSWORD_STORE_DIR", store_for_thread)
                     .arg(&label_for_thread)
                     .output();
@@ -169,8 +190,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             });
 
             // UI updater: poll the channel from the main thread
-            let password_entry = password_entry.clone();
-            let text_view = text_view.clone();
+            let password_status = status.clone();
+            let password_entry = entry.clone();
+            let text_view = text.clone();
             let overlay = overlay.clone();
 
             glib::timeout_add_local(Duration::from_millis(50), move || {
@@ -178,6 +200,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
                 match rx.try_recv() {
                     Ok(Ok(output)) => {
+                        password_status.set_visible(false);
+                        password_entry.set_visible(true);
+                        text_view.set_visible(true);
+
                         // Split into first line (password) and rest (notes)
                         let mut lines = output.lines();
                         if let Some(first) = lines.next() {
@@ -241,8 +267,56 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     // actions
     {
+        let nav = navigation_view.clone();
+        let page = settings_page.clone();
+        let back = back_button.clone();
+        let add = add_button.clone();
+        let git = git_button.clone();
+        let save = save_button.clone();
+        let win = window_title.clone();
+        let action = SimpleAction::new("open-preferences", None);
+        action.connect_activate(move |_, _| {
+            add.set_visible(false);
+            git.set_visible(false);
+            back.set_visible(true);
+            save.set_visible(false);
+            win.set_title("Preferences");
+            win.set_subtitle("Password Store");
+            nav.push(&page);
+        });
+        window.add_action(&action);
+    }
+
+    {
+        let menu = primary_menu.clone();
+        let overlay = toast_overlay.clone();
+        let action = SimpleAction::new("install-locally", None);
+        action.connect_activate(move |_, _| {
+            if !can_install_locally() {
+                let toast = adw::Toast::new(&format!("Can not install this App locally"));
+                overlay.add_toast(toast);
+                return;
+            }
+            let items = menu.n_items();
+            if items > 0 {
+                menu.remove(items - 1);
+            }
+            let installed = is_installed_locally();
+            let ok: bool = !installed && install_locally().is_ok();
+            let uninstalled = installed && uninstall_locally().is_ok();
+            let item = if ok || !uninstalled {
+                MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
+            } else {
+                MenuItem::new(Some("Install this App"), Some("win.install-locally"))
+            };
+            menu.append_item(&item);
+        });
+        window.add_action(&action);
+    }
+
+    {
         let popover = add_button_popover.clone();
-        let action = SimpleAction::new("add-password", None);
+        let action = SimpleAction::new("open-new-password", None);
         action.connect_activate(move |_, _| {
             if popover.is_visible() {
                 popover.popdown()
@@ -255,7 +329,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let popover = git_popover.clone();
-        let action = SimpleAction::new("git-page", None);
+        let action = SimpleAction::new("open-git", None);
         action.connect_activate(move |_, _| {
             if popover.is_visible() {
                 popover.popdown()
@@ -297,8 +371,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
+        let text = text_page.clone();
         let list_clone = list.clone();
-        let roots_clone = roots.clone();
         let win = window_title.clone();
         let back = back_button.clone();
         let git = git_button.clone();
@@ -307,26 +381,42 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let nav = navigation_view.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
-            back.set_visible(false);
-            save.set_visible(false);
-            add.set_visible(true);
             nav.pop();
-            win.set_title("Password Store");
-            win.set_subtitle("Manage your passwords");
+            let stack = nav.navigation_stack();
+            if stack.n_items() > 1 {
+                back.set_visible(true);
+                add.set_visible(false);
+                let is_text_page = nav
+                    .visible_page()
+                    .as_ref()
+                    .map(|p| p == &text)
+                    .unwrap_or(false);
+                save.set_visible(is_text_page);
+                if is_text_page {
+                    win.set_title("Password Store");
+                    win.set_subtitle("Unknown pass file");
+                }
 
-            // TODO: Clear password and text fields
+                // TODO: What pass file is opeded?
+            } else {
+                back.set_visible(false);
+                save.set_visible(false);
+                add.set_visible(true);
 
-            load_passwords_async(&list_clone, roots_clone.clone(), git.clone(), save.clone());
+                win.set_title("Password Store");
+                win.set_subtitle("Manage your passwords");
+
+                // TODO: Clear password and text fields
+            }
+            load_passwords_async(&list_clone, git.clone(), save.clone());
         });
         window.add_action(&action);
     }
 
     {
         let overlay_clone = toast_overlay.clone();
-        let roots_clone = roots.clone();
         let action = SimpleAction::new("synchronize", None);
         action.connect_activate(move |_, _| {
-            let roots = roots_clone.clone();
             let overlay = overlay_clone.clone();
 
             // Channel from worker → main thread
@@ -334,6 +424,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             // Background worker
             thread::spawn(move || {
+                let settings = Preferences::new();
+                let roots = settings.stores();
                 for root in roots {
                     // List of git operations we want to run for each store
                     let commands: [&[&str]; 3] = [
@@ -343,7 +435,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     ];
 
                     for args in commands {
-                        let output = Command::new("pass")
+                        let output = Command::new(settings.command())
                             .env("PASSWORD_STORE_DIR", &root)
                             .args(args)
                             .output();
@@ -361,8 +453,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         .find(|line| line.contains("fatal:"))
                                         // fallback: whole stderr if no "fatal:" found
                                         .unwrap_or(stderr.trim());
-                                    let message =
-                                        format!("{} Using: {}", fatal_line, root.display());
+                                    let message = format!("{} Using: {}", fatal_line, root);
                                     eprintln!("{}", message);
                                     let _ = tx.send(message);
 
@@ -371,7 +462,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                 }
                             }
                             Err(e) => {
-                                let message = format!("Failed: {} with {e}", root.display());
+                                let message = format!("Failed: {} with {e}", root);
                                 eprintln!("{}", message);
                                 let _ = tx.send(message);
                                 break;
@@ -409,8 +500,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
     app.set_accels_for_action("win.synchronize", &["<primary>s"]);
-    app.set_accels_for_action("win.add-password", &["<primary>n"]);
-    app.set_accels_for_action("win.git-page", &["<primary>i"]);
+    app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
+    app.set_accels_for_action("win.open-git", &["<primary>i"]);
+    app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
 
     setup_search_filter(&list, &search_entry);
 
@@ -425,7 +517,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     window
 }
 
-fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: Button) {
+fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -442,17 +534,15 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
         .build();
     list.set_placeholder(Some(&placeholder));
 
-    let roots_clone = roots.clone();
-
     // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
 
-    // Spawn worker thread – ONLY data goes in here (roots + tx)
+    // Spawn worker thread – ONLY data goes in here
     thread::spawn(move || {
-        let all_items = match collect_all_password_items(&roots) {
+        let all_items = match collect_all_password_items() {
             Ok(v) => v,
             Err(err) => {
-                eprintln!("Error scanning pass roots: {err}");
+                eprintln!("Error scanning pass stores: {err}");
                 Vec::new()
             }
         };
@@ -498,12 +588,16 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
 
                     let open_btn = Button::with_label("Open");
                     open_btn.add_css_class("flat");
+                    open_btn.add_css_class("linked");
                     let copy_btn = Button::with_label("Copy password");
                     copy_btn.add_css_class("flat");
+                    copy_btn.add_css_class("linked");
                     let rename_btn = Button::with_label("Rename / move");
                     rename_btn.add_css_class("flat");
+                    rename_btn.add_css_class("linked");
                     let delete_btn = Button::with_label("Delete");
                     delete_btn.add_css_class("flat");
+                    delete_btn.add_css_class("linked");
 
                     popover_box.append(&open_btn);
                     popover_box.append(&copy_btn);
@@ -537,7 +631,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     {
                         let entry = item.clone();
                         copy_btn.connect_clicked(move |_| {
-                            let _ = Command::new("pass")
+                            let settings = Preferences::new();
+                            let _ = Command::new(settings.command())
                                 .env("PASSWORD_STORE_DIR", &entry.store_path)
                                 .arg("-c")
                                 .arg(&entry.label())
@@ -549,7 +644,6 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                     {
                         let entry = item.clone();
                         let _list = list_clone.clone();
-                        let _roots = roots_clone.clone(); // whatever you’re passing into load_passwords_async
                         rename_btn.connect_clicked(move |_| {
                             // TODO: show an AdwMessageDialog + EntryRow to get new_label from user
                             let new_label = ""; // user input
@@ -557,7 +651,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                             std::thread::spawn({
                                 let root = old.store_path.clone();
                                 move || {
-                                    let _ = Command::new("pass")
+                                    let settings = Preferences::new();
+                                    let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("mv")
                                         .arg(&old.label())
@@ -566,14 +661,13 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                                 }
                             });
 
-                            // After success, call load_passwords_async(&list_for_refresh, roots_for_refresh.clone(), git_button.clone());
+                            // After success, call load_passwords_async
                             // (You may want to schedule that back on the main thread with glib::MainContext)
                         });
                     }
                     // delete pass file
                     {
                         let entry = item.clone();
-                        let _roots = roots_clone.clone();
                         delete_btn.connect_clicked(move |_| {
                             // TODO: confirm in dialog first
 
@@ -581,7 +675,8 @@ fn load_passwords_async(list: &ListBox, roots: Vec<PathBuf>, git: Button, save: 
                                 let root = entry.store_path.clone();
                                 let label = entry.label();
                                 move || {
-                                    let _ = Command::new("pass")
+                                    let settings = Preferences::new();
+                                    let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")
                                         .arg(&label)

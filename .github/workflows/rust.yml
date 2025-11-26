@@ -22,37 +22,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install system dependencies
+      - name: Dependencies
         run: |
+          sudo dpkg --add-architecture arm64
           sudo apt-get update
           sudo apt-get install -y \
-            libgpgme-dev \
-            nettle-dev \
-            libgpg-error-dev \
-            libssl-dev \
-            libgtk-4-dev \
-            libadwaita-1-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libglib2.0-dev \
+            build-essential \
             clang \
             gcc \
-            build-essential \
+            libadwaita-1-0
+            libadwaita-1-dev \
+            libcairo2-dev \
+            libglib2.0-dev \
+            libgpg-error-dev \
+            libgpgme-dev \
+            libgtk-4-dev \
+            libpango1.0-dev \
+            libssl-dev \
+            nettle-dev \
             pkg-config
-
-      - name: Install cross toolchain for aarch64
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Add Rust target
-        run: rustup target add ${{ matrix.target }}
-
       - name: Build
-        run: cargo build --verbose --release --features setup --target ${{ matrix.target }}
-
+        run: cargo build --verbose --release --features setup
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:

@@ -1,4 +1,4 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-default.svg)](https://opensource.org/licenses/MIT)
+![License](https://img.shields.io/badge/license-GPLv3+-blue.svg)
 
 # Password Store
 

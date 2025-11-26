@@ -1,4 +1,6 @@
-use crate::app::*;
+#[cfg(feature = "setup")]
+use crate::setup::*;
+
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
@@ -33,9 +35,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get main_window from UI");
     window.set_application(Some(app));
 
+    #[cfg(feature = "setup")]
     let primary_menu: Menu = builder
         .object("primary_menu")
         .expect("Failed to get primary menu");
+    #[cfg(feature = "setup")]
     if can_install_locally() {
         let item = if is_installed_locally() {
             MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
@@ -407,6 +411,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    #[cfg(feature = "setup")]
     {
         let menu = primary_menu.clone();
         let overlay = toast_overlay.clone();

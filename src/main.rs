@@ -1,4 +1,6 @@
-mod app;
+#[cfg(feature = "setup")]
+mod setup;
+
 mod item;
 mod methods;
 mod preferences;
@@ -101,7 +103,10 @@ fn main() -> glib::ExitCode {
 
 fn get_pass_version() -> Option<String> {
     let settings = Preferences::new();
-    let output = Command::new(settings.command()).arg("--version").output().ok()?; // failed to spawn? -> None
+    let output = Command::new(settings.command())
+        .arg("--version")
+        .output()
+        .ok()?; // failed to spawn? -> None
 
     if !output.status.success() {
         return None;

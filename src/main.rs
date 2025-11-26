@@ -15,8 +15,8 @@ use std::ffi::OsString;
 use std::process::Command;
 use std::result::Result::Ok;
 
-#[allow(unused_imports)]
-use gtk4::prelude::*; // Required for icons in a App Image
+// #[allow(unused_imports)]
+// use gtk4::prelude::*; // Required for icons in a App Image
 
 const APP_ID: &str = "dev.noobping.passwordstore";
 
@@ -67,10 +67,10 @@ fn main() -> glib::ExitCode {
         let win = window::create_main_window(app, query);
         win.present();
 
-        let display = Display::default().expect("No display");
-        let theme = IconTheme::for_display(&display);
-        theme.add_resource_path("/dev/noobping/passwordstore");
-        theme.add_resource_path("/dev/noobping/passwordstore/icons");
+        // let display = Display::default().expect("No display");
+        // let theme = IconTheme::for_display(&display);
+        // theme.add_resource_path("/dev/noobping/passwordstore");
+        // theme.add_resource_path("/dev/noobping/passwordstore/icons");
 
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {

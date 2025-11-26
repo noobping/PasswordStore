@@ -34,8 +34,8 @@ fn main() {
     // Generate resources.xml content
     let mut xml = String::from("<gresources>\n");
     xml.push_str(&format!("\t<gresource prefix=\"{RESOURCE_ID}\">\n"));
-    xml.push_str(&format!("\t\t<file>{}.svg</file>\n", APP_ID));
-    xml.push_str(&format!("\t\t<file>{}.png</file>\n", APP_ID));
+    // xml.push_str(&format!("\t\t<file>{}.svg</file>\n", APP_ID));
+    // xml.push_str(&format!("\t\t<file>{}.png</file>\n", APP_ID));
 
     // Add files
     for f in &icons {

@@ -998,8 +998,9 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
                 eprintln!("Failed to save stores: {err}");
                 return;
             } else {
-                let row = ActionRow::builder().title(text.clone()).build();
-                list.append(&row);
+                let prep = ActionRow::builder().title(text.clone()).build();
+                list.prepend(&prep);
+                row.set_text(""); // clear field
             }
         });
     }

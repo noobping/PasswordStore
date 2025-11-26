@@ -739,6 +739,8 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                     // delete pass file
                     {
                         let entry = item.clone();
+                        let row_clone = row.clone();
+                        let list = list_clone.clone();
                         delete_btn.connect_clicked(move |_| {
                             // TODO: confirm in dialog first
 
@@ -755,8 +757,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                                         .status();
                                 }
                             });
-
-                            // reload list afterwards
+                            list.remove(&row_clone);
                         });
                     }
 

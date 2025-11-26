@@ -690,7 +690,9 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                     // Copy password
                     {
                         let entry = item.clone();
+                        let popover = popover.clone();
                         copy_btn.connect_clicked(move |_| {
+                            popover.popdown();
                             let item = entry.clone();
                             std::thread::spawn({
                                 move || {

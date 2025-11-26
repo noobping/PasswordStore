@@ -168,6 +168,9 @@
                                   <object class="GtkButton" id="copy_password_button">
                                     <property name="icon-name">edit-copy-symbolic</property>
                                     <property name="tooltip-text" translatable="yes">Copy password</property>
+                                    <style>
+                                        <class name="flat"/>
+                                    </style>
                                   </object>
                                 </child>
                               </object>

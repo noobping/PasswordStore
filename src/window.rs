@@ -5,11 +5,11 @@ use crate::preferences::Preferences;
 use adw::gio::{prelude::*, Menu, MenuItem, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle,
+    NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle, Toast,
 };
 use gtk4::{
-    Box as GtkBox, Builder, Button, ListBox, ListBoxRow, MenuButton, Orientation, Popover,
-    SearchEntry, Spinner, TextView,
+    gdk::Display, Box as GtkBox, Builder, Button, ListBox, ListBoxRow, MenuButton, Orientation,
+    Popover, SearchEntry, Spinner, TextView,
 };
 use std::cell::RefCell;
 use std::io::Write;
@@ -135,20 +135,20 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let root = non_null_to_string_option(row, "root");
 
             let Some(title) = title else {
-                let toast = adw::Toast::new("Can not find password file name.");
+                let toast = Toast::new("Can not find password file name.");
                 overlay.add_toast(toast);
                 return;
             };
 
             let Some(label) = label else {
-                let toast = adw::Toast::new("Can not find password file.");
+                let toast = Toast::new("Can not find password file.");
                 overlay.add_toast(toast);
                 return;
             };
 
             let Some(root) = root else {
                 let toast =
-                    adw::Toast::new("Can not open password file form a unknown password store.");
+                    Toast::new("Can not open password file form a unknown password store.");
                 overlay.add_toast(toast);
                 return;
             };
@@ -216,13 +216,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         glib::ControlFlow::Break
                     }
                     Ok(Err(msg)) => {
-                        let toast = adw::Toast::new(&msg);
+                        let toast = Toast::new(&msg);
                         overlay.add_toast(toast);
                         glib::ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        let toast = adw::Toast::new("Failed to decrypt password entry");
+                        let toast = Toast::new("Failed to decrypt password entry");
                         overlay.add_toast(toast);
                         glib::ControlFlow::Break
                     }
@@ -232,6 +232,23 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     // Input
+    {
+        let overlay = toast_overlay.clone();
+        let entry = password_entry.clone();
+        let btn = copy_password_button.clone();
+        btn.connect_clicked(move |_| {
+            entry.grab_focus_without_selecting();
+            let text = entry.text().to_string();
+            if let Some(display) = Display::default() {
+                let clipboard = display.clipboard();
+                clipboard.set_text(&text);
+            } else {
+                let toast = Toast::new("No display / clipboard available");
+                overlay.add_toast(toast);
+            }
+        });
+    }
+
     {
         let back = back_button.clone();
         let git = git_button.clone();
@@ -249,7 +266,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         path_entry.connect_apply(move |row| {
             let path = row.text().to_string(); // Get the text from the entry
             if path.is_empty() {
-                let toast = adw::Toast::new("Path cannot be empty");
+                let toast = Toast::new("Path cannot be empty");
                 overlay.add_toast(toast);
                 return;
             }
@@ -294,12 +311,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         action.connect_activate(move |_, _| {
             // Get label/root that we stored on `page`
             let Some(label) = non_null_to_string_option(&page, "label") else {
-                let toast = adw::Toast::new("No password entry selected");
+                let toast = Toast::new("No password entry selected");
                 overlay.add_toast(toast);
                 return;
             };
             let Some(root) = non_null_to_string_option(&page, "root") else {
-                let toast = adw::Toast::new("Unknown password store");
+                let toast = Toast::new("Unknown password store");
                 overlay.add_toast(toast);
                 return;
             };
@@ -312,7 +329,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let notes = buffer.text(&start, &end, false).to_string();
 
             if password.is_empty() {
-                let toast = adw::Toast::new("Password cannot be empty");
+                let toast = Toast::new("Password cannot be empty");
                 overlay.add_toast(toast);
                 return;
             }
@@ -321,11 +338,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             // `true` => overwrite if it already exists (update).
             match write_pass_entry(&root, &label, &password, &notes, true) {
                 Ok(()) => {
-                    let toast = adw::Toast::new("Password saved");
+                    let toast = Toast::new("Password saved");
                     overlay.add_toast(toast);
                 }
                 Err(msg) => {
-                    let toast = adw::Toast::new(&msg);
+                    let toast = Toast::new(&msg);
                     overlay.add_toast(toast);
                 }
             }
@@ -361,7 +378,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("install-locally", None);
         action.connect_activate(move |_, _| {
             if !can_install_locally() {
-                let toast = adw::Toast::new(&format!("Can not install this App locally"));
+                let toast = Toast::new(&format!("Can not install this App locally"));
                 overlay.add_toast(toast);
                 return;
             }
@@ -418,7 +435,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             // TODO: clone logic
             // e.g. spawn a task, then show a toast:
             if !url.is_empty() {
-                let toast = adw::Toast::new(&format!("Cloning from {url}…"));
+                let toast = Toast::new(&format!("Cloning from {url}…"));
                 overlay.add_toast(toast);
             }
         });
@@ -548,7 +565,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 match rx.try_recv() {
                     Ok(msg) => {
-                        let toast = adw::Toast::new(&msg);
+                        let toast = Toast::new(&msg);
                         overlay.add_toast(toast);
                         glib::ControlFlow::Continue
                     }
@@ -647,7 +664,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
 
                     // 3) Per-row menu button on the right
                     let menu_button = MenuButton::builder()
-                        .icon_name("view-more-symbolic") 
+                        .icon_name("view-more-symbolic")
                         .has_frame(false)
                         .css_classes(vec!["flat"])
                         .build();

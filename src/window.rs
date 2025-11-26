@@ -238,6 +238,25 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     // Input
     {
         let overlay = toast_overlay.clone();
+        let preferences = settings.clone();
+        pass_row.connect_apply(move |row| {
+            let text = row.text().to_string();
+            let text = text.trim();
+            if text.is_empty() {
+                let toast = Toast::new("Pass command cannot be empty");
+                overlay.add_toast(toast);
+                return;
+            }
+            if let Err(err) = preferences.set_command(text) {
+                let message = err.message.to_string();
+                let toast = Toast::new(&message);
+                overlay.add_toast(toast);
+            }
+        });
+    }
+
+    {
+        let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
         let btn = copy_password_button.clone();
         btn.connect_clicked(move |_| {

@@ -30,7 +30,7 @@ jobs:
             build-essential \
             clang \
             gcc \
-            libadwaita-1-0
+            libadwaita-1-0 \
             libadwaita-1-dev \
             libcairo2-dev \
             libglib2.0-dev \
@@ -38,6 +38,8 @@ jobs:
             libgpgme-dev \
             libgtk-4-dev \
             libpango1.0-dev \
+            librust-libadwaita-dev \
+            librust-libadwaita-sys-dev \
             libssl-dev \
             nettle-dev \
             pkg-config

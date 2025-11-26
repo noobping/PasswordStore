@@ -247,6 +247,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
         let text = text_view.clone();
+        let status = password_status.clone();
         let win = window_title.clone();
         path_entry.connect_apply(move |row| {
             let path = row.text().to_string(); // Get the text from the entry
@@ -260,6 +261,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let store_root = settings.store();
 
             // Show editor page
+            status.set_visible(false);
+            entry.set_visible(true);
+            text.set_visible(true);
             add.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);

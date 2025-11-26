@@ -2,16 +2,15 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -21,11 +20,11 @@ jobs:
           - aarch64-unknown-linux-gnu
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Upload binary artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: passwordstore.${{ matrix.target }}
-        path: target/${{ matrix.target }}/release/passwordstore
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --verbose --release --features setup
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: passwordstore.${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/passwordstore

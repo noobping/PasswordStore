@@ -443,7 +443,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
-        let text = text_page.clone();
+        let page = text_page.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
         let back = back_button.clone();
@@ -461,12 +461,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let is_text_page = nav
                     .visible_page()
                     .as_ref()
-                    .map(|p| p == &text)
+                    .map(|p| p == &page)
                     .unwrap_or(false);
                 save.set_visible(is_text_page);
                 if is_text_page {
                     win.set_title("Password Store");
-                    win.set_subtitle("Unknown pass file");
+                    let label = non_null_to_string_option(&page, "label")
+                        .unwrap_or_else(|| "Unknown pass file".to_string());
+                    win.set_subtitle(&label);
                 }
 
                 // TODO: What pass file is opeded?
@@ -742,8 +744,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                         let row_clone = row.clone();
                         let list = list_clone.clone();
                         delete_btn.connect_clicked(move |_| {
-                            // TODO: confirm in dialog first
-
                             std::thread::spawn({
                                 let root = entry.store_path.clone();
                                 let label = entry.label();

@@ -761,10 +761,12 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
 
                             match status {
                                 Ok(s) if s.success() => {
-                                    let toast = adw::Toast::new("Entry renamed");
-                                    overlay.add_toast(toast);
-
-                                    // TODO: Just update the row label in-place
+                                    let (parent, tail) = match new_label.rsplit_once('/') {
+                                        Some((parent, tail)) => (parent, tail),
+                                        None => (String::new(), new_label.as_str()),
+                                    };
+                                    action_row.set_title(&tail);
+                                    action_row.set_subtitle(&parent);
                                 }
                                 Ok(_) | Err(_) => {
                                     let toast = adw::Toast::new("Failed to rename entry");

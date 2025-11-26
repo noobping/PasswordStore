@@ -1,17 +1,19 @@
 #[cfg(feature = "setup")]
 use crate::setup::*;
+#[cfg(feature = "setup")]
+use adw::gio::{Menu, MenuItem};
 
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
-use adw::gio::{prelude::*, Menu, MenuItem, SimpleAction};
+use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use gtk4::{
-    gdk::Display, Box as GtkBox, Builder, Button, ListBox, ListBoxRow, MenuButton, Orientation,
-    Popover, SearchEntry, Spinner, TextView,
+    gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry, Spinner,
+    TextView,
 };
 use std::cell::RefCell;
 use std::io::Write;
@@ -717,7 +719,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                     {
                         let entry = item.clone();
                         let overlay = toast_overlay.clone();
-                        let list = list_clone.clone();
                         rename_row.connect_apply(move |row| {
                             let new_label = row.text().to_string();
 

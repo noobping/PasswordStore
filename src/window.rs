@@ -685,7 +685,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
 
                     let copy_btn = Button::from_icon_name("edit-copy-symbolic");
                     copy_btn.add_css_class("flat");
-                    rename_row.add_suffix(&copy_btn);
+                    action_row.add_suffix(&copy_btn);
 
                     let delete_btn = Button::from_icon_name("user-trash-symbolic");
                     delete_btn.add_css_class("flat");

@@ -969,3 +969,44 @@ fn write_pass_entry(
         Err(format!("pass insert failed: {status}"))
     }
 }
+
+fn rebuild_store_list(list: &ListBox, prefs: &Preferences) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    for store in prefs.stores() {
+        let row = ActionRow::builder().title(store.clone()).build();
+        list.append(&row);
+    }
+    let add_row: EntryRow = EntryRow::builder()
+        .title("Add password store")
+        .set_title("Absolute path")
+        .show_apply_button(true)
+        .build();
+    list.append(&add_row);
+
+    {
+        let prefs = prefs.clone();
+        let list = list.clone();
+        add_row.connect_apply(move |row| {
+            let text = row.text().trim().to_string();
+            if text.is_empty() {
+                return;
+            }
+
+            let mut stores = prefs.stores();
+            if stores.contains(&text) {
+                return;
+            }
+
+            stores.push(text.clone());
+            if let Err(err) = prefs.set_stores(stores) {
+                eprintln!("Failed to save stores: {err}");
+                return;
+            } else {
+                let row = ActionRow::builder().title(text.clone()).build();
+                list.append(&row);
+            }
+        });
+    }
+}

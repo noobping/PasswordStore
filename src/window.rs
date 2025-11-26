@@ -83,8 +83,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let settings_page: NavigationPage = builder
         .object("settings_page")
         .expect("Failed to get settings page");
-    let pass_row: adw::EntryRow = builder.object("pass_command_row").unwrap();
-    pass_row.set_text(&settings.command());
+    let pass_row: EntryRow = builder
+        .object("pass_command_row")
+        .expect("Failed to get pass row");
+    let password_stores: ListBox = builder
+        .object("password_stores")
+        .expect("Failed to get the password store list");
 
     // Navigation + list page
     let navigation_view: NavigationView = builder
@@ -382,6 +386,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let git = git_button.clone();
         let save = save_button.clone();
         let win = window_title.clone();
+        let command = pass_row.clone();
+        let list = password_stores.clone();
         let action = SimpleAction::new("open-preferences", None);
         action.connect_activate(move |_, _| {
             add.set_visible(false);
@@ -391,6 +397,16 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             win.set_title("Preferences");
             win.set_subtitle("Password Store");
             nav.push(&page);
+
+            let prefs = settings.clone();
+            command.set_text(&settings.command());
+            while let Some(child) = list.first_child() {
+                list.remove(&child);
+            }
+            for store in prefs.stores() {
+                let row = ActionRow::builder().title(store.clone()).build();
+                list.append(&row);
+            }
         });
         window.add_action(&action);
     }

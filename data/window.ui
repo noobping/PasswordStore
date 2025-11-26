@@ -235,12 +235,6 @@
                                       <object class="AdwActionRow" id="stores_row">
                                         <property name="title">~/.password-store</property>
                                         <property name="subtitle">The default password store.</property>
-                                        <child type="suffix">
-                                          <object class="GtkButton" id="add_password_store">
-                                            <property name="icon-name">list-add-symbolic</property>
-                                            <property name="valign">center</property>
-                                          </object>
-                                        </child>
                                       </object>
                                     </child>
                                   </object>

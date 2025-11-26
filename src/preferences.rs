@@ -7,6 +7,8 @@ use std::{env, fs};
 const APP_ID: &str = "dev.noobping.passwordstore";
 const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
 const DEFAULT_CMD: &str = "pass";
+const DEFAULT_ALTERNATIVE: &str = "podman run --rm -it --userns=keep-id --user $(id -u):$(id -g) -e HOME=/home/app -e GPG_TTY=$(tty) -e PASSWORD_STORE_DIR=/home/app/.password-store -e PASSWORD_STORE_PAGER=cat -e PAGER=cat -v $HOME/.password-store:/home/app/.password-store:Z -v $HOME/.gnupg:/home/app/.gnupg:Z -w /home/app ghcr.io/noobping/pass:latest pass";
+const SECONDARY_ALTERNATIVE: &str = "docker run --rm -it --userns=keep-id --user $(id -u):$(id -g) -e HOME=/home/app -e GPG_TTY=$(tty) -e PASSWORD_STORE_DIR=/home/app/.password-store -e PASSWORD_STORE_PAGER=cat -e PAGER=cat -v $HOME/.password-store:/home/app/.password-store -v $HOME/.gnupg:/home/app/.gnupg -w /home/app ghcr.io/noobping/pass:latest pass";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PreferenceFile {

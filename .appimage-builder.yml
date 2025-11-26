@@ -2,7 +2,7 @@ version: 1
 
 script:
   - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/ AppDir/usr/share/icons/
-  - cp data/passwordstore.png AppDir/usr/share/icons//passwordstore.png
+  - cp data/passwordstore.png AppDir/usr/share/icons/passwordstore.png
   - cp -r data/icons/* AppDir/usr/share/icons/
   - cp target/release/passwordstore AppDir/usr/bin/
 
@@ -22,7 +22,6 @@ AppDir:
       - sourceline: "deb http://deb.debian.org/debian trixie main"
         key_url: "https://ftp-master.debian.org/keys/archive-key-12.asc"
     include:
-      - adwaita-icon-theme
       - git
       - gnupg2
       - libadwaita-1-dev

@@ -140,7 +140,7 @@ Categories=Utility;
 
     fs::write(&desktop, contents)?;
 
-    // Make sure it's readable by the user (and others) – 0644
+    // Make sure it's readable by the user
     let mut perms = fs::metadata(&desktop)?.permissions();
     perms.set_mode(0o644);
     fs::set_permissions(&desktop, perms)?;

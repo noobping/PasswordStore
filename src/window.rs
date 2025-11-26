@@ -25,11 +25,7 @@ use std::time::Duration;
 const UI_SRC: &str = include_str!("../data/window.ui");
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
-    // The resources are registered in main.rs
     let builder = Builder::from_string(UI_SRC);
-    let settings = Preferences::new();
-
-    // Root window
     let window: ApplicationWindow = builder
         .object("main_window")
         .expect("Failed to get main_window from UI");
@@ -84,6 +80,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get toast_overlay");
 
     // Settings
+    let settings = Preferences::new();
     let settings_page: NavigationPage = builder
         .object("settings_page")
         .expect("Failed to get settings page");
@@ -94,7 +91,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("password_stores")
         .expect("Failed to get the password store list");
 
-    // Navigation + list page
+    // Navigation
     let navigation_view: NavigationView = builder
         .object("navigation_view")
         .expect("Failed to get navigation_view");
@@ -127,7 +124,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("text_view")
         .expect("Failed to get text_view");
 
-    // Selecting an item from the list → decrypt with `pass`
+    // Selecting an item from the list
     {
         let nav = navigation_view.clone();
         let page = text_page.clone();
@@ -151,19 +148,16 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             };
-
             let Some(label) = label else {
                 let toast = Toast::new("Can not find password file.");
                 overlay.add_toast(toast);
                 return;
             };
-
             let Some(root) = root else {
                 let toast = Toast::new("Can not open password file form a unknown password store.");
                 overlay.add_toast(toast);
                 return;
             };
-
             // Navigate to the text editor page and update header buttons
             add.set_visible(false);
             git.set_visible(false);
@@ -273,7 +267,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let clipboard = display.clipboard();
                 clipboard.set_text(&text);
             } else {
-                let toast = Toast::new("No display / clipboard available");
+                let toast = Toast::new("No display or clipboard available");
                 overlay.add_toast(toast);
             }
         });
@@ -333,7 +327,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let action = SimpleAction::new("save-password", None);
         action.connect_activate(move |_, _| {
-            // Get label/root that we stored on `page`
             let Some(label) = non_null_to_string_option(&page, "label") else {
                 let toast = Toast::new("No password entry selected");
                 overlay.add_toast(toast);
@@ -344,22 +337,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             };
-
-            // Collect password + notes from the editor widgets
-            let password = entry.text().to_string();
-
             let buffer = text.buffer();
             let (start, end) = buffer.bounds();
             let notes = buffer.text(&start, &end, false).to_string();
-
+            let password = entry.text().to_string();
             if password.is_empty() {
                 let toast = Toast::new("Password cannot be empty");
                 overlay.add_toast(toast);
                 return;
             }
-
-            // Here we call the helper from step 2.
-            // `true` => overwrite if it already exists (update).
             match write_pass_entry(&root, &label, &password, &notes, true) {
                 Ok(()) => {
                     let toast = Toast::new("Password saved");
@@ -464,7 +450,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let url = entry.text().to_string();
 
             // TODO: clone logic
-            // e.g. spawn a task, then show a toast:
+
             if !url.is_empty() {
                 let toast = Toast::new(&format!("Cloning from {url}…"));
                 overlay.add_toast(toast);
@@ -539,43 +525,34 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("synchronize", None);
         action.connect_activate(move |_, _| {
             let overlay = overlay_clone.clone();
-
-            // Channel from worker → main thread
+            // Channel from worker to main thread
             let (tx, rx) = mpsc::channel::<String>();
-
             // Background worker
             thread::spawn(move || {
                 let settings = Preferences::new();
                 let roots = settings.stores();
                 for root in roots {
-                    // List of git operations we want to run for each store
                     let commands: [&[&str]; 3] = [
                         &["git", "fetch", "--all"],
                         &["git", "pull"],
                         &["git", "push"],
                     ];
-
                     for args in commands {
                         let output = Command::new(settings.command())
                             .env("PASSWORD_STORE_DIR", &root)
                             .args(args)
                             .output();
-
                         match output {
                             Ok(out) => {
                                 if !out.status.success() {
-                                    // git wrote its messages to stderr
                                     let stderr = String::from_utf8_lossy(&out.stderr);
-
-                                    // try to find the last line containing "fatal:"
                                     let fatal_line = stderr
                                         .lines()
-                                        .rev() // start from the bottom
+                                        .rev()
                                         .find(|line| line.contains("fatal:"))
-                                        // fallback: whole stderr if no "fatal:" found
                                         .unwrap_or(stderr.trim());
                                     let message = format!("{} Using: {}", fatal_line, root);
-                                    eprintln!("{}", message);
+                                    eprintln!("{}", &message);
                                     let _ = tx.send(message);
 
                                     // stop further commands for this store
@@ -593,7 +570,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 }
             });
 
-            // Main-thread: poll for messages and show toasts
+            // Main-thread: poll for messages
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 match rx.try_recv() {
                     Ok(msg) => {
@@ -627,9 +604,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     if let Some(q) = startup_query {
         if !q.is_empty() {
-            search_entry.set_visible(true); // make the field appear
-            search_entry.set_text(&q); // fill text
-            list.invalidate_filter(); // re-run filter for all rows
+            search_entry.set_visible(true);
+            search_entry.set_text(&q);
+            list.invalidate_filter();
         }
     }
 
@@ -655,8 +632,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
 
     // Standard library channel: main thread will own `rx`, worker gets `tx`
     let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
-
-    // Spawn worker thread – ONLY data goes in here
+    // Spawn worker thread
     thread::spawn(move || {
         let all_items = match collect_all_password_items() {
             Ok(v) => v,
@@ -668,17 +644,12 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
         // Send everything back to main thread
         let _ = tx.send(all_items);
     });
-
-    // Clone GTK widgets on the main thread (they stay on this thread)
+    // Clone GTK widgets on the main thread
     let list_clone = list.clone();
     let git_clone = git.clone();
     let save_clone = save.clone();
     let toast_overlay = overlay.clone();
-
     // Poll the channel from the main thread using a GLib timeout
-    //
-    //   - timeout_add_local does NOT require Send
-    //   - closure runs on the GTK main loop thread
     glib::timeout_add_local(Duration::from_millis(50), move || {
         match rx.try_recv() {
             Ok(items) => {
@@ -694,26 +665,19 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                         .subtitle(item.relative_path.clone()) // second line: relative_path
                         .activatable(true) // makes row respond to double-click/Enter
                         .build();
-
-                    // 3) Per-row menu button on the right
                     let menu_button = MenuButton::builder()
                         .icon_name("view-more-symbolic")
                         .has_frame(false)
                         .css_classes(vec!["flat"])
                         .build();
-
-                    // 4) Popover with actions
                     let popover = Popover::new();
-
                     let rename_row = EntryRow::new();
                     rename_row.set_title("Rename or move");
                     rename_row.set_show_apply_button(true);
                     rename_row.set_text(&item.label());
-
                     let copy_btn = Button::from_icon_name("edit-copy-symbolic");
                     copy_btn.add_css_class("flat");
                     action_row.add_suffix(&copy_btn);
-
                     let delete_btn = Button::from_icon_name("user-trash-symbolic");
                     delete_btn.add_css_class("flat");
                     delete_btn.add_css_class("destructive-action");
@@ -721,17 +685,12 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
 
                     popover.set_child(Some(&rename_row));
                     menu_button.set_popover(Some(&popover));
-
-                    // Attach menu button as suffix (right side) of the row
                     action_row.add_suffix(&menu_button);
-
-                    // Put the ActionRow inside the ListBoxRow
                     row.set_child(Some(&action_row));
 
                     // Store full path on row for later use
                     unsafe {
                         row.set_data("name", item.basename.clone());
-                        row.set_data("dir", item.relative_path.clone());
                         row.set_data("root", item.store_path.clone());
                         row.set_data("label", item.label());
                     }
@@ -776,8 +735,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                             }
 
                             let root = entry.store_path.clone();
-
-                            // Run pass mv synchronously – this should be fast enough
                             let settings = Preferences::new();
                             let status = Command::new(settings.command())
                                 .env("PASSWORD_STORE_DIR", &root)
@@ -785,7 +742,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                                 .arg(&old_label)
                                 .arg(&new_label)
                                 .status();
-
                             match status {
                                 Ok(s) if s.success() => {
                                     let (parent, tail) = match new_label.rsplit_once('/') {
@@ -824,7 +780,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                             list.remove(&row_clone);
                         });
                     }
-
                     list_clone.append(&row);
                     index += 1;
                 }
@@ -854,7 +809,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                 glib::ControlFlow::Break
             }
             Err(TryRecvError::Empty) => {
-                // Worker not done yet → check again later
+                // Worker not done yet
                 glib::ControlFlow::Continue
             }
             Err(TryRecvError::Disconnected) => {
@@ -883,7 +838,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
         let q_ref = query_for_filter.borrow();
         let q = q_ref.as_str();
 
-        // empty query → show everything
+        // empty query, show everything
         if q.is_empty() {
             return true;
         }
@@ -914,28 +869,24 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
 }
 
 fn write_pass_entry(
-    store_root: &str, // e.g. entry.store_path or selected store
-    label: &str,      // e.g. "mail/github.com/nick"
+    store_root: &str,
+    label: &str,
     password: &str,
     notes: &str,
     overwrite: bool,
 ) -> Result<(), String> {
     let settings = Preferences::new();
-
-    let mut cmd = Command::new(settings.command());
+    let mut cmd: Command = Command::new(settings.command());
     cmd.env("PASSWORD_STORE_DIR", store_root)
         .arg("insert")
         .arg("-m"); // read from stdin
-
     if overwrite {
-        cmd.arg("-f"); // force overwrite if it exists
+        cmd.arg("-f");
     }
-
     cmd.arg(label)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to run pass: {e}"))?;
@@ -949,7 +900,7 @@ fn write_pass_entry(
         // 1st line = password
         writeln!(stdin, "{password}").map_err(|e| format!("Failed to write password: {e}"))?;
 
-        // remaining lines = notes (optional)
+        // remaining lines = optional notes
         if !notes.is_empty() {
             writeln!(stdin, "{notes}").map_err(|e| format!("Failed to write notes: {e}"))?;
         }
@@ -958,7 +909,6 @@ fn write_pass_entry(
     let status = child
         .wait()
         .map_err(|e| format!("Failed to wait for pass: {e}"))?;
-
     if status.success() {
         Ok(())
     } else {
@@ -987,12 +937,10 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
             if text.is_empty() {
                 return;
             }
-
             let mut stores = settings.stores();
             if stores.contains(&text) {
                 return;
             }
-
             stores.push(text.clone());
             if let Err(err) = settings.set_stores(stores) {
                 eprintln!("Failed to save stores: {err}");

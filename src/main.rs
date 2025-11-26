@@ -38,7 +38,7 @@ fn main() -> glib::ExitCode {
     // keyboard shortcuts
     app.set_accels_for_action("app.about", &["F1"]);
 
-    // When the desktop/AppImage asks us to "open" something, just activate the app
+    // When the desktop asks us to "open" something, just activate the app
     {
         app.connect_open(|app, _files, _hint| {
             app.activate();
@@ -106,15 +106,11 @@ fn get_pass_version() -> Option<String> {
     let output = Command::new(settings.command())
         .arg("--version")
         .output()
-        .ok()?; // failed to spawn? -> None
-
+        .ok()?;
     if !output.status.success() {
         return None;
     }
-
     let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Collect cleaned, non-empty lines
     let lines: Vec<String> = stdout
         .lines()
         .map(str::trim) // trim whitespace
@@ -123,7 +119,6 @@ fn get_pass_version() -> Option<String> {
         .filter(|line| !line.is_empty()) // skip borders/empty lines
         .map(|s| s.to_string())
         .collect();
-
     if lines.is_empty() {
         None
     } else {

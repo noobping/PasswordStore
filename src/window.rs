@@ -276,7 +276,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 page.set_data("root", store_root.clone());
             };
 
-            // Update header + clear fields
             win.set_title("New password");
             win.set_subtitle(&path);
             entry.set_text("");
@@ -441,6 +440,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let page = text_page.clone();
+        let entry = password_entry.clone();
+        let text = text_view.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
         let back = back_button.clone();
@@ -475,7 +476,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 win.set_title("Password Store");
                 win.set_subtitle("Manage your passwords");
 
-                // TODO: Clear password and text fields
+                entry.set_text("");
+                let buffer = text.buffer();
+                buffer.set_text("");
             }
             load_passwords_async(&list_clone, git.clone(), save.clone());
         });

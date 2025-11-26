@@ -242,7 +242,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         });
     }
 
-    // Input
+    // Pass command preference
     {
         let overlay = toast_overlay.clone();
         let preferences = settings.clone();
@@ -261,7 +261,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             }
         });
     }
-
+    // Copy button on password page
     {
         let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
@@ -278,7 +278,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             }
         });
     }
-
+    // new password
     {
         let back = back_button.clone();
         let git = git_button.clone();
@@ -374,7 +374,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
         window.add_action(&action);
     }
-
+    // open preferences
     {
         let nav = navigation_view.clone();
         let page = settings_page.clone();
@@ -397,16 +397,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             let settings = Preferences::new();
             command.set_text(&settings.command());
-            while let Some(child) = list.first_child() {
-                list.remove(&child);
-            }
-            for store in settings.stores() {
-                let row = ActionRow::builder().title(store.clone()).build();
-                list.append(&row);
-            }
-
-            // let add_stores_btn = Button::from_icon_name("list-add-symbolic");
-            // add_stores_btn.add_css_class("flat");
+            rebuild_store_list(&list, &settings);
         });
         window.add_action(&action);
     }
@@ -975,23 +966,21 @@ fn write_pass_entry(
     }
 }
 
-fn rebuild_store_list(list: &ListBox, prefs: &Preferences) {
+fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
-    for store in prefs.stores() {
+    for store in settings.stores() {
         let row = ActionRow::builder().title(store.clone()).build();
         list.append(&row);
     }
-    let add_row: EntryRow = EntryRow::builder()
-        .title("Add password store")
-        .set_title("Absolute path")
-        .show_apply_button(true)
-        .build();
+    let add_row = EntryRow::new();
+    add_row.set_title("Add password store (absolute path)");
+    add_row.set_show_apply_button(true);
     list.append(&add_row);
 
     {
-        let prefs = prefs.clone();
+        let settings = settings.clone();
         let list = list.clone();
         add_row.connect_apply(move |row| {
             let text = row.text().trim().to_string();
@@ -999,13 +988,13 @@ fn rebuild_store_list(list: &ListBox, prefs: &Preferences) {
                 return;
             }
 
-            let mut stores = prefs.stores();
+            let mut stores = settings.stores();
             if stores.contains(&text) {
                 return;
             }
 
             stores.push(text.clone());
-            if let Err(err) = prefs.set_stores(stores) {
+            if let Err(err) = settings.set_stores(stores) {
                 eprintln!("Failed to save stores: {err}");
                 return;
             } else {

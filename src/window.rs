@@ -415,7 +415,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         action.connect_activate(move |_, _| {
             let url = entry.text().to_string();
 
-            // TODO: run your clone logic here
+            // TODO: clone logic
             // e.g. spawn a task, then show a toast:
             if !url.is_empty() {
                 let toast = adw::Toast::new(&format!("Cloning from {url}…"));
@@ -647,7 +647,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
 
                     // 3) Per-row menu button on the right
                     let menu_button = MenuButton::builder()
-                        .icon_name("view-more-symbolic") // you already ship this icon :contentReference[oaicite:1]{index=1}
+                        .icon_name("view-more-symbolic") 
                         .has_frame(false)
                         .css_classes(vec!["flat"])
                         .build();
@@ -656,9 +656,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                     let popover = Popover::new();
                     let popover_box = GtkBox::new(Orientation::Vertical, 0);
 
-                    let open_btn = Button::with_label("Open");
-                    open_btn.add_css_class("flat");
-                    open_btn.add_css_class("linked");
                     let copy_btn = Button::with_label("Copy password");
                     copy_btn.add_css_class("flat");
                     copy_btn.add_css_class("linked");
@@ -670,7 +667,6 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                     delete_btn.add_css_class("linked");
                     delete_btn.add_css_class("destructive-action");
 
-                    popover_box.append(&open_btn);
                     popover_box.append(&copy_btn);
                     popover_box.append(&rename_btn);
                     popover_box.append(&delete_btn);
@@ -691,24 +687,21 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                         row.set_data("root", item.store_path.clone());
                         row.set_data("label", item.label());
                     }
-                    // Open pass file
-                    {
-                        let row_for_open = row.clone();
-                        open_btn.connect_clicked(move |_| {
-                            row_for_open.activate(); // calls your existing row_activated handler
-                        });
-                    }
                     // Copy password
                     {
                         let entry = item.clone();
                         copy_btn.connect_clicked(move |_| {
-                            let settings = Preferences::new();
-                            let _ = Command::new(settings.command())
-                                .env("PASSWORD_STORE_DIR", &entry.store_path)
-                                .arg("-c")
-                                .arg(&entry.label())
-                                .status();
-                            // You probably want to show a Toast on success/failure here.
+                            let item = entry.clone();
+                            std::thread::spawn({
+                                move || {
+                                    let settings = Preferences::new();
+                                    let _ = Command::new(settings.command())
+                                        .env("PASSWORD_STORE_DIR", &item.store_path)
+                                        .arg("-c")
+                                        .arg(&item.label())
+                                        .status();
+                                }
+                            });
                         });
                     }
                     // rename pass file
@@ -848,7 +841,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
 }
 
 fn write_pass_entry(
-    store_root: &str, // e.g. entry.store_path or your selected store
+    store_root: &str, // e.g. entry.store_path or selected store
     label: &str,      // e.g. "mail/github.com/nick"
     password: &str,
     notes: &str,

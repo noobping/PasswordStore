@@ -120,8 +120,6 @@ fn write_desktop_file(exe_path: &Path) -> std::io::Result<()> {
     let desktop = data
         .join("applications")
         .join(format!("{}.desktop", APP_ID));
-
-    // You can tweak these as you like
     let version = env!("CARGO_PKG_VERSION");
     let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
     let exec = exe_path.display(); // absolute path to the installed binary

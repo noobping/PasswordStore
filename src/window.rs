@@ -763,7 +763,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                                 Ok(s) if s.success() => {
                                     let (parent, tail) = match new_label.rsplit_once('/') {
                                         Some((parent, tail)) => (parent, tail),
-                                        None => (String::new(), new_label.as_str()),
+                                        None => ("", new_label.as_str()),
                                     };
                                     action_row.set_title(&tail);
                                     action_row.set_subtitle(&parent);

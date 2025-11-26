@@ -101,7 +101,7 @@
                         <child>
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
-                            <property name="placeholder-text" translatable="yes">Search...</property>
+                            <property name="placeholder-text" translatable="yes">find</property>
                           </object>
                         </child>
 
@@ -266,7 +266,7 @@
     <section>
       <item>
         <attribute name="label" translatable="yes">_Find password file</attribute>
-        <attribute name="action">win.toggle-search</attribute>
+        <attribute name="action">win.toggle-find</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Synchronize with remote</attribute>

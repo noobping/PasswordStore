@@ -447,13 +447,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
-        let search = search_entry.clone();
-        let action = SimpleAction::new("toggle-search", None);
+        let find = search_entry.clone();
+        let action = SimpleAction::new("toggle-find", None);
         action.connect_activate(move |_, _| {
-            let visible = search.is_visible();
-            search.set_visible(!visible);
+            let visible = find.is_visible();
+            find.set_visible(!visible);
             if !visible {
-                search.grab_focus();
+                find.grab_focus();
             }
         });
         window.add_action(&action);
@@ -590,7 +590,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     // keyboard shortcuts
     app.set_accels_for_action("win.back", &["Escape"]);
-    app.set_accels_for_action("win.toggle-search", &["<primary>f"]);
+    app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.synchronize", &["<primary>s"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-git", &["<primary>i"]);
@@ -816,7 +816,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
                     StatusPage::builder()
                         .icon_name("edit-find-symbolic")
                         .title("No passwords found")
-                        .description("Try another search query.")
+                        .description("Try another query.")
                         .build()
                 };
                 list_clone.set_placeholder(Some(&placeholder));

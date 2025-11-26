@@ -1,9 +1,7 @@
-use adw::gio::{self, prelude::*, ResourceLookupFlags, Settings};
+use adw::gio::{self, prelude::*, Settings};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
-use std::io::{Error, ErrorKind};
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{env, fs};
 
 const APP_ID: &str = "dev.noobping.passwordstore";

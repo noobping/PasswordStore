@@ -1,6 +1,5 @@
 use std::{fs, path::Path};
 
-const APP_ID: &str = "dev.noobping.passwordstore";
 const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
 
 fn main() {

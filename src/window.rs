@@ -12,8 +12,8 @@ use gtk4::{
     SearchEntry, Spinner, TextView,
 };
 use std::cell::RefCell;
-use std::path::PathBuf;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
@@ -245,6 +245,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let popover_add = add_button_popover.clone();
         let popover_git = git_popover.clone();
         let overlay = toast_overlay.clone();
+        let entry = password_entry.clone();
+        let text = text_view.clone();
+        let win = window_title.clone();
         path_entry.connect_apply(move |row| {
             let path = row.text().to_string(); // Get the text from the entry
             if path.is_empty() {
@@ -252,6 +255,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             }
+
+            let settings = Preferences::new();
+            let store_root = settings.store();
+
+            // Show editor page
             add.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
@@ -261,11 +269,71 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             popover_add.popdown();
             popover_git.popdown();
 
-            // TODO: create the password / entry at `path`
+            // Remember where to save later
+            unsafe {
+                page.set_data("label", path.clone());
+                page.set_data("root", store_root.clone());
+            };
+
+            // Update header + clear fields
+            win.set_title("New password");
+            win.set_subtitle(&path);
+            entry.set_text("");
+            let buffer = text.buffer();
+            buffer.set_text("");
         });
     }
 
     // actions
+    {
+        let page = text_page.clone();
+        let entry = password_entry.clone();
+        let text = text_view.clone();
+        let overlay = toast_overlay.clone();
+        let action = SimpleAction::new("save-password", None);
+        action.connect_activate(move |_, _| {
+            // Get label/root that we stored on `page`
+            let Some(label) = non_null_to_string_option(&page, "label") else {
+                let toast = adw::Toast::new("No password entry selected");
+                overlay.add_toast(toast);
+                return;
+            };
+            let Some(root) = non_null_to_string_option(&page, "root") else {
+                let toast = adw::Toast::new("Unknown password store");
+                overlay.add_toast(toast);
+                return;
+            };
+
+            // Collect password + notes from the editor widgets
+            let password = entry.text().to_string();
+
+            let buffer = text.buffer();
+            let (start, end) = buffer.bounds();
+            let notes = buffer.text(&start, &end, false).to_string();
+
+            if password.is_empty() {
+                let toast = adw::Toast::new("Password cannot be empty");
+                overlay.add_toast(toast);
+                return;
+            }
+
+            // Here we call the helper from step 2.
+            // `true` => overwrite if it already exists (update).
+            match write_pass_entry(&root, &label, &password, &notes, true) {
+                Ok(()) => {
+                    let toast = adw::Toast::new("Password saved");
+                    overlay.add_toast(toast);
+                }
+                Err(msg) => {
+                    let toast = adw::Toast::new(&msg);
+                    overlay.add_toast(toast);
+                }
+            }
+        });
+
+        window.add_action(&action);
+    }
+
     {
         let nav = navigation_view.clone();
         let page = settings_page.clone();
@@ -493,8 +561,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         });
         window.add_action(&action);
     }
-
-    // TODO: Action: win.save-password
 
     // keyboard shortcuts
     app.set_accels_for_action("win.back", &["Escape"]);
@@ -774,4 +840,57 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
         // trigger re-evaluation of filter_func for all rows
         list_for_entry.invalidate_filter();
     });
+}
+
+fn write_pass_entry(
+    store_root: &str, // e.g. entry.store_path or your selected store
+    label: &str,      // e.g. "mail/github.com/nick"
+    password: &str,
+    notes: &str,
+    overwrite: bool,
+) -> Result<(), String> {
+    let settings = Preferences::new();
+
+    let mut cmd = Command::new(settings.command());
+    cmd.env("PASSWORD_STORE_DIR", store_root)
+        .arg("insert")
+        .arg("-m"); // read from stdin
+
+    if overwrite {
+        cmd.arg("-f"); // force overwrite if it exists
+    }
+
+    cmd.arg(label)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to run pass: {e}"))?;
+
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or("Failed to open stdin for pass")?;
+
+        // 1st line = password
+        writeln!(stdin, "{password}").map_err(|e| format!("Failed to write password: {e}"))?;
+
+        // remaining lines = notes (optional)
+        if !notes.is_empty() {
+            writeln!(stdin, "{notes}").map_err(|e| format!("Failed to write notes: {e}"))?;
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for pass: {e}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("pass insert failed: {status}"))
+    }
 }

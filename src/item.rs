@@ -3,7 +3,7 @@ use crate::preferences::Preferences;
 use std::ffi::OsStr;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct PassEntry {

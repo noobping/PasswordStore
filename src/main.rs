@@ -10,7 +10,7 @@ use crate::preferences::Preferences;
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use gtk4::{gdk::Display, gio, glib, IconTheme};
+use gtk4::{gio, glib};
 use std::ffi::OsString;
 use std::process::Command;
 use std::result::Result::Ok;

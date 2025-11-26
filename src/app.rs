@@ -52,11 +52,7 @@ pub fn install_locally() -> std::io::Result<()> {
         return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
     };
     let apps = data.join("applications");
-    let icons = data
-        .join("icons")
-        .join("hicolor")
-        .join("scalable")
-        .join("apps");
+    let icons = data.join("icons");
     let dest = bin.join(project);
 
     std::fs::create_dir_all(&bin)?;
@@ -86,12 +82,7 @@ pub fn uninstall_locally() -> std::io::Result<()> {
         return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
     };
     let bin = bin.join(env!("CARGO_PKG_NAME"));
-    let icon = data
-        .join("icons")
-        .join("hicolor")
-        .join("scalable")
-        .join("apps")
-        .join(format!("{}.svg", APP_ID));
+    let icon = data.join("icons").join(format!("{}.svg", APP_ID));
     let desktop = data
         .join("applications")
         .join(format!("{}.desktop", APP_ID));
@@ -163,6 +154,7 @@ Categories=Utility;
 
 fn extract_icon(data: &Path) -> std::io::Result<()> {
     let resource_path = format!("{}/icons/{}.svg", RESOURCE_ID, APP_ID);
+    println!("Looking up resource: {resource_path}");
     let bytes = gio::resources_lookup_data(&resource_path, ResourceLookupFlags::NONE)
         .map_err(|e| Error::new(ErrorKind::NotFound, format!("Resource not found: {e}")))?;
     let out_path = data.join(format!("{}.svg", APP_ID));

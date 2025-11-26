@@ -43,6 +43,10 @@ impl Preferences {
         }
     }
 
+    pub fn store(&self) -> String {
+        self.stores().into_iter().next().unwrap_or_default()
+    }
+
     pub fn stores(&self) -> Vec<String> {
         if let Some(s) = &self.settings {
             s.strv("password-store-dirs")

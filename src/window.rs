@@ -136,7 +136,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let text = text_view.clone();
         let overlay = toast_overlay.clone();
         let win = window_title.clone();
-
         list.connect_row_activated(move |_list, row| {
             // Retrieve the pass entry name (relative label) stored on the row
             let title = non_null_to_string_option(row, "name");
@@ -291,17 +290,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let status = password_status.clone();
         let win = window_title.clone();
         path_entry.connect_apply(move |row| {
-            let path = row.text().to_string(); // Get the text from the entry
+            let path = row.text().to_string();
+            let settings = Preferences::new();
+            let store_root = settings.store();
             if path.is_empty() {
                 let toast = Toast::new("Path cannot be empty");
                 overlay.add_toast(toast);
                 return;
             }
-
-            let settings = Preferences::new();
-            let store_root = settings.store();
-
-            // Show editor page
             status.set_visible(false);
             entry.set_visible(true);
             text.set_visible(true);
@@ -313,13 +309,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             popover_add.popdown();
             popover_git.popdown();
-
-            // Remember where to save later
             unsafe {
                 page.set_data("label", path.clone());
                 page.set_data("root", store_root.clone());
             };
-
             win.set_title("New password");
             win.set_subtitle(&path);
             entry.set_text("");
@@ -398,15 +391,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             win.set_subtitle("Password Store");
             nav.push(&page);
 
-            let prefs = settings.clone();
+            let settings = Preferences::new();
             command.set_text(&settings.command());
             while let Some(child) = list.first_child() {
                 list.remove(&child);
             }
-            for store in prefs.stores() {
+            for store in settings.stores() {
                 let row = ActionRow::builder().title(store.clone()).build();
                 list.append(&row);
             }
+
+            // let add_stores_btn = Button::from_icon_name("list-add-symbolic");
+            // add_stores_btn.add_css_class("flat");
         });
         window.add_action(&action);
     }

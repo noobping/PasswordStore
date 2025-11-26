@@ -1,6 +1,6 @@
 [package]
 name = "passwordstore"
-description = "a password manager that uses the pass command"
+description = "A modern Rust-based password manager for Linux, built with GTK4/Libadwaita"
 authors = ["noobping"]
 version = "0.1.0"
 edition = "2021"

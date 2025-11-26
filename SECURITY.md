@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-This is a hobby project, provided "as is" under the MIT license.  
+This is a hobby project, provided "as is" under the GPL-3.0-only license.  
 Security updates are not guaranteed.
 
 | Version | Supported          |
@@ -13,4 +13,4 @@ Security updates are not guaranteed.
 ## Reporting a Vulnerability
 
 If you discover a security issue, you can open an issue or pull request on GitHub.  
-There is no formal response timeline, but contributions are welcome.
+There is no formal response timeline, but contributions are welcome and appreciated.

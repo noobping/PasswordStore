@@ -5,7 +5,7 @@ use crate::preferences::Preferences;
 use adw::gio::{prelude::*, Menu, MenuItem, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
+    NavigationView, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle, Toast,
 };
 use gtk4::{
     gdk::Display, Box as GtkBox, Builder, Button, ListBox, ListBoxRow, MenuButton, Orientation,
@@ -95,7 +95,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get search_entry");
     let list: ListBox = builder.object("list").expect("Failed to get list");
 
-    load_passwords_async(&list, git_button.clone(), save_button.clone(), window.clone());
+    load_passwords_async(&list, git_button.clone(), save_button.clone());
 
     // Text editor page
     let text_page: NavigationPage = builder
@@ -147,7 +147,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             };
 
             let Some(root) = root else {
-                let toast = Toast::new("Can not open password file form a unknown password store.");
+                let toast =
+                    Toast::new("Can not open password file form a unknown password store.");
                 overlay.add_toast(toast);
                 return;
             };
@@ -460,7 +461,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let text = text_view.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
-        let window_clone = window.clone();
         let back = back_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
@@ -497,7 +497,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let buffer = text.buffer();
                 buffer.set_text("");
             }
-            load_passwords_async(&list_clone, git.clone(), save.clone(), window_clone.clone());
+            load_passwords_async(&list_clone, git.clone(), save.clone());
         });
         window.add_action(&action);
     }
@@ -604,7 +604,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     window
 }
 
-fn load_passwords_async(list: &ListBox, git: Button, save: Button, win: ApplicationWindow) {
+fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -676,7 +676,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, win: Applicat
                     let copy_btn = Button::with_label("Copy password");
                     copy_btn.add_css_class("flat");
                     copy_btn.add_css_class("linked");
-                    let rename_btn = Button::with_label("Rename or move");
+                    let rename_btn = Button::with_label("Rename / move");
                     rename_btn.add_css_class("flat");
                     rename_btn.add_css_class("linked");
                     let delete_btn = Button::with_label("Delete");
@@ -700,6 +700,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, win: Applicat
                     // Store full path on row for later use
                     unsafe {
                         row.set_data("name", item.basename.clone());
+                        row.set_data("dir", item.relative_path.clone());
                         row.set_data("root", item.store_path.clone());
                         row.set_data("label", item.label());
                     }
@@ -722,65 +723,31 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, win: Applicat
                             });
                         });
                     }
-
                     // rename pass file
                     {
                         let entry = item.clone();
-                        let win = win.clone();
+                        let _list = list_clone.clone();
                         rename_btn.connect_clicked(move |_| {
-                            // Create dialog
-                            let dialog = adw::MessageDialog::new(
-                                Some(&win),
-                                None,
-                                Some("Rename or move"),
-                            );
-
-                            // Add an EntryRow as extra child
-                            let entry_row = adw::EntryRow::new();
-                            entry_row.set_title("New path");
-                            entry_row.set_text(&entry.label()); // prefill with current label
-                            dialog.set_extra_child(Some(&entry_row));
-
-                            // Responses
-                            dialog.add_response("cancel", "Cancel");
-                            dialog.add_response("rename", "Rename");
-                            dialog.set_default_response(Some("rename"));
-                            dialog.set_close_response("cancel");
-
-                            // Handle response
-                            let entry_clone = entry.clone();
-                            dialog.connect_response(None, move |dialog, response| {
-                                if response != "rename" {
-                                    dialog.close();
-                                    return;
-                                }
-
-                                let new_label = entry_row.text().to_string();
-                                if new_label.is_empty() {
-                                    return;
-                                }
-
-                                let old_label = entry_clone.label();
-                                let root = entry_clone.store_path.clone();
-
-                                // Don’t move any GTK objects into the thread – only Strings
-                                std::thread::spawn(move || {
+                            // TODO: show an AdwMessageDialog + EntryRow to get new_label from user
+                            let new_label = ""; // user input
+                            let old = entry.clone();
+                            std::thread::spawn({
+                                let root = old.store_path.clone();
+                                move || {
                                     let settings = Preferences::new();
                                     let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("mv")
-                                        .arg(&old_label)
+                                        .arg(&old.label())
                                         .arg(&new_label)
                                         .status();
-                                });
-
-                                dialog.close();
+                                }
                             });
 
-                            dialog.present();
+                            // After success, call load_passwords_async
+                            // (You may want to schedule that back on the main thread with glib::MainContext)
                         });
                     }
-
                     // delete pass file
                     {
                         let entry = item.clone();

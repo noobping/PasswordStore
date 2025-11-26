@@ -668,6 +668,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                     let delete_btn = Button::with_label("Delete");
                     delete_btn.add_css_class("flat");
                     delete_btn.add_css_class("linked");
+                    delete_btn.add_css_class("destructive-action");
 
                     popover_box.append(&open_btn);
                     popover_box.append(&copy_btn);
@@ -749,6 +750,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button) {
                                     let _ = Command::new(settings.command())
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")
+                                        .arg("-rf")
                                         .arg(&label)
                                         .status();
                                 }

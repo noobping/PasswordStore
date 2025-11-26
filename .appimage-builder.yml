@@ -1,9 +1,9 @@
 version: 1
 
 script:
-  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/ AppDir/usr/share/icons/
-  - cp data/passwordstore.png AppDir/usr/share/icons//passwordstore.png
-  - cp -r data/icons/* AppDir/usr/share/icons/
+  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/share/icons/hicolor/symbolic/actions
+  - cp data/passwordstore.png AppDir/usr/share/icons/hicolor/256x256/apps/passwordstore.png
+  - cp -r data/icons/* AppDir/usr/share/icons/hicolor/symbolic/actions/
   - cp target/release/passwordstore AppDir/usr/bin/
 
 AppDir:
@@ -15,6 +15,13 @@ AppDir:
     icon: dev.noobping.passwordstore
     version: "0.1.3"
     exec: usr/bin/passwordstore
+
+  files:
+    include:
+      - /usr/share/icons/Adwaita
+      - /usr/share/icons/hicolor
+      - /usr/share/themes/Adwaita
+      - /usr/share/icons/hicolor
 
   apt:
     arch: amd64

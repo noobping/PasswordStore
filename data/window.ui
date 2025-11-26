@@ -173,12 +173,6 @@
                               </object>
                             </child>
                             <child>
-                              <object class="GtkBox" id="dynamic_box">
-                                <property name="orientation">vertical</property>
-                                <property name="visible">false</property>
-                              </object>
-                            </child>
-                            <child>
                               <object class="GtkTextView" id="text_view">
                                 <property name="visible">false</property>
                                 <property name="editable">true</property>

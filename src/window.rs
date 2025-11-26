@@ -110,9 +110,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let copy_password_button: Button = builder
         .object("copy_password_button")
         .expect("Failed to get copy_password_button");
-    let dynamic_box: GtkBox = builder
-        .object("dynamic_box")
-        .expect("Failed to get dynamic_box");
     let text_view: TextView = builder
         .object("text_view")
         .expect("Failed to get text_view");
@@ -470,8 +467,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         .unwrap_or_else(|| "Unknown pass file".to_string());
                     win.set_subtitle(&label);
                 }
-
-                // TODO: What pass file is opeded?
             } else {
                 back.set_visible(false);
                 save.set_visible(false);

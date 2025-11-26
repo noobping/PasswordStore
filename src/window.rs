@@ -921,10 +921,11 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
+
     for store in settings.stores() {
-        let row = ActionRow::builder().title(store.clone()).build();
-        list.append(&row);
+        append_store_row(list, settings, &store);
     }
+
     let add_row = EntryRow::new();
     add_row.set_title("Add password store (absolute path)");
     add_row.set_show_apply_button(true);
@@ -947,10 +948,37 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
                 eprintln!("Failed to save stores: {err}");
                 return;
             } else {
-                let prep = ActionRow::builder().title(text.clone()).build();
-                list.prepend(&prep);
+                append_store_row(&list, &settings, &text);
                 row.set_text(""); // clear field
             }
         });
     }
+}
+
+fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
+    let row = ActionRow::builder().title(store).build();
+    row.set_activatable(false);
+
+    let delete_btn = Button::from_icon_name("user-trash-symbolic");
+    delete_btn.add_css_class("flat");
+    row.add_suffix(&delete_btn);
+
+    list.append(&row);
+
+    let settings = settings.clone();
+    let list = list.clone();
+    let row_clone = row.clone();
+    let store = store.to_string();
+
+    delete_btn.connect_clicked(move |_| {
+        let mut stores = settings.stores();
+        if let Some(pos) = stores.iter().position(|s| s == &store) {
+            stores.remove(pos);
+            if let Err(err) = settings.set_stores(stores) {
+                eprintln!("Failed to save stores: {err}");
+            } else {
+                list.remove(&row_clone);
+            }
+        }
+    });
 }

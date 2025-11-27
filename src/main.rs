@@ -24,7 +24,7 @@ const APP_ID: &str = "dev.noobping.passwordstore";
 
 fn main() -> glib::ExitCode {
     // Make the compiled GResource available at runtime.
-    gio::resources_register_include!("resources.gresource").expect("Failed to register resources");
+    gio::resources_register_include!("compiled.gresource").expect("Failed to register resources");
 
     // Initialize libadwaita
     adw::init().expect("Failed to initialize libadwaita");

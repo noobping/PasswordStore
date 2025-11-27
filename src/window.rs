@@ -119,9 +119,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let password_entry: PasswordEntryRow = builder
         .object("password_entry")
         .expect("Failed to get password_entry");
+    let otp_entry: PasswordEntryRow = builder
+        .object("otp_entry")
+        .expect("Failed to get otp_entry");
     let copy_password_button: Button = builder
         .object("copy_password_button")
         .expect("Failed to get copy_password_button");
+    let copy_otp_button: Button = builder
+        .object("copy_otp_button")
+        .expect("Failed to get copy_otp_button");
     let text_view: TextView = builder
         .object("text_view")
         .expect("Failed to get text_view");
@@ -135,6 +141,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let git = git_button.clone();
         let save = save_button.clone();
         let entry = password_entry.clone();
+        let otp = otp_entry.clone();
         let status = password_status.clone();
         let text = text_view.clone();
         let overlay = toast_overlay.clone();
@@ -196,9 +203,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             // UI updater: poll the channel from the main thread
             let password_status = status.clone();
             let password_entry = entry.clone();
+            let otp_entry = otp.clone();
             let text_view = text.clone();
             let overlay = overlay.clone();
-
+            let label_for_otp = label.clone();
             glib::timeout_add_local(Duration::from_millis(50), move || {
                 use std::sync::mpsc::TryRecvError;
 
@@ -221,8 +229,29 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         let buffer = text_view.buffer();
                         buffer.set_text(&rest);
 
+                        otp_entry.set_visible(otp);
                         if otp {
-                            // TODO: Run pass command for OTP code
+                            let settings = Preferences::new();
+                            match Command::new(settings.command())
+                                .env("PASSWORD_STORE_DIR", &settings.store())
+                                .args(["otp", &label_for_otp])
+                                .output()
+                            {
+                                Ok(o) if o.status.success() => {
+                                    let code =
+                                        String::from_utf8_lossy(&o.stdout).trim().to_string();
+                                    otp_entry.set_text(&code);
+                                }
+                                Ok(o) => {
+                                    let toast =
+                                        Toast::new(&format!("pass otp failed: {}", o.status));
+                                    overlay.add_toast(toast);
+                                }
+                                Err(e) => {
+                                    let toast = Toast::new(&format!("Failed to run pass otp: {e}"));
+                                    overlay.add_toast(toast);
+                                }
+                            }
                         }
 
                         glib::ControlFlow::Break
@@ -262,11 +291,28 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             }
         });
     }
-    // Copy button on password page
+    // Copy password button on password page
     {
         let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
         let btn = copy_password_button.clone();
+        btn.connect_clicked(move |_| {
+            entry.grab_focus_without_selecting();
+            let text = entry.text().to_string();
+            if let Some(display) = Display::default() {
+                let clipboard = display.clipboard();
+                clipboard.set_text(&text);
+            } else {
+                let toast = Toast::new("No display or clipboard available");
+                overlay.add_toast(toast);
+            }
+        });
+    }
+    // Copy OTP button on password page
+    {
+        let overlay = toast_overlay.clone();
+        let entry = otp_entry.clone();
+        let btn = copy_otp_button.clone();
         btn.connect_clicked(move |_| {
             entry.grab_focus_without_selecting();
             let text = entry.text().to_string();

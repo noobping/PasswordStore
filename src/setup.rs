@@ -7,6 +7,7 @@ use std::{env, fs};
 const APP_ID: &str = "dev.noobping.passwordstore";
 const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
 
+#[cfg(target_os = "linux")]
 pub fn can_install_locally() -> bool {
     let Some(bin) = dirs::executable_dir() else {
         return false;
@@ -23,6 +24,15 @@ pub fn can_install_locally() -> bool {
         && is_writable(&apps)
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn can_install_locally() -> bool {
+    let Some(bin) = dirs::executable_dir() else {
+        return false;
+    };
+    bin.exists() && bin.is_dir() && is_writable(&bin)
+}
+
+#[cfg(target_os = "linux")]
 pub fn is_installed_locally() -> bool {
     let Some(bin) = dirs::executable_dir() else {
         return false;
@@ -37,6 +47,16 @@ pub fn is_installed_locally() -> bool {
     bin.exists() && bin.is_file() && desktop.exists() && desktop.is_file()
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn is_installed_locally() -> bool {
+    let Some(bin) = dirs::executable_dir() else {
+        return false;
+    };
+    let bin = bin.join(env!("CARGO_PKG_NAME"));
+    bin.exists() && bin.is_file()
+}
+
+#[cfg(target_os = "linux")]
 pub fn install_locally() -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
     let exe_path = std::env::current_exe()?;
@@ -56,15 +76,35 @@ pub fn install_locally() -> std::io::Result<()> {
     std::fs::create_dir_all(&bin)?;
     std::fs::create_dir_all(&apps)?;
     std::fs::create_dir_all(&icons)?;
-    std::fs::copy(&exe_path, &dest)?; // Copy the current binary to ~/.local/bin/<appname>
+    std::fs::copy(&exe_path, &dest)?;
 
-    // Ensure it's executable
     let mut perms = std::fs::metadata(&dest)?.permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&dest, perms)?;
 
     write_desktop_file(&dest)?;
     extract_icon(&icons)?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn install_locally() -> std::io::Result<()> {
+    let project = env!("CARGO_PKG_NAME");
+    let exe_path = std::env::current_exe()?;
+    let Some(bin) = dirs::executable_dir() else {
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            "No executable directory found",
+        ));
+    };
+    let dest = bin.join(project);
+    std::fs::create_dir_all(&bin)?;
+    std::fs::copy(&exe_path, &dest)?;
+
+    let mut perms = std::fs::metadata(&dest)?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&dest, perms)?;
 
     Ok(())
 }
@@ -112,6 +152,7 @@ fn is_writable(dir: &Path) -> bool {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn write_desktop_file(exe_path: &Path) -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
     let Some(data) = dirs::data_dir() else {
@@ -148,6 +189,7 @@ Categories=Utility;
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 fn extract_icon(data: &Path) -> std::io::Result<()> {
     let resource_path = format!("{}/icons/{}.svg", RESOURCE_ID, APP_ID);
     println!("Looking up resource: {resource_path}");

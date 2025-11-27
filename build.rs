@@ -7,6 +7,12 @@ fn main() {
     let data_dir = Path::new("data");
     let icons_dir = data_dir.join("icons");
 
+    glib_build_tools::compile_resources(
+        &["data"],
+        "data/resources.xml",
+        "compiled.gresource",
+    );
+
     // Tell Cargo when to rerun the build script
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=data");

@@ -40,6 +40,14 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="find_button">
+                    <property name="icon-name">edit-find-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Find a password</property>
+                    <property name="action-name">win.toggle-find</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="save_button">
                     <property name="icon-name">document-save-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Save password</property>

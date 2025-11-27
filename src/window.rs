@@ -54,6 +54,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let add_button: Button = builder
         .object("add_button")
         .expect("Failed to get add_button");
+    let find_button: Button = builder
+        .object("find_button")
+        .expect("Failed to get find_button");
     let add_button_popover: Popover = builder
         .object("add_button_popover")
         .expect("Failed to get add_button_popover");
@@ -105,6 +108,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     load_passwords_async(
         &list,
         git_button.clone(),
+        find_button.clone(),
         save_button.clone(),
         toast_overlay.clone(),
     );
@@ -138,6 +142,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let page = text_page.clone();
         let back = back_button.clone();
         let add = add_button.clone();
+        let find = find_button.clone();
         let git = git_button.clone();
         let save = save_button.clone();
         let entry = password_entry.clone();
@@ -169,6 +174,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             };
             // Navigate to the text editor page and update header buttons
             add.set_visible(false);
+            find.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
@@ -330,6 +336,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let back = back_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
+        let find = find_button.clone();
         let save = save_button.clone();
         let nav = navigation_view.clone();
         let page = text_page.clone();
@@ -353,6 +360,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             entry.set_visible(true);
             text.set_visible(true);
             add.set_visible(false);
+            find.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
@@ -419,6 +427,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let page = settings_page.clone();
         let back = back_button.clone();
         let add = add_button.clone();
+        let find = find_button.clone();
         let git = git_button.clone();
         let save = save_button.clone();
         let win = window_title.clone();
@@ -427,6 +436,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("open-preferences", None);
         action.connect_activate(move |_, _| {
             add.set_visible(false);
+            find.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(false);
@@ -535,6 +545,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let back = back_button.clone();
         let git = git_button.clone();
         let add = add_button.clone();
+        let find = find_button.clone();
         let save = save_button.clone();
         let nav = navigation_view.clone();
         let action = SimpleAction::new("back", None);
@@ -544,6 +555,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             if stack.n_items() > 1 {
                 back.set_visible(true);
                 add.set_visible(false);
+                find.set_visible(false);
                 let is_text_page = nav
                     .visible_page()
                     .as_ref()
@@ -560,6 +572,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 back.set_visible(false);
                 save.set_visible(false);
                 add.set_visible(true);
+                find.set_visible(true);
 
                 win.set_title("Password Store");
                 win.set_subtitle("Manage your passwords");
@@ -568,7 +581,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let buffer = text.buffer();
                 buffer.set_text("");
             }
-            load_passwords_async(&list_clone, git.clone(), save.clone(), overlay.clone());
+            load_passwords_async(&list_clone, git.clone(), find.clone(), save.clone(), overlay.clone());
         });
         window.add_action(&action);
     }
@@ -666,12 +679,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     window
 }
 
-fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: ToastOverlay) {
+fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button, overlay: ToastOverlay) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
     git.set_visible(false);
+    find.set_visible(true);
 
     let bussy = Spinner::new();
     bussy.start();
@@ -700,6 +714,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
     // Clone GTK widgets on the main thread
     let list_clone = list.clone();
     let git_clone = git.clone();
+    let find_clone = find.clone();
     let save_clone = save.clone();
     let toast_overlay = overlay.clone();
     // Poll the channel from the main thread using a GLib timeout
@@ -838,6 +853,7 @@ fn load_passwords_async(list: &ListBox, git: Button, save: Button, overlay: Toas
 
                 if empty {
                     save_clone.set_visible(false);
+                    find_clone.set_visible(false);
                 }
                 git_clone.set_visible(empty);
                 let project = env!("CARGO_PKG_NAME");

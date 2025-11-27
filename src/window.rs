@@ -217,8 +217,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         }
 
                         let rest = lines.collect::<Vec<_>>().join("\n");
+                        let otp = rest.contains("otpauth://");
                         let buffer = text_view.buffer();
                         buffer.set_text(&rest);
+
+                        if otp {
+                            // TODO: Run pass command for OTP code
+                        }
 
                         glib::ControlFlow::Break
                     }

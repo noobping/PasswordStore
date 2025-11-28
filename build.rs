@@ -1,5 +1,7 @@
 use std::{fs, path::Path};
 
+#[cfg(not(feature = "setup"))]
+pub const APP_ID: &str = concat!("dev.noobping.", env!("CARGO_PKG_NAME"));
 const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
 
 fn main() {
@@ -58,4 +60,30 @@ fn main() {
         "data/resources.xml",   // path to resources.xml
         "resources.gresource",  // output file name (embedded into the binary)
     );
+
+    #[cfg(not(feature = "setup"))]
+    desktop_file();
+}
+
+#[cfg(not(feature = "setup"))]
+fn desktop_file() {
+    use std::{fs, path::Path};
+    let project = env!("CARGO_PKG_NAME");
+    let dir = Path::new(".");
+    let version = env!("CARGO_PKG_VERSION");
+    let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
+    let contents = format!(
+        "[Desktop Entry]
+Type=Application
+Version={version}
+Name={project}
+Comment={comment}
+Exec={project} %u
+Icon={APP_ID}
+Terminal=false
+Categories=Utility;
+"
+    );
+    fs::write(&dir.join(format!("{project}.desktop")), contents)
+        .expect("Can not build desktop file")
 }

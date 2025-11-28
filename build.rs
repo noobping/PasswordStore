@@ -9,12 +9,6 @@ fn main() {
     let data_dir = Path::new("data");
     let icons_dir = data_dir.join("icons");
 
-    glib_build_tools::compile_resources(
-        &["data"],
-        "data/resources.xml",
-        "compiled.gresource",
-    );
-
     // Tell Cargo when to rerun the build script
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=data");
@@ -55,11 +49,7 @@ fn main() {
     fs::write(data_dir.join("resources.xml"), xml).unwrap();
 
     // Compile GResources from data/resources.xml into resources.gresource
-    glib_build_tools::compile_resources(
-        &["data"],              // root directory for resources.xml and files
-        "data/resources.xml",   // path to resources.xml
-        "resources.gresource",  // output file name (embedded into the binary)
-    );
+    glib_build_tools::compile_resources(&["data"], "data/resources.xml", "compiled.gresource");
 
     #[cfg(not(feature = "setup"))]
     desktop_file();

@@ -1,30 +1,29 @@
 #[cfg(feature = "setup")]
 mod setup;
 
+mod config;
 mod item;
 mod methods;
 mod preferences;
 mod window;
 
+use crate::config::APP_ID;
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
 
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use gtk4::{gio, glib};
+use gtk4::{
+    gio::{resources_register_include, ApplicationFlags},
+    glib::ExitCode,
+};
 use std::ffi::OsString;
 use std::process::Command;
 use std::result::Result::Ok;
 
-// #[allow(unused_imports)]
-// use gtk4::prelude::*; // Required for icons in a App Image
-
-const APP_ID: &str = "dev.noobping.passwordstore";
-
-fn main() -> glib::ExitCode {
-    // Make the compiled GResource available at runtime.
-    gio::resources_register_include!("compiled.gresource").expect("Failed to register resources");
+fn main() -> ExitCode {
+    resources_register_include!("compiled.gresource").expect("Failed to register resources");
 
     // Initialize libadwaita
     adw::init().expect("Failed to initialize libadwaita");
@@ -32,7 +31,7 @@ fn main() -> glib::ExitCode {
     // Create the application
     let app = Application::builder()
         .application_id(APP_ID)
-        .flags(gio::ApplicationFlags::HANDLES_OPEN | gio::ApplicationFlags::HANDLES_COMMAND_LINE)
+        .flags(ApplicationFlags::HANDLES_OPEN | ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
     // keyboard shortcuts
@@ -68,11 +67,6 @@ fn main() -> glib::ExitCode {
         let query = non_null_to_string_option(app, "query");
         let win = window::create_main_window(app, query);
         win.present();
-
-        // let display = Display::default().expect("No display");
-        // let theme = IconTheme::for_display(&display);
-        // theme.add_resource_path("/dev/noobping/passwordstore");
-        // theme.add_resource_path("/dev/noobping/passwordstore/icons");
 
         let about_action = SimpleAction::new("about", None);
         about_action.connect_activate(move |_, _| {

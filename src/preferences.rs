@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{env, fs};
 
-const APP_ID: &str = "dev.noobping.passwordstore";
+use crate::config::APP_ID;
 const DEFAULT_CMD: &str = "pass";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

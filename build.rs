@@ -8,10 +8,6 @@ pub const APP_ID: &str = concat!("dev.noobping.", env!("CARGO_PKG_NAME"), ".deve
 #[cfg(not(debug_assertions))]
 pub const APP_ID: &str = concat!("dev.noobping.", env!("CARGO_PKG_NAME"));
 
-#[cfg(debug_assertions)]
-const RESOURCE_ID: &str = concat!("/dev/noobping/", env!("CARGO_PKG_NAME"), "/develop");
-
-#[cfg(not(debug_assertions))]
 const RESOURCE_ID: &str = concat!("/dev/noobping/", env!("CARGO_PKG_NAME"));
 
 fn main() {
@@ -27,30 +23,18 @@ fn main() {
     fs::create_dir_all(&data_dir).unwrap();
     fs::create_dir_all(&icons_dir).unwrap();
 
-    // Collect all .svg icon files in data/icons/
-    let mut icons: Vec<String> = fs::read_dir(&icons_dir)
-        .unwrap()
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            if path.extension()? == "svg" {
-                Some(path.file_name()?.to_string_lossy().into_owned())
-            } else {
-                None
-            }
-        })
-        .collect();
-
+    // Collect all .svg icon files in data/icons/ *recursively*
+    let mut icons: Vec<String> = Vec::new();
+    collect_svg_icons(&icons_dir, &data_dir, &mut icons);
     icons.sort();
 
     // Generate resources.xml content
     let mut xml = String::from("<gresources>\n");
     xml.push_str(&format!("\t<gresource prefix=\"{RESOURCE_ID}\">\n"));
-    // xml.push_str(&format!("\t\t<file>{}.svg</file>\n", APP_ID));
-    // xml.push_str(&format!("\t\t<file>{}.png</file>\n", APP_ID));
 
-    // Add files
+    // Add files (already relative to data/)
     for f in &icons {
-        xml.push_str(&format!("\t\t<file>icons/{}</file>\n", f));
+        xml.push_str(&format!("\t\t<file>{}</file>\n", f));
     }
 
     xml.push_str("\t</gresource>\n</gresources>\n");
@@ -63,6 +47,23 @@ fn main() {
 
     #[cfg(not(feature = "setup"))]
     desktop_file();
+}
+
+/// Recursively collect all `.svg` files under `dir`,
+/// and push their path *relative to `data_dir`* into `icons`.
+fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+
+        if path.is_dir() {
+            collect_svg_icons(&path, data_dir, icons);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("svg") {
+            // Strip "data/" so we end up with e.g. "icons/foo/bar.svg"
+            let rel = path.strip_prefix(data_dir).unwrap();
+            icons.push(rel.to_string_lossy().into_owned());
+        }
+    }
 }
 
 #[cfg(not(feature = "setup"))]

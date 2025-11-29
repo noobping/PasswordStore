@@ -3,6 +3,7 @@ use crate::setup::*;
 #[cfg(feature = "setup")]
 use adw::gio::{Menu, MenuItem};
 
+use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
@@ -689,8 +690,7 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
 
     let bussy = Spinner::new();
     bussy.start();
-    let project = env!("CARGO_PKG_NAME");
-    let symbolic = format!("{project}-symbolic");
+    let symbolic = format!("{APP_ID}-symbolic");
     let placeholder = StatusPage::builder()
         .icon_name(symbolic)
         .child(&bussy)
@@ -856,8 +856,7 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
                     find_clone.set_visible(false);
                 }
                 git_clone.set_visible(empty);
-                let project = env!("CARGO_PKG_NAME");
-                let symbolic = format!("{project}-symbolic");
+                let symbolic = format!("{APP_ID}-symbolic");
                 let placeholder = if empty {
                     StatusPage::builder()
                         .icon_name(symbolic)
@@ -882,8 +881,7 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
             }
             Err(TryRecvError::Disconnected) => {
                 // Worker died
-                let project = env!("CARGO_PKG_NAME");
-                let symbolic = format!("{project}-symbolic");
+                let symbolic = format!("{APP_ID}-symbolic");
                 let placeholder = StatusPage::builder().icon_name(symbolic).build();
                 list_clone.set_placeholder(Some(&placeholder));
 

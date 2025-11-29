@@ -125,7 +125,7 @@
                                 <property name="vexpand">true</property>
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
-                                    <property name="icon-name">passwordstore-symbolic</property>
+                                    <property name="icon-name">dev.noobping.passwordstore-symbolic</property>
                                   </object>
                                 </child>
                               </object>

@@ -6,7 +6,6 @@ use std::{env, fs};
 
 use crate::config::{APP_ID, RESOURCE_ID};
 
-#[cfg(target_os = "linux")]
 pub fn can_install_locally() -> bool {
     let Some(bin) = dirs::executable_dir() else {
         return false;
@@ -23,15 +22,6 @@ pub fn can_install_locally() -> bool {
         && is_writable(&apps)
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn can_install_locally() -> bool {
-    let Some(bin) = dirs::executable_dir() else {
-        return false;
-    };
-    bin.exists() && bin.is_dir() && is_writable(&bin)
-}
-
-#[cfg(target_os = "linux")]
 pub fn is_installed_locally() -> bool {
     let Some(bin) = dirs::executable_dir() else {
         return false;
@@ -46,16 +36,6 @@ pub fn is_installed_locally() -> bool {
     bin.exists() && bin.is_file() && desktop.exists() && desktop.is_file()
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn is_installed_locally() -> bool {
-    let Some(bin) = dirs::executable_dir() else {
-        return false;
-    };
-    let bin = bin.join(env!("CARGO_PKG_NAME"));
-    bin.exists() && bin.is_file()
-}
-
-#[cfg(target_os = "linux")]
 pub fn install_locally() -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
     let exe_path = std::env::current_exe()?;
@@ -87,27 +67,6 @@ pub fn install_locally() -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn install_locally() -> std::io::Result<()> {
-    let project = env!("CARGO_PKG_NAME");
-    let exe_path = std::env::current_exe()?;
-    let Some(bin) = dirs::executable_dir() else {
-        return Err(Error::new(
-            ErrorKind::NotFound,
-            "No executable directory found",
-        ));
-    };
-    let dest = bin.join(project);
-    std::fs::create_dir_all(&bin)?;
-    std::fs::copy(&exe_path, &dest)?;
-
-    let mut perms = std::fs::metadata(&dest)?.permissions();
-    perms.set_mode(0o755);
-    std::fs::set_permissions(&dest, perms)?;
-
-    Ok(())
-}
-
 pub fn uninstall_locally() -> std::io::Result<()> {
     let Some(bin) = dirs::executable_dir() else {
         return Err(Error::new(
@@ -119,7 +78,7 @@ pub fn uninstall_locally() -> std::io::Result<()> {
         return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
     };
     let bin = bin.join(env!("CARGO_PKG_NAME"));
-    let icons = data.join("icons").join("hicolor").join("scalable").join("apps");
+    let icon = data.join("icons").join("hicolor").join("scalable").join("apps");
     let desktop = data
         .join("applications")
         .join(format!("{}.desktop", APP_ID));
@@ -151,7 +110,6 @@ fn is_writable(dir: &Path) -> bool {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn write_desktop_file(apps_path: &Path, bin_path: &Path) -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
     let version = env!("CARGO_PKG_VERSION");
@@ -181,7 +139,6 @@ Categories=Utility;
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
 fn extract_icon(apps_dir: &Path) -> std::io::Result<()> {
     let resource_path = format!("{}/scalable/apps/{}.svg", RESOURCE_ID, APP_ID);
     println!("Looking up resource: {resource_path}");

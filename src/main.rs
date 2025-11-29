@@ -19,7 +19,6 @@ use gtk4::{
     glib::ExitCode,
 };
 use std::ffi::OsString;
-use std::process::Command;
 use std::result::Result::Ok;
 
 fn main() -> ExitCode {
@@ -97,7 +96,7 @@ fn main() -> ExitCode {
 
 fn get_pass_version() -> Option<String> {
     let settings = Preferences::new();
-    let output = Command::new(settings.command())
+    let output = settings.command()
         .arg("--version")
         .output()
         .ok()?;

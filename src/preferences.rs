@@ -1,11 +1,17 @@
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
+use shlex;
 use std::path::PathBuf;
+use std::process::Command;
 use std::{env, fs};
 
 use crate::config::APP_ID;
+
+#[cfg(not(feature = "flatpak"))]
 const DEFAULT_CMD: &str = "pass";
+#[cfg(feature = "flatpak")]
+const DEFAULT_CMD: &str = "flatpak-spawn --host pass";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PreferenceFile {
@@ -31,12 +37,34 @@ impl Preferences {
         Some(Settings::new(APP_ID))
     }
 
-    pub fn command(&self) -> String {
+    pub fn command_value(&self) -> String {
         if let Some(s) = &self.settings {
             s.string("pass-command").to_string()
         } else {
             let cfg = load_file_prefs();
             cfg.pass_command.unwrap_or_else(|| DEFAULT_CMD.to_string())
+        }
+    }
+
+    pub fn command(&self) -> Command {
+        let (program, args) = self.command_parts();
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        cmd
+    }
+
+    fn command_parts(&self) -> (String, Vec<String>) {
+        let cmdline = self.command_value();
+        // Try to split like a shell would
+        if let Some(mut parts) = shlex::split(&cmdline) {
+            if parts.is_empty() {
+                return ("pass".to_string(), Vec::new()); // sane fallback
+            }
+            let program = parts.remove(0);
+            (program, parts)
+        } else {
+            // If shlex fails, fallback to using whole string as program
+            (cmdline, Vec::new())
         }
     }
 

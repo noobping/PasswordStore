@@ -191,7 +191,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let store_for_thread = root.clone();
             thread::spawn(move || {
                 let settings = Preferences::new();
-                let output = Command::new(settings.command())
+                let output = settings.command()
                     .env("PASSWORD_STORE_DIR", store_for_thread)
                     .arg(&label_for_thread)
                     .output();
@@ -238,7 +238,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         otp_entry.set_visible(otp);
                         if otp {
                             let settings = Preferences::new();
-                            match Command::new(settings.command())
+                            match settings.command()
                                 .env("PASSWORD_STORE_DIR", &settings.store())
                                 .args(["otp", &label_for_otp])
                                 .output()
@@ -445,7 +445,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             nav.push(&page);
 
             let settings = Preferences::new();
-            command.set_text(&settings.command());
+            command.set_text(&settings.command_value());
             rebuild_store_list(&list, &settings);
         });
         window.add_action(&action);
@@ -604,7 +604,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &["git", "push"],
                     ];
                     for args in commands {
-                        let output = Command::new(settings.command())
+                        let output = settings.command()
                             .env("PASSWORD_STORE_DIR", &root)
                             .args(args)
                             .output();
@@ -772,7 +772,7 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
                             std::thread::spawn({
                                 move || {
                                     let settings = Preferences::new();
-                                    let _ = Command::new(settings.command())
+                                    let _ = settings.command()
                                         .env("PASSWORD_STORE_DIR", &item.store_path)
                                         .arg("-c")
                                         .arg(&item.label())
@@ -803,7 +803,7 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
 
                             let root = entry.store_path.clone();
                             let settings = Preferences::new();
-                            let status = Command::new(settings.command())
+                            let status = settings.command()
                                 .env("PASSWORD_STORE_DIR", &root)
                                 .arg("mv")
                                 .arg(&old_label)
@@ -836,7 +836,7 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
                                 let label = entry.label();
                                 move || {
                                     let settings = Preferences::new();
-                                    let _ = Command::new(settings.command())
+                                    let _ = settings.command()
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")
                                         .arg("-rf")
@@ -944,7 +944,7 @@ fn write_pass_entry(
     overwrite: bool,
 ) -> Result<(), String> {
     let settings = Preferences::new();
-    let mut cmd: Command = Command::new(settings.command());
+    let mut cmd: Command = settings.command();
     cmd.env("PASSWORD_STORE_DIR", store_root)
         .arg("insert")
         .arg("-m"); // read from stdin

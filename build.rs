@@ -1,7 +1,13 @@
 use std::{fs, path::Path};
 
 #[cfg(not(feature = "setup"))]
+#[cfg(debug_assertions)]
+pub const APP_ID: &str = concat!("dev.noobping.", env!("CARGO_PKG_NAME"), "-dev");
+
+#[cfg(not(feature = "setup"))]
+#[cfg(not(debug_assertions))]
 pub const APP_ID: &str = concat!("dev.noobping.", env!("CARGO_PKG_NAME"));
+
 const RESOURCE_ID: &str = "/dev/noobping/passwordstore";
 
 fn main() {

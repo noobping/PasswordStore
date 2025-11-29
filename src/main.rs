@@ -7,7 +7,7 @@ mod methods;
 mod preferences;
 mod window;
 
-use crate::config::APP_ID;
+use crate::config::{APP_ID, RESOURCE_ID};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
 
@@ -15,8 +15,10 @@ use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
 use gtk4::{
+    gdk::Display,
     gio::{resources_register_include, ApplicationFlags},
     glib::ExitCode,
+    IconTheme,
 };
 use std::ffi::OsString;
 use std::result::Result::Ok;
@@ -26,6 +28,20 @@ fn main() -> ExitCode {
 
     // Initialize libadwaita
     adw::init().expect("Failed to initialize libadwaita");
+
+    let display = Display::default().expect("No display available");
+    let theme = IconTheme::for_display(&display);
+    theme.add_resource_path(RESOURCE_ID);
+    #[cfg(debug_assertions)]
+    {
+        println!("RESOURCE_ID = {RESOURCE_ID}");
+        println!("has git-symbolic? {}", theme.has_icon("git-symbolic"));
+        println!("has left-symbolic? {}", theme.has_icon("left-symbolic"));
+        println!(
+            "has dev.noobping.passwordstore-symbolic? {}",
+            theme.has_icon("dev.noobping.passwordstore-symbolic")
+        );
+    }
 
     // Create the application
     let app = Application::builder()
@@ -96,10 +112,7 @@ fn main() -> ExitCode {
 
 fn get_pass_version() -> Option<String> {
     let settings = Preferences::new();
-    let output = settings.command()
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = settings.command().arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }

@@ -19,5 +19,4 @@
         "PATH": "/var/home/${env:USER}/.cargo/bin:/app/bin:/usr/bin"
     },
     "rust-analyzer.cargo.buildScripts.enable": true,
-    "rust-analyzer.procMacro.enable": false,
 }

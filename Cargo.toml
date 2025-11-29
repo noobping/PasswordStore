@@ -2,7 +2,7 @@
 name = "passwordstore"
 description = "A modern Rust-based password manager for Linux, built with GTK4/Libadwaita"
 authors = ["noobping"]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 [features]

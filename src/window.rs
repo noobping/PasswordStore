@@ -3,6 +3,7 @@ use crate::setup::*;
 #[cfg(feature = "setup")]
 use adw::gio::{Menu, MenuItem};
 
+use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, PassEntry};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
@@ -191,7 +192,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let store_for_thread = root.clone();
             thread::spawn(move || {
                 let settings = Preferences::new();
-                let output = settings.command()
+                let output = settings
+                    .command()
                     .env("PASSWORD_STORE_DIR", store_for_thread)
                     .arg(&label_for_thread)
                     .output();
@@ -238,7 +240,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         otp_entry.set_visible(otp);
                         if otp {
                             let settings = Preferences::new();
-                            match settings.command()
+                            match settings
+                                .command()
                                 .env("PASSWORD_STORE_DIR", &settings.store())
                                 .args(["otp", &label_for_otp])
                                 .output()
@@ -581,7 +584,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let buffer = text.buffer();
                 buffer.set_text("");
             }
-            load_passwords_async(&list_clone, git.clone(), find.clone(), save.clone(), overlay.clone());
+            load_passwords_async(
+                &list_clone,
+                git.clone(),
+                find.clone(),
+                save.clone(),
+                overlay.clone(),
+            );
         });
         window.add_action(&action);
     }
@@ -604,7 +613,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &["git", "push"],
                     ];
                     for args in commands {
-                        let output = settings.command()
+                        let output = settings
+                            .command()
                             .env("PASSWORD_STORE_DIR", &root)
                             .args(args)
                             .output();
@@ -679,7 +689,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     window
 }
 
-fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button, overlay: ToastOverlay) {
+fn load_passwords_async(
+    list: &ListBox,
+    git: Button,
+    find: Button,
+    save: Button,
+    overlay: ToastOverlay,
+) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -689,8 +705,8 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
 
     let bussy = Spinner::new();
     bussy.start();
-    let project = env!("CARGO_PKG_NAME");
-    let symbolic = format!("{project}-symbolic");
+
+    let symbolic = format!("{APP_ID}-symbolic");
     let placeholder = StatusPage::builder()
         .icon_name(symbolic)
         .child(&bussy)
@@ -772,7 +788,8 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
                             std::thread::spawn({
                                 move || {
                                     let settings = Preferences::new();
-                                    let _ = settings.command()
+                                    let _ = settings
+                                        .command()
                                         .env("PASSWORD_STORE_DIR", &item.store_path)
                                         .arg("-c")
                                         .arg(&item.label())
@@ -803,7 +820,8 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
 
                             let root = entry.store_path.clone();
                             let settings = Preferences::new();
-                            let status = settings.command()
+                            let status = settings
+                                .command()
                                 .env("PASSWORD_STORE_DIR", &root)
                                 .arg("mv")
                                 .arg(&old_label)
@@ -836,7 +854,8 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
                                 let label = entry.label();
                                 move || {
                                     let settings = Preferences::new();
-                                    let _ = settings.command()
+                                    let _ = settings
+                                        .command()
                                         .env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")
                                         .arg("-rf")
@@ -856,8 +875,8 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
                     find_clone.set_visible(false);
                 }
                 git_clone.set_visible(empty);
-                let project = env!("CARGO_PKG_NAME");
-                let symbolic = format!("{project}-symbolic");
+
+                let symbolic = format!("{APP_ID}-symbolic");
                 let placeholder = if empty {
                     StatusPage::builder()
                         .icon_name(symbolic)
@@ -882,8 +901,8 @@ fn load_passwords_async(list: &ListBox, git: Button, find: Button, save: Button,
             }
             Err(TryRecvError::Disconnected) => {
                 // Worker died
-                let project = env!("CARGO_PKG_NAME");
-                let symbolic = format!("{project}-symbolic");
+
+                let symbolic = format!("{APP_ID}-symbolic");
                 let placeholder = StatusPage::builder().icon_name(symbolic).build();
                 list_clone.set_placeholder(Some(&placeholder));
 

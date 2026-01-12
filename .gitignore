@@ -5,3 +5,5 @@ AppDir/
 *cache/
 *.AppImage
 *.desktop
+*.sh
+excludelist

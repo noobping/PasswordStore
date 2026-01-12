@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.noobping.passwordstore</id>
+
+  <name>Password Store</name>
+  <summary>A modern Rust-based password manager for Linux, built with GTK4/Libadwaita</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPLv3</project_license>
+
+  <developer id="io.github.noobping">
+    <name>noobping</name>
+  </developer>
+
+  <description>
+    <p>Password Store is a modern client for the standard Unix password manager “pass”.</p>
+    <ul>
+      <li>Browse and search entries</li>
+      <li>Copy passwords to clipboard</li>
+      <li>Works with Git-backed stores</li>
+      <li>Optional OTP support (pass-otp)</li>
+      <li>Supports multiple Password Stores</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.noobping.passwordstore.desktop</launchable>
+
+  <provides>
+    <binary>passwordstore</binary>
+  </provides>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>
+        https://raw.githubusercontent.com/noobping/passwordstore/main/screenshots/menu.png</image>
+      <caption>Password list and main menu</caption>
+    </screenshot>
+    <screenshot>
+      <image>
+        https://raw.githubusercontent.com/noobping/passwordstore/main/screenshots/rename.png</image>
+      <caption>Rename, move or remove a pass file</caption>
+    </screenshot>
+    <screenshot>
+      <image>
+        https://raw.githubusercontent.com/noobping/passwordstore/main/screenshots/file.png</image>
+      <caption>Pass file</caption>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.2" date="2026-01-12">
+      <description>
+        <p>Initial AppImage release.</p>
+      </description>
+    </release>
+  </releases>
+
+  <url type="homepage">https://github.com/noobping/passwordstore</url>
+  <url type="bugtracker">https://github.com/noobping/passwordstore/issues</url>
+
+  <content_rating type="oars-1.1"/>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>password</keyword>
+    <keyword>pass</keyword>
+    <keyword>otp</keyword>
+    <keyword>security</keyword>
+  </keywords>
+</component>

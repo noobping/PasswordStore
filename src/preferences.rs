@@ -50,6 +50,23 @@ impl Preferences {
         let (program, args) = self.command_parts();
         let mut cmd = Command::new(program);
         cmd.args(args);
+
+        if let Ok(appdir) = env::var("APPDIR") {
+            cmd.env(
+                "PATH",
+                format!("{appdir}/usr/bin:{}", env::var("PATH").unwrap_or_default()),
+            );
+            cmd.env(
+                "LD_LIBRARY_PATH",
+                format!("{appdir}/usr/lib/x86_64-linux-gnu:{appdir}/usr/lib"),
+            );
+            cmd.env("PASSWORD_STORE_ENABLE_EXTENSIONS", "true");
+            cmd.env(
+                "PASSWORD_STORE_EXTENSIONS_DIR",
+                format!("{appdir}/usr/lib/password-store/extensions"),
+            );
+        }
+
         cmd
     }
 
@@ -68,8 +85,14 @@ impl Preferences {
         }
     }
 
+    fn expand_path(s: &str) -> String {
+        shellexpand::full(s)
+            .map(|c| c.into_owned())
+            .unwrap_or_else(|_| s.to_string())
+    }
+
     pub fn store(&self) -> String {
-        self.stores().into_iter().next().unwrap_or_default()
+        Self::expand_path(&self.stores().into_iter().next().unwrap_or_default())
     }
 
     pub fn stores(&self) -> Vec<String> {

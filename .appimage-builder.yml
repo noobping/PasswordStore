@@ -1,19 +1,20 @@
 version: 1
 
 script:
-  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/ AppDir/usr/share/icons/
-  - cp data/passwordstore.png AppDir/usr/share/icons/passwordstore.png
-  - cp -r data/icons/* AppDir/usr/share/icons/
+  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/{256x256,scalable,symbolic}/apps
+  - cp data/256x256/apps/io.github.noobping.passwordstore.png AppDir/usr/share/icons/hicolor/256x256/apps/
+  - cp -r data/scalable/apps/* AppDir/usr/share/icons/hicolor/scalable/apps/
+  - cp -r data/symbolic/apps/* AppDir/usr/share/icons/hicolor/symbolic/apps/
   - cp target/release/passwordstore AppDir/usr/bin/
 
 AppDir:
   path: ./AppDir
 
   app_info:
-    id: dev.noobping.passwordstore
+    id: io.github.noobping.passwordstore
     name: "Password Store"
-    icon: dev.noobping.passwordstore
-    version: "0.1.2"
+    icon: io.github.noobping.passwordstore
+    version: "1.0.5"
     exec: usr/bin/passwordstore
 
   apt:
@@ -22,27 +23,14 @@ AppDir:
       - sourceline: "deb http://deb.debian.org/debian trixie main"
         key_url: "https://ftp-master.debian.org/keys/archive-key-12.asc"
     include:
+      - ca-certificates
+      - libcurl4
+      - libssl3
       - git
-      - gnupg2
-      - libadwaita-1-dev
-      - libcairo2-dev
-      - libglib2.0-dev
-      - libgtk-4-dev
-      - libpango1.0-dev
-      - libxkbcommon-dev
       - pass
       - pass-otp
-      - pinentry-gnome3
-      - pkg-config
-    exclude:
-      - build-essential
-      - libssl3
-      - libcrypto3
-      - libcurl4
-      - cmake
-      - gcc
-      - clang
-      - g++
+      - oathtool
+      - liboath0t64
 
 AppImage:
   arch: x86_64

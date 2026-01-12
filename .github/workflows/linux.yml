@@ -1,0 +1,130 @@
+name: Linux
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            appimage_arch: x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            appimage_arch: aarch64
+
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: write
+
+    env:
+      APP_ID: io.github.noobping.passwordstore
+      PKG_CONFIG_ALLOW_CROSS: 1
+      CARGO_TERM_COLOR: always
+      BIN_NAME: passwordstore
+      PKG_CONFIG_PATH: /usr/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Version
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "TAG_NAME=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            latest_tag=$(git describe --tags --abbrev=0)
+            echo "TAG_NAME=$latest_tag" >> "$GITHUB_ENV"
+          fi
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential \
+            cargo \
+            clang \
+            gcc \
+            gettext \
+            libadwaita-1-dev \
+            libcairo2-dev \
+            libgdk-pixbuf2.0-dev \
+            libglib2.0-dev \
+            libgpg-error-dev \
+            libgtk-4-dev \
+            libpango1.0-dev \
+            librust-gtk4-dev \
+            librust-libadwaita-dev \
+            libssl-dev \
+            make \
+            mold \
+            nettle-dev \
+            pkg-config \
+            pkgconf
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Locales
+        run: |
+          for f in po/*.po; do
+            lang=$(basename "$f" .po)
+            mkdir -p "AppDir/usr/share/locale/$lang/LC_MESSAGES"
+            msgfmt "$f" -o "AppDir/usr/share/locale/$lang/LC_MESSAGES/$APP_ID.mo"
+          done
+
+      - name: Build AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ matrix.appimage_arch }}" == "x86_64" ]]; then
+            docker run --rm \
+              -v "${PWD}:/project" -w /project \
+              appimagecrafters/appimage-builder:latest \
+              appimage-builder --skip-test --recipe .appimage-builder.yml
+          else
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip python3-venv patchelf
+
+            python3 -m pip install --user --upgrade pip
+            python3 -m pip install --user appimage-builder
+
+            export PATH="$HOME/.local/bin:$PATH"
+            appimage-builder --skip-test --recipe .appimage-builder.yml
+          fi
+
+      - name: Collect AppImage
+        if: ${{ env.TAG_NAME != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(ls -1 *.AppImage | head -n 1)"
+          out="${BIN_NAME}-${TAG_NAME}-${{ matrix.appimage_arch }}.AppImage"
+          mv "$appimage" "$out"
+          echo "APPIMAGE_FILE=$out" >> "$GITHUB_ENV"
+
+      - name: Release
+        if: ${{ env.TAG_NAME != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: ${{ env.APPIMAGE_FILE }}
+          overwrite_files: true

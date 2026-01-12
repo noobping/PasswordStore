@@ -169,7 +169,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 return;
             };
             let Some(root) = root else {
-                let toast = Toast::new("Can not open password file form a unknown password store.");
+                let toast = Toast::new("Unknown password store.");
                 overlay.add_toast(toast);
                 return;
             };
@@ -252,12 +252,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                     otp_entry.set_text(&code);
                                 }
                                 Ok(o) => {
-                                    let toast =
-                                        Toast::new(&format!("pass otp failed: {}", o.status));
-                                    overlay.add_toast(toast);
+                                    let error = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                                    if !error.is_empty() {
+                                        let toast = Toast::new(&error);
+                                        overlay.add_toast(toast);
+                                    }
                                 }
                                 Err(e) => {
-                                    let toast = Toast::new(&format!("Failed to run pass otp: {e}"));
+                                    let toast = Toast::new(&format!("OTP Failed: {e}"));
                                     overlay.add_toast(toast);
                                 }
                             }
@@ -461,7 +463,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("install-locally", None);
         action.connect_activate(move |_, _| {
             if !can_install_locally() {
-                let toast = Toast::new(&format!("Can not install this App locally"));
+                let toast = Toast::new(&format!("Can not install this App"));
                 overlay.add_toast(toast);
                 return;
             }

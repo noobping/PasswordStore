@@ -12,7 +12,7 @@ use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
-use gtk4::{
+use adw::gtk::{
     gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry, Spinner,
     TextView,
 };

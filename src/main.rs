@@ -15,7 +15,7 @@ use crate::preferences::Preferences;
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use gtk4::{
+use adw::gtk::{
     gdk::Display,
     gio::{resources_register_include, ApplicationFlags},
     glib::ExitCode,

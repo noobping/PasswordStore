@@ -13,8 +13,7 @@ libripasso = ["ripasso"]
 [dependencies]
 anyhow = "^1.0"
 thiserror = "^2.0"
-gtk4 = { version = "^0.10", package = "gtk4" }
-adw = { version = "^0.8.0", package = "libadwaita", features = ["v1_8"] }
+adw = { version = "^0.8.0", package = "libadwaita", features = ["v1_5"] }
 walkdir = "^2.5.0"
 toml = "^0.9.8"
 serde = { version = "^1.0.228", features = ["derive"] }

@@ -1,4 +1,5 @@
 ![License](https://img.shields.io/badge/license-GPLv3+-blue.svg)
+[![Linux](https://github.com/noobping/PasswordStore/actions/workflows/linux.yml/badge.svg)](https://github.com/noobping/PasswordStore/actions/workflows/linux.yml)
 
 # Password Store
 

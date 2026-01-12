@@ -24,6 +24,8 @@ A graphical frontend for the `pass` password store with the goal of offering **f
 
 ![edit pass file](screenshots/file.png)
 
+![preferences](screenshots/preferences.png?raw=true)
+
 ## Cargo Features
 
 ```text

@@ -37,6 +37,7 @@ impl Preferences {
         Some(Settings::new(APP_ID))
     }
 
+    #[cfg(any(feature = "setup", feature = "host"))]
     pub fn command_value(&self) -> String {
         if let Some(s) = &self.settings {
             s.string("pass-command").to_string()
@@ -45,6 +46,9 @@ impl Preferences {
             cfg.pass_command.unwrap_or_else(|| DEFAULT_CMD.to_string())
         }
     }
+
+    #[cfg(not(any(feature = "setup", feature = "host")))]
+    pub fn command_value(&self) -> String { DEFAULT_CMD.into() }
 
     pub fn command(&self) -> Command {
         let (program, args) = self.command_parts();
@@ -117,6 +121,7 @@ impl Preferences {
         self.stores().into_iter().map(PathBuf::from).collect()
     }
 
+    #[cfg(any(feature = "setup", feature = "host"))]
     pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
             s.set_string("pass-command", cmd)

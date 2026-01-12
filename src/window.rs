@@ -48,6 +48,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         primary_menu.append_item(&item);
     }
 
+    #[cfg(any(feature = "setup", feature = "host"))]
+    let backend_preferences: adw::PreferencesGroup = builder
+        .object("backend_preferences")
+        .expect("Failed to get backend_preferences");
+    #[cfg(any(feature = "setup", feature = "host"))]
+    backend_preferences.set_visible(true);
+
     // Headerbar + top controls
     let back_button: Button = builder
         .object("back_button")
@@ -86,10 +93,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get toast_overlay");
 
     // Settings
+    #[cfg(any(feature = "setup", feature = "host"))]
     let settings = Preferences::new();
     let settings_page: NavigationPage = builder
         .object("settings_page")
         .expect("Failed to get settings page");
+    #[cfg(any(feature = "setup", feature = "host"))]
     let pass_row: EntryRow = builder
         .object("pass_command_row")
         .expect("Failed to get pass row");
@@ -284,6 +293,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     // Pass command preference
+    #[cfg(any(feature = "setup", feature = "host"))]
     {
         let overlay = toast_overlay.clone();
         let preferences = settings.clone();
@@ -436,6 +446,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let git = git_button.clone();
         let save = save_button.clone();
         let win = window_title.clone();
+        #[cfg(any(feature = "setup", feature = "host"))]
         let command = pass_row.clone();
         let list = password_stores.clone();
         let action = SimpleAction::new("open-preferences", None);
@@ -450,6 +461,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             nav.push(&page);
 
             let settings = Preferences::new();
+            #[cfg(any(feature = "setup", feature = "host"))]
             command.set_text(&settings.command_value());
             rebuild_store_list(&list, &settings);
         });

@@ -238,7 +238,8 @@
                           <object class="AdwPreferencesPage">
 
                             <child>
-                              <object class="AdwPreferencesGroup">
+                              <object class="AdwPreferencesGroup" id="backend_preferences">
+                                <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
                                 <property name="description" translatable="yes">The method that your system uses to run the password manager. Usually this is just the pass command, but you can replace it with a custom wrapper (for example, a container or script).</property>
                                 <child>

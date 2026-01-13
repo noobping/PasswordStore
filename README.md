@@ -10,7 +10,6 @@ A graphical frontend for the `pass` password store with the goal of offering **f
 ## Features
 
 - Uses the existing [`pass`](https://www.passwordstore.org/) command-line password store
-<!-- - Or use the integrated backend via [`ripasso`](https://crates.io/crates/ripasso) (no external `pass` binary required) -->
 - Can run as a **standalone/local app** or **system-wide install**
 - Written in Rust, using GTK4 + Libadwaita
 - Responsive layout for desktop and mobile form factors

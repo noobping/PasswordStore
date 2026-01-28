@@ -6,7 +6,7 @@ script:
   - cp -r data/scalable/apps/* AppDir/usr/share/icons/hicolor/scalable/apps/
   - cp -r data/symbolic/apps/* AppDir/usr/share/icons/hicolor/symbolic/apps/
   - cp target/release/passwordstore AppDir/usr/bin/
-  - cp data/metainfo.xml AppDir/usr/share/metainfo/io.github.noobping.passwordstore.metainfo.xml
+  - cp data/metainfo.xml AppDir/usr/share/metainfo/io.github.noobping.passwordstore.appdata.xml
 
 AppDir:
   path: ./AppDir

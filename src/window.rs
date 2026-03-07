@@ -20,8 +20,8 @@ use adw::{
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use adw::gtk::{
-    gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry, Spinner,
-    TextView,
+    Box as GtkBox, Widget, gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton,
+    Popover, SearchEntry, Spinner, TextView,
 };
 use std::cell::RefCell;
 use std::io;
@@ -34,6 +34,54 @@ use std::thread;
 use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
+
+const USERNAME_FIELD_KEYS: [&str; 3] = ["login", "username", "user"];
+const SENSITIVE_FIELD_HINTS: [&str; 8] = [
+    "pass",
+    "secret",
+    "token",
+    "pin",
+    "key",
+    "code",
+    "phrase",
+    "credential",
+];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DynamicFieldTemplate {
+    raw_key: String,
+    title: String,
+    separator_spacing: String,
+    sensitive: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum StructuredPassLine {
+    Field(DynamicFieldTemplate),
+    Preserved(String),
+}
+
+#[derive(Clone)]
+enum DynamicFieldRow {
+    Plain(EntryRow),
+    Secret(PasswordEntryRow),
+}
+
+impl DynamicFieldRow {
+    fn text(&self) -> String {
+        match self {
+            Self::Plain(row) => row.text().to_string(),
+            Self::Secret(row) => row.text().to_string(),
+        }
+    }
+
+    fn widget(&self) -> Widget {
+        match self {
+            Self::Plain(row) => row.clone().upcast(),
+            Self::Secret(row) => row.clone().upcast(),
+        }
+    }
+}
 
 #[derive(Clone, Default)]
 struct GitOperationControl {
@@ -75,6 +123,192 @@ fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     overlay.add_toast(toast);
 }
 
+fn is_username_field_key(key: &str) -> bool {
+    let key = key.trim().to_ascii_lowercase();
+    USERNAME_FIELD_KEYS.contains(&key.as_str())
+}
+
+fn is_otpauth_line(key: &str, value: &str, raw_line: &str) -> bool {
+    let key = key.trim().to_ascii_lowercase();
+    key == "otpauth" || value.contains("otpauth://") || raw_line.contains("otpauth://")
+}
+
+fn is_sensitive_field(key: &str) -> bool {
+    let key = key.trim().to_ascii_lowercase();
+    SENSITIVE_FIELD_HINTS
+        .iter()
+        .any(|hint| key.contains(hint))
+}
+
+fn clear_box_children(box_widget: &GtkBox) {
+    while let Some(child) = box_widget.first_child() {
+        box_widget.remove(&child);
+    }
+}
+
+fn add_copy_suffix<W: IsA<Widget>>(widget: &W, text: impl Fn() -> String + 'static, overlay: &ToastOverlay)
+where
+    W: Clone,
+{
+    let button = Button::from_icon_name("edit-copy-symbolic");
+    button.set_tooltip_text(Some("Copy value"));
+    button.add_css_class("flat");
+    let overlay = overlay.clone();
+    button.connect_clicked(move |_| {
+        let text = text();
+        if let Some(display) = Display::default() {
+            let clipboard = display.clipboard();
+            clipboard.set_text(&text);
+        } else {
+            show_clipboard_unavailable_toast(&overlay);
+        }
+    });
+
+    if let Some(row) = widget.dynamic_cast_ref::<EntryRow>() {
+        row.add_suffix(&button);
+    } else if let Some(row) = widget.dynamic_cast_ref::<PasswordEntryRow>() {
+        row.add_suffix(&button);
+    }
+}
+
+fn apply_field_row_style<W: IsA<Widget>>(widget: &W) {
+    widget.set_margin_start(15);
+    widget.set_margin_end(15);
+    widget.set_margin_bottom(6);
+}
+
+fn build_dynamic_field_row(
+    template: &DynamicFieldTemplate,
+    value: &str,
+    overlay: &ToastOverlay,
+) -> DynamicFieldRow {
+    if template.sensitive {
+        let row = PasswordEntryRow::new();
+        row.set_title(&template.title);
+        row.set_text(value);
+        apply_field_row_style(&row);
+        let row_clone = row.clone();
+        add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
+        DynamicFieldRow::Secret(row)
+    } else {
+        let row = EntryRow::new();
+        row.set_title(&template.title);
+        row.set_text(value);
+        apply_field_row_style(&row);
+        let row_clone = row.clone();
+        add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
+        DynamicFieldRow::Plain(row)
+    }
+}
+
+fn parse_structured_pass_lines(contents: &str) -> (String, Vec<(StructuredPassLine, Option<String>)>) {
+    let mut lines = contents.lines();
+    let password = lines.next().unwrap_or_default().to_string();
+    let structured = lines
+        .map(|line| {
+            let Some((raw_key, raw_value)) = line.split_once(':') else {
+                return (StructuredPassLine::Preserved(line.to_string()), None);
+            };
+
+            let title = raw_key.trim().to_string();
+            if title.is_empty() {
+                return (StructuredPassLine::Preserved(line.to_string()), None);
+            }
+
+            if is_username_field_key(&title) || is_otpauth_line(&title, raw_value, line) {
+                return (StructuredPassLine::Preserved(line.to_string()), None);
+            }
+
+            let separator_spacing = raw_value
+                .chars()
+                .take_while(|c| c.is_ascii_whitespace())
+                .collect::<String>();
+            let value = raw_value
+                .trim_start_matches(|c: char| c.is_ascii_whitespace())
+                .to_string();
+            let template = DynamicFieldTemplate {
+                raw_key: raw_key.to_string(),
+                title,
+                separator_spacing,
+                sensitive: is_sensitive_field(raw_key),
+            };
+
+            (StructuredPassLine::Field(template), Some(value))
+        })
+        .collect();
+
+    (password, structured)
+}
+
+fn rebuild_dynamic_fields(
+    box_widget: &GtkBox,
+    overlay: &ToastOverlay,
+    templates_state: &Rc<RefCell<Vec<StructuredPassLine>>>,
+    rows_state: &Rc<RefCell<Vec<DynamicFieldRow>>>,
+    contents: &str,
+) {
+    clear_box_children(box_widget);
+    templates_state.borrow_mut().clear();
+    rows_state.borrow_mut().clear();
+
+    let (_, structured_lines) = parse_structured_pass_lines(contents);
+    let mut rows = Vec::new();
+    let mut templates = Vec::new();
+
+    for (line, value) in structured_lines {
+        match line {
+            StructuredPassLine::Field(template) => {
+                let row = build_dynamic_field_row(&template, value.as_deref().unwrap_or_default(), overlay);
+                box_widget.append(&row.widget());
+                rows.push(row);
+                templates.push(StructuredPassLine::Field(template));
+            }
+            StructuredPassLine::Preserved(line) => {
+                templates.push(StructuredPassLine::Preserved(line));
+            }
+        }
+    }
+
+    box_widget.set_visible(!rows.is_empty());
+    *rows_state.borrow_mut() = rows;
+    *templates_state.borrow_mut() = templates;
+}
+
+fn structured_pass_contents(
+    password: &str,
+    templates: &[StructuredPassLine],
+    rows: &[DynamicFieldRow],
+) -> String {
+    let values = rows.iter().map(DynamicFieldRow::text).collect::<Vec<_>>();
+    structured_pass_contents_from_values(password, templates, &values)
+}
+
+fn structured_pass_contents_from_values(
+    password: &str,
+    templates: &[StructuredPassLine],
+    values: &[String],
+) -> String {
+    let mut output = String::new();
+    output.push_str(password);
+
+    let mut row_index = 0usize;
+    for line in templates {
+        output.push('\n');
+        match line {
+            StructuredPassLine::Field(template) => {
+                output.push_str(&template.raw_key);
+                output.push(':');
+                output.push_str(&template.separator_spacing);
+                output.push_str(values[row_index].as_str());
+                row_index += 1;
+            }
+            StructuredPassLine::Preserved(line) => output.push_str(line),
+        }
+    }
+
+    output
+}
+
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
     let Some(action) = window.lookup_action(name) else {
         return;
@@ -90,6 +324,7 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "open-new-password",
         "toggle-find",
         "open-git",
+        "open-raw-pass-file",
         "git-clone",
         "save-password",
         "synchronize",
@@ -210,6 +445,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let text_page: NavigationPage = builder
         .object("text_page")
         .expect("Failed to get text_page");
+    let raw_text_page: NavigationPage = builder
+        .object("raw_text_page")
+        .expect("Failed to get raw_text_page");
     let password_status: StatusPage = builder
         .object("password_status")
         .expect("Failed to get password_status");
@@ -234,9 +472,17 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let text_view: TextView = builder
         .object("text_view")
         .expect("Failed to get text_view");
+    let dynamic_fields_box: GtkBox = builder
+        .object("dynamic_fields_box")
+        .expect("Failed to get dynamic_fields_box");
+    let open_raw_button: Button = builder
+        .object("open_raw_button")
+        .expect("Failed to get open_raw_button");
     let log_view: TextView = builder
         .object("log_view")
         .expect("Failed to get log_view");
+    let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
+    let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
 
     // Selecting an item from the list
     {
@@ -252,6 +498,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let otp = otp_entry.clone();
         let status = password_status.clone();
         let text = text_view.clone();
+        let dynamic_box = dynamic_fields_box.clone();
+        let raw_button = open_raw_button.clone();
+        let structured_templates = structured_templates.clone();
+        let dynamic_rows = dynamic_field_rows.clone();
         let overlay = toast_overlay.clone();
         let win = window_title.clone();
         list.connect_row_activated(move |_list, row| {
@@ -281,10 +531,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             save.set_visible(true);
             win.set_title(opened_pass_file.title());
             win.set_subtitle(&pass_label);
-            text.set_visible(false);
             entry.set_visible(false);
             sync_username_row(&username, Some(&opened_pass_file));
             otp.set_visible(false);
+            dynamic_box.set_visible(false);
+            raw_button.set_visible(false);
             status.set_visible(true);
             nav.push(&page);
 
@@ -322,6 +573,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let username_entry = username.clone();
             let otp_entry = otp.clone();
             let text_view = text.clone();
+            let dynamic_box = dynamic_box.clone();
+            let raw_button = raw_button.clone();
+            let structured_templates = structured_templates.clone();
+            let dynamic_rows = dynamic_rows.clone();
             let overlay = overlay.clone();
             let opened_pass_file_for_result = opened_pass_file.clone();
             let label_for_otp = pass_label.clone();
@@ -341,22 +596,21 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         );
                         password_status.set_visible(false);
                         password_entry.set_visible(true);
-                        text_view.set_visible(true);
+                        raw_button.set_visible(true);
 
-                        // Split into first line (password) and rest (notes)
-                        let mut lines = output.lines();
-                        if let Some(first) = lines.next() {
-                            password_entry.set_text(first);
-                        } else {
-                            password_entry.set_text("");
-                        }
-
-                        let rest = lines.collect::<Vec<_>>().join("\n");
-                        let otp = rest.contains("otpauth://");
-                        let buffer = text_view.buffer();
-                        buffer.set_text(&rest);
+                        let (password, _) = parse_structured_pass_lines(&output);
+                        password_entry.set_text(&password);
+                        text_view.buffer().set_text(&output);
+                        rebuild_dynamic_fields(
+                            &dynamic_box,
+                            &overlay,
+                            &structured_templates,
+                            &dynamic_rows,
+                            &output,
+                        );
                         sync_username_row(&username_entry, updated_pass_file.as_ref());
 
+                        let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
                         otp_entry.set_visible(otp);
                         if otp {
                             let settings = Preferences::new();
@@ -494,6 +748,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let username = username_entry.clone();
         let otp = otp_entry.clone();
         let text = text_view.clone();
+        let dynamic_box = dynamic_fields_box.clone();
+        let raw_button = open_raw_button.clone();
+        let structured_templates = structured_templates.clone();
+        let dynamic_rows = dynamic_field_rows.clone();
         let status = password_status.clone();
         let win = window_title.clone();
         path_entry.connect_apply(move |row| {
@@ -511,7 +769,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             entry.set_visible(true);
             sync_username_row(&username, get_opened_pass_file().as_ref());
             otp.set_visible(false);
-            text.set_visible(true);
+            dynamic_box.set_visible(false);
+            raw_button.set_visible(true);
             add.set_visible(false);
             find.set_visible(false);
             git.set_visible(false);
@@ -525,16 +784,24 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             win.set_subtitle(&path);
             entry.set_text("");
             otp.set_text("");
-            let buffer = text.buffer();
-            buffer.set_text("");
+            clear_box_children(&dynamic_box);
+            structured_templates.borrow_mut().clear();
+            dynamic_rows.borrow_mut().clear();
+            text.buffer().set_text("");
         });
     }
 
     // actions
     {
+        let nav = navigation_view.clone();
+        let raw_page = raw_text_page.clone();
         let entry = password_entry.clone();
         let username = username_entry.clone();
+        let otp = otp_entry.clone();
         let text = text_view.clone();
+        let dynamic_box = dynamic_fields_box.clone();
+        let structured_templates = structured_templates.clone();
+        let dynamic_rows = dynamic_field_rows.clone();
         let overlay = toast_overlay.clone();
         let action = SimpleAction::new("save-password", None);
         action.connect_activate(move |_, _| {
@@ -543,26 +810,67 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             };
-            let buffer = text.buffer();
-            let (start, end) = buffer.bounds();
-            let notes = buffer.text(&start, &end, false).to_string();
-            let password = entry.text().to_string();
+
+            let raw_visible = nav
+                .visible_page()
+                .as_ref()
+                .map(|page| page == &raw_page)
+                .unwrap_or(false);
+
+            let contents = if raw_visible {
+                let buffer = text.buffer();
+                let (start, end) = buffer.bounds();
+                buffer.text(&start, &end, false).to_string()
+            } else {
+                structured_pass_contents(
+                    &entry.text(),
+                    &structured_templates.borrow(),
+                    &dynamic_rows.borrow(),
+                )
+            };
+
+            let password = contents.lines().next().unwrap_or_default().to_string();
             if password.is_empty() {
                 let toast = Toast::new("Enter a password before saving.");
                 overlay.add_toast(toast);
                 return;
             }
             let label = pass_file.label();
-            match write_pass_entry(pass_file.store_path(), &label, &password, &notes, true) {
+            match write_pass_entry(pass_file.store_path(), &label, &contents, true) {
                 Ok(()) => {
-                    let contents = if notes.is_empty() {
-                        password.clone()
-                    } else {
-                        format!("{password}\n{notes}")
-                    };
                     let updated_pass_file =
                         refresh_opened_pass_file_from_contents(&pass_file, &contents);
+                    text.buffer().set_text(&contents);
+                    rebuild_dynamic_fields(
+                        &dynamic_box,
+                        &overlay,
+                        &structured_templates,
+                        &dynamic_rows,
+                        &contents,
+                    );
+                    entry.set_text(&password);
                     sync_username_row(&username, updated_pass_file.as_ref());
+                    let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
+                    otp.set_visible(otp_visible);
+                    if otp_visible {
+                        let settings = Preferences::new();
+                        let mut cmd = settings.command();
+                        cmd.env("PASSWORD_STORE_DIR", pass_file.store_path())
+                            .args(["otp", &label]);
+                        match run_command_output(
+                            &mut cmd,
+                            "Read OTP code",
+                            CommandLogOptions::SENSITIVE,
+                        ) {
+                            Ok(output) if output.status.success() => {
+                                let code = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                                otp.set_text(&code);
+                            }
+                            _ => otp.set_text(""),
+                        }
+                    } else {
+                        otp.set_text("");
+                    }
                     let toast = Toast::new("Changes saved.");
                     overlay.add_toast(toast);
                 }
@@ -619,6 +927,53 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("open-log", None);
         action.connect_activate(move |_, _| {
             show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
+        });
+        window.add_action(&action);
+    }
+
+    {
+        let nav = navigation_view.clone();
+        let page = raw_text_page.clone();
+        let back = back_button.clone();
+        let add = add_button.clone();
+        let find = find_button.clone();
+        let git = git_button.clone();
+        let save = save_button.clone();
+        let win = window_title.clone();
+        let entry = password_entry.clone();
+        let text = text_view.clone();
+        let structured_templates = structured_templates.clone();
+        let dynamic_rows = dynamic_field_rows.clone();
+        let action = SimpleAction::new("open-raw-pass-file", None);
+        action.connect_activate(move |_, _| {
+            let contents = structured_pass_contents(
+                &entry.text(),
+                &structured_templates.borrow(),
+                &dynamic_rows.borrow(),
+            );
+            text.buffer().set_text(&contents);
+
+            add.set_visible(false);
+            find.set_visible(false);
+            git.set_visible(false);
+            back.set_visible(true);
+            save.set_visible(true);
+            win.set_title("Raw Pass File");
+            if let Some(pass_file) = get_opened_pass_file() {
+                let label = pass_file.label();
+                win.set_subtitle(&label);
+            } else {
+                win.set_subtitle("Password Store");
+            }
+
+            let already_visible = nav
+                .visible_page()
+                .as_ref()
+                .map(|visible| visible == &page)
+                .unwrap_or(false);
+            if !already_visible {
+                nav.push(&page);
+            }
         });
         window.add_action(&action);
     }
@@ -694,6 +1049,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let list_clone = list.clone();
         let nav = navigation_view.clone();
         let text_page = text_page.clone();
+        let raw_text_page = raw_text_page.clone();
         let settings_page = settings_page.clone();
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
@@ -785,6 +1141,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let list = list_clone.clone();
             let nav = nav.clone();
             let text_page = text_page.clone();
+            let raw_text_page = raw_text_page.clone();
             let settings_page = settings_page.clone();
             let log_page = log_page.clone();
             let busy_page = busy_page.clone();
@@ -805,6 +1162,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &nav,
                         &busy_page,
                         &text_page,
+                        &raw_text_page,
                         &settings_page,
                         &log_page,
                         &back,
@@ -835,6 +1193,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &nav,
                         &busy_page,
                         &text_page,
+                        &raw_text_page,
                         &settings_page,
                         &log_page,
                         &back,
@@ -856,6 +1215,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &nav,
                         &busy_page,
                         &text_page,
+                        &raw_text_page,
                         &settings_page,
                         &log_page,
                         &back,
@@ -878,6 +1238,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &nav,
                         &busy_page,
                         &text_page,
+                        &raw_text_page,
                         &settings_page,
                         &log_page,
                         &back,
@@ -914,6 +1275,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let overlay = toast_overlay.clone();
         let page = text_page.clone();
+        let raw_page = raw_text_page.clone();
         let settings = settings_page.clone();
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
@@ -922,6 +1284,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let username = username_entry.clone();
         let otp = otp_entry.clone();
         let text = text_view.clone();
+        let dynamic_box = dynamic_fields_box.clone();
+        let raw_button = open_raw_button.clone();
+        let structured_templates = structured_templates.clone();
+        let dynamic_rows = dynamic_field_rows.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
         let back = back_button.clone();
@@ -970,6 +1336,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .as_ref()
                     .map(|p| p == &page)
                     .unwrap_or(false);
+                let is_raw_page = visible_page
+                    .as_ref()
+                    .map(|p| p == &raw_page)
+                    .unwrap_or(false);
                 let is_settings_page = visible_page
                     .as_ref()
                     .map(|p| p == &settings)
@@ -978,7 +1348,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .as_ref()
                     .map(|p| p == &log_page)
                     .unwrap_or(false);
-                save.set_visible(is_text_page);
+                save.set_visible(is_text_page || is_raw_page);
                 if is_text_page {
                     if let Some(pass_file) = get_opened_pass_file() {
                         let label = pass_file.label();
@@ -989,6 +1359,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         win.set_title("Password Store");
                         win.set_subtitle("Manage your passwords");
                         sync_username_row(&username, None);
+                    }
+                } else if is_raw_page {
+                    win.set_title("Raw Pass File");
+                    if let Some(pass_file) = get_opened_pass_file() {
+                        let label = pass_file.label();
+                        win.set_subtitle(&label);
+                    } else {
+                        win.set_subtitle("Password Store");
                     }
                 } else if is_settings_page {
                     win.set_title("Preferences");
@@ -1011,8 +1389,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 sync_username_row(&username, None);
                 otp.set_visible(false);
                 otp.set_text("");
-                let buffer = text.buffer();
-                buffer.set_text("");
+                clear_box_children(&dynamic_box);
+                dynamic_box.set_visible(false);
+                raw_button.set_visible(false);
+                structured_templates.borrow_mut().clear();
+                dynamic_rows.borrow_mut().clear();
+                text.buffer().set_text("");
             }
             load_passwords_async(
                 &list_clone,
@@ -1031,6 +1413,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let window_for_action = window.clone();
         let nav = navigation_view.clone();
         let text_page = text_page.clone();
+        let raw_text_page = raw_text_page.clone();
         let settings_page = settings_page.clone();
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
@@ -1137,6 +1520,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let window = window_for_action.clone();
             let nav = nav.clone();
             let text_page = text_page.clone();
+            let raw_text_page = raw_text_page.clone();
             let settings_page = settings_page.clone();
             let log_page = log_page.clone();
             let busy_page = busy_page.clone();
@@ -1158,6 +1542,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &nav,
                             &busy_page,
                             &text_page,
+                            &raw_text_page,
                             &settings_page,
                             &log_page,
                             &back,
@@ -1186,6 +1571,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &nav,
                             &busy_page,
                             &text_page,
+                            &raw_text_page,
                             &settings_page,
                             &log_page,
                             &back,
@@ -1216,6 +1602,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &nav,
                             &busy_page,
                             &text_page,
+                            &raw_text_page,
                             &settings_page,
                             &log_page,
                             &back,
@@ -1238,6 +1625,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &nav,
                             &busy_page,
                             &text_page,
+                            &raw_text_page,
                             &settings_page,
                             &log_page,
                             &back,
@@ -1397,6 +1785,7 @@ fn finish_git_busy_page(
     nav: &NavigationView,
     busy_page: &NavigationPage,
     text_page: &NavigationPage,
+    raw_text_page: &NavigationPage,
     settings_page: &NavigationPage,
     log_page: &NavigationPage,
     back: &Button,
@@ -1448,6 +1837,10 @@ fn finish_git_busy_page(
         .as_ref()
         .map(|page| page == text_page)
         .unwrap_or(false);
+    let is_raw_page = visible_page
+        .as_ref()
+        .map(|page| page == raw_text_page)
+        .unwrap_or(false);
     let is_settings_page = visible_page
         .as_ref()
         .map(|page| page == settings_page)
@@ -1457,7 +1850,7 @@ fn finish_git_busy_page(
         .map(|page| page == log_page)
         .unwrap_or(false);
 
-    save.set_visible(is_text_page);
+    save.set_visible(is_text_page || is_raw_page);
     if is_text_page {
         if let Some(pass_file) = get_opened_pass_file() {
             let label = pass_file.label();
@@ -1468,6 +1861,14 @@ fn finish_git_busy_page(
             win.set_title("Password Store");
             win.set_subtitle("Manage your passwords");
             sync_username_row(username, None);
+        }
+    } else if is_raw_page {
+        win.set_title("Raw Pass File");
+        if let Some(pass_file) = get_opened_pass_file() {
+            let label = pass_file.label();
+            win.set_subtitle(&label);
+        } else {
+            win.set_subtitle("Password Store");
         }
     } else if is_settings_page {
         win.set_title("Preferences");
@@ -1780,8 +2181,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
 fn write_pass_entry(
     store_root: &str,
     label: &str,
-    password: &str,
-    notes: &str,
+    contents: &str,
     overwrite: bool,
 ) -> Result<(), String> {
     let settings = Preferences::new();
@@ -1794,18 +2194,10 @@ fn write_pass_entry(
     }
     cmd.arg(label);
 
-    let mut input = String::new();
-    input.push_str(password);
-    input.push('\n');
-    if !notes.is_empty() {
-        input.push_str(notes);
-        input.push('\n');
-    }
-
     let output = run_command_with_input(
         &mut cmd,
         "Save password entry",
-        &input,
+        contents,
         CommandLogOptions::SENSITIVE,
     )?;
     if output.status.success() {
@@ -1884,4 +2276,53 @@ fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        parse_structured_pass_lines, structured_pass_contents_from_values, StructuredPassLine,
+    };
+
+    #[test]
+    fn structured_fields_strip_display_spacing_but_preserve_it_on_save() {
+        let contents = "secret\nemail: hello@example.com\nname:hello";
+        let (password, parsed) = parse_structured_pass_lines(contents);
+        assert_eq!(password, "secret");
+
+        let templates = parsed
+            .iter()
+            .map(|(line, _)| line.clone())
+            .collect::<Vec<_>>();
+        let values = parsed
+            .iter()
+            .filter_map(|(line, value)| match line {
+                StructuredPassLine::Field(_) => value.clone(),
+                StructuredPassLine::Preserved(_) => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(values, vec!["hello@example.com".to_string(), "hello".to_string()]);
+        assert_eq!(
+            structured_pass_contents_from_values(&password, &templates, &values),
+            contents
+        );
+    }
+
+    #[test]
+    fn username_and_otpauth_lines_stay_out_of_dynamic_fields() {
+        let contents = "secret\nusername:alice\notpauth://totp/example\nurl: https://example.com";
+        let (_, parsed) = parse_structured_pass_lines(contents);
+
+        assert!(matches!(
+            parsed[0].0,
+            StructuredPassLine::Preserved(ref line) if line == "username:alice"
+        ));
+        assert!(matches!(
+            parsed[1].0,
+            StructuredPassLine::Preserved(ref line) if line == "otpauth://totp/example"
+        ));
+        assert!(matches!(parsed[2].0, StructuredPassLine::Field(_)));
+        assert_eq!(parsed[2].1.as_deref(), Some("https://example.com"));
+    }
 }

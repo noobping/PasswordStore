@@ -225,19 +225,52 @@
                             </child>
 
                             <child>
-                              <object class="GtkTextView" id="text_view">
+                              <object class="GtkBox" id="dynamic_fields_box">
                                 <property name="visible">false</property>
-                                <property name="editable">true</property>
-                                <property name="wrap-mode">word</property>
-                                <property name="cursor-visible">true</property>
-                                <property name="hexpand">true</property>
-                                <property name="vexpand">true</property>
-                                <property name="left-margin">15</property>
-                                <property name="right-margin">15</property>
-                                <property name="pixels-above-lines">3</property>
-                                <property name="pixels-below-lines">3</property>
+                                <property name="orientation">vertical</property>
                               </object>
                             </child>
+
+                            <child>
+                              <object class="GtkButton" id="open_raw_button">
+                                <property name="visible">false</property>
+                                <property name="label" translatable="yes">Open Raw Pass File</property>
+                                <property name="halign">start</property>
+                                <property name="margin-start">15</property>
+                                <property name="margin-end">15</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-bottom">15</property>
+                                <property name="action-name">win.open-raw-pass-file</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="raw_text_page">
+                    <property name="title" translatable="yes">Raw Pass File</property>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="vscrollbar-policy">automatic</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="propagate-natural-width">true</property>
+                        <property name="propagate-natural-height">true</property>
+                        <child>
+                          <object class="GtkTextView" id="text_view">
+                            <property name="visible">true</property>
+                            <property name="editable">true</property>
+                            <property name="wrap-mode">word</property>
+                            <property name="cursor-visible">true</property>
+                            <property name="hexpand">true</property>
+                            <property name="vexpand">true</property>
+                            <property name="left-margin">15</property>
+                            <property name="right-margin">15</property>
+                            <property name="pixels-above-lines">3</property>
+                            <property name="pixels-below-lines">3</property>
                           </object>
                         </child>
                       </object>

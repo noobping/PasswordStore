@@ -39,5 +39,5 @@ Install development dependencies:
 sudo dnf install gpgme-devel clang pkg-config nettle-devel libgpg-error-devel openssl-devel \
     gtk4-devel gcc pkgconf-pkg-config \
     glib2-devel cairo-devel pango-devel libadwaita-devel \
-    cargo mold pass pass-otp pinentry
+    cargo mold pass pass-otp pinentry pinentry-gnome3
 ```

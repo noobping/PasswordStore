@@ -1,6 +1,8 @@
 use std::ffi::OsStr;
 use std::io::{self, Read, Write};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
+#[cfg(unix)]
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -116,6 +118,24 @@ impl CommandControl {
         let Some(child) = child.as_mut() else {
             return Ok(false);
         };
+
+        #[cfg(unix)]
+        {
+            let pid = i32::try_from(child.id()).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidInput, "process id does not fit in i32")
+            })?;
+
+            let status = unsafe { libc::killpg(pid, libc::SIGKILL) };
+            if status == 0 {
+                return Ok(true);
+            }
+
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ESRCH) {
+                return Ok(false);
+            }
+        }
+
         child.kill()?;
         Ok(true)
     }
@@ -340,6 +360,12 @@ fn run_command_output_inner(
     cmd.stderr(Stdio::piped());
     let command = describe_command(cmd);
 
+    #[cfg(unix)]
+    if control.is_some() {
+        // Isolate controlled commands so cancellation can kill the entire process tree.
+        cmd.process_group(0);
+    }
+
     match cmd.spawn() {
         Ok(mut child) => {
             log_command_state(context, &command, "running", false, false, false);
@@ -387,7 +413,7 @@ fn run_command_output_inner(
             log_command_state(
                 context,
                 &command,
-                &output.status.to_string(),
+                &format_exit_status(&output.status),
                 false,
                 false,
                 !output.status.success(),
@@ -499,7 +525,7 @@ pub fn run_command_with_input(
     log_command_state(
         context,
         &command,
-        &output.status.to_string(),
+        &format_exit_status(&output.status),
         true,
         options.redact_stdin,
         !output.status.success(),
@@ -508,10 +534,24 @@ pub fn run_command_with_input(
     Ok(output)
 }
 
+fn format_exit_status(status: &ExitStatus) -> String {
+    #[cfg(unix)]
+    if let Some(signal) = status.signal() {
+        return format!("signal {signal}");
+    }
+
+    status.to_string()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{log_error, log_info, log_snapshot, run_command_output, CommandLogOptions};
+    use super::{
+        log_error, log_info, log_snapshot, run_command_output, run_command_output_controlled,
+        CommandControl, CommandLogOptions,
+    };
     use std::process::Command;
+    use std::thread;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn log_snapshot_tracks_revisions() {
@@ -547,5 +587,35 @@ mod tests {
         assert!(text.contains(&marker));
         assert!(text.contains(&format!("stdout:\n{marker} stdout")));
         assert!(text.contains(&format!("stderr:\n{marker} stderr")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn controlled_cancel_kills_process_group_quickly() {
+        let marker = format!("cancel-log-test-{}", std::process::id());
+        let control = CommandControl::default();
+        let worker_control = control.clone();
+        let started = Instant::now();
+        let handle = thread::spawn(move || {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-lc", "sleep 30 & wait"]);
+            run_command_output_controlled(
+                &mut cmd,
+                &marker,
+                CommandLogOptions::DEFAULT,
+                &worker_control,
+            )
+        });
+
+        thread::sleep(Duration::from_millis(100));
+        assert!(control.cancel().expect("cancel should succeed"));
+
+        let output = handle
+            .join()
+            .expect("worker should join")
+            .expect("command should return output");
+
+        assert!(!output.status.success());
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

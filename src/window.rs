@@ -17,12 +17,12 @@ use crate::preferences::Preferences;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, PreferencesGroup, PreferencesPage, StatusPage, Toast,
-    ToastOverlay, WindowTitle,
+    NavigationView, PasswordEntryRow, PreferencesGroup, StatusPage, Toast, ToastOverlay,
+    WindowTitle,
 };
 use adw::gtk::{
-    Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Image, ListBox,
-    ListBoxRow, MenuButton, Popover, ScrolledWindow, SearchEntry, Spinner, TextView,
+    Box as GtkBox, Widget, gdk::Display, Builder, Button, Image, ListBox, ListBoxRow,
+    MenuButton, Popover, SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::RefCell;
@@ -136,6 +136,68 @@ struct PasswordListPageState {
     dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
     text: TextView,
     overlay: ToastOverlay,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum StoreRecipientsMode {
+    Create,
+    Edit,
+}
+
+impl StoreRecipientsMode {
+    fn page_title(&self) -> &'static str {
+        match self {
+            Self::Create => "Create Password Store",
+            Self::Edit => "GPG Recipients",
+        }
+    }
+
+    fn save_tooltip(&self) -> &'static str {
+        match self {
+            Self::Create => "Create password store",
+            Self::Edit => "Save GPG recipients",
+        }
+    }
+
+    fn store_description(&self) -> &'static str {
+        match self {
+            Self::Create => {
+                "The selected folder will be initialized and used as the default password store."
+            }
+            Self::Edit => "Update the recipients for this password store and re-encrypt it.",
+        }
+    }
+
+    fn empty_state_subtitle(&self) -> &'static str {
+        match self {
+            Self::Create => "Add at least one recipient to initialize the password store.",
+            Self::Edit => "Add at least one recipient before saving your changes.",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StoreRecipientsRequest {
+    store: String,
+    mode: StoreRecipientsMode,
+}
+
+#[derive(Clone)]
+struct StoreRecipientsPageState {
+    nav: NavigationView,
+    page: NavigationPage,
+    store_group: PreferencesGroup,
+    store_row: ActionRow,
+    list: ListBox,
+    entry: EntryRow,
+    back: Button,
+    add: Button,
+    find: Button,
+    git: Button,
+    save: Button,
+    win: WindowTitle,
+    request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
+    recipients: Rc<RefCell<Vec<String>>>,
 }
 
 fn with_logs_hint(message: &str) -> String {
@@ -351,11 +413,22 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "open-raw-pass-file",
         "git-clone",
         "save-password",
+        "save-store-recipients",
         "synchronize",
         "open-preferences",
     ] {
         set_window_action_enabled(window, action, enabled);
     }
+}
+
+fn set_save_button_for_password(save: &Button) {
+    save.set_action_name(Some("win.save-password"));
+    save.set_tooltip_text(Some("Save password"));
+}
+
+fn set_save_button_for_store_recipients(save: &Button, mode: &StoreRecipientsMode) {
+    save.set_action_name(Some("win.save-store-recipients"));
+    save.set_tooltip_text(Some(mode.save_tooltip()));
 }
 
 fn prune_missing_store_dirs(settings: &Preferences) {
@@ -372,6 +445,7 @@ fn show_password_list_page(state: &PasswordListPageState) {
     clear_opened_pass_file();
     state.back.set_visible(false);
     state.save.set_visible(false);
+    set_save_button_for_password(&state.save);
     state.add.set_visible(true);
     state.find.set_visible(true);
     state.git.set_visible(false);
@@ -398,6 +472,125 @@ fn show_password_list_page(state: &PasswordListPageState) {
         state.overlay.clone(),
         true,
     );
+}
+
+fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
+    let path = std::path::Path::new(store_root).join(".gpg-id");
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+
+    parse_gpg_recipients(&contents)
+}
+
+fn store_gpg_recipients_subtitle(store_root: &str) -> String {
+    let recipients = read_store_gpg_recipients(store_root);
+    match recipients.len() {
+        0 => "No GPG recipients configured".to_string(),
+        1 => "1 GPG recipient".to_string(),
+        count => format!("{count} GPG recipients"),
+    }
+}
+
+fn current_store_recipients_request(
+    state: &StoreRecipientsPageState,
+) -> Option<StoreRecipientsRequest> {
+    state.request.borrow().clone()
+}
+
+fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
+    while let Some(child) = state.list.first_child() {
+        state.list.remove(&child);
+    }
+
+    state.list.append(&state.entry);
+
+    let empty_subtitle = current_store_recipients_request(state)
+        .map(|request| request.mode.empty_state_subtitle())
+        .unwrap_or("Add at least one recipient before saving.");
+
+    if state.recipients.borrow().is_empty() {
+        let empty_row = ActionRow::builder()
+            .title("No GPG recipients added")
+            .subtitle(empty_subtitle)
+            .build();
+        empty_row.set_activatable(false);
+        state.list.append(&empty_row);
+        return;
+    }
+
+    for recipient in state.recipients.borrow().iter().cloned() {
+        let row = ActionRow::builder().title(&recipient).build();
+        row.set_activatable(false);
+        let row_icon = Image::from_icon_name("dialog-password-symbolic");
+        row_icon.add_css_class("dim-label");
+        row.add_prefix(&row_icon);
+
+        let delete_button = Button::from_icon_name("user-trash-symbolic");
+        delete_button.add_css_class("flat");
+        row.add_suffix(&delete_button);
+        state.list.append(&row);
+
+        let page_state = state.clone();
+        delete_button.connect_clicked(move |_| {
+            page_state
+                .recipients
+                .borrow_mut()
+                .retain(|value| value != &recipient);
+            rebuild_store_recipients_list(&page_state);
+        });
+    }
+}
+
+fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
+    let Some(request) = current_store_recipients_request(state) else {
+        state.save.set_visible(false);
+        set_save_button_for_password(&state.save);
+        state.win.set_title("GPG Recipients");
+        state.win.set_subtitle("Password Store");
+        return;
+    };
+
+    state.add.set_visible(false);
+    state.find.set_visible(false);
+    state.git.set_visible(false);
+    state.back.set_visible(true);
+    state.save.set_visible(true);
+    set_save_button_for_store_recipients(&state.save, &request.mode);
+    state.page.set_title(request.mode.page_title());
+    state.store_group
+        .set_description(Some(request.mode.store_description()));
+    state.store_row.set_subtitle(&request.store);
+    state.win.set_title(request.mode.page_title());
+    state.win.set_subtitle(&request.store);
+}
+
+fn show_store_recipients_page(
+    state: &StoreRecipientsPageState,
+    request: StoreRecipientsRequest,
+    initial_recipients: Vec<String>,
+) {
+    *state.request.borrow_mut() = Some(request);
+    *state.recipients.borrow_mut() = initial_recipients;
+    state.entry.set_text("");
+    rebuild_store_recipients_list(state);
+    sync_store_recipients_page_header(state);
+
+    let already_visible = state
+        .nav
+        .visible_page()
+        .as_ref()
+        .map(|visible| visible == &state.page)
+        .unwrap_or(false);
+    if already_visible {
+        return;
+    }
+
+    if navigation_stack_contains_page(&state.nav, &state.page) {
+        let _ = state.nav.pop_to_page(&state.page);
+    } else {
+        state.nav.push(&state.page);
+    }
 }
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
@@ -459,6 +652,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let save_button: Button = builder
         .object("save_button")
         .expect("Failed to get save_button");
+    set_save_button_for_password(&save_button);
     let git_operation = GitOperationControl::default();
 
     // Toast overlay
@@ -472,6 +666,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let settings_page: NavigationPage = builder
         .object("settings_page")
         .expect("Failed to get settings page");
+    let store_recipients_page: NavigationPage = builder
+        .object("store_recipients_page")
+        .expect("Failed to get store recipients page");
+    let store_recipients_store_group: PreferencesGroup = builder
+        .object("store_recipients_store_group")
+        .expect("Failed to get store recipients group");
+    let store_recipients_store_row: ActionRow = builder
+        .object("store_recipients_store_row")
+        .expect("Failed to get store recipients store row");
+    let store_recipients_list: ListBox = builder
+        .object("store_recipients_list")
+        .expect("Failed to get store recipients list");
     let log_page: NavigationPage = builder
         .object("log_page")
         .expect("Failed to get log page");
@@ -549,6 +755,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get log_view");
     let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
     let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
+    let store_recipients_entry = EntryRow::new();
+    store_recipients_entry.set_title("Add recipients");
+    store_recipients_entry.set_show_apply_button(true);
     let password_list_state = PasswordListPageState {
         nav: navigation_view.clone(),
         list: list.clone(),
@@ -567,6 +776,24 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         dynamic_rows: dynamic_field_rows.clone(),
         text: text_view.clone(),
         overlay: toast_overlay.clone(),
+    };
+    let store_recipients_request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
+    let store_recipients_values = Rc::new(RefCell::new(Vec::<String>::new()));
+    let store_recipients_page_state = StoreRecipientsPageState {
+        nav: navigation_view.clone(),
+        page: store_recipients_page.clone(),
+        store_group: store_recipients_store_group.clone(),
+        store_row: store_recipients_store_row.clone(),
+        list: store_recipients_list.clone(),
+        entry: store_recipients_entry.clone(),
+        back: back_button.clone(),
+        add: add_button.clone(),
+        find: find_button.clone(),
+        git: git_button.clone(),
+        save: save_button.clone(),
+        win: window_title.clone(),
+        request: store_recipients_request.clone(),
+        recipients: store_recipients_values.clone(),
     };
 
     // Selecting an item from the list
@@ -614,6 +841,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
+            set_save_button_for_password(&save);
             win.set_title(opened_pass_file.title());
             win.set_subtitle(&pass_label);
             entry.set_visible(false);
@@ -769,6 +997,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             }
         });
     }
+    {
+        let page_state = store_recipients_page_state.clone();
+        store_recipients_entry.connect_apply(move |entry| {
+            if append_gpg_recipients(&page_state.recipients, entry.text().as_str()) {
+                entry.set_text("");
+                rebuild_store_recipients_list(&page_state);
+            }
+        });
+    }
     // Copy password button on password page
     {
         let overlay = toast_overlay.clone();
@@ -861,6 +1098,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
+            set_save_button_for_password(&save);
             nav.push(&page);
 
             popover_add.popdown();
@@ -968,6 +1206,107 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
         window.add_action(&action);
     }
+    {
+        let overlay = toast_overlay.clone();
+        let window_for_action = window.clone();
+        let stores_list = password_stores.clone();
+        let list_state = password_list_state.clone();
+        let recipients_page = store_recipients_page_state.clone();
+        let action = SimpleAction::new("save-store-recipients", None);
+        action.connect_activate(move |_, _| {
+            if append_gpg_recipients(&recipients_page.recipients, recipients_page.entry.text().as_str())
+            {
+                recipients_page.entry.set_text("");
+                rebuild_store_recipients_list(&recipients_page);
+            }
+
+            let Some(request) = current_store_recipients_request(&recipients_page) else {
+                let toast = Toast::new("Open a password store before saving recipients.");
+                overlay.add_toast(toast);
+                return;
+            };
+
+            let recipients = recipients_page.recipients.borrow().clone();
+            if recipients.is_empty() {
+                let toast = Toast::new("Enter at least one GPG recipient.");
+                overlay.add_toast(toast);
+                return;
+            }
+
+            let (tx, rx) = mpsc::channel::<Result<(), String>>();
+            let store_for_thread = request.store.clone();
+            thread::spawn(move || {
+                let result = apply_password_store_recipients(&store_for_thread, &recipients);
+                let _ = tx.send(result);
+            });
+
+            let overlay = overlay.clone();
+            let stores_list = stores_list.clone();
+            let list_state = list_state.clone();
+            let recipients_page = recipients_page.clone();
+            let request = request.clone();
+            let window = window_for_action.clone();
+            glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+                Ok(Ok(())) => {
+                    let settings = Preferences::new();
+                    match request.mode {
+                        StoreRecipientsMode::Create => {
+                            let stores = stores_with_preferred_first(&settings.stores(), &request.store);
+                            if let Err(err) = settings.set_stores(stores) {
+                                log_error(format!("Failed to save stores: {err}"));
+                                let toast = Toast::new(
+                                    "Password store created, but it couldn't be added to Preferences.",
+                                );
+                                overlay.add_toast(toast);
+                            } else {
+                                show_password_list_page(&list_state);
+                                let toast = Toast::new("Password store created and set as default.");
+                                overlay.add_toast(toast);
+                            }
+                        }
+                        StoreRecipientsMode::Edit => {
+                            rebuild_store_list(
+                                &stores_list,
+                                &settings,
+                                &window,
+                                &overlay,
+                                &list_state,
+                                &recipients_page,
+                            );
+                            let _ =
+                                adw::prelude::WidgetExt::activate_action(&window, "win.back", None);
+                            let toast = Toast::new("GPG recipients updated.");
+                            overlay.add_toast(toast);
+                        }
+                    }
+                    glib::ControlFlow::Break
+                }
+                Ok(Err(message)) => {
+                    let message = if request.mode == StoreRecipientsMode::Create {
+                        with_logs_hint("Couldn't create the password store.")
+                    } else {
+                        message
+                    };
+                    let toast = Toast::new(&message);
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
+                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => {
+                    let message = if request.mode == StoreRecipientsMode::Create {
+                        with_logs_hint("Couldn't create the password store.")
+                    } else {
+                        with_logs_hint("Couldn't save the password store recipients.")
+                    };
+                    let toast = Toast::new(&message);
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
+            });
+        });
+
+        window.add_action(&action);
+    }
     // open preferences
     {
         let nav = navigation_view.clone();
@@ -984,6 +1323,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let parent = window.clone();
         let overlay = toast_overlay.clone();
         let list_state = password_list_state.clone();
+        let recipients_page = store_recipients_page_state.clone();
         let action = SimpleAction::new("open-preferences", None);
         action.connect_activate(move |_, _| {
             add.set_visible(false);
@@ -991,6 +1331,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(false);
+            set_save_button_for_password(&save);
             win.set_title("Preferences");
             win.set_subtitle("Password Store");
             nav.push(&page);
@@ -998,7 +1339,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
-            rebuild_store_list(&list, &settings, &parent, &overlay, &list_state);
+            rebuild_store_list(
+                &list,
+                &settings,
+                &parent,
+                &overlay,
+                &list_state,
+                &recipients_page,
+            );
         });
         window.add_action(&action);
     }
@@ -1046,6 +1394,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
+            set_save_button_for_password(&save);
             win.set_title("Raw Pass File");
             if let Some(pass_file) = get_opened_pass_file() {
                 let label = pass_file.label();
@@ -1139,6 +1488,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let text_page = text_page.clone();
         let raw_text_page = raw_text_page.clone();
         let settings_page = settings_page.clone();
+        let recipients_page = store_recipients_page_state.clone();
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
         let busy_status = git_busy_status.clone();
@@ -1231,6 +1581,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let text_page = text_page.clone();
             let raw_text_page = raw_text_page.clone();
             let settings_page = settings_page.clone();
+            let recipients_page = recipients_page.clone();
             let log_page = log_page.clone();
             let busy_page = busy_page.clone();
             let back = back.clone();
@@ -1252,6 +1603,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &text_page,
                         &raw_text_page,
                         &settings_page,
+                        &recipients_page,
                         &log_page,
                         &back,
                         &add,
@@ -1283,6 +1635,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &text_page,
                         &raw_text_page,
                         &settings_page,
+                        &recipients_page,
                         &log_page,
                         &back,
                         &add,
@@ -1305,6 +1658,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &text_page,
                         &raw_text_page,
                         &settings_page,
+                        &recipients_page,
                         &log_page,
                         &back,
                         &add,
@@ -1328,6 +1682,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &text_page,
                         &raw_text_page,
                         &settings_page,
+                        &recipients_page,
                         &log_page,
                         &back,
                         &add,
@@ -1379,6 +1734,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let nav = navigation_view.clone();
         let git_operation = git_operation.clone();
         let list_state = password_list_state.clone();
+        let recipients_page = store_recipients_page_state.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
             let busy_visible = nav
@@ -1426,12 +1782,17 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .as_ref()
                     .map(|p| p == &settings)
                     .unwrap_or(false);
+                let is_recipients_page = visible_page
+                    .as_ref()
+                    .map(|p| p == &recipients_page.page)
+                    .unwrap_or(false);
                 let is_log_page = visible_page
                     .as_ref()
                     .map(|p| p == &log_page)
                     .unwrap_or(false);
-                save.set_visible(is_text_page || is_raw_page);
+                save.set_visible(is_text_page || is_raw_page || is_recipients_page);
                 if is_text_page {
+                    set_save_button_for_password(&save);
                     if let Some(pass_file) = get_opened_pass_file() {
                         let label = pass_file.label();
                         win.set_title(pass_file.title());
@@ -1443,6 +1804,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         sync_username_row(&username, None);
                     }
                 } else if is_raw_page {
+                    set_save_button_for_password(&save);
                     win.set_title("Raw Pass File");
                     if let Some(pass_file) = get_opened_pass_file() {
                         let label = pass_file.label();
@@ -1451,9 +1813,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         win.set_subtitle("Password Store");
                     }
                 } else if is_settings_page {
+                    set_save_button_for_password(&save);
                     win.set_title("Preferences");
                     win.set_subtitle("Password Store");
+                } else if is_recipients_page {
+                    sync_store_recipients_page_header(&recipients_page);
                 } else if is_log_page {
+                    set_save_button_for_password(&save);
                     win.set_title("Logs");
                     win.set_subtitle("Command output");
                 }
@@ -1480,6 +1846,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let text_page = text_page.clone();
         let raw_text_page = raw_text_page.clone();
         let settings_page = settings_page.clone();
+        let recipients_page = store_recipients_page_state.clone();
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
         let busy_status = git_busy_status.clone();
@@ -1587,6 +1954,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let text_page = text_page.clone();
             let raw_text_page = raw_text_page.clone();
             let settings_page = settings_page.clone();
+            let recipients_page = recipients_page.clone();
             let log_page = log_page.clone();
             let busy_page = busy_page.clone();
             let back = back.clone();
@@ -1609,6 +1977,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &text_page,
                             &raw_text_page,
                             &settings_page,
+                            &recipients_page,
                             &log_page,
                             &back,
                             &add,
@@ -1638,6 +2007,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &text_page,
                             &raw_text_page,
                             &settings_page,
+                            &recipients_page,
                             &log_page,
                             &back,
                             &add,
@@ -1669,6 +2039,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &text_page,
                             &raw_text_page,
                             &settings_page,
+                            &recipients_page,
                             &log_page,
                             &back,
                             &add,
@@ -1692,6 +2063,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &text_page,
                             &raw_text_page,
                             &settings_page,
+                            &recipients_page,
                             &log_page,
                             &back,
                             &add,
@@ -1852,6 +2224,7 @@ fn finish_git_busy_page(
     text_page: &NavigationPage,
     raw_text_page: &NavigationPage,
     settings_page: &NavigationPage,
+    recipients_page: &StoreRecipientsPageState,
     log_page: &NavigationPage,
     back: &Button,
     add: &Button,
@@ -1884,6 +2257,7 @@ fn finish_git_busy_page(
     if stack.n_items() <= 1 {
         back.set_visible(false);
         save.set_visible(false);
+        set_save_button_for_password(save);
         add.set_visible(true);
         find.set_visible(true);
         git.set_visible(false);
@@ -1910,13 +2284,18 @@ fn finish_git_busy_page(
         .as_ref()
         .map(|page| page == settings_page)
         .unwrap_or(false);
+    let is_recipients_page = visible_page
+        .as_ref()
+        .map(|page| page == &recipients_page.page)
+        .unwrap_or(false);
     let is_log_page = visible_page
         .as_ref()
         .map(|page| page == log_page)
         .unwrap_or(false);
 
-    save.set_visible(is_text_page || is_raw_page);
+    save.set_visible(is_text_page || is_raw_page || is_recipients_page);
     if is_text_page {
+        set_save_button_for_password(save);
         if let Some(pass_file) = get_opened_pass_file() {
             let label = pass_file.label();
             win.set_title(pass_file.title());
@@ -1928,6 +2307,7 @@ fn finish_git_busy_page(
             sync_username_row(username, None);
         }
     } else if is_raw_page {
+        set_save_button_for_password(save);
         win.set_title("Raw Pass File");
         if let Some(pass_file) = get_opened_pass_file() {
             let label = pass_file.label();
@@ -1936,9 +2316,13 @@ fn finish_git_busy_page(
             win.set_subtitle("Password Store");
         }
     } else if is_settings_page {
+        set_save_button_for_password(save);
         win.set_title("Preferences");
         win.set_subtitle("Password Store");
+    } else if is_recipients_page {
+        sync_store_recipients_page_header(recipients_page);
     } else if is_log_page {
+        set_save_button_for_password(save);
         win.set_title("Logs");
         win.set_subtitle("Command output");
     }
@@ -2312,6 +2696,7 @@ fn rebuild_store_list(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     list_state: &PasswordListPageState,
+    recipients_page: &StoreRecipientsPageState,
 ) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
@@ -2320,16 +2705,24 @@ fn rebuild_store_list(
     prune_missing_store_dirs(settings);
 
     for store in settings.stores() {
-        append_store_row(list, settings, &store);
+        append_store_row(list, settings, &store, recipients_page);
     }
 
-    append_store_picker_row(list, settings, window, overlay, list_state);
-    append_store_creator_row(list, settings, window, overlay, list_state);
+    append_store_picker_row(list, settings, window, overlay, list_state, recipients_page);
+    append_store_creator_row(list, settings, window, overlay, recipients_page);
 }
 
-fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
-    let row = ActionRow::builder().title(store).build();
-    row.set_activatable(false);
+fn append_store_row(
+    list: &ListBox,
+    settings: &Preferences,
+    store: &str,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let row = ActionRow::builder()
+        .title(store)
+        .subtitle(store_gpg_recipients_subtitle(store))
+        .build();
+    row.set_activatable(true);
 
     let delete_btn = Button::from_icon_name("user-trash-symbolic");
     delete_btn.add_css_class("flat");
@@ -2341,6 +2734,19 @@ fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
     let list = list.clone();
     let row_clone = row.clone();
     let store = store.to_string();
+    let recipients_page = recipients_page.clone();
+    let edit_store = store.clone();
+
+    row.connect_activated(move |_| {
+        show_store_recipients_page(
+            &recipients_page,
+            StoreRecipientsRequest {
+                store: edit_store.clone(),
+                mode: StoreRecipientsMode::Edit,
+            },
+            read_store_gpg_recipients(&edit_store),
+        );
+    });
 
     delete_btn.connect_clicked(move |_| {
         let mut stores = settings.stores();
@@ -2361,6 +2767,7 @@ fn append_store_picker_row(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     list_state: &PasswordListPageState,
+    recipients_page: &StoreRecipientsPageState,
 ) {
     let row = ActionRow::builder()
         .title("Add password store folder")
@@ -2379,8 +2786,16 @@ fn append_store_picker_row(
         let window = window.clone();
         let overlay = overlay.clone();
         let list_state = list_state.clone();
+        let recipients_page = recipients_page.clone();
         row.connect_activated(move |_| {
-            open_store_picker(&window, &list, &settings, &overlay, &list_state);
+            open_store_picker(
+                &window,
+                &list,
+                &settings,
+                &overlay,
+                &list_state,
+                &recipients_page,
+            );
         });
     }
 
@@ -2390,8 +2805,16 @@ fn append_store_picker_row(
         let window = window.clone();
         let overlay = overlay.clone();
         let list_state = list_state.clone();
+        let recipients_page = recipients_page.clone();
         button.connect_clicked(move |_| {
-            open_store_picker(&window, &list, &settings, &overlay, &list_state);
+            open_store_picker(
+                &window,
+                &list,
+                &settings,
+                &overlay,
+                &list_state,
+                &recipients_page,
+            );
         });
     }
 }
@@ -2402,6 +2825,7 @@ fn open_store_picker(
     settings: &Preferences,
     overlay: &ToastOverlay,
     list_state: &PasswordListPageState,
+    recipients_page: &StoreRecipientsPageState,
 ) {
     let dialog = FileChooserNative::new(
         Some("Choose password store folder"),
@@ -2415,6 +2839,7 @@ fn open_store_picker(
     let window = window.clone();
     let overlay = overlay.clone();
     let list_state = list_state.clone();
+    let recipients_page = recipients_page.clone();
 
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {
@@ -2447,7 +2872,14 @@ fn open_store_picker(
                 let toast = Toast::new("Couldn't add the password store folder.");
                 overlay.add_toast(toast);
             } else {
-                rebuild_store_list(&list, &settings, &window, &overlay, &list_state);
+                rebuild_store_list(
+                    &list,
+                    &settings,
+                    &window,
+                    &overlay,
+                    &list_state,
+                    &recipients_page,
+                );
             }
         }
 
@@ -2462,7 +2894,7 @@ fn append_store_creator_row(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
-    list_state: &PasswordListPageState,
+    recipients_page: &StoreRecipientsPageState,
 ) {
     let row = ActionRow::builder()
         .title("Create password store")
@@ -2479,9 +2911,9 @@ fn append_store_creator_row(
         let settings = settings.clone();
         let window = window.clone();
         let overlay = overlay.clone();
-        let list_state = list_state.clone();
+        let recipients_page = recipients_page.clone();
         row.connect_activated(move |_| {
-            open_store_creator_picker(&window, &settings, &overlay, &list_state);
+            open_store_creator_picker(&window, &settings, &overlay, &recipients_page);
         });
     }
 
@@ -2489,9 +2921,9 @@ fn append_store_creator_row(
         let settings = settings.clone();
         let window = window.clone();
         let overlay = overlay.clone();
-        let list_state = list_state.clone();
+        let recipients_page = recipients_page.clone();
         button.connect_clicked(move |_| {
-            open_store_creator_picker(&window, &settings, &overlay, &list_state);
+            open_store_creator_picker(&window, &settings, &overlay, &recipients_page);
         });
     }
 }
@@ -2500,7 +2932,7 @@ fn open_store_creator_picker(
     window: &ApplicationWindow,
     settings: &Preferences,
     overlay: &ToastOverlay,
-    list_state: &PasswordListPageState,
+    recipients_page: &StoreRecipientsPageState,
 ) {
     let dialog = FileChooserNative::new(
         Some("Choose new password store folder"),
@@ -2512,9 +2944,8 @@ fn open_store_creator_picker(
     dialog.set_create_folders(true);
 
     let settings = settings.clone();
-    let window = window.clone();
     let overlay = overlay.clone();
-    let list_state = list_state.clone();
+    let recipients_page = recipients_page.clone();
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {
             dialog.hide();
@@ -2538,227 +2969,33 @@ fn open_store_creator_picker(
         };
 
         let store = path.to_string_lossy().to_string();
-        open_store_creator_dialog(&window, &settings, &overlay, &store, &list_state);
+        let mut recipients = read_store_gpg_recipients(&store);
+        if recipients.is_empty() {
+            recipients = suggested_gpg_recipients(&settings);
+        }
+        show_store_recipients_page(
+            &recipients_page,
+            StoreRecipientsRequest {
+                store,
+                mode: StoreRecipientsMode::Create,
+            },
+            recipients,
+        );
         dialog.hide();
     });
 
     dialog.show();
 }
 
-fn open_store_creator_dialog(
-    window: &ApplicationWindow,
-    settings: &Preferences,
-    overlay: &ToastOverlay,
-    store: &str,
-    list_state: &PasswordListPageState,
-) {
-    let dialog = Dialog::builder()
-        .title("Create password store")
-        .transient_for(window)
-        .modal(true)
-        .use_header_bar(1)
-        .default_width(420)
-        .default_height(360)
-        .resizable(true)
-        .build();
-    dialog.add_button("Cancel", ResponseType::Cancel);
-    dialog.add_button("Create", ResponseType::Accept);
-    dialog.set_default_response(ResponseType::Accept);
-
-    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 12);
-    content.set_margin_top(16);
-    content.set_margin_bottom(16);
-    content.set_margin_start(16);
-    content.set_margin_end(16);
-
-    let recipients = Rc::new(RefCell::new(suggested_gpg_recipients(settings)));
-
-    let page = PreferencesPage::new();
-
-    let store_group = PreferencesGroup::builder()
-        .title("Store")
-        .description("The selected folder will be initialized and used as the default password store.")
-        .build();
-    let store_row = ActionRow::builder()
-        .title("Location")
-        .subtitle(store)
-        .build();
-    let store_icon = Image::from_icon_name("folder-symbolic");
-    store_icon.add_css_class("dim-label");
-    store_row.add_prefix(&store_icon);
-    store_group.add(&store_row);
-    page.add(&store_group);
-
-    let recipients_group = PreferencesGroup::builder()
-        .title("GPG recipients")
-        .description("Add one recipient per row. You can paste multiple recipients separated by commas or semicolons.")
-        .build();
-
-    let recipients_list = ListBox::new();
-    recipients_list.set_selection_mode(adw::gtk::SelectionMode::None);
-    recipients_list.add_css_class("boxed-list");
-
-    let recipients_entry = EntryRow::new();
-    recipients_entry.set_title("Add recipients");
-    recipients_entry.set_show_apply_button(true);
-    recipients_entry.set_text("");
-
-    let recipients_scroll = ScrolledWindow::builder()
-        .hscrollbar_policy(adw::gtk::PolicyType::Never)
-        .min_content_height(180)
-        .vexpand(true)
-        .child(&recipients_list)
-        .build();
-    recipients_group.add(&recipients_scroll);
-    page.add(&recipients_group);
-
-    content.append(&page);
-    dialog.content_area().append(&content);
-    rebuild_gpg_recipients_list(&recipients_list, &recipients_entry, &recipients);
-
-    {
-        let recipients = recipients.clone();
-        let recipients_entry_for_signal = recipients_entry.clone();
-        let recipients_entry = recipients_entry.clone();
-        let recipients_list = recipients_list.clone();
-        recipients_entry_for_signal.connect_apply(move |entry| {
-            if append_gpg_recipients(&recipients, entry.text().as_str()) {
-                entry.set_text("");
-                rebuild_gpg_recipients_list(&recipients_list, &recipients_entry, &recipients);
-            }
-        });
-    }
-
-    {
-        let settings = settings.clone();
-        let overlay = overlay.clone();
-        let store = store.to_string();
-        let recipients_entry = recipients_entry.clone();
-        let recipients = recipients.clone();
-        let recipients_list = recipients_list.clone();
-        let list_state = list_state.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response != ResponseType::Accept {
-                dialog.close();
-                return;
-            }
-
-            if append_gpg_recipients(&recipients, recipients_entry.text().as_str()) {
-                recipients_entry.set_text("");
-                rebuild_gpg_recipients_list(&recipients_list, &recipients_entry, &recipients);
-            }
-
-            let recipients = recipients.borrow().clone();
-            if recipients.is_empty() {
-                let toast = Toast::new("Enter at least one GPG recipient.");
-                overlay.add_toast(toast);
-                return;
-            }
-
-            dialog.close();
-
-            let (tx, rx) = mpsc::channel::<Result<(), String>>();
-            let store_for_thread = store.clone();
-            thread::spawn(move || {
-                let result = initialize_password_store(&store_for_thread, &recipients);
-                let _ = tx.send(result);
-            });
-
-            let settings = settings.clone();
-            let overlay = overlay.clone();
-            let store = store.clone();
-            let list_state = list_state.clone();
-            glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-                Ok(Ok(())) => {
-                    let stores = stores_with_preferred_first(&settings.stores(), &store);
-                    if let Err(err) = settings.set_stores(stores) {
-                        log_error(format!("Failed to save stores: {err}"));
-                        let toast = Toast::new(
-                            "Password store created, but it couldn't be added to Preferences.",
-                        );
-                        overlay.add_toast(toast);
-                    } else {
-                        show_password_list_page(&list_state);
-                        let toast = Toast::new("Password store created and set as default.");
-                        overlay.add_toast(toast);
-                    }
-                    glib::ControlFlow::Break
-                }
-                Ok(Err(message)) => {
-                    let toast = Toast::new(&message);
-                    overlay.add_toast(toast);
-                    glib::ControlFlow::Break
-                }
-                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(TryRecvError::Disconnected) => {
-                    let toast = Toast::new(&with_logs_hint("Couldn't create the password store."));
-                    overlay.add_toast(toast);
-                    glib::ControlFlow::Break
-                }
-            });
-        });
-    }
-
-    dialog.present();
-}
-
 fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     for root in settings.paths() {
-        let path = root.join(".gpg-id");
-        let Ok(contents) = fs::read_to_string(path) else {
-            continue;
-        };
-
-        let recipients = parse_gpg_recipients(&contents);
+        let recipients = read_store_gpg_recipients(root.to_string_lossy().as_ref());
         if !recipients.is_empty() {
             return recipients;
         }
     }
 
     Vec::new()
-}
-
-fn rebuild_gpg_recipients_list(
-    list: &ListBox,
-    recipients_entry: &EntryRow,
-    recipients: &Rc<RefCell<Vec<String>>>,
-) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-
-    list.append(recipients_entry);
-
-    if recipients.borrow().is_empty() {
-        let empty_row = ActionRow::builder()
-            .title("No GPG recipients added")
-            .subtitle("Add at least one recipient to initialize the password store.")
-            .build();
-        empty_row.set_activatable(false);
-        list.append(&empty_row);
-        return;
-    }
-
-    for recipient in recipients.borrow().iter().cloned() {
-        let row = ActionRow::builder().title(&recipient).build();
-        row.set_activatable(false);
-        let row_icon = Image::from_icon_name("dialog-password-symbolic");
-        row_icon.add_css_class("dim-label");
-        row.add_prefix(&row_icon);
-
-        let delete_button = Button::from_icon_name("user-trash-symbolic");
-        delete_button.add_css_class("flat");
-        row.add_suffix(&delete_button);
-        list.append(&row);
-
-        let list = list.clone();
-        let recipients_entry = recipients_entry.clone();
-        let recipients = recipients.clone();
-        delete_button.connect_clicked(move |_| {
-            recipients.borrow_mut().retain(|value| value != &recipient);
-            rebuild_gpg_recipients_list(&list, &recipients_entry, &recipients);
-        });
-    }
 }
 
 fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
@@ -2814,7 +3051,7 @@ fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String
     ordered
 }
 
-fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<(), String> {
+fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     let settings = Preferences::new();
     let mut cmd = settings.command();
     cmd.env("PASSWORD_STORE_DIR", store_root)
@@ -2823,14 +3060,14 @@ fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<
 
     match run_command_output(
         &mut cmd,
-        "Initialize password store",
+        "Save password store recipients",
         CommandLogOptions::DEFAULT,
     ) {
         Ok(output) if output.status.success() => Ok(()),
-        Ok(_) => Err(with_logs_hint("Couldn't create the password store.")),
+        Ok(_) => Err(with_logs_hint("Couldn't save the password store recipients.")),
         Err(err) => {
-            log_error(format!("Failed to start password store initialization: {err}"));
-            Err(with_logs_hint("Couldn't create the password store."))
+            log_error(format!("Failed to start password store recipient update: {err}"));
+            Err(with_logs_hint("Couldn't save the password store recipients."))
         }
     }
 }

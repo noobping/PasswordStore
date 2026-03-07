@@ -5,6 +5,10 @@ use adw::gio::{Menu, MenuItem};
 
 use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
+use crate::logging::{
+    log_error, log_snapshot, run_command_output, run_command_status, run_command_with_input,
+    CommandLogOptions,
+};
 use crate::methods::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     non_null_to_string_option, refresh_opened_pass_file_from_contents, set_opened_pass_file,
@@ -20,8 +24,6 @@ use adw::gtk::{
     TextView,
 };
 use std::cell::RefCell;
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
@@ -101,6 +103,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let settings_page: NavigationPage = builder
         .object("settings_page")
         .expect("Failed to get settings page");
+    let log_page: NavigationPage = builder
+        .object("log_page")
+        .expect("Failed to get log page");
     #[cfg(any(feature = "setup", feature = "host"))]
     let pass_row: EntryRow = builder
         .object("pass_command_row")
@@ -155,6 +160,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let text_view: TextView = builder
         .object("text_view")
         .expect("Failed to get text_view");
+    let log_view: TextView = builder
+        .object("log_view")
+        .expect("Failed to get log_view");
 
     // Selecting an item from the list
     {
@@ -211,16 +219,23 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let label_for_thread = pass_label.clone();
             thread::spawn(move || {
                 let settings = Preferences::new();
-                let output = settings
-                    .command()
-                    .env("PASSWORD_STORE_DIR", &store_for_thread)
-                    .arg(&label_for_thread)
-                    .output();
+                let mut cmd = settings.command();
+                cmd.env("PASSWORD_STORE_DIR", &store_for_thread)
+                    .arg(&label_for_thread);
+                let output =
+                    run_command_output(&mut cmd, "Read password entry", CommandLogOptions::SENSITIVE);
                 let result = match output {
                     Ok(o) if o.status.success() => {
                         Ok(String::from_utf8_lossy(&o.stdout).to_string())
                     }
-                    Ok(o) => Err(format!("pass failed: {}", o.status)),
+                    Ok(o) => {
+                        let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                        if stderr.is_empty() {
+                            Err(format!("pass failed: {}", o.status))
+                        } else {
+                            Err(stderr)
+                        }
+                    }
                     Err(e) => Err(format!("Failed to run pass: {e}")),
                 };
 
@@ -271,12 +286,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         otp_entry.set_visible(otp);
                         if otp {
                             let settings = Preferences::new();
-                            match settings
-                                .command()
-                                .env("PASSWORD_STORE_DIR", &store_for_otp)
-                                .args(["otp", &label_for_otp])
-                                .output()
-                            {
+                            let mut cmd = settings.command();
+                            cmd.env("PASSWORD_STORE_DIR", &store_for_otp)
+                                .args(["otp", &label_for_otp]);
+                            match run_command_output(
+                                &mut cmd,
+                                "Read OTP code",
+                                CommandLogOptions::SENSITIVE,
+                            ) {
                                 Ok(o) if o.status.success() => {
                                     let code =
                                         String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -516,6 +533,22 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    {
+        let nav = navigation_view.clone();
+        let page = log_page.clone();
+        let back = back_button.clone();
+        let add = add_button.clone();
+        let find = find_button.clone();
+        let git = git_button.clone();
+        let save = save_button.clone();
+        let win = window_title.clone();
+        let action = SimpleAction::new("open-log", None);
+        action.connect_activate(move |_, _| {
+            show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
+        });
+        window.add_action(&action);
+    }
+
     #[cfg(feature = "setup")]
     {
         let menu = primary_menu.clone();
@@ -573,16 +606,83 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let entry = git_url_entry.clone();
         let overlay = toast_overlay.clone();
+        let popover = git_popover.clone();
+        let list_clone = list.clone();
+        let git = git_button.clone();
+        let find = find_button.clone();
+        let save = save_button.clone();
         let action = SimpleAction::new("git-clone", None);
         action.connect_activate(move |_, _| {
-            let url = entry.text().to_string();
-
-            // TODO: clone logic
-
-            if !url.is_empty() {
-                let toast = Toast::new(&format!("Cloning from {url}…"));
+            let url = entry.text().trim().to_string();
+            if url.is_empty() {
+                let toast = Toast::new("Git URL cannot be empty");
                 overlay.add_toast(toast);
+                return;
             }
+
+            let toast = Toast::new(&format!("Cloning from {url}..."));
+            overlay.add_toast(toast);
+
+            let (tx, rx) = mpsc::channel::<Result<(), String>>();
+            let url_for_thread = url.clone();
+            thread::spawn(move || {
+                let settings = Preferences::new();
+                let store_root = settings.store();
+                let mut cmd = settings.command();
+                cmd.env("PASSWORD_STORE_DIR", &store_root)
+                    .args(["git", "clone", &url_for_thread]);
+                let result =
+                    match run_command_output(&mut cmd, "Clone password store", CommandLogOptions::DEFAULT)
+                    {
+                        Ok(output) if output.status.success() => Ok(()),
+                        Ok(output) => {
+                            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                            if stderr.is_empty() {
+                                Err(format!("Failed to clone password store: {}", output.status))
+                            } else {
+                                Err(stderr)
+                            }
+                        }
+                        Err(err) => Err(format!("Failed to run clone command: {err}")),
+                    };
+                let _ = tx.send(result);
+            });
+
+            let overlay = overlay.clone();
+            let entry = entry.clone();
+            let popover = popover.clone();
+            let list = list_clone.clone();
+            let git = git.clone();
+            let find = find.clone();
+            let save = save.clone();
+            glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+                Ok(Ok(())) => {
+                    entry.set_text("");
+                    popover.popdown();
+                    let toast = Toast::new("Password store cloned");
+                    overlay.add_toast(toast);
+                    load_passwords_async(
+                        &list,
+                        git.clone(),
+                        find.clone(),
+                        save.clone(),
+                        overlay.clone(),
+                        true,
+                    );
+                    glib::ControlFlow::Break
+                }
+                Ok(Err(message)) => {
+                    let toast = Toast::new(&message);
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
+                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => {
+                    let toast = Toast::new("Clone command stopped unexpectedly");
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
+            });
         });
         window.add_action(&action);
     }
@@ -603,6 +703,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let overlay = toast_overlay.clone();
         let page = text_page.clone();
+        let settings = settings_page.clone();
+        let log_page = log_page.clone();
         let entry = password_entry.clone();
         let username = username_entry.clone();
         let otp = otp_entry.clone();
@@ -623,10 +725,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 back.set_visible(true);
                 add.set_visible(false);
                 find.set_visible(false);
-                let is_text_page = nav
-                    .visible_page()
+                let visible_page = nav.visible_page();
+                let is_text_page = visible_page
                     .as_ref()
                     .map(|p| p == &page)
+                    .unwrap_or(false);
+                let is_settings_page = visible_page
+                    .as_ref()
+                    .map(|p| p == &settings)
+                    .unwrap_or(false);
+                let is_log_page = visible_page
+                    .as_ref()
+                    .map(|p| p == &log_page)
                     .unwrap_or(false);
                 save.set_visible(is_text_page);
                 if is_text_page {
@@ -640,6 +750,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         win.set_subtitle("Manage your passwords");
                         sync_username_row(&username, None);
                     }
+                } else if is_settings_page {
+                    win.set_title("Preferences");
+                    win.set_subtitle("Password Store");
+                } else if is_log_page {
+                    win.set_title("Logs");
+                    win.set_subtitle("Command output");
                 }
             } else {
                 clear_opened_pass_file();
@@ -688,11 +804,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &["git", "push"],
                     ];
                     for args in commands {
-                        let output = settings
-                            .command()
-                            .env("PASSWORD_STORE_DIR", &root)
-                            .args(args)
-                            .output();
+                        let mut cmd = settings.command();
+                        cmd.env("PASSWORD_STORE_DIR", &root).args(args);
+                        let output = run_command_output(
+                            &mut cmd,
+                            &format!("Synchronize password store {root}"),
+                            CommandLogOptions::DEFAULT,
+                        );
                         match output {
                             Ok(out) => {
                                 if !out.status.success() {
@@ -703,7 +821,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         .find(|line| line.contains("fatal:"))
                                         .unwrap_or(stderr.trim());
                                     let message = format!("{} Using: {}", fatal_line, root);
-                                    eprintln!("{}", &message);
                                     let _ = tx.send(message);
 
                                     // stop further commands for this store
@@ -712,7 +829,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             }
                             Err(e) => {
                                 let message = format!("Failed: {} with {e}", root);
-                                eprintln!("{}", message);
                                 let _ = tx.send(message);
                                 break;
                             }
@@ -743,12 +859,47 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    {
+        let nav = navigation_view.clone();
+        let page = log_page.clone();
+        let back = back_button.clone();
+        let add = add_button.clone();
+        let find = find_button.clone();
+        let git = git_button.clone();
+        let save = save_button.clone();
+        let win = window_title.clone();
+        let view = log_view.clone();
+        let seen_revision = Rc::new(RefCell::new(0usize));
+        let seen_error_revision = Rc::new(RefCell::new(0usize));
+        glib::timeout_add_local(Duration::from_millis(200), move || {
+            let (revision, error_revision, text) = log_snapshot();
+            {
+                let mut seen = seen_revision.borrow_mut();
+                if revision != *seen {
+                    view.buffer().set_text(&text);
+                    *seen = revision;
+                }
+            }
+
+            if cfg!(debug_assertions) {
+                let mut seen_error = seen_error_revision.borrow_mut();
+                if error_revision > *seen_error {
+                    *seen_error = error_revision;
+                    show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
+                }
+            }
+
+            glib::ControlFlow::Continue
+        });
+    }
+
     // keyboard shortcuts
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.synchronize", &["<primary>s"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-git", &["<primary>i"]);
+    app.set_accels_for_action("win.open-log", &["F12"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
 
     setup_search_filter(&list, &search_entry);
@@ -771,6 +922,34 @@ fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
     } else {
         row.set_text("");
         row.set_visible(false);
+    }
+}
+
+fn show_log_page(
+    nav: &NavigationView,
+    page: &NavigationPage,
+    back: &Button,
+    add: &Button,
+    find: &Button,
+    git: &Button,
+    save: &Button,
+    win: &WindowTitle,
+) {
+    add.set_visible(false);
+    find.set_visible(false);
+    git.set_visible(false);
+    back.set_visible(true);
+    save.set_visible(false);
+    win.set_title("Logs");
+    win.set_subtitle("Command output");
+
+    let already_visible = nav
+        .visible_page()
+        .as_ref()
+        .map(|visible| visible == page)
+        .unwrap_or(false);
+    if !already_visible {
+        nav.push(page);
     }
 }
 
@@ -806,7 +985,7 @@ fn load_passwords_async(
         let all_items = match collect_all_password_items() {
             Ok(v) => v,
             Err(err) => {
-                eprintln!("Error scanning pass stores: {err}");
+                log_error(format!("Error scanning pass stores: {err}"));
                 Vec::new()
             }
         };
@@ -873,12 +1052,15 @@ fn load_passwords_async(
                             std::thread::spawn({
                                 move || {
                                     let settings = Preferences::new();
-                                    let _ = settings
-                                        .command()
-                                        .env("PASSWORD_STORE_DIR", &item.store_path)
+                                    let mut cmd = settings.command();
+                                    cmd.env("PASSWORD_STORE_DIR", &item.store_path)
                                         .arg("-c")
-                                        .arg(&item.label())
-                                        .status();
+                                        .arg(item.label());
+                                    let _ = run_command_status(
+                                        &mut cmd,
+                                        "Copy password to clipboard",
+                                        CommandLogOptions::SENSITIVE,
+                                    );
                                 }
                             });
                         });
@@ -905,13 +1087,16 @@ fn load_passwords_async(
 
                             let root = entry.store_path.clone();
                             let settings = Preferences::new();
-                            let status = settings
-                                .command()
-                                .env("PASSWORD_STORE_DIR", &root)
+                            let mut cmd = settings.command();
+                            cmd.env("PASSWORD_STORE_DIR", &root)
                                 .arg("mv")
                                 .arg(&old_label)
-                                .arg(&new_label)
-                                .status();
+                                .arg(&new_label);
+                            let status = run_command_status(
+                                &mut cmd,
+                                "Rename password entry",
+                                CommandLogOptions::DEFAULT,
+                            );
                             match status {
                                 Ok(s) if s.success() => {
                                     let (parent, tail) = match new_label.rsplit_once('/') {
@@ -939,13 +1124,16 @@ fn load_passwords_async(
                                 let label = entry.label();
                                 move || {
                                     let settings = Preferences::new();
-                                    let _ = settings
-                                        .command()
-                                        .env("PASSWORD_STORE_DIR", root)
+                                    let mut cmd = settings.command();
+                                    cmd.env("PASSWORD_STORE_DIR", root)
                                         .arg("rm")
                                         .arg("-rf")
-                                        .arg(&label)
-                                        .status();
+                                        .arg(&label);
+                                    let _ = run_command_status(
+                                        &mut cmd,
+                                        "Delete password entry",
+                                        CommandLogOptions::DEFAULT,
+                                    );
                                 }
                             });
                             list.remove(&row_clone);
@@ -1056,43 +1244,38 @@ fn write_pass_entry(
     overwrite: bool,
 ) -> Result<(), String> {
     let settings = Preferences::new();
-    let mut cmd: Command = settings.command();
+    let mut cmd = settings.command();
     cmd.env("PASSWORD_STORE_DIR", store_root)
         .arg("insert")
         .arg("-m"); // read from stdin
     if overwrite {
         cmd.arg("-f");
     }
-    cmd.arg(label)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to run pass: {e}"))?;
+    cmd.arg(label);
 
-    {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or("Failed to open stdin for pass")?;
-
-        // 1st line = password
-        writeln!(stdin, "{password}").map_err(|e| format!("Failed to write password: {e}"))?;
-
-        // remaining lines = optional notes
-        if !notes.is_empty() {
-            writeln!(stdin, "{notes}").map_err(|e| format!("Failed to write notes: {e}"))?;
-        }
+    let mut input = String::new();
+    input.push_str(password);
+    input.push('\n');
+    if !notes.is_empty() {
+        input.push_str(notes);
+        input.push('\n');
     }
 
-    let status = child
-        .wait()
-        .map_err(|e| format!("Failed to wait for pass: {e}"))?;
-    if status.success() {
+    let output = run_command_with_input(
+        &mut cmd,
+        "Save password entry",
+        &input,
+        CommandLogOptions::SENSITIVE,
+    )?;
+    if output.status.success() {
         Ok(())
     } else {
-        Err(format!("pass insert failed: {status}"))
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            Err(format!("pass insert failed: {}", output.status))
+        } else {
+            Err(stderr)
+        }
     }
 }
 
@@ -1124,7 +1307,7 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
             }
             stores.push(text.clone());
             if let Err(err) = settings.set_stores(stores) {
-                eprintln!("Failed to save stores: {err}");
+                log_error(format!("Failed to save stores: {err}"));
                 return;
             } else {
                 append_store_row(&list, &settings, &text);
@@ -1154,7 +1337,7 @@ fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
         if let Some(pos) = stores.iter().position(|s| s == &store) {
             stores.remove(pos);
             if let Err(err) = settings.set_stores(stores) {
-                eprintln!("Failed to save stores: {err}");
+                log_error(format!("Failed to save stores: {err}"));
             } else {
                 list.remove(&row_clone);
             }

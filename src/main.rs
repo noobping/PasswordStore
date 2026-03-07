@@ -4,11 +4,13 @@ mod setup;
 
 mod config;
 mod item;
+mod logging;
 mod methods;
 mod preferences;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};
+use crate::logging::{run_command_output, CommandLogOptions};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
 
@@ -113,7 +115,9 @@ fn main() -> ExitCode {
 
 fn get_pass_version() -> Option<String> {
     let settings = Preferences::new();
-    let output = settings.command().arg("--version").output().ok()?;
+    let mut cmd = settings.command();
+    cmd.arg("--version");
+    let output = run_command_output(&mut cmd, "Read pass version", CommandLogOptions::DEFAULT).ok()?;
     if !output.status.success() {
         return None;
     }

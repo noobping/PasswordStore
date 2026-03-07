@@ -6,8 +6,8 @@ use adw::gio::{Menu, MenuItem};
 use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
 use crate::logging::{
-    log_error, log_snapshot, run_command_output, run_command_status, run_command_with_input,
-    CommandLogOptions,
+    log_error, log_info, log_snapshot, run_command_output, run_command_output_controlled,
+    run_command_status, run_command_with_input, CommandControl, CommandLogOptions,
 };
 use crate::methods::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
@@ -24,13 +24,71 @@ use adw::gtk::{
     TextView,
 };
 use std::cell::RefCell;
+use std::io;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
+
+#[derive(Clone, Default)]
+struct GitOperationControl {
+    command: CommandControl,
+    cancel_requested: Arc<AtomicBool>,
+}
+
+impl GitOperationControl {
+    fn begin(&self) {
+        self.cancel_requested.store(false, Ordering::Relaxed);
+    }
+
+    fn finish(&self) {
+        self.cancel_requested.store(false, Ordering::Relaxed);
+    }
+
+    fn request_cancel(&self) -> io::Result<bool> {
+        self.cancel_requested.store(true, Ordering::Relaxed);
+        self.command.cancel()
+    }
+
+    fn is_cancel_requested(&self) -> bool {
+        self.cancel_requested.load(Ordering::Relaxed)
+    }
+}
+
+enum GitOperationResult {
+    Success,
+    Failed(String),
+    Canceled,
+}
+
+fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
+    let Some(action) = window.lookup_action(name) else {
+        return;
+    };
+    let Ok(action) = action.downcast::<SimpleAction>() else {
+        return;
+    };
+    action.set_enabled(enabled);
+}
+
+fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
+    for action in [
+        "open-new-password",
+        "toggle-find",
+        "open-git",
+        "git-clone",
+        "save-password",
+        "synchronize",
+        "open-preferences",
+    ] {
+        set_window_action_enabled(window, action, enabled);
+    }
+}
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     let builder = Builder::from_string(UI_SRC);
@@ -91,6 +149,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let save_button: Button = builder
         .object("save_button")
         .expect("Failed to get save_button");
+    let git_operation = GitOperationControl::default();
 
     // Toast overlay
     let toast_overlay: ToastOverlay = builder
@@ -622,6 +681,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let entry = git_url_entry.clone();
         let overlay = toast_overlay.clone();
         let popover = git_popover.clone();
+        let window_for_action = window.clone();
         let list_clone = list.clone();
         let nav = navigation_view.clone();
         let text_page = text_page.clone();
@@ -636,6 +696,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let save = save_button.clone();
         let win = window_title.clone();
         let username = username_entry.clone();
+        let git_operation = git_operation.clone();
         let action = SimpleAction::new("git-clone", None);
         action.connect_activate(move |_, _| {
             let url = entry.text().trim().to_string();
@@ -646,6 +707,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             }
 
             popover.popdown();
+            git_operation.begin();
+            set_git_busy_actions_enabled(&window_for_action, false);
             show_git_busy_page(
                 &nav,
                 &busy_page,
@@ -663,37 +726,60 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let toast = Toast::new(&format!("Cloning from {url}..."));
             overlay.add_toast(toast);
 
-            let (tx, rx) = mpsc::channel::<Result<(), String>>();
+            let (tx, rx) = mpsc::channel::<GitOperationResult>();
             let url_for_thread = url.clone();
+            let git_operation_for_thread = git_operation.clone();
             thread::spawn(move || {
+                if git_operation_for_thread.is_cancel_requested() {
+                    let _ = tx.send(GitOperationResult::Canceled);
+                    return;
+                }
+
                 let settings = Preferences::new();
                 let store_root = settings.store();
                 if store_root.is_empty() {
-                    let _ = tx.send(Err("No password store directory configured".to_string()));
+                    let _ = tx.send(GitOperationResult::Failed(
+                        "No password store directory configured".to_string(),
+                    ));
                     return;
                 }
 
                 let mut cmd = settings.git_command();
                 cmd.arg("clone").arg(&url_for_thread).arg(&store_root);
-                let result =
-                    match run_command_output(&mut cmd, "Clone password store", CommandLogOptions::DEFAULT)
-                    {
-                        Ok(output) if output.status.success() => Ok(()),
-                        Ok(output) => {
-                            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                            if stderr.is_empty() {
-                                Err(format!("Failed to clone password store: {}", output.status))
-                            } else {
-                                Err(stderr)
-                            }
+                let result = match run_command_output_controlled(
+                    &mut cmd,
+                    "Clone password store",
+                    CommandLogOptions::DEFAULT,
+                    &git_operation_for_thread.command,
+                ) {
+                    Ok(output) if output.status.success() => GitOperationResult::Success,
+                    Ok(output) if git_operation_for_thread.is_cancel_requested() => {
+                        GitOperationResult::Canceled
+                    }
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                        if stderr.is_empty() {
+                            GitOperationResult::Failed(format!(
+                                "Failed to clone password store: {}",
+                                output.status
+                            ))
+                        } else {
+                            GitOperationResult::Failed(stderr)
                         }
-                        Err(err) => Err(format!("Failed to run clone command: {err}")),
-                    };
+                    }
+                    Err(err) if git_operation_for_thread.is_cancel_requested() => {
+                        GitOperationResult::Canceled
+                    }
+                    Err(err) => GitOperationResult::Failed(format!(
+                        "Failed to run clone command: {err}"
+                    )),
+                };
                 let _ = tx.send(result);
             });
 
             let overlay = overlay.clone();
             let entry = entry.clone();
+            let window = window_for_action.clone();
             let list = list_clone.clone();
             let nav = nav.clone();
             let text_page = text_page.clone();
@@ -707,10 +793,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let save = save.clone();
             let win = win.clone();
             let username = username.clone();
+            let git_operation = git_operation.clone();
             glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-                Ok(Ok(())) => {
+                Ok(GitOperationResult::Success) => {
                     entry.set_text("");
+                    git_operation.finish();
                     finish_git_busy_page(
+                        &window,
                         &nav,
                         &busy_page,
                         &text_page,
@@ -737,8 +826,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     );
                     glib::ControlFlow::Break
                 }
-                Ok(Err(message)) => {
+                Ok(GitOperationResult::Failed(message)) => {
+                    git_operation.finish();
                     finish_git_busy_page(
+                        &window,
                         &nav,
                         &busy_page,
                         &text_page,
@@ -756,9 +847,32 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
                 }
+                Ok(GitOperationResult::Canceled) => {
+                    git_operation.finish();
+                    finish_git_busy_page(
+                        &window,
+                        &nav,
+                        &busy_page,
+                        &text_page,
+                        &settings_page,
+                        &log_page,
+                        &back,
+                        &add,
+                        &find,
+                        &git,
+                        &save,
+                        &win,
+                        &username,
+                    );
+                    let toast = Toast::new("Git clone canceled");
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
                 Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
+                    git_operation.finish();
                     finish_git_busy_page(
+                        &window,
                         &nav,
                         &busy_page,
                         &text_page,
@@ -800,6 +914,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let settings = settings_page.clone();
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
+        let busy_status = git_busy_status.clone();
         let entry = password_entry.clone();
         let username = username_entry.clone();
         let otp = otp_entry.clone();
@@ -812,6 +927,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let find = find_button.clone();
         let save = save_button.clone();
         let nav = navigation_view.clone();
+        let git_operation = git_operation.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
             let busy_visible = nav
@@ -820,6 +936,24 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 .map(|visible| visible == &busy_page)
                 .unwrap_or(false);
             if busy_visible {
+                if git_operation.is_cancel_requested() {
+                    return;
+                }
+                match git_operation.request_cancel() {
+                    Ok(true) => {
+                        log_info("Git operation cancellation requested");
+                        busy_status.set_title("Canceling Git operation");
+                        busy_status
+                            .set_description(Some("Waiting for the current git command to stop."));
+                        let toast = Toast::new("Canceling Git operation");
+                        overlay.add_toast(toast);
+                    }
+                    Ok(false) => {}
+                    Err(err) => {
+                        let toast = Toast::new(&format!("Failed to cancel Git operation: {err}"));
+                        overlay.add_toast(toast);
+                    }
+                }
                 return;
             }
 
@@ -892,6 +1026,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let overlay_clone = toast_overlay.clone();
+        let window_for_action = window.clone();
         let nav = navigation_view.clone();
         let text_page = text_page.clone();
         let settings_page = settings_page.clone();
@@ -906,9 +1041,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let win = window_title.clone();
         let username = username_entry.clone();
         let list_clone = list.clone();
+        let git_operation = git_operation.clone();
         let action = SimpleAction::new("synchronize", None);
         action.connect_activate(move |_, _| {
             let overlay = overlay_clone.clone();
+            git_operation.begin();
+            set_git_busy_actions_enabled(&window_for_action, false);
             show_git_busy_page(
                 &nav,
                 &busy_page,
@@ -923,24 +1061,38 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 Some("Running git fetch, pull, and push."),
             );
             // Channel from worker to main thread
-            let (tx, rx) = mpsc::channel::<String>();
+            let (tx, rx) = mpsc::channel::<GitOperationResult>();
             // Background worker
+            let git_operation_for_thread = git_operation.clone();
             thread::spawn(move || {
                 let settings = Preferences::new();
                 let roots = settings.stores();
                 for root in roots {
+                    if git_operation_for_thread.is_cancel_requested() {
+                        let _ = tx.send(GitOperationResult::Canceled);
+                        return;
+                    }
                     let commands: [&[&str]; 3] = [&["fetch", "--all"], &["pull"], &["push"]];
                     for args in commands {
+                        if git_operation_for_thread.is_cancel_requested() {
+                            let _ = tx.send(GitOperationResult::Canceled);
+                            return;
+                        }
                         let mut cmd = settings.git_command();
                         cmd.arg("-C").arg(&root).args(args);
-                        let output = run_command_output(
+                        let output = run_command_output_controlled(
                             &mut cmd,
                             &format!("Synchronize password store {root}"),
                             CommandLogOptions::DEFAULT,
+                            &git_operation_for_thread.command,
                         );
                         match output {
                             Ok(out) => {
                                 if !out.status.success() {
+                                    if git_operation_for_thread.is_cancel_requested() {
+                                        let _ = tx.send(GitOperationResult::Canceled);
+                                        return;
+                                    }
                                     let stderr = String::from_utf8_lossy(&out.stderr);
                                     let fatal_line = stderr
                                         .lines()
@@ -948,23 +1100,29 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         .find(|line| line.contains("fatal:"))
                                         .unwrap_or(stderr.trim());
                                     let message = format!("{} Using: {}", fatal_line, root);
-                                    let _ = tx.send(message);
+                                    let _ = tx.send(GitOperationResult::Failed(message));
 
                                     // stop further commands for this store
-                                    break;
+                                    return;
                                 }
                             }
                             Err(e) => {
-                                let message = format!("Failed: {} with {e}", root);
-                                let _ = tx.send(message);
-                                break;
+                                if git_operation_for_thread.is_cancel_requested() {
+                                    let _ = tx.send(GitOperationResult::Canceled);
+                                } else {
+                                    let message = format!("Failed: {} with {e}", root);
+                                    let _ = tx.send(GitOperationResult::Failed(message));
+                                }
+                                return;
                             }
                         }
                     }
                 }
+                let _ = tx.send(GitOperationResult::Success);
             });
 
             // Main-thread: poll for messages
+            let window = window_for_action.clone();
             let nav = nav.clone();
             let text_page = text_page.clone();
             let settings_page = settings_page.clone();
@@ -978,10 +1136,41 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let win = win.clone();
             let username = username.clone();
             let list = list_clone.clone();
+            let git_operation = git_operation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 match rx.try_recv() {
-                    Ok(msg) => {
+                    Ok(GitOperationResult::Success) => {
+                        git_operation.finish();
                         finish_git_busy_page(
+                            &window,
+                            &nav,
+                            &busy_page,
+                            &text_page,
+                            &settings_page,
+                            &log_page,
+                            &back,
+                            &add,
+                            &find,
+                            &git,
+                            &save,
+                            &win,
+                            &username,
+                        );
+                        let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                        load_passwords_async(
+                            &list,
+                            git.clone(),
+                            find.clone(),
+                            save.clone(),
+                            overlay.clone(),
+                            show_list_actions,
+                        );
+                        glib::ControlFlow::Break
+                    }
+                    Ok(GitOperationResult::Failed(msg)) => {
+                        git_operation.finish();
+                        finish_git_busy_page(
+                            &window,
                             &nav,
                             &busy_page,
                             &text_page,
@@ -1008,9 +1197,32 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         );
                         glib::ControlFlow::Break
                     }
+                    Ok(GitOperationResult::Canceled) => {
+                        git_operation.finish();
+                        finish_git_busy_page(
+                            &window,
+                            &nav,
+                            &busy_page,
+                            &text_page,
+                            &settings_page,
+                            &log_page,
+                            &back,
+                            &add,
+                            &find,
+                            &git,
+                            &save,
+                            &win,
+                            &username,
+                        );
+                        let toast = Toast::new("Git synchronization canceled");
+                        overlay.add_toast(toast);
+                        glib::ControlFlow::Break
+                    }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
+                        git_operation.finish();
                         finish_git_busy_page(
+                            &window,
                             &nav,
                             &busy_page,
                             &text_page,
@@ -1151,7 +1363,7 @@ fn show_git_busy_page(
     add.set_visible(false);
     find.set_visible(false);
     git.set_visible(false);
-    back.set_visible(false);
+    back.set_visible(true);
     save.set_visible(false);
     win.set_title("Git");
     win.set_subtitle(title);
@@ -1169,6 +1381,7 @@ fn show_git_busy_page(
 }
 
 fn finish_git_busy_page(
+    window: &ApplicationWindow,
     nav: &NavigationView,
     busy_page: &NavigationPage,
     text_page: &NavigationPage,
@@ -1182,6 +1395,8 @@ fn finish_git_busy_page(
     win: &WindowTitle,
     username: &EntryRow,
 ) {
+    set_git_busy_actions_enabled(window, true);
+
     let current_page = nav.visible_page();
     let busy_visible = current_page
         .as_ref()

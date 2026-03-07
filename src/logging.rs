@@ -1,8 +1,9 @@
 use std::ffi::OsStr;
 use std::io::{self, Read, Write};
-use std::process::{Command, Output, Stdio};
-use std::sync::{OnceLock, RwLock};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CommandLogOptions {
@@ -85,6 +86,96 @@ pub fn log_error(message: impl Into<String>) {
 
 pub fn log_snapshot() -> (usize, usize, String) {
     with_log_state_read(|state| (state.revision, state.error_revision, state.text.clone()))
+}
+
+#[derive(Clone, Default)]
+pub struct CommandControl {
+    child: Arc<Mutex<Option<Child>>>,
+}
+
+impl CommandControl {
+    pub fn cancel(&self) -> io::Result<bool> {
+        let result = match self.child.lock() {
+            Ok(mut child) => Self::cancel_locked(&mut child),
+            Err(poisoned) => {
+                let mut child = poisoned.into_inner();
+                Self::cancel_locked(&mut child)
+            }
+        };
+
+        match result {
+            Ok(done) => Ok(done),
+            Err(err) if matches!(err.kind(), io::ErrorKind::InvalidInput | io::ErrorKind::NotFound) => {
+                Ok(false)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    fn cancel_locked(child: &mut Option<Child>) -> io::Result<bool> {
+        let Some(child) = child.as_mut() else {
+            return Ok(false);
+        };
+        child.kill()?;
+        Ok(true)
+    }
+
+    fn set_child(&self, child: Child) {
+        match self.child.lock() {
+            Ok(mut slot) => *slot = Some(child),
+            Err(poisoned) => {
+                let mut slot = poisoned.into_inner();
+                *slot = Some(child);
+            }
+        }
+    }
+
+    fn clear(&self) {
+        match self.child.lock() {
+            Ok(mut slot) => {
+                slot.take();
+            }
+            Err(poisoned) => {
+                let mut slot = poisoned.into_inner();
+                slot.take();
+            }
+        }
+    }
+
+    fn wait(&self, context: &str, command: &str) -> io::Result<ExitStatus> {
+        loop {
+            let status = match self.child.lock() {
+                Ok(mut slot) => Self::try_wait_locked(&mut slot),
+                Err(poisoned) => {
+                    let mut slot = poisoned.into_inner();
+                    Self::try_wait_locked(&mut slot)
+                }
+            };
+
+            match status {
+                Ok(Some(status)) => {
+                    self.clear();
+                    return Ok(status);
+                }
+                Ok(None) => thread::sleep(Duration::from_millis(50)),
+                Err(err) => {
+                    self.clear();
+                    log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    fn try_wait_locked(child: &mut Option<Child>) -> io::Result<Option<ExitStatus>> {
+        let Some(child) = child.as_mut() else {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "command handle missing child process",
+            ));
+        };
+        child.try_wait()
+    }
 }
 
 fn shell_quote(value: &OsStr) -> String {
@@ -239,10 +330,11 @@ fn join_stream_logger(
     }
 }
 
-pub fn run_command_output(
+fn run_command_output_inner(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
+    control: Option<&CommandControl>,
 ) -> io::Result<Output> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -271,11 +363,16 @@ pub fn run_command_output(
                 )
             });
 
-            let status = match child.wait() {
-                Ok(status) => status,
-                Err(err) => {
-                    log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
-                    return Err(err);
+            let status = if let Some(control) = control {
+                control.set_child(child);
+                control.wait(context, &command)?
+            } else {
+                match child.wait() {
+                    Ok(status) => status,
+                    Err(err) => {
+                        log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
+                        return Err(err);
+                    }
                 }
             };
 
@@ -302,6 +399,23 @@ pub fn run_command_output(
             Err(err)
         }
     }
+}
+
+pub fn run_command_output(
+    cmd: &mut Command,
+    context: &str,
+    options: CommandLogOptions,
+) -> io::Result<Output> {
+    run_command_output_inner(cmd, context, options, None)
+}
+
+pub fn run_command_output_controlled(
+    cmd: &mut Command,
+    context: &str,
+    options: CommandLogOptions,
+    control: &CommandControl,
+) -> io::Result<Output> {
+    run_command_output_inner(cmd, context, options, Some(control))
 }
 
 pub fn run_command_status(

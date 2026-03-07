@@ -10,7 +10,7 @@ A graphical frontend for the `pass` password store with the goal of offering fea
 ## Features
 
 - Uses the existing [`pass`](https://www.passwordstore.org/) command-line password store
-- Can run as a **standalone/local app**
+- Can run as a standalone/local app
 - Written in Rust, using GTK4 + Libadwaita
 - Responsive layout for desktop and mobile form factors
 

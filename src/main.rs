@@ -10,8 +10,10 @@ mod preferences;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};
+#[cfg(not(feature = "flatpak"))]
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::methods::non_null_to_string_option;
+#[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
 
 use adw::gio::SimpleAction;
@@ -91,13 +93,17 @@ fn main() -> ExitCode {
             let project = env!("CARGO_PKG_NAME");
             let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
             let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
+            #[cfg(not(feature = "flatpak"))]
             let pass_version =
                 get_pass_version().unwrap_or_else(|| "pass version unknown".to_string());
+            #[cfg(not(feature = "flatpak"))]
             let full_comments = if comments.is_empty() {
                 format!("pass: {pass_version}")
             } else {
                 format!("{project}: {comments}\n\n{pass_version}")
             };
+            #[cfg(feature = "flatpak")]
+            let full_comments = comments;
             let about = adw::AboutDialog::builder()
                 .application_name(project)
                 .application_icon(APP_ID)
@@ -113,6 +119,7 @@ fn main() -> ExitCode {
     app.run()
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn get_pass_version() -> Option<String> {
     let settings = Preferences::new();
     let mut cmd = settings.command();

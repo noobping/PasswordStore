@@ -5,6 +5,11 @@ use crate::backend::{
     delete_password_entry, read_otp_code, read_password_entry, read_password_line,
     rename_password_entry, save_password_entry, save_store_recipients,
 };
+#[cfg(feature = "flatpak")]
+use crate::backend::{
+    import_ripasso_private_key_bytes, list_ripasso_private_keys, remove_ripasso_private_key,
+    resolved_ripasso_own_fingerprint, ManagedRipassoPrivateKey,
+};
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
@@ -28,6 +33,8 @@ use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::ComboRow;
+#[cfg(feature = "flatpak")]
+use adw::gio;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
@@ -209,6 +216,14 @@ struct StoreRecipientsPageState {
     saved_recipients: Rc<RefCell<Vec<String>>>,
     save_in_flight: Rc<Cell<bool>>,
     save_queued: Rc<Cell<bool>>,
+}
+
+#[cfg(feature = "flatpak")]
+#[derive(Clone)]
+struct RipassoPrivateKeysState {
+    window: ApplicationWindow,
+    list: ListBox,
+    overlay: ToastOverlay,
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -821,6 +836,218 @@ fn show_store_recipients_page(
     }
 }
 
+#[cfg(feature = "flatpak")]
+fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Option<String> {
+    let settings = Preferences::new();
+    let configured = settings.ripasso_own_fingerprint();
+    let resolved = configured
+        .as_deref()
+        .and_then(|fingerprint| {
+            keys.iter()
+                .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+                .map(|key| key.fingerprint.clone())
+        })
+        .or_else(|| keys.first().map(|key| key.fingerprint.clone()));
+
+    if configured.as_deref() != resolved.as_deref() {
+        if let Err(err) = settings.set_ripasso_own_fingerprint(resolved.as_deref()) {
+            log_error(format!(
+                "Failed to store the selected ripasso private key fingerprint: {err}"
+            ));
+        }
+    }
+
+    resolved
+}
+
+#[cfg(feature = "flatpak")]
+fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
+    let dialog = FileChooserNative::new(
+        Some("Import private key"),
+        Some(&state.window),
+        FileChooserAction::Open,
+        Some("Import"),
+        Some("Cancel"),
+    );
+    let state_for_response = state.clone();
+    dialog.connect_response(move |dialog, response| {
+        if response != ResponseType::Accept {
+            dialog.hide();
+            return;
+        }
+
+        let Some(file) = dialog.file() else {
+            dialog.hide();
+            return;
+        };
+
+        match file.load_bytes(None::<&gio::Cancellable>) {
+            Ok((bytes, _)) => match import_ripasso_private_key_bytes(bytes.as_ref()) {
+                Ok(key) => {
+                    let settings = Preferences::new();
+                    if let Err(err) = settings.set_ripasso_own_fingerprint(Some(&key.fingerprint))
+                    {
+                        log_error(format!(
+                            "Failed to store the imported ripasso private key fingerprint: {err}"
+                        ));
+                        let toast = Toast::new("The private key was imported, but it could not be selected.");
+                        state_for_response.overlay.add_toast(toast);
+                    } else {
+                        rebuild_ripasso_private_keys_list(&state_for_response);
+                        let toast = Toast::new("Private key imported.");
+                        state_for_response.overlay.add_toast(toast);
+                    }
+                }
+                Err(err) => {
+                    log_error(format!("Failed to import ripasso private key: {err}"));
+                    let message = if err.contains("does not include a private key") {
+                        "That file does not contain a private key."
+                    } else {
+                        "Couldn't import that private key."
+                    };
+                    let toast = Toast::new(message);
+                    state_for_response.overlay.add_toast(toast);
+                }
+            },
+            Err(err) => {
+                log_error(format!("Failed to read the selected private key file: {err}"));
+                let toast = Toast::new("Couldn't read that private key file.");
+                state_for_response.overlay.add_toast(toast);
+            }
+        }
+
+        dialog.hide();
+    });
+
+    dialog.show();
+}
+
+#[cfg(feature = "flatpak")]
+fn append_ripasso_private_key_import_row(state: &RipassoPrivateKeysState) {
+    let row = ActionRow::builder()
+        .title("Import private key")
+        .subtitle("Choose an OpenPGP private key file.")
+        .build();
+    row.set_activatable(true);
+
+    let button = Button::from_icon_name("document-open-symbolic");
+    button.add_css_class("flat");
+    row.add_suffix(&button);
+    state.list.append(&row);
+
+    let row_state = state.clone();
+    row.connect_activated(move |_| {
+        open_ripasso_private_key_picker(&row_state);
+    });
+
+    let button_state = state.clone();
+    button.connect_clicked(move |_| {
+        open_ripasso_private_key_picker(&button_state);
+    });
+}
+
+#[cfg(feature = "flatpak")]
+fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
+    while let Some(child) = state.list.first_child() {
+        state.list.remove(&child);
+    }
+
+    let keys = match list_ripasso_private_keys() {
+        Ok(keys) => keys,
+        Err(err) => {
+            log_error(format!("Failed to read ripasso private keys: {err}"));
+            let toast = Toast::new("Couldn't load the private keys.");
+            state.overlay.add_toast(toast);
+            append_ripasso_private_key_import_row(state);
+            return;
+        }
+    };
+    let selected = sync_ripasso_private_key_selection(&keys);
+
+    if keys.is_empty() {
+        let empty_row = ActionRow::builder()
+            .title("No private keys imported")
+            .subtitle("Import an OpenPGP private key to let ripasso decrypt and save entries.")
+            .build();
+        empty_row.set_activatable(false);
+        state.list.append(&empty_row);
+    } else {
+        for key in keys {
+            let row = ActionRow::builder()
+                .title(key.title())
+                .subtitle(&key.fingerprint)
+                .build();
+            row.set_activatable(true);
+
+            let key_icon = Image::from_icon_name("dialog-password-symbolic");
+            key_icon.add_css_class("dim-label");
+            row.add_prefix(&key_icon);
+
+            if selected.as_deref() == Some(key.fingerprint.as_str()) {
+                let selected_icon = Image::from_icon_name("object-select-symbolic");
+                selected_icon.add_css_class("accent");
+                row.add_suffix(&selected_icon);
+            }
+
+            let delete_button = Button::from_icon_name("user-trash-symbolic");
+            delete_button.add_css_class("flat");
+            row.add_suffix(&delete_button);
+            state.list.append(&row);
+
+            let select_state = state.clone();
+            let key_for_select = key.clone();
+            row.connect_activated(move |_| {
+                let settings = Preferences::new();
+                if settings.ripasso_own_fingerprint().as_deref()
+                    == Some(key_for_select.fingerprint.as_str())
+                {
+                    return;
+                }
+
+                if let Err(err) =
+                    settings.set_ripasso_own_fingerprint(Some(&key_for_select.fingerprint))
+                {
+                    log_error(format!(
+                        "Failed to store the selected ripasso private key fingerprint: {err}"
+                    ));
+                    let toast = Toast::new("Couldn't select that private key.");
+                    select_state.overlay.add_toast(toast);
+                } else {
+                    rebuild_ripasso_private_keys_list(&select_state);
+                }
+            });
+
+            let delete_state = state.clone();
+            let key_for_delete = key.clone();
+            delete_button.connect_clicked(move |_| {
+                if let Err(err) = remove_ripasso_private_key(&key_for_delete.fingerprint) {
+                    log_error(format!(
+                        "Failed to remove ripasso private key '{}': {err}",
+                        key_for_delete.fingerprint
+                    ));
+                    let toast = Toast::new("Couldn't remove that private key.");
+                    delete_state.overlay.add_toast(toast);
+                    return;
+                }
+
+                let remaining = match list_ripasso_private_keys() {
+                    Ok(keys) => keys,
+                    Err(err) => {
+                        log_error(format!(
+                            "Failed to refresh ripasso private keys after removal: {err}"
+                        ));
+                        Vec::new()
+                    }
+                };
+                sync_ripasso_private_key_selection(&remaining);
+                rebuild_ripasso_private_keys_list(&delete_state);
+            });
+        }
+    }
+
+    append_ripasso_private_key_import_row(state);
+}
+
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     let builder = Builder::from_string(UI_SRC);
     let window: ApplicationWindow = builder
@@ -860,12 +1087,22 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let backend_preferences: adw::PreferencesGroup = builder
         .object("backend_preferences")
         .expect("Failed to get backend_preferences");
+    #[cfg(feature = "flatpak")]
+    let ripasso_private_keys_preferences: adw::PreferencesGroup = builder
+        .object("ripasso_private_keys_preferences")
+        .expect("Failed to get ripasso_private_keys_preferences");
+    #[cfg(feature = "flatpak")]
+    let ripasso_private_keys_list: ListBox = builder
+        .object("ripasso_private_keys_list")
+        .expect("Failed to get ripasso_private_keys_list");
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     let backend_row: ComboRow = builder
         .object("backend_row")
         .expect("Failed to get backend_row");
     #[cfg(not(feature = "flatpak"))]
     backend_preferences.set_visible(true);
+    #[cfg(feature = "flatpak")]
+    ripasso_private_keys_preferences.set_visible(true);
 
     // Headerbar + top controls
     let back_button: Button = builder
@@ -1052,6 +1289,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         saved_recipients: store_recipients_saved.clone(),
         save_in_flight: store_recipients_save_in_flight.clone(),
         save_queued: store_recipients_save_queued.clone(),
+    };
+    #[cfg(feature = "flatpak")]
+    let ripasso_private_keys_state = RipassoPrivateKeysState {
+        window: window.clone(),
+        list: ripasso_private_keys_list.clone(),
+        overlay: toast_overlay.clone(),
     };
 
     // Selecting an item from the list
@@ -1694,6 +1937,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let command = pass_row.clone();
         #[cfg(all(feature = "setup", not(feature = "flatpak")))]
         let backend = backend_row.clone();
+        #[cfg(feature = "flatpak")]
+        let ripasso_keys = ripasso_private_keys_state.clone();
         let template_view = new_pass_file_template_view.clone();
         let list = password_stores.clone();
         let parent = window.clone();
@@ -1720,6 +1965,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             template_view
                 .buffer()
                 .set_text(&settings.new_pass_file_template());
+            #[cfg(feature = "flatpak")]
+            rebuild_ripasso_private_keys_list(&ripasso_keys);
             rebuild_store_list(
                 &list,
                 &settings,
@@ -3462,6 +3709,11 @@ fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
         if !recipients.is_empty() {
             return recipients;
         }
+    }
+
+    #[cfg(feature = "flatpak")]
+    if let Ok(fingerprint) = resolved_ripasso_own_fingerprint() {
+        return vec![fingerprint];
     }
 
     Vec::new()

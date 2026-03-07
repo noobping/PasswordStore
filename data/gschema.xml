@@ -32,5 +32,13 @@
         Lines added after the password line when creating a new password entry.
       </description>
     </key>
+
+    <key name="ripasso-own-fingerprint" type="s">
+      <default>''</default>
+      <summary>Selected ripasso private key</summary>
+      <description>
+        Fingerprint of the private key that ripasso should use for password store operations.
+      </description>
+    </key>
   </schema>
 </schemalist>

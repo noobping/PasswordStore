@@ -83,6 +83,7 @@ struct PreferenceFile {
     pass_command: Option<String>,
     password_store_dirs: Option<Vec<String>>,
     new_pass_file_template: Option<String>,
+    ripasso_own_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -268,6 +269,38 @@ impl Preferences {
         } else {
             let mut cfg = load_file_prefs();
             cfg.new_pass_file_template = Some(template.to_string());
+            save_file_prefs(&cfg)
+        }
+    }
+
+    #[cfg(feature = "flatpak")]
+    pub fn ripasso_own_fingerprint(&self) -> Option<String> {
+        let value = if let Some(s) = &self.settings {
+            s.string("ripasso-own-fingerprint").to_string()
+        } else {
+            let cfg = load_file_prefs();
+            cfg.ripasso_own_fingerprint.unwrap_or_default()
+        };
+
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    #[cfg(feature = "flatpak")]
+    pub fn set_ripasso_own_fingerprint(
+        &self,
+        fingerprint: Option<&str>,
+    ) -> Result<(), BoolError> {
+        let value = fingerprint.unwrap_or("").trim().to_string();
+        if let Some(s) = &self.settings {
+            s.set_string("ripasso-own-fingerprint", &value)
+        } else {
+            let mut cfg = load_file_prefs();
+            cfg.ripasso_own_fingerprint = if value.is_empty() { None } else { Some(value) };
             save_file_prefs(&cfg)
         }
     }

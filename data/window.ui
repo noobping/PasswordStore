@@ -333,6 +333,22 @@
                               </object>
                             </child>
                             <child>
+                              <object class="AdwPreferencesGroup" id="ripasso_private_keys_preferences">
+                                <property name="visible">false</property>
+                                <property name="title" translatable="yes">Ripasso Private Keys</property>
+                                <property name="description" translatable="yes">Flatpak builds use ripasso's integrated key storage. Import the private key you want ripasso to use, then select it here.</property>
+                                <child>
+                                  <object class="GtkListBox" id="ripasso_private_keys_list">
+                                    <property name="hexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Password Stores</property>
                                 <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>

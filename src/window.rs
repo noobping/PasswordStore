@@ -263,6 +263,99 @@ fn is_locked_private_key_error(message: &str) -> bool {
     message.contains("The selected private key is locked.")
 }
 
+#[cfg(feature = "flatpak")]
+fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
+    overlay
+        .root()
+        .and_then(|root| root.downcast::<ApplicationWindow>().ok())
+}
+
+#[cfg(feature = "flatpak")]
+fn start_ripasso_private_key_unlock_for_action(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    fingerprint: String,
+    passphrase: String,
+    after_unlock: Rc<dyn Fn()>,
+) {
+    let progress_dialog = build_private_key_progress_dialog(
+        window,
+        "Unlocking Private Key",
+        "Please wait while ripasso unlocks the private key for this session.",
+    );
+    let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
+    let fingerprint_for_thread = fingerprint.clone();
+    thread::spawn(move || {
+        let result = unlock_ripasso_private_key_for_session(&fingerprint_for_thread, &passphrase);
+        let _ = tx.send(result);
+    });
+
+    let overlay = overlay.clone();
+    let after_unlock = after_unlock.clone();
+    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+        Ok(Ok(_)) => {
+            progress_dialog.force_close();
+            after_unlock();
+            let toast = Toast::new("Private key unlocked for this session.");
+            overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+        Ok(Err(err)) => {
+            progress_dialog.force_close();
+            log_error(format!("Failed to unlock ripasso private key: {err}"));
+            let message = if err.contains("incorrect") {
+                "Couldn't unlock that private key."
+            } else if err.contains("cannot decrypt password store entries") {
+                "That private key cannot decrypt password entries."
+            } else {
+                "Couldn't unlock that private key."
+            };
+            let toast = Toast::new(message);
+            overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(TryRecvError::Disconnected) => {
+            progress_dialog.force_close();
+            log_error("Private key unlock worker disconnected unexpectedly.".to_string());
+            let toast = Toast::new("Couldn't unlock that private key.");
+            overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+    });
+}
+
+#[cfg(feature = "flatpak")]
+fn prompt_ripasso_private_key_unlock_for_action(
+    overlay: &ToastOverlay,
+    fingerprint: String,
+    after_unlock: Rc<dyn Fn()>,
+) {
+    let Some(window) = toast_overlay_window(overlay) else {
+        log_error("Couldn't find the application window for the private key unlock dialog.".to_string());
+        let toast = Toast::new("Couldn't unlock that private key.");
+        overlay.add_toast(toast);
+        return;
+    };
+
+    let window_for_submit = window.clone();
+    let overlay_for_submit = overlay.clone();
+    present_private_key_password_dialog(
+        &window,
+        overlay,
+        "Unlock Private Key",
+        move |passphrase| {
+            start_ripasso_private_key_unlock_for_action(
+                &window_for_submit,
+                &overlay_for_submit,
+                fingerprint.clone(),
+                passphrase,
+                after_unlock.clone(),
+            );
+        },
+    );
+}
+
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     let toast = Toast::new("Clipboard is not available right now.");
     overlay.add_toast(toast);
@@ -296,6 +389,7 @@ fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry) {
 
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOverlay) {
+    let retry_item = item.clone();
     let (tx, rx) = mpsc::channel::<Result<String, String>>();
     thread::spawn(move || {
         let label = item.label();
@@ -310,6 +404,31 @@ fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOver
         }
         Ok(Err(err)) => {
             log_error(format!("Failed to copy password entry: {err}"));
+            #[cfg(feature = "flatpak")]
+            if is_locked_private_key_error(&err) {
+                match resolved_ripasso_own_fingerprint() {
+                    Ok(fingerprint) => {
+                        let retry_overlay = overlay.clone();
+                        let retry_item_for_unlock = retry_item.clone();
+                        prompt_ripasso_private_key_unlock_for_action(
+                            &overlay,
+                            fingerprint,
+                            Rc::new(move || {
+                                copy_password_entry_to_clipboard_via_read(
+                                    retry_item_for_unlock.clone(),
+                                    retry_overlay.clone(),
+                                );
+                            }),
+                        );
+                        return glib::ControlFlow::Break;
+                    }
+                    Err(resolve_err) => {
+                        log_error(format!(
+                            "Failed to resolve the selected ripasso private key for copy retry: {resolve_err}"
+                        ));
+                    }
+                }
+            }
             let toast = Toast::new("Couldn't copy the password.");
             overlay.add_toast(toast);
             glib::ControlFlow::Break

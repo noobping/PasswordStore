@@ -350,6 +350,7 @@ where
     }
 }
 
+#[cfg(target_os = "linux")]
 fn add_open_url_suffix(row: &EntryRow, text: impl Fn() -> String + 'static, overlay: &ToastOverlay) {
     let button = Button::from_icon_name("adw-external-link-symbolic");
     button.set_tooltip_text(Some("Open URL"));
@@ -407,6 +408,7 @@ fn build_dynamic_field_row(
         apply_field_row_style(&row);
         let row_clone = row.clone();
         add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
+        #[cfg(target_os = "linux")]
         if is_url_field_key(&template.raw_key) {
             let row_clone = row.clone();
             add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);

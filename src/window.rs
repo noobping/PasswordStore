@@ -1042,7 +1042,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let save = save_button.clone();
         let win = window_title.clone();
         let view = log_view.clone();
-        let busy_page = git_busy_page.clone();
         let seen_revision = Rc::new(RefCell::new(0usize));
         let seen_error_revision = Rc::new(RefCell::new(0usize));
         glib::timeout_add_local(Duration::from_millis(200), move || {
@@ -1057,12 +1056,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             if cfg!(debug_assertions) {
                 let mut seen_error = seen_error_revision.borrow_mut();
-                let busy_visible = nav
-                    .visible_page()
-                    .as_ref()
-                    .map(|visible| visible == &busy_page)
-                    .unwrap_or(false);
-                if error_revision > *seen_error && !busy_visible {
+                if error_revision > *seen_error {
                     *seen_error = error_revision;
                     show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
                 }
@@ -1179,13 +1173,21 @@ fn finish_git_busy_page(
     win: &WindowTitle,
     username: &EntryRow,
 ) {
-    let busy_visible = nav
-        .visible_page()
+    let current_page = nav.visible_page();
+    let busy_visible = current_page
         .as_ref()
         .map(|visible| visible == busy_page)
         .unwrap_or(false);
+    let busy_in_stack = navigation_stack_contains_page(nav, busy_page);
+
     if busy_visible {
         nav.pop();
+    } else if busy_in_stack {
+        if let Some(current_page) = current_page.filter(|page| page != busy_page) {
+            let _ = nav.pop_to_page(busy_page);
+            let _ = nav.pop();
+            nav.push(&current_page);
+        }
     }
 
     let stack = nav.navigation_stack();
@@ -1238,6 +1240,23 @@ fn finish_git_busy_page(
         win.set_title("Logs");
         win.set_subtitle("Command output");
     }
+}
+
+fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {
+    let stack = nav.navigation_stack();
+    let mut index = 0;
+    let len = stack.n_items();
+    while index < len {
+        if let Some(item) = stack.item(index) {
+            if let Ok(stack_page) = item.downcast::<NavigationPage>() {
+                if stack_page == *page {
+                    return true;
+                }
+            }
+        }
+        index += 1;
+    }
+    false
 }
 
 fn load_passwords_async(

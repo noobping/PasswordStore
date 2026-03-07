@@ -336,8 +336,21 @@
                         <property name="hexpand">true</property>
                         <property name="vexpand">true</property>
                         <child>
-                          <object class="GtkSpinner">
-                            <property name="spinning">true</property>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">12</property>
+                            <property name="halign">center</property>
+                            <child>
+                              <object class="GtkSpinner">
+                                <property name="spinning">true</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton">
+                                <property name="label" translatable="yes">Show Logs</property>
+                                <property name="action-name">win.open-log</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                       </object>

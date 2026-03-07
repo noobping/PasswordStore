@@ -344,17 +344,6 @@
                         <child>
                           <object class="AdwPreferencesPage">
                             <child>
-                              <object class="AdwPreferencesGroup" id="store_recipients_store_group">
-                                <property name="title" translatable="yes">Store</property>
-                                <property name="description" translatable="yes">Review the selected password store before saving recipients.</property>
-                                <child>
-                                  <object class="AdwActionRow" id="store_recipients_store_row">
-                                    <property name="title" translatable="yes">Location</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">GPG Recipients</property>
                                 <property name="description" translatable="yes">Add one recipient per row. You can paste multiple recipients separated by commas or semicolons.</property>

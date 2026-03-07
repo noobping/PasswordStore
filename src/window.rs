@@ -17,7 +17,7 @@ use crate::preferences::Preferences;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, PreferencesGroup, StatusPage, Toast, ToastOverlay,
+    NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay,
     WindowTitle,
 };
 use adw::gtk::{
@@ -159,15 +159,6 @@ impl StoreRecipientsMode {
         }
     }
 
-    fn store_description(&self) -> &'static str {
-        match self {
-            Self::Create => {
-                "The selected folder will be initialized and used as the default password store."
-            }
-            Self::Edit => "Update the recipients for this password store and re-encrypt it.",
-        }
-    }
-
     fn empty_state_subtitle(&self) -> &'static str {
         match self {
             Self::Create => "Add at least one recipient to initialize the password store.",
@@ -186,8 +177,6 @@ struct StoreRecipientsRequest {
 struct StoreRecipientsPageState {
     nav: NavigationView,
     page: NavigationPage,
-    store_group: PreferencesGroup,
-    store_row: ActionRow,
     list: ListBox,
     entry: EntryRow,
     back: Button,
@@ -558,9 +547,6 @@ fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
     state.save.set_visible(true);
     set_save_button_for_store_recipients(&state.save, &request.mode);
     state.page.set_title(request.mode.page_title());
-    state.store_group
-        .set_description(Some(request.mode.store_description()));
-    state.store_row.set_subtitle(&request.store);
     state.win.set_title(request.mode.page_title());
     state.win.set_subtitle(&request.store);
 }
@@ -669,12 +655,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let store_recipients_page: NavigationPage = builder
         .object("store_recipients_page")
         .expect("Failed to get store recipients page");
-    let store_recipients_store_group: PreferencesGroup = builder
-        .object("store_recipients_store_group")
-        .expect("Failed to get store recipients group");
-    let store_recipients_store_row: ActionRow = builder
-        .object("store_recipients_store_row")
-        .expect("Failed to get store recipients store row");
     let store_recipients_list: ListBox = builder
         .object("store_recipients_list")
         .expect("Failed to get store recipients list");
@@ -782,8 +762,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let store_recipients_page_state = StoreRecipientsPageState {
         nav: navigation_view.clone(),
         page: store_recipients_page.clone(),
-        store_group: store_recipients_store_group.clone(),
-        store_row: store_recipients_store_row.clone(),
         list: store_recipients_list.clone(),
         entry: store_recipients_entry.clone(),
         back: back_button.clone(),

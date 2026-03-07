@@ -58,7 +58,7 @@
                 <child>
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Restore from Git repository</property>
+                    <property name="tooltip-text" translatable="yes">Restore password store from Git</property>
                     <property name="action-name">win.open-git</property>
                     <property name="visible">true</property>
                   </object>
@@ -69,7 +69,7 @@
                     <property name="autohide">false</property>
                     <child>
                       <object class="AdwEntryRow" id="git_url_entry">
-                        <property name="title" translatable="yes">Git URL</property>
+                        <property name="title" translatable="yes">Repository URL</property>
                         <property name="show-apply-button">True</property>
                         <property name="action-name">win.git-clone</property>
                       </object>

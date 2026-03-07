@@ -66,6 +66,15 @@ enum GitOperationResult {
     Canceled,
 }
 
+fn with_logs_hint(message: &str) -> String {
+    format!("{message} Check Logs for details.")
+}
+
+fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
+    let toast = Toast::new("Clipboard is not available right now.");
+    overlay.add_toast(toast);
+}
+
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
     let Some(action) = window.lookup_action(name) else {
         return;
@@ -250,12 +259,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let root = non_null_to_string_option(row, "root");
 
             let Some(label) = label else {
-                let toast = Toast::new("Can not find password file.");
+                let toast = Toast::new("This password entry could not be opened.");
                 overlay.add_toast(toast);
                 return;
             };
             let Some(root) = root else {
-                let toast = Toast::new("Unknown password store.");
+                let toast = Toast::new("This password entry is missing its password store.");
                 overlay.add_toast(toast);
                 return;
             };
@@ -364,15 +373,17 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         String::from_utf8_lossy(&o.stdout).trim().to_string();
                                     otp_entry.set_text(&code);
                                 }
-                                Ok(o) => {
-                                    let error = String::from_utf8_lossy(&o.stderr).trim().to_string();
-                                    if !error.is_empty() {
-                                        let toast = Toast::new(&error);
-                                        overlay.add_toast(toast);
-                                    }
+                                Ok(_) => {
+                                    let toast = Toast::new(&with_logs_hint(
+                                        "Couldn't load the one-time password.",
+                                    ));
+                                    overlay.add_toast(toast);
                                 }
                                 Err(e) => {
-                                    let toast = Toast::new(&format!("OTP Failed: {e}"));
+                                    log_error(format!("Failed to read OTP code: {e}"));
+                                    let toast = Toast::new(&with_logs_hint(
+                                        "Couldn't load the one-time password.",
+                                    ));
                                     overlay.add_toast(toast);
                                 }
                             }
@@ -383,13 +394,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         glib::ControlFlow::Break
                     }
                     Ok(Err(msg)) => {
-                        let toast = Toast::new(&msg);
+                        log_error(format!("Failed to open password entry: {msg}"));
+                        let toast = Toast::new(&with_logs_hint("Couldn't open the password entry."));
                         overlay.add_toast(toast);
                         glib::ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        let toast = Toast::new("Failed to decrypt password entry");
+                        let toast = Toast::new(&with_logs_hint("Couldn't open the password entry."));
                         overlay.add_toast(toast);
                         glib::ControlFlow::Break
                     }
@@ -407,7 +419,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let text = row.text().to_string();
             let text = text.trim();
             if text.is_empty() {
-                let toast = Toast::new("Pass command cannot be empty");
+                let toast = Toast::new("Enter a command for pass.");
                 overlay.add_toast(toast);
                 return;
             }
@@ -430,8 +442,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let clipboard = display.clipboard();
                 clipboard.set_text(&text);
             } else {
-                let toast = Toast::new("No display or clipboard available");
-                overlay.add_toast(toast);
+                show_clipboard_unavailable_toast(&overlay);
             }
         });
     }
@@ -447,8 +458,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let clipboard = display.clipboard();
                 clipboard.set_text(&text);
             } else {
-                let toast = Toast::new("No display or clipboard available");
-                overlay.add_toast(toast);
+                show_clipboard_unavailable_toast(&overlay);
             }
         });
     }
@@ -464,8 +474,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let clipboard = display.clipboard();
                 clipboard.set_text(&text);
             } else {
-                let toast = Toast::new("No display or clipboard available");
-                overlay.add_toast(toast);
+                show_clipboard_unavailable_toast(&overlay);
             }
         });
     }
@@ -492,7 +501,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             let store_root = settings.store();
             if path.is_empty() {
-                let toast = Toast::new("Path cannot be empty");
+                let toast = Toast::new("Enter a name or path for the new entry.");
                 overlay.add_toast(toast);
                 return;
             }
@@ -530,7 +539,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("save-password", None);
         action.connect_activate(move |_, _| {
             let Some(pass_file) = get_opened_pass_file() else {
-                let toast = Toast::new("No password entry selected");
+                let toast = Toast::new("Open a password entry before saving.");
                 overlay.add_toast(toast);
                 return;
             };
@@ -539,7 +548,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let notes = buffer.text(&start, &end, false).to_string();
             let password = entry.text().to_string();
             if password.is_empty() {
-                let toast = Toast::new("Password cannot be empty");
+                let toast = Toast::new("Enter a password before saving.");
                 overlay.add_toast(toast);
                 return;
             }
@@ -554,7 +563,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     let updated_pass_file =
                         refresh_opened_pass_file_from_contents(&pass_file, &contents);
                     sync_username_row(&username, updated_pass_file.as_ref());
-                    let toast = Toast::new("Password saved");
+                    let toast = Toast::new("Changes saved.");
                     overlay.add_toast(toast);
                 }
                 Err(msg) => {
@@ -621,7 +630,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let action = SimpleAction::new("install-locally", None);
         action.connect_activate(move |_, _| {
             if !can_install_locally() {
-                let toast = Toast::new(&format!("Can not install this App"));
+                let toast = Toast::new("This app cannot be installed here.");
                 overlay.add_toast(toast);
                 return;
             }
@@ -701,7 +710,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         action.connect_activate(move |_, _| {
             let url = entry.text().trim().to_string();
             if url.is_empty() {
-                let toast = Toast::new("Git URL cannot be empty");
+                let toast = Toast::new("Enter a repository URL.");
                 overlay.add_toast(toast);
                 return;
             }
@@ -719,12 +728,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 &git,
                 &save,
                 &win,
-                "Cloning password store",
-                Some(&url),
+                "Restoring password store",
+                Some("Downloading the password store from the repository."),
             );
-
-            let toast = Toast::new(&format!("Cloning from {url}..."));
-            overlay.add_toast(toast);
 
             let (tx, rx) = mpsc::channel::<GitOperationResult>();
             let url_for_thread = url.clone();
@@ -739,7 +745,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let store_root = settings.store();
                 if store_root.is_empty() {
                     let _ = tx.send(GitOperationResult::Failed(
-                        "No password store directory configured".to_string(),
+                        "Add a password store folder in Preferences before restoring from Git."
+                            .to_string(),
                     ));
                     return;
                 }
@@ -756,23 +763,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     Ok(output) if git_operation_for_thread.is_cancel_requested() => {
                         GitOperationResult::Canceled
                     }
-                    Ok(output) => {
-                        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                        if stderr.is_empty() {
-                            GitOperationResult::Failed(format!(
-                                "Failed to clone password store: {}",
-                                output.status
-                            ))
-                        } else {
-                            GitOperationResult::Failed(stderr)
-                        }
-                    }
+                    Ok(_) => GitOperationResult::Failed(with_logs_hint(
+                        "Couldn't restore the password store.",
+                    )),
                     Err(err) if git_operation_for_thread.is_cancel_requested() => {
                         GitOperationResult::Canceled
                     }
-                    Err(err) => GitOperationResult::Failed(format!(
-                        "Failed to run clone command: {err}"
-                    )),
+                    Err(err) => {
+                        log_error(format!("Failed to start restore from Git: {err}"));
+                        GitOperationResult::Failed(with_logs_hint(
+                            "Couldn't restore the password store.",
+                        ))
+                    }
                 };
                 let _ = tx.send(result);
             });
@@ -813,7 +815,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &win,
                         &username,
                     );
-                    let toast = Toast::new("Password store cloned");
+                    let toast = Toast::new("Password store restored.");
                     overlay.add_toast(toast);
                     let show_list_actions = nav.navigation_stack().n_items() <= 1;
                     load_passwords_async(
@@ -864,7 +866,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &win,
                         &username,
                     );
-                    let toast = Toast::new("Git clone canceled");
+                    let toast = Toast::new("Restore canceled.");
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
                 }
@@ -886,7 +888,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &win,
                         &username,
                     );
-                    let toast = Toast::new("Clone command stopped unexpectedly");
+                    let toast =
+                        Toast::new(&with_logs_hint("The restore operation stopped unexpectedly."));
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
                 }
@@ -942,15 +945,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 match git_operation.request_cancel() {
                     Ok(true) => {
                         log_info("Git operation cancellation requested");
-                        busy_status.set_title("Canceling Git operation");
+                        busy_status.set_title("Stopping Git operation");
                         busy_status
                             .set_description(Some("Waiting for the current git command to stop."));
-                        let toast = Toast::new("Canceling Git operation");
-                        overlay.add_toast(toast);
                     }
                     Ok(false) => {}
                     Err(err) => {
-                        let toast = Toast::new(&format!("Failed to cancel Git operation: {err}"));
+                        log_error(format!("Failed to cancel Git operation: {err}"));
+                        let toast = Toast::new("Couldn't stop the Git operation.");
                         overlay.add_toast(toast);
                     }
                 }
@@ -1057,8 +1059,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 &git,
                 &save,
                 &win,
-                "Synchronizing password stores",
-                Some("Running git fetch, pull, and push."),
+                "Syncing password stores",
+                Some("Checking for changes and pushing updates."),
             );
             // Channel from worker to main thread
             let (tx, rx) = mpsc::channel::<GitOperationResult>();
@@ -1099,7 +1101,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                         .rev()
                                         .find(|line| line.contains("fatal:"))
                                         .unwrap_or(stderr.trim());
-                                    let message = format!("{} Using: {}", fatal_line, root);
+                                    log_error(format!(
+                                        "Password store sync failed for {root}: {fatal_line}"
+                                    ));
+                                    let message = with_logs_hint(
+                                        "Couldn't sync one of the password stores.",
+                                    );
                                     let _ = tx.send(GitOperationResult::Failed(message));
 
                                     // stop further commands for this store
@@ -1110,7 +1117,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                 if git_operation_for_thread.is_cancel_requested() {
                                     let _ = tx.send(GitOperationResult::Canceled);
                                 } else {
-                                    let message = format!("Failed: {} with {e}", root);
+                                    log_error(format!(
+                                        "Password store sync failed for {root}: {e}"
+                                    ));
+                                    let message = with_logs_hint(
+                                        "Couldn't sync one of the password stores.",
+                                    );
                                     let _ = tx.send(GitOperationResult::Failed(message));
                                 }
                                 return;
@@ -1214,7 +1226,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &win,
                             &username,
                         );
-                        let toast = Toast::new("Git synchronization canceled");
+                        let toast = Toast::new("Sync canceled.");
                         overlay.add_toast(toast);
                         glib::ControlFlow::Break
                     }
@@ -1603,15 +1615,13 @@ fn load_passwords_async(
                             let new_label = row.text().to_string();
 
                             if new_label.is_empty() {
-                                let toast = adw::Toast::new("New name cannot be empty");
+                                let toast = adw::Toast::new("Enter a new name.");
                                 overlay.add_toast(toast);
                                 return;
                             }
 
                             let old_label = entry.label();
                             if new_label == old_label {
-                                let toast = adw::Toast::new("Name unchanged");
-                                overlay.add_toast(toast);
                                 return;
                             }
 
@@ -1637,7 +1647,8 @@ fn load_passwords_async(
                                     action_row.set_subtitle(&parent);
                                 }
                                 Ok(_) | Err(_) => {
-                                    let toast = adw::Toast::new("Failed to rename entry");
+                                    let toast =
+                                        adw::Toast::new("Couldn't rename the password entry.");
                                     overlay.add_toast(toast);
                                 }
                             }

@@ -979,12 +979,15 @@ fn build_ripasso_progress_dialog(window: &ApplicationWindow) -> Dialog {
         .build();
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
+    let header = HeaderBar::new();
+    let toolbar_view = ToolbarView::new();
+    toolbar_view.add_top_bar(&header);
+    toolbar_view.set_content(Some(&status));
+
     let dialog = Dialog::builder()
         .title("Import Private Key")
         .content_width(460)
-        .content_height(220)
-        .follows_content_size(false)
-        .child(&status)
+        .child(&toolbar_view)
         .build();
     dialog.set_can_close(false);
     dialog.present(Some(window));
@@ -1059,7 +1062,7 @@ fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes:
 
     let dialog = Dialog::builder()
         .title("Unlock Private Key")
-        .content_width(540)
+        .content_width(460)
         .child(&toolbar_view)
         .build();
 

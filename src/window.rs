@@ -7,9 +7,10 @@ use crate::backend::{
 };
 #[cfg(feature = "flatpak")]
 use crate::backend::{
-    import_ripasso_private_key_bytes, list_ripasso_private_keys, remove_ripasso_private_key,
-    resolved_ripasso_own_fingerprint, ripasso_private_key_requires_passphrase,
-    ManagedRipassoPrivateKey,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    remove_ripasso_private_key, resolved_ripasso_own_fingerprint,
+    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
+    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
@@ -241,8 +242,8 @@ fn with_logs_hint(message: &str) -> String {
 
 #[cfg(feature = "flatpak")]
 fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
-    if message.contains("still locked") {
-        Some("The selected private key is locked. Re-import it in Preferences and enter its password.")
+    if message.contains("is locked") {
+        Some("The selected private key is locked. Unlock it in Preferences and enter its password.")
     } else if message.contains("cannot decrypt password store entries") {
         Some("The selected private key cannot decrypt password entries.")
     } else {
@@ -958,6 +959,8 @@ fn finish_ripasso_private_key_import(
             log_error(format!("Failed to import ripasso private key: {err}"));
             let message = if err.contains("does not include a private key") {
                 "That file does not contain a private key."
+            } else if err.contains("must be password protected") {
+                "Protect that private key with a password before importing it."
             } else if err.contains("password protected") || err.contains("incorrect") {
                 "Couldn't unlock that private key."
             } else if err.contains("cannot decrypt password store entries") {
@@ -972,10 +975,14 @@ fn finish_ripasso_private_key_import(
 }
 
 #[cfg(feature = "flatpak")]
-fn build_ripasso_progress_dialog(window: &ApplicationWindow) -> Dialog {
+fn build_ripasso_progress_dialog(
+    window: &ApplicationWindow,
+    title: &str,
+    description: &str,
+) -> Dialog {
     let status = StatusPage::builder()
-        .title("Importing Private Key")
-        .description("Please wait while ripasso prepares the private key.")
+        .title(title)
+        .description(description)
         .build();
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
@@ -985,7 +992,7 @@ fn build_ripasso_progress_dialog(window: &ApplicationWindow) -> Dialog {
     toolbar_view.set_content(Some(&status));
 
     let dialog = Dialog::builder()
-        .title("Import Private Key")
+        .title(title)
         .content_width(460)
         .child(&toolbar_view)
         .build();
@@ -1000,7 +1007,11 @@ fn start_ripasso_private_key_import(
     bytes: Vec<u8>,
     passphrase: Option<String>,
 ) {
-    let progress_dialog = build_ripasso_progress_dialog(&state.window);
+    let progress_dialog = build_ripasso_progress_dialog(
+        &state.window,
+        "Importing Private Key",
+        "Please wait while ripasso imports the private key.",
+    );
     let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
     thread::spawn(move || {
         let result = import_ripasso_private_key_bytes(&bytes, passphrase.as_deref());
@@ -1026,6 +1037,108 @@ fn start_ripasso_private_key_import(
 }
 
 #[cfg(feature = "flatpak")]
+fn select_ripasso_private_key(state: &RipassoPrivateKeysState, fingerprint: &str) {
+    let settings = Preferences::new();
+    if let Err(err) = settings.set_ripasso_own_fingerprint(Some(fingerprint)) {
+        log_error(format!(
+            "Failed to store the selected ripasso private key fingerprint: {err}"
+        ));
+        let toast = Toast::new("Couldn't select that private key.");
+        state.overlay.add_toast(toast);
+    } else {
+        rebuild_ripasso_private_keys_list(state);
+    }
+}
+
+#[cfg(feature = "flatpak")]
+fn start_ripasso_private_key_unlock(
+    state: &RipassoPrivateKeysState,
+    fingerprint: String,
+    passphrase: String,
+    select_after_unlock: bool,
+) {
+    let progress_dialog = build_ripasso_progress_dialog(
+        &state.window,
+        "Unlocking Private Key",
+        "Please wait while ripasso unlocks the private key for this session.",
+    );
+    let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
+    let fingerprint_for_thread = fingerprint.clone();
+    thread::spawn(move || {
+        let result = unlock_ripasso_private_key_for_session(&fingerprint_for_thread, &passphrase);
+        let _ = tx.send(result);
+    });
+
+    let state = state.clone();
+    let fingerprint_for_result = fingerprint.clone();
+    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+        Ok(Ok(_)) => {
+            progress_dialog.force_close();
+            if select_after_unlock {
+                select_ripasso_private_key(&state, &fingerprint_for_result);
+            } else {
+                rebuild_ripasso_private_keys_list(&state);
+            }
+            let toast = Toast::new("Private key unlocked for this session.");
+            state.overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+        Ok(Err(err)) => {
+            progress_dialog.force_close();
+            log_error(format!("Failed to unlock ripasso private key: {err}"));
+            let message = if err.contains("incorrect") {
+                "Couldn't unlock that private key."
+            } else if err.contains("cannot decrypt password store entries") {
+                "That private key cannot decrypt password entries."
+            } else {
+                "Couldn't unlock that private key."
+            };
+            let toast = Toast::new(message);
+            state.overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(TryRecvError::Disconnected) => {
+            progress_dialog.force_close();
+            log_error("Private key unlock worker disconnected unexpectedly.".to_string());
+            let toast = Toast::new("Couldn't unlock that private key.");
+            state.overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+    });
+}
+
+#[cfg(feature = "flatpak")]
+fn build_ripasso_private_key_password_dialog(
+    _window: &ApplicationWindow,
+    title: &str,
+) -> (Dialog, PasswordEntryRow) {
+    let password_row = PasswordEntryRow::new();
+    password_row.set_title("Private key password");
+    password_row.set_show_apply_button(true);
+
+    let password_group = PreferencesGroup::builder().build();
+    password_group.add(&password_row);
+
+    let page = PreferencesPage::new();
+    page.add(&password_group);
+
+    let header = HeaderBar::new();
+    let toolbar_view = ToolbarView::new();
+    toolbar_view.add_top_bar(&header);
+    toolbar_view.set_content(Some(&page));
+
+    let dialog = Dialog::builder()
+        .title(title)
+        .content_width(460)
+        .child(&toolbar_view)
+        .build();
+    dialog.set_focus(Some(&password_row));
+
+    (dialog, password_row)
+}
+
+#[cfg(feature = "flatpak")]
 fn submit_ripasso_private_key_passphrase(
     dialog: &Dialog,
     state: &RipassoPrivateKeysState,
@@ -1045,28 +1158,8 @@ fn submit_ripasso_private_key_passphrase(
 
 #[cfg(feature = "flatpak")]
 fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes: Vec<u8>) {
-    let password_row = PasswordEntryRow::new();
-    password_row.set_title("Private key password");
-    password_row.set_show_apply_button(true);
-
-    let password_group = PreferencesGroup::builder().build();
-    password_group.add(&password_row);
-
-    let page = PreferencesPage::new();
-    page.add(&password_group);
-
-    let header = HeaderBar::new();
-    let toolbar_view = ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&page));
-
-    let dialog = Dialog::builder()
-        .title("Unlock Private Key")
-        .content_width(460)
-        .child(&toolbar_view)
-        .build();
-
-    dialog.set_focus(Some(&password_row));
+    let (dialog, password_row) =
+        build_ripasso_private_key_password_dialog(&state.window, "Unlock Private Key");
 
     let bytes = Rc::new(bytes);
     let submit = Rc::new({
@@ -1076,6 +1169,48 @@ fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes:
         let bytes = Rc::clone(&bytes);
         move || {
             submit_ripasso_private_key_passphrase(&dialog, &state, bytes.as_slice(), &password_row);
+        }
+    });
+
+    {
+        let submit = Rc::clone(&submit);
+        password_row.connect_apply(move |_| {
+            submit();
+        });
+    }
+
+    dialog.present(Some(&state.window));
+}
+
+#[cfg(feature = "flatpak")]
+fn prompt_ripasso_private_key_unlock(
+    state: &RipassoPrivateKeysState,
+    fingerprint: String,
+    select_after_unlock: bool,
+) {
+    let (dialog, password_row) =
+        build_ripasso_private_key_password_dialog(&state.window, "Unlock Private Key");
+    let fingerprint = Rc::new(fingerprint);
+    let submit = Rc::new({
+        let dialog = dialog.clone();
+        let password_row = password_row.clone();
+        let state = state.clone();
+        let fingerprint = Rc::clone(&fingerprint);
+        move || {
+            let passphrase = password_row.text().to_string();
+            if passphrase.is_empty() {
+                let toast = Toast::new("Enter the private key password.");
+                state.overlay.add_toast(toast);
+                return;
+            }
+
+            dialog.close();
+            start_ripasso_private_key_unlock(
+                &state,
+                fingerprint.to_string(),
+                passphrase,
+                select_after_unlock,
+            );
         }
     });
 
@@ -1140,6 +1275,9 @@ fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
         state.list.append(&empty_row);
     } else {
         for key in keys {
+            let unlocked = is_ripasso_private_key_unlocked(&key.fingerprint).unwrap_or(false);
+            let requires_unlock =
+                ripasso_private_key_requires_session_unlock(&key.fingerprint).unwrap_or(false);
             let title = glib::markup_escape_text(&key.title());
             let row = ActionRow::builder()
                 .title(title.as_str())
@@ -1150,6 +1288,16 @@ fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
             let key_icon = Image::from_icon_name("dialog-password-symbolic");
             key_icon.add_css_class("dim-label");
             row.add_prefix(&key_icon);
+
+            if requires_unlock {
+                let locked_icon = Image::from_icon_name("system-lock-screen-symbolic");
+                locked_icon.add_css_class("dim-label");
+                row.add_suffix(&locked_icon);
+            } else if unlocked {
+                let unlocked_icon = Image::from_icon_name("changes-allow-symbolic");
+                unlocked_icon.add_css_class("accent");
+                row.add_suffix(&unlocked_icon);
+            }
 
             if selected.as_deref() == Some(key.fingerprint.as_str()) {
                 let selected_icon = Image::from_icon_name("object-select-symbolic");
@@ -1166,23 +1314,36 @@ fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
             let key_for_select = key.clone();
             row.connect_activated(move |_| {
                 let settings = Preferences::new();
-                if settings.ripasso_own_fingerprint().as_deref()
-                    == Some(key_for_select.fingerprint.as_str())
-                {
+                let is_selected = settings.ripasso_own_fingerprint().as_deref()
+                    == Some(key_for_select.fingerprint.as_str());
+                let requires_unlock =
+                    match ripasso_private_key_requires_session_unlock(&key_for_select.fingerprint) {
+                        Ok(requires_unlock) => requires_unlock,
+                        Err(err) => {
+                            log_error(format!(
+                                "Failed to inspect ripasso private key '{}': {err}",
+                                key_for_select.fingerprint
+                            ));
+                            let toast = Toast::new("Couldn't open that private key.");
+                            select_state.overlay.add_toast(toast);
+                            return;
+                        }
+                    };
+
+                if requires_unlock {
+                    prompt_ripasso_private_key_unlock(
+                        &select_state,
+                        key_for_select.fingerprint.clone(),
+                        !is_selected,
+                    );
                     return;
                 }
 
-                if let Err(err) =
-                    settings.set_ripasso_own_fingerprint(Some(&key_for_select.fingerprint))
-                {
-                    log_error(format!(
-                        "Failed to store the selected ripasso private key fingerprint: {err}"
-                    ));
-                    let toast = Toast::new("Couldn't select that private key.");
-                    select_state.overlay.add_toast(toast);
-                } else {
-                    rebuild_ripasso_private_keys_list(&select_state);
+                if is_selected {
+                    return;
                 }
+
+                select_ripasso_private_key(&select_state, &key_for_select.fingerprint);
             });
 
             let delete_state = state.clone();

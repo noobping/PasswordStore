@@ -695,7 +695,8 @@ fn open_password_entry_page(
     state.win.set_title(opened_pass_file.title());
     state.win.set_subtitle(&pass_label);
     state.entry.set_visible(false);
-    sync_username_row(&state.username, Some(&opened_pass_file));
+    state.username.set_text("");
+    state.username.set_visible(false);
     state.otp.set_visible(false);
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);

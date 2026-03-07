@@ -22,6 +22,8 @@ mod ripasso_keys;
 mod ripasso_unlock;
 mod stores;
 mod store_management;
+mod store_recipients_page;
+mod ui_helpers;
 mod window_controls;
 #[cfg(not(feature = "flatpak"))]
 mod window_logs;

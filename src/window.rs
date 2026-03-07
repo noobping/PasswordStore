@@ -20,10 +20,9 @@ use crate::password_page::{
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
 use crate::ripasso_keys::RipassoPrivateKeysState;
-use crate::stores::append_gpg_recipients;
 use crate::store_management::{
-    queue_store_recipients_autosave, rebuild_store_recipients_list,
-    register_store_recipients_save_action, StoreRecipientsPageState, StoreRecipientsRequest,
+    connect_store_recipients_entry, register_store_recipients_save_action,
+    StoreRecipientsPageState, StoreRecipientsRequest,
 };
 use crate::window_controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
@@ -402,16 +401,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         connect_backend_row(&backend_row, &pass_row, &toast_overlay, &settings);
     }
     connect_new_password_template_autosave(&new_pass_file_template_view, &toast_overlay);
-    {
-        let page_state = store_recipients_page_state.clone();
-        store_recipients_entry.connect_apply(move |entry| {
-            if append_gpg_recipients(&page_state.recipients, entry.text().as_str()) {
-                entry.set_text("");
-                rebuild_store_recipients_list(&page_state);
-                queue_store_recipients_autosave(&page_state);
-            }
-        });
-    }
+    connect_store_recipients_entry(&store_recipients_page_state);
     // Copy password button on password page
     {
         let entry = password_entry.clone();

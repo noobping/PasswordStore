@@ -9,6 +9,7 @@ use crate::logging::log_error;
 use crate::logging::{run_command_status, CommandLogOptions};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
+use crate::ui_helpers::clear_list_box;
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow, StatusPage, Toast, ToastOverlay};
 use adw::gtk::{Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry, Spinner};
@@ -23,7 +24,7 @@ pub(crate) fn load_passwords_async(
     overlay: ToastOverlay,
     show_list_actions: bool,
 ) {
-    clear_list(list);
+    clear_list_box(list);
 
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
@@ -304,12 +305,6 @@ fn update_list_actions(
         has_store_dirs,
         empty,
     ));
-}
-
-fn clear_list(list: &ListBox) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
 }
 
 fn loading_placeholder() -> StatusPage {

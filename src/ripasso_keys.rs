@@ -10,6 +10,7 @@ use crate::private_key_dialog::{
 };
 use crate::preferences::Preferences;
 use crate::ripasso_unlock::prompt_private_key_unlock_for_action;
+use crate::ui_helpers::{clear_list_box, connect_row_and_button_action};
 use adw::gio;
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
@@ -21,22 +22,6 @@ pub(crate) struct RipassoPrivateKeysState {
     pub(crate) window: ApplicationWindow,
     pub(crate) list: ListBox,
     pub(crate) overlay: ToastOverlay,
-}
-
-fn clear_list(list: &ListBox) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-}
-
-fn connect_row_and_button_action(row: &ActionRow, button: &Button, action: impl Fn() + 'static) {
-    let action = Rc::new(action);
-
-    let row_action = action.clone();
-    row.connect_activated(move |_| row_action());
-
-    let button_action = action.clone();
-    button.connect_clicked(move |_| button_action());
 }
 
 fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Option<String> {
@@ -290,7 +275,7 @@ fn activate_private_key_row(state: &RipassoPrivateKeysState, key: &ManagedRipass
 }
 
 pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
-    clear_list(&state.list);
+    clear_list_box(&state.list);
 
     let keys = match list_ripasso_private_keys() {
         Ok(keys) => keys,

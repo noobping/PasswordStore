@@ -1,6 +1,8 @@
 use crate::methods::get_opened_pass_file;
 use crate::pass_file::sync_username_row;
 use crate::store_management::{sync_store_recipients_page_header, StoreRecipientsPageState};
+#[cfg(not(feature = "flatpak"))]
+use crate::ui_helpers::navigation_stack_contains_page;
 use adw::prelude::*;
 #[cfg(not(feature = "flatpak"))]
 use adw::{
@@ -191,22 +193,4 @@ pub(crate) fn finish_git_busy_page(
     }
 
     let _ = restore_window_for_current_page(state, recipients_page);
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {
-    let stack = nav.navigation_stack();
-    let mut index = 0;
-    let len = stack.n_items();
-    while index < len {
-        if let Some(item) = stack.item(index) {
-            if let Ok(stack_page) = item.downcast::<NavigationPage>() {
-                if stack_page == *page {
-                    return true;
-                }
-            }
-        }
-        index += 1;
-    }
-    false
 }

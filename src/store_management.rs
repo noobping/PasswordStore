@@ -1,3 +1,4 @@
+use crate::background::spawn_result_task;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::stores::{
@@ -5,19 +6,16 @@ use crate::stores::{
     store_gpg_recipients_subtitle, stores_with_preferred_first, suggested_gpg_recipients,
 };
 use crate::window_messages::with_logs_hint;
+use crate::window_navigation::set_save_button_for_password;
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::{
-    glib, ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, Toast,
-    ToastOverlay, WindowTitle,
+    ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, Toast, ToastOverlay,
+    WindowTitle,
 };
 use adw::gtk::{Button, FileChooserAction, FileChooserNative, Image, ListBox, ResponseType};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::sync::mpsc::TryRecvError;
-use std::thread;
-use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StoreRecipientsMode {
@@ -67,11 +65,6 @@ pub(crate) struct StoreRecipientsPageState {
     pub(crate) save_queued: Rc<Cell<bool>>,
 }
 
-fn set_save_button_for_password(save: &Button) {
-    save.set_action_name(Some("win.save-password"));
-    save.set_tooltip_text(Some("Save password"));
-}
-
 fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {
     let stack = nav.navigation_stack();
     let mut index = 0;
@@ -99,14 +92,76 @@ pub(crate) fn store_recipients_are_dirty(state: &StoreRecipientsPageState) -> bo
     *state.recipients.borrow() != *state.saved_recipients.borrow()
 }
 
+fn clear_list(list: &ListBox) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+}
+
+fn can_autosave_store_recipients(state: &StoreRecipientsPageState) -> bool {
+    current_store_recipients_request(state).is_some()
+        && !state.recipients.borrow().is_empty()
+        && store_recipients_are_dirty(state)
+}
+
+fn connect_row_and_button_action(row: &ActionRow, button: &Button, action: impl Fn() + 'static) {
+    let action = Rc::new(action);
+
+    let row_action = action.clone();
+    row.connect_activated(move |_| row_action());
+
+    let button_action = action.clone();
+    button.connect_clicked(move |_| button_action());
+}
+
+fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
+    let file = dialog.file()?;
+    let path = file.path().or_else(|| {
+        log_error(
+            "The selected folder is not available as a local path. Choose a local folder."
+                .to_string(),
+        );
+        overlay.add_toast(Toast::new("Choose a local password store folder."));
+        None
+    })?;
+
+    Some(path.to_string_lossy().to_string())
+}
+
+fn open_store_folder_picker(
+    window: &ApplicationWindow,
+    title: &str,
+    accept_label: &str,
+    create_folders: bool,
+    overlay: &ToastOverlay,
+    on_selected: impl Fn(String) + 'static,
+) {
+    let dialog = FileChooserNative::new(
+        Some(title),
+        Some(window),
+        FileChooserAction::SelectFolder,
+        Some(accept_label),
+        Some("Cancel"),
+    );
+    dialog.set_create_folders(create_folders);
+
+    let overlay = overlay.clone();
+    let on_selected = Rc::new(on_selected);
+    dialog.connect_response(move |dialog, response| {
+        if response == ResponseType::Accept {
+            if let Some(store) = selected_local_folder(dialog, &overlay) {
+                on_selected(store);
+            }
+        }
+
+        dialog.hide();
+    });
+
+    dialog.show();
+}
+
 pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) {
-    if current_store_recipients_request(state).is_none() {
-        return;
-    }
-    if state.recipients.borrow().is_empty() {
-        return;
-    }
-    if !store_recipients_are_dirty(state) {
+    if !can_autosave_store_recipients(state) {
         return;
     }
     if state.save_in_flight.get() {
@@ -149,80 +204,75 @@ pub(crate) fn save_store_recipients_async(
     }
     state.save_queued.set(false);
 
-    let (tx, rx) = mpsc::channel::<Result<(), String>>();
     let store_for_thread = request.store.clone();
     let recipients_for_save = recipients.clone();
-    thread::spawn(move || {
-        let result = apply_password_store_recipients(&store_for_thread, &recipients_for_save);
-        let _ = tx.send(result);
-    });
-
     let overlay = overlay.clone();
     let stores_list = stores_list.clone();
     let state = state.clone();
     let request = request.clone();
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(Ok(())) => {
-            let settings = Preferences::new();
-            *state.saved_recipients.borrow_mut() = recipients.clone();
-            match request.mode {
-                StoreRecipientsMode::Create => {
-                    let stores = stores_with_preferred_first(&settings.stores(), &request.store);
-                    if let Err(err) = settings.set_stores(stores) {
-                        log_error(format!("Failed to save stores: {err}"));
-                        overlay.add_toast(Toast::new(
-                            "Password store created, but it couldn't be added to Preferences.",
-                        ));
-                    } else {
-                        rebuild_store_list(
-                            &stores_list,
-                            &settings,
-                            &state.window,
-                            &overlay,
-                            &state,
-                        );
-                        *state.request.borrow_mut() = Some(StoreRecipientsRequest {
-                            store: request.store.clone(),
-                            mode: StoreRecipientsMode::Edit,
-                        });
-                        sync_store_recipients_page_header(&state);
+    let overlay_for_disconnect = overlay.clone();
+    let state_for_disconnect = state.clone();
+    let request_for_disconnect = request.clone();
+    spawn_result_task(
+        move || apply_password_store_recipients(&store_for_thread, &recipients_for_save),
+        move |result| match result {
+            Ok(()) => {
+                let settings = Preferences::new();
+                *state.saved_recipients.borrow_mut() = recipients.clone();
+                match request.mode {
+                    StoreRecipientsMode::Create => {
+                        let stores =
+                            stores_with_preferred_first(&settings.stores(), &request.store);
+                        if let Err(err) = settings.set_stores(stores) {
+                            log_error(format!("Failed to save stores: {err}"));
+                            overlay.add_toast(Toast::new(
+                                "Password store created, but it couldn't be added to Preferences.",
+                            ));
+                        } else {
+                            rebuild_store_list(
+                                &stores_list,
+                                &settings,
+                                &state.window,
+                                &overlay,
+                                &state,
+                            );
+                            *state.request.borrow_mut() = Some(StoreRecipientsRequest {
+                                store: request.store.clone(),
+                                mode: StoreRecipientsMode::Edit,
+                            });
+                            sync_store_recipients_page_header(&state);
+                        }
+                    }
+                    StoreRecipientsMode::Edit => {
+                        rebuild_store_list(&stores_list, &settings, &state.window, &overlay, &state);
                     }
                 }
-                StoreRecipientsMode::Edit => {
-                    rebuild_store_list(&stores_list, &settings, &state.window, &overlay, &state);
-                }
+                finish_store_recipients_save(&state, true);
             }
-            finish_store_recipients_save(&state, true);
-            glib::ControlFlow::Break
-        }
-        Ok(Err(message)) => {
-            let message = if request.mode == StoreRecipientsMode::Create {
-                with_logs_hint("Couldn't create the password store.")
-            } else {
-                message
-            };
-            finish_store_recipients_save(&state, false);
-            overlay.add_toast(Toast::new(&message));
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            let message = if request.mode == StoreRecipientsMode::Create {
+            Err(message) => {
+                let message = if request.mode == StoreRecipientsMode::Create {
+                    with_logs_hint("Couldn't create the password store.")
+                } else {
+                    message
+                };
+                finish_store_recipients_save(&state, false);
+                overlay.add_toast(Toast::new(&message));
+            }
+        },
+        move || {
+            let message = if request_for_disconnect.mode == StoreRecipientsMode::Create {
                 with_logs_hint("Couldn't create the password store.")
             } else {
                 with_logs_hint("Couldn't save the password store recipients.")
             };
-            finish_store_recipients_save(&state, false);
-            overlay.add_toast(Toast::new(&message));
-            glib::ControlFlow::Break
-        }
-    });
+            finish_store_recipients_save(&state_for_disconnect, false);
+            overlay_for_disconnect.add_toast(Toast::new(&message));
+        },
+    );
 }
 
 pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
-    while let Some(child) = state.list.first_child() {
-        state.list.remove(&child);
-    }
+    clear_list(&state.list);
 
     state.list.append(&state.entry);
 
@@ -346,9 +396,7 @@ pub(crate) fn rebuild_store_list(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
+    clear_list(list);
 
     if let Err(err) = settings.prune_missing_stores() {
         log_error(format!("Failed to remove missing password stores: {err}"));
@@ -429,27 +477,14 @@ fn append_store_picker_row(
     row.add_suffix(&button);
     list.append(&row);
 
-    {
-        let settings = settings.clone();
-        let list = list.clone();
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let recipients_page = recipients_page.clone();
-        row.connect_activated(move |_| {
-            open_store_picker(&window, &list, &settings, &overlay, &recipients_page);
-        });
-    }
-
-    {
-        let settings = settings.clone();
-        let list = list.clone();
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let recipients_page = recipients_page.clone();
-        button.connect_clicked(move |_| {
-            open_store_picker(&window, &list, &settings, &overlay, &recipients_page);
-        });
-    }
+    let settings = settings.clone();
+    let list = list.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let recipients_page = recipients_page.clone();
+    connect_row_and_button_action(&row, &button, move || {
+        open_store_picker(&window, &list, &settings, &overlay, &recipients_page);
+    });
 }
 
 fn open_store_picker(
@@ -459,56 +494,39 @@ fn open_store_picker(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    let dialog = FileChooserNative::new(
-        Some("Choose password store folder"),
-        Some(window),
-        FileChooserAction::SelectFolder,
-        Some("Select"),
-        Some("Cancel"),
-    );
     let list = list.clone();
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
+    let window_for_selection = window.clone();
+    let overlay_for_selection = overlay.clone();
     let recipients_page = recipients_page.clone();
-
-    dialog.connect_response(move |dialog, response| {
-        if response != ResponseType::Accept {
-            dialog.hide();
-            return;
-        }
-
-        let Some(file) = dialog.file() else {
-            dialog.hide();
-            return;
-        };
-
-        let Some(path) = file.path() else {
-            log_error(
-                "The selected folder is not available as a local path. Choose a local folder."
-                    .to_string(),
-            );
-            overlay.add_toast(Toast::new("Choose a local password store folder."));
-            dialog.hide();
-            return;
-        };
-
-        let store = path.to_string_lossy().to_string();
-        let mut stores = settings.stores();
-        if !stores.contains(&store) {
-            stores.push(store.clone());
-            if let Err(err) = settings.set_stores(stores) {
-                log_error(format!("Failed to save stores: {err}"));
-                overlay.add_toast(Toast::new("Couldn't add the password store folder."));
-            } else {
-                rebuild_store_list(&list, &settings, &window, &overlay, &recipients_page);
+    open_store_folder_picker(
+        &window,
+        "Choose password store folder",
+        "Select",
+        false,
+        &overlay,
+        move |store| {
+            let mut stores = settings.stores();
+            if !stores.contains(&store) {
+                stores.push(store.clone());
+                if let Err(err) = settings.set_stores(stores) {
+                    log_error(format!("Failed to save stores: {err}"));
+                    overlay_for_selection
+                        .add_toast(Toast::new("Couldn't add the password store folder."));
+                } else {
+                    rebuild_store_list(
+                        &list,
+                        &settings,
+                        &window_for_selection,
+                        &overlay_for_selection,
+                        &recipients_page,
+                    );
+                }
             }
-        }
-
-        dialog.hide();
-    });
-
-    dialog.show();
+        },
+    );
 }
 
 fn append_store_creator_row(
@@ -529,25 +547,13 @@ fn append_store_creator_row(
     row.add_suffix(&button);
     list.append(&row);
 
-    {
-        let settings = settings.clone();
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let recipients_page = recipients_page.clone();
-        row.connect_activated(move |_| {
-            open_store_creator_picker(&window, &settings, &overlay, &recipients_page);
-        });
-    }
-
-    {
-        let settings = settings.clone();
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let recipients_page = recipients_page.clone();
-        button.connect_clicked(move |_| {
-            open_store_creator_picker(&window, &settings, &overlay, &recipients_page);
-        });
-    }
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let recipients_page = recipients_page.clone();
+    connect_row_and_button_action(&row, &button, move || {
+        open_store_creator_picker(&window, &settings, &overlay, &recipients_page);
+    });
 }
 
 fn open_store_creator_picker(
@@ -556,56 +562,30 @@ fn open_store_creator_picker(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    let dialog = FileChooserNative::new(
-        Some("Choose new password store folder"),
-        Some(window),
-        FileChooserAction::SelectFolder,
-        Some("Select"),
-        Some("Cancel"),
-    );
-    dialog.set_create_folders(true);
-
     let settings = settings.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
-    dialog.connect_response(move |dialog, response| {
-        if response != ResponseType::Accept {
-            dialog.hide();
-            return;
-        }
-
-        let Some(file) = dialog.file() else {
-            dialog.hide();
-            return;
-        };
-
-        let Some(path) = file.path() else {
-            log_error(
-                "The selected folder is not available as a local path. Choose a local folder."
-                    .to_string(),
+    open_store_folder_picker(
+        window,
+        "Choose new password store folder",
+        "Select",
+        true,
+        &overlay,
+        move |store| {
+            let mut recipients = read_store_gpg_recipients(&store);
+            if recipients.is_empty() {
+                recipients = suggested_gpg_recipients(&settings);
+            }
+            show_store_recipients_page(
+                &recipients_page,
+                StoreRecipientsRequest {
+                    store,
+                    mode: StoreRecipientsMode::Create,
+                },
+                recipients,
             );
-            overlay.add_toast(Toast::new("Choose a local password store folder."));
-            dialog.hide();
-            return;
-        };
-
-        let store = path.to_string_lossy().to_string();
-        let mut recipients = read_store_gpg_recipients(&store);
-        if recipients.is_empty() {
-            recipients = suggested_gpg_recipients(&settings);
-        }
-        show_store_recipients_page(
-            &recipients_page,
-            StoreRecipientsRequest {
-                store,
-                mode: StoreRecipientsMode::Create,
-            },
-            recipients,
-        );
-        dialog.hide();
-    });
-
-    dialog.show();
+        },
+    );
 }
 
 #[cfg(test)]

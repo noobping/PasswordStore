@@ -1,3 +1,4 @@
+use crate::background::spawn_result_task;
 use crate::logging::{
     log_error, run_command_output_controlled, CommandControl, CommandLogOptions,
 };
@@ -10,17 +11,11 @@ use crate::window_navigation::{
 };
 use adw::gio::{prelude::*, SimpleAction};
 use adw::prelude::*;
-use adw::{
-    glib, ApplicationWindow, EntryRow, NavigationPage, StatusPage, Toast, ToastOverlay,
-};
+use adw::{ApplicationWindow, EntryRow, NavigationPage, StatusPage, Toast, ToastOverlay};
 use adw::gtk::{ListBox, Popover};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::mpsc::TryRecvError;
-use std::thread;
-use std::time::Duration;
 
 #[derive(Clone, Default)]
 pub(crate) struct GitOperationControl {
@@ -259,45 +254,40 @@ pub(crate) fn register_git_clone_action(
             Some("Downloading the password store from the repository."),
         );
 
-        let (tx, rx) = mpsc::channel::<GitOperationResult>();
         let url_for_thread = url.clone();
         let git_operation_for_thread = git_operation.clone();
-        thread::spawn(move || {
-            let _ = tx.send(run_clone_operation(&url_for_thread, &git_operation_for_thread));
-        });
-
         let state = state.clone();
         let entry = entry.clone();
         let git_operation = git_operation.clone();
-        glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-            Ok(GitOperationResult::Success) => {
-                entry.set_text("");
-                restore_after_git_operation(&state, &git_operation);
-                state.overlay.add_toast(Toast::new("Password store restored."));
-                reload_password_list(&state);
-                glib::ControlFlow::Break
-            }
-            Ok(GitOperationResult::Failed(message)) => {
-                restore_after_git_operation(&state, &git_operation);
-                state.overlay.add_toast(Toast::new(&message));
-                glib::ControlFlow::Break
-            }
-            Ok(GitOperationResult::Canceled) => {
-                restore_after_git_operation(&state, &git_operation);
-                state.overlay.add_toast(Toast::new("Restore canceled."));
-                glib::ControlFlow::Break
-            }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(TryRecvError::Disconnected) => {
-                restore_after_git_operation(&state, &git_operation);
-                state
+        let state_for_disconnect = state.clone();
+        let git_operation_for_disconnect = git_operation.clone();
+        spawn_result_task(
+            move || run_clone_operation(&url_for_thread, &git_operation_for_thread),
+            move |result| match result {
+                GitOperationResult::Success => {
+                    entry.set_text("");
+                    restore_after_git_operation(&state, &git_operation);
+                    state.overlay.add_toast(Toast::new("Password store restored."));
+                    reload_password_list(&state);
+                }
+                GitOperationResult::Failed(message) => {
+                    restore_after_git_operation(&state, &git_operation);
+                    state.overlay.add_toast(Toast::new(&message));
+                }
+                GitOperationResult::Canceled => {
+                    restore_after_git_operation(&state, &git_operation);
+                    state.overlay.add_toast(Toast::new("Restore canceled."));
+                }
+            },
+            move || {
+                restore_after_git_operation(&state_for_disconnect, &git_operation_for_disconnect);
+                state_for_disconnect
                     .overlay
                     .add_toast(Toast::new(&with_logs_hint(
                         "The restore operation stopped unexpectedly.",
                     )));
-                glib::ControlFlow::Break
-            }
-        });
+            },
+        );
     });
     window.add_action(&action);
 }
@@ -321,38 +311,33 @@ pub(crate) fn register_synchronize_action(
             Some("Checking for changes and pushing updates."),
         );
 
-        let (tx, rx) = mpsc::channel::<GitOperationResult>();
         let git_operation_for_thread = git_operation.clone();
-        thread::spawn(move || {
-            let _ = tx.send(run_sync_operation(&git_operation_for_thread));
-        });
-
         let state = state.clone();
         let git_operation = git_operation.clone();
-        glib::timeout_add_local(Duration::from_millis(100), move || match rx.try_recv() {
-            Ok(GitOperationResult::Success) => {
-                restore_after_git_operation(&state, &git_operation);
-                reload_password_list(&state);
-                glib::ControlFlow::Break
-            }
-            Ok(GitOperationResult::Failed(message)) => {
-                restore_after_git_operation(&state, &git_operation);
-                state.overlay.add_toast(Toast::new(&message));
-                reload_password_list(&state);
-                glib::ControlFlow::Break
-            }
-            Ok(GitOperationResult::Canceled) => {
-                restore_after_git_operation(&state, &git_operation);
-                state.overlay.add_toast(Toast::new("Sync canceled."));
-                glib::ControlFlow::Break
-            }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(TryRecvError::Disconnected) => {
-                restore_after_git_operation(&state, &git_operation);
-                reload_password_list(&state);
-                glib::ControlFlow::Break
-            }
-        });
+        let state_for_disconnect = state.clone();
+        let git_operation_for_disconnect = git_operation.clone();
+        spawn_result_task(
+            move || run_sync_operation(&git_operation_for_thread),
+            move |result| match result {
+                GitOperationResult::Success => {
+                    restore_after_git_operation(&state, &git_operation);
+                    reload_password_list(&state);
+                }
+                GitOperationResult::Failed(message) => {
+                    restore_after_git_operation(&state, &git_operation);
+                    state.overlay.add_toast(Toast::new(&message));
+                    reload_password_list(&state);
+                }
+                GitOperationResult::Canceled => {
+                    restore_after_git_operation(&state, &git_operation);
+                    state.overlay.add_toast(Toast::new("Sync canceled."));
+                }
+            },
+            move || {
+                restore_after_git_operation(&state_for_disconnect, &git_operation_for_disconnect);
+                reload_password_list(&state_for_disconnect);
+            },
+        );
     });
     window.add_action(&action);
 }

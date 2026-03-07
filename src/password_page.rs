@@ -1,5 +1,6 @@
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{read_otp_code, read_password_entry, save_password_entry};
+use crate::background::spawn_result_task;
 #[cfg(feature = "flatpak")]
 use crate::backend::resolved_ripasso_own_fingerprint;
 use crate::item::OpenPassFile;
@@ -22,16 +23,10 @@ use crate::ripasso_unlock::{is_locked_private_key_error, prompt_private_key_unlo
 use crate::window_messages::with_logs_hint;
 use crate::window_navigation::set_save_button_for_password;
 use adw::prelude::*;
-use adw::{
-    glib, EntryRow, NavigationPage, PasswordEntryRow, StatusPage, Toast, ToastOverlay,
-    WindowTitle,
-};
+use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle};
 use adw::gtk::{Box as GtkBox, Button, ListBox, Popover, TextView};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 
 #[derive(Clone)]
 pub(crate) struct PasswordPageState {
@@ -80,6 +75,40 @@ fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle:
     set_save_button_for_password(&state.save);
     state.win.set_title(title);
     state.win.set_subtitle(subtitle);
+}
+
+fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
+    show_password_editor_chrome(state, title, subtitle);
+    state.entry.set_visible(false);
+    state.username.set_text("");
+    state.username.set_visible(false);
+    state.otp.set_visible(false);
+    state.dynamic_box.set_visible(false);
+    state.raw_button.set_visible(false);
+    state.status.set_visible(true);
+    state.status.set_title("Decrypting Password Entry");
+    state
+        .status
+        .set_description(Some("Please wait while the pass file is opened."));
+}
+
+fn show_password_editor_fields(state: &PasswordPageState) {
+    state.status.set_visible(false);
+    state.entry.set_visible(true);
+    state.raw_button.set_visible(true);
+}
+
+fn show_password_open_error(state: &PasswordPageState) {
+    state.entry.set_visible(false);
+    state.username.set_visible(false);
+    state.otp.set_visible(false);
+    state.dynamic_box.set_visible(false);
+    state.raw_button.set_visible(false);
+    state.status.set_visible(true);
+    state.status.set_title("Couldn't Open Password Entry");
+    state
+        .status
+        .set_description(Some("Try again, or check the logs for more details."));
 }
 
 fn structured_editor_contents(state: &PasswordPageState) -> String {
@@ -184,6 +213,37 @@ fn sync_otp_entry_from_contents(
     }
 }
 
+#[cfg(any(feature = "setup", feature = "flatpak"))]
+fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
+    read_password_entry(store_root, label)
+}
+
+#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
+    let settings = Preferences::new();
+    let mut cmd = settings.command();
+    cmd.env("PASSWORD_STORE_DIR", store_root).arg(label);
+    let output = run_command_output(
+        &mut cmd,
+        "Read password entry",
+        CommandLogOptions::SENSITIVE,
+    );
+    match output {
+        Ok(output) if output.status.success() => {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if stderr.is_empty() {
+                Err(format!("pass failed: {}", output.status))
+            } else {
+                Err(stderr)
+            }
+        }
+        Err(err) => Err(format!("Failed to run pass: {err}")),
+    }
+}
+
 pub(crate) fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
@@ -193,135 +253,97 @@ pub(crate) fn open_password_entry_page(
     let store_for_thread = opened_pass_file.store_path().to_string();
     set_opened_pass_file(opened_pass_file.clone());
 
-    show_password_editor_chrome(state, opened_pass_file.title(), &pass_label);
-    state.entry.set_visible(false);
-    state.username.set_text("");
-    state.username.set_visible(false);
-    state.otp.set_visible(false);
-    state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
-    state.status.set_visible(true);
-    state.status.set_title("Decrypting Password Entry");
-    state
-        .status
-        .set_description(Some("Please wait while the pass file is opened."));
+    show_password_loading_state(state, opened_pass_file.title(), &pass_label);
     if push_page {
         state.nav.push(&state.page);
     }
 
-    let (tx, rx) = mpsc::channel::<Result<String, String>>();
     let label_for_thread = pass_label.clone();
-    thread::spawn(move || {
-        #[cfg(any(feature = "setup", feature = "flatpak"))]
-        let result = read_password_entry(&store_for_thread, &label_for_thread);
-        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-        let result = {
-            let settings = Preferences::new();
-            let mut cmd = settings.command();
-            cmd.env("PASSWORD_STORE_DIR", &store_for_thread)
-                .arg(&label_for_thread);
-            let output = run_command_output(
-                &mut cmd,
-                "Read password entry",
-                CommandLogOptions::SENSITIVE,
-            );
-            match output {
-                Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
-                Ok(o) => {
-                    let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
-                    if stderr.is_empty() {
-                        Err(format!("pass failed: {}", o.status))
-                    } else {
-                        Err(stderr)
-                    }
-                }
-                Err(e) => Err(format!("Failed to run pass: {e}")),
-            }
-        };
-        let _ = tx.send(result);
-    });
-
     let state_for_result = state.clone();
     let opened_pass_file_for_result = opened_pass_file.clone();
+    let state_for_disconnect = state.clone();
+    let opened_pass_file_for_disconnect = opened_pass_file.clone();
     let label_for_otp = pass_label.clone();
     let store_for_otp = opened_pass_file.store_path().to_string();
     #[cfg(feature = "flatpak")]
     let retry_state = state.clone();
-    glib::timeout_add_local(Duration::from_millis(50), move || {
-        use std::sync::mpsc::TryRecvError;
-
-        if !is_opened_pass_file(&opened_pass_file_for_result) {
-            return glib::ControlFlow::Break;
-        }
-
-        match rx.try_recv() {
-            Ok(Ok(output)) => {
-                let updated_pass_file =
-                    refresh_opened_pass_file_from_contents(&opened_pass_file_for_result, &output);
-                state_for_result.status.set_visible(false);
-                state_for_result.entry.set_visible(true);
-                state_for_result.raw_button.set_visible(true);
-                sync_editor_contents(&state_for_result, &output, updated_pass_file.as_ref());
-                sync_otp_entry_from_contents(
-                    &state_for_result,
-                    &output,
-                    &store_for_otp,
-                    &label_for_otp,
-                    true,
-                );
-
-                glib::ControlFlow::Break
+    spawn_result_task(
+        move || read_password_entry_contents(&store_for_thread, &label_for_thread),
+        move |result| {
+            if !is_opened_pass_file(&opened_pass_file_for_result) {
+                return;
             }
-            Ok(Err(msg)) => {
-                log_error(format!("Failed to open password entry: {msg}"));
-                #[cfg(feature = "flatpak")]
-                if is_locked_private_key_error(&msg) {
-                    state_for_result.status.set_title("Private Key Locked");
-                    state_for_result.status.set_description(Some(
-                        "Unlock the selected private key to continue opening this pass file.",
-                    ));
-                    match resolved_ripasso_own_fingerprint() {
-                        Ok(fingerprint) => {
-                            let retry_pass_file = opened_pass_file_for_result.clone();
-                            let retry_page_state = retry_state.clone();
-                            prompt_private_key_unlock_for_action(
-                                &state_for_result.overlay,
-                                fingerprint,
-                                Rc::new(move || {
-                                    open_password_entry_page(
-                                        &retry_page_state,
-                                        retry_pass_file.clone(),
-                                        false,
-                                    );
-                                }),
-                            );
-                            return glib::ControlFlow::Break;
-                        }
-                        Err(err) => {
-                            log_error(format!(
-                                "Failed to resolve the selected ripasso private key: {err}"
-                            ));
+
+            match result {
+                Ok(output) => {
+                    let updated_pass_file = refresh_opened_pass_file_from_contents(
+                        &opened_pass_file_for_result,
+                        &output,
+                    );
+                    show_password_editor_fields(&state_for_result);
+                    sync_editor_contents(&state_for_result, &output, updated_pass_file.as_ref());
+                    sync_otp_entry_from_contents(
+                        &state_for_result,
+                        &output,
+                        &store_for_otp,
+                        &label_for_otp,
+                        true,
+                    );
+                }
+                Err(msg) => {
+                    log_error(format!("Failed to open password entry: {msg}"));
+                    #[cfg(feature = "flatpak")]
+                    if is_locked_private_key_error(&msg) {
+                        state_for_result.status.set_title("Private Key Locked");
+                        state_for_result.status.set_description(Some(
+                            "Unlock the selected private key to continue opening this pass file.",
+                        ));
+                        match resolved_ripasso_own_fingerprint() {
+                            Ok(fingerprint) => {
+                                let retry_pass_file = opened_pass_file_for_result.clone();
+                                let retry_page_state = retry_state.clone();
+                                prompt_private_key_unlock_for_action(
+                                    &state_for_result.overlay,
+                                    fingerprint,
+                                    Rc::new(move || {
+                                        open_password_entry_page(
+                                            &retry_page_state,
+                                            retry_pass_file.clone(),
+                                            false,
+                                        );
+                                    }),
+                                );
+                                return;
+                            }
+                            Err(err) => {
+                                log_error(format!(
+                                    "Failed to resolve the selected ripasso private key: {err}"
+                                ));
+                            }
                         }
                     }
-                }
 
-                let toast = if let Some(message) = friendly_password_entry_error_message(&msg) {
-                    Toast::new(message)
-                } else {
-                    Toast::new(&with_logs_hint("Couldn't open the password entry."))
-                };
-                state_for_result.overlay.add_toast(toast);
-                glib::ControlFlow::Break
+                    show_password_open_error(&state_for_result);
+                    let toast = if let Some(message) = friendly_password_entry_error_message(&msg) {
+                        Toast::new(message)
+                    } else {
+                        Toast::new(&with_logs_hint("Couldn't open the password entry."))
+                    };
+                    state_for_result.overlay.add_toast(toast);
+                }
             }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(TryRecvError::Disconnected) => {
-                state_for_result.overlay.add_toast(Toast::new(&with_logs_hint(
-                    "Couldn't open the password entry.",
-                )));
-                glib::ControlFlow::Break
+        },
+        move || {
+            if !is_opened_pass_file(&opened_pass_file_for_disconnect) {
+                return;
             }
-        }
-    });
+
+            show_password_open_error(&state_for_disconnect);
+            state_for_disconnect.overlay.add_toast(Toast::new(&with_logs_hint(
+                "Couldn't open the password entry.",
+            )));
+        },
+    );
 }
 
 pub(crate) fn begin_new_password_entry(
@@ -351,9 +373,7 @@ pub(crate) fn begin_new_password_entry(
     .or_else(get_opened_pass_file);
 
     show_password_editor_chrome(state, "New password", path);
-    state.status.set_visible(false);
-    state.entry.set_visible(true);
-    state.raw_button.set_visible(true);
+    show_password_editor_fields(state);
     state.otp.set_visible(false);
     state.otp.set_text("");
     let already_visible = state
@@ -413,9 +433,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
         Ok(()) => {
             let updated_pass_file =
                 refresh_opened_pass_file_from_contents(&pass_file, &contents);
-            state.status.set_visible(false);
-            state.entry.set_visible(true);
-            state.raw_button.set_visible(true);
+            show_password_editor_fields(state);
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
             sync_otp_entry_from_contents(state, &contents, pass_file.store_path(), &label, false);
             state.overlay.add_toast(Toast::new("Changes saved."));

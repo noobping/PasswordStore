@@ -1,3 +1,5 @@
+#[cfg(any(feature = "setup", feature = "flatpak"))]
+use crate::background::spawn_result_task;
 use crate::item::PassEntry;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::logging::log_error;
@@ -17,10 +19,7 @@ use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use adw::gtk::{Button, Widget, gdk::Display};
 #[cfg(feature = "flatpak")]
 use std::rc::Rc;
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-use std::sync::mpsc;
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-use std::sync::mpsc::TryRecvError;
+#[cfg(not(feature = "flatpak"))]
 use std::thread;
 use std::time::Duration;
 
@@ -112,56 +111,52 @@ fn copy_password_entry_to_clipboard_via_read(
 ) {
     #[cfg(feature = "flatpak")]
     let retry_item = item.clone();
-    let (tx, rx) = mpsc::channel::<Result<String, String>>();
-    thread::spawn(move || {
-        let label = item.label();
-        let result = read_password_line(&item.store_path, &label);
-        let _ = tx.send(result);
-    });
-
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(Ok(password)) => {
-            set_clipboard_text(&password, &overlay, button.as_ref());
-            glib::ControlFlow::Break
-        }
-        Ok(Err(err)) => {
-            log_error(format!("Failed to copy password entry: {err}"));
-            #[cfg(feature = "flatpak")]
-            if is_locked_private_key_error(&err) {
-                match resolved_ripasso_own_fingerprint() {
-                    Ok(fingerprint) => {
-                        let retry_overlay = overlay.clone();
-                        let retry_item_for_unlock = retry_item.clone();
-                        let retry_button = button.clone();
-                        prompt_private_key_unlock_for_action(
-                            &overlay,
-                            fingerprint,
-                            Rc::new(move || {
-                                copy_password_entry_to_clipboard_via_read(
-                                    retry_item_for_unlock.clone(),
-                                    retry_overlay.clone(),
-                                    retry_button.clone(),
-                                );
-                            }),
-                        );
-                        return glib::ControlFlow::Break;
-                    }
-                    Err(resolve_err) => {
-                        log_error(format!(
-                            "Failed to resolve the selected ripasso private key for copy retry: {resolve_err}"
-                        ));
+    let overlay_for_disconnect = overlay.clone();
+    spawn_result_task(
+        move || {
+            let label = item.label();
+            read_password_line(&item.store_path, &label)
+        },
+        move |result| match result {
+            Ok(password) => {
+                set_clipboard_text(&password, &overlay, button.as_ref());
+            }
+            Err(err) => {
+                log_error(format!("Failed to copy password entry: {err}"));
+                #[cfg(feature = "flatpak")]
+                if is_locked_private_key_error(&err) {
+                    match resolved_ripasso_own_fingerprint() {
+                        Ok(fingerprint) => {
+                            let retry_overlay = overlay.clone();
+                            let retry_item_for_unlock = retry_item.clone();
+                            let retry_button = button.clone();
+                            prompt_private_key_unlock_for_action(
+                                &overlay,
+                                fingerprint,
+                                Rc::new(move || {
+                                    copy_password_entry_to_clipboard_via_read(
+                                        retry_item_for_unlock.clone(),
+                                        retry_overlay.clone(),
+                                        retry_button.clone(),
+                                    );
+                                }),
+                            );
+                            return;
+                        }
+                        Err(resolve_err) => {
+                            log_error(format!(
+                                "Failed to resolve the selected ripasso private key for copy retry: {resolve_err}"
+                            ));
+                        }
                     }
                 }
+                overlay.add_toast(Toast::new("Couldn't copy the password."));
             }
-            overlay.add_toast(Toast::new("Couldn't copy the password."));
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            overlay.add_toast(Toast::new("Couldn't copy the password."));
-            glib::ControlFlow::Break
-        }
-    });
+        },
+        move || {
+            overlay_for_disconnect.add_toast(Toast::new("Couldn't copy the password."));
+        },
+    );
 }
 
 pub(crate) fn copy_password_entry_to_clipboard(

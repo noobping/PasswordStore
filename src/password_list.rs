@@ -1,5 +1,6 @@
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{delete_password_entry, rename_password_entry};
+use crate::background::spawn_result_task;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, PassEntry};
@@ -9,14 +10,10 @@ use crate::logging::{run_command_status, CommandLogOptions};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
 use adw::prelude::*;
-use adw::{glib, ActionRow, EntryRow, StatusPage, Toast, ToastOverlay};
+use adw::{ActionRow, EntryRow, StatusPage, Toast, ToastOverlay};
 use adw::gtk::{Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry, Spinner};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::mpsc;
-use std::sync::mpsc::TryRecvError;
-use std::thread;
-use std::time::Duration;
 
 pub(crate) fn load_passwords_async(
     list: &ListBox,
@@ -36,25 +33,24 @@ pub(crate) fn load_passwords_async(
     find.set_visible(show_list_actions);
     list.set_placeholder(Some(&loading_placeholder()));
 
-    let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
-    thread::spawn(move || {
-        let all_items = match collect_all_password_items() {
-            Ok(items) => items,
-            Err(err) => {
-                log_error(format!("Error scanning pass stores: {err}"));
-                Vec::new()
-            }
-        };
-        let _ = tx.send(all_items);
-    });
-
     let list_clone = list.clone();
     let git_clone = git.clone();
     let find_clone = find.clone();
     let save_clone = save.clone();
     let overlay_clone = overlay.clone();
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(items) => {
+    let list_for_disconnect = list_clone.clone();
+    let git_for_disconnect = git_clone.clone();
+    let find_for_disconnect = find_clone.clone();
+    let save_for_disconnect = save_clone.clone();
+    spawn_result_task(
+        move || match collect_all_password_items() {
+            Ok(items) => items,
+            Err(err) => {
+                log_error(format!("Error scanning pass stores: {err}"));
+                Vec::new()
+            }
+        },
+        move |items| {
             let empty = items.is_empty();
             for item in items {
                 append_password_row(&list_clone, item, &overlay_clone);
@@ -69,23 +65,18 @@ pub(crate) fn load_passwords_async(
                 empty,
             );
             list_clone.set_placeholder(Some(&resolved_placeholder(empty, has_store_dirs)));
-
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            save_clone.set_visible(false);
-            git_clone.set_visible(should_show_restore_button(
+        },
+        move || {
+            save_for_disconnect.set_visible(false);
+            git_for_disconnect.set_visible(should_show_restore_button(
                 show_list_actions,
                 has_store_dirs,
                 true,
             ));
-            find_clone.set_visible(false);
-            list_clone.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
-
-            glib::ControlFlow::Break
-        }
-    });
+            find_for_disconnect.set_visible(false);
+            list_for_disconnect.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
+        },
+    );
 }
 
 pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
@@ -93,15 +84,13 @@ pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
 
     let query_for_filter = query.clone();
     list.set_filter_func(move |row: &ListBoxRow| {
-        let q_ref = query_for_filter.borrow();
-        let q = q_ref.as_str();
-        if q.is_empty() {
+        let query = query_for_filter.borrow();
+        if query.is_empty() {
             return true;
         }
 
         if let Some(label) = non_null_to_string_option(row, "label") {
-            let query_lower = q.to_lowercase();
-            return label.to_lowercase().contains(&query_lower);
+            return label.to_lowercase().contains(query.as_str());
         }
 
         true
@@ -110,7 +99,7 @@ pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
     let query_for_entry = query.clone();
     let list_for_entry = list.clone();
     search_entry.connect_search_changed(move |entry| {
-        *query_for_entry.borrow_mut() = entry.text().to_string();
+        *query_for_entry.borrow_mut() = entry.text().to_string().to_lowercase();
         list_for_entry.invalidate_filter();
     });
 }
@@ -247,33 +236,27 @@ fn connect_delete_action(
         #[cfg(any(feature = "setup", feature = "flatpak"))]
         {
             let overlay = overlay.clone();
-            let (tx, rx) = mpsc::channel::<Result<(), String>>();
             let root = entry.store_path.clone();
             let label = entry.label();
-            thread::spawn(move || {
-                let result = delete_password_entry(&root, &label);
-                let _ = tx.send(result);
-            });
-
             let list = list.clone();
             let row = row.clone();
             let overlay = overlay.clone();
-            glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-                Ok(Ok(())) => {
-                    list.remove(&row);
-                    glib::ControlFlow::Break
-                }
-                Ok(Err(err)) => {
-                    log_error(format!("Failed to delete password entry: {err}"));
-                    overlay.add_toast(Toast::new("Couldn't delete the password entry."));
-                    glib::ControlFlow::Break
-                }
-                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(TryRecvError::Disconnected) => {
-                    overlay.add_toast(Toast::new("Couldn't delete the password entry."));
-                    glib::ControlFlow::Break
-                }
-            });
+            let overlay_for_disconnect = overlay.clone();
+            spawn_result_task(
+                move || delete_password_entry(&root, &label),
+                move |result| match result {
+                    Ok(()) => {
+                        list.remove(&row);
+                    }
+                    Err(err) => {
+                        log_error(format!("Failed to delete password entry: {err}"));
+                        overlay.add_toast(Toast::new("Couldn't delete the password entry."));
+                    }
+                },
+                move || {
+                    overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the password entry."));
+                },
+            );
         }
 
         #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
@@ -308,22 +291,19 @@ fn update_list_actions(
     has_store_dirs: bool,
     empty: bool,
 ) {
-    if show_list_actions {
-        if empty {
-            save.set_visible(false);
-            find.set_visible(false);
-        } else {
-            find.set_visible(true);
-        }
-        git.set_visible(should_show_restore_button(
-            show_list_actions,
-            has_store_dirs,
-            empty,
-        ));
-    } else {
+    save.set_visible(false);
+    if !show_list_actions {
         find.set_visible(false);
         git.set_visible(false);
+        return;
     }
+
+    find.set_visible(!empty);
+    git.set_visible(should_show_restore_button(
+        show_list_actions,
+        has_store_dirs,
+        empty,
+    ));
 }
 
 fn clear_list(list: &ListBox) {

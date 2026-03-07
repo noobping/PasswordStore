@@ -5,6 +5,7 @@ mod setup;
 mod config;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 mod backend;
+mod background;
 mod clipboard;
 mod item;
 mod logging;

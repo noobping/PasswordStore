@@ -4,8 +4,11 @@ use crate::setup::*;
 use adw::gio::{Menu, MenuItem};
 
 use crate::config::APP_ID;
-use crate::item::{collect_all_password_items, PassEntry};
-use crate::methods::non_null_to_string_option;
+use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
+use crate::methods::{
+    clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
+    non_null_to_string_option, refresh_opened_pass_file_from_contents, set_opened_pass_file,
+};
 use crate::preferences::Preferences;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
@@ -162,16 +165,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let win = window_title.clone();
         list.connect_row_activated(move |_list, row| {
-            // Retrieve the pass entry name (relative label) stored on the row
-            let title = non_null_to_string_option(row, "name");
             let label = non_null_to_string_option(row, "label");
             let root = non_null_to_string_option(row, "root");
 
-            let Some(title) = title else {
-                let toast = Toast::new("Can not find password file name.");
-                overlay.add_toast(toast);
-                return;
-            };
             let Some(label) = label else {
                 let toast = Toast::new("Can not find password file.");
                 overlay.add_toast(toast);
@@ -182,28 +178,33 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             };
+            let opened_pass_file = OpenPassFile::from_label(root, &label);
+            let pass_label = opened_pass_file.label();
+            let store_for_thread = opened_pass_file.store_path().to_string();
+            set_opened_pass_file(opened_pass_file.clone());
+
             // Navigate to the text editor page and update header buttons
             add.set_visible(false);
             find.set_visible(false);
             git.set_visible(false);
             back.set_visible(true);
             save.set_visible(true);
-            win.set_title(&title);
-            win.set_subtitle(&label);
+            win.set_title(opened_pass_file.title());
+            win.set_subtitle(&pass_label);
             text.set_visible(false);
             entry.set_visible(false);
+            otp.set_visible(false);
             status.set_visible(true);
             nav.push(&page);
 
             // Background worker: run `pass <label>`
             let (tx, rx) = mpsc::channel::<Result<String, String>>();
-            let label_for_thread = label.clone();
-            let store_for_thread = root.clone();
+            let label_for_thread = pass_label.clone();
             thread::spawn(move || {
                 let settings = Preferences::new();
                 let output = settings
                     .command()
-                    .env("PASSWORD_STORE_DIR", store_for_thread)
+                    .env("PASSWORD_STORE_DIR", &store_for_thread)
                     .arg(&label_for_thread)
                     .output();
                 let result = match output {
@@ -223,12 +224,22 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let otp_entry = otp.clone();
             let text_view = text.clone();
             let overlay = overlay.clone();
-            let label_for_otp = label.clone();
+            let opened_pass_file_for_result = opened_pass_file.clone();
+            let label_for_otp = pass_label.clone();
+            let store_for_otp = opened_pass_file.store_path().to_string();
             glib::timeout_add_local(Duration::from_millis(50), move || {
                 use std::sync::mpsc::TryRecvError;
 
+                if !is_opened_pass_file(&opened_pass_file_for_result) {
+                    return glib::ControlFlow::Break;
+                }
+
                 match rx.try_recv() {
                     Ok(Ok(output)) => {
+                        let _ = refresh_opened_pass_file_from_contents(
+                            &opened_pass_file_for_result,
+                            &output,
+                        );
                         password_status.set_visible(false);
                         password_entry.set_visible(true);
                         text_view.set_visible(true);
@@ -251,7 +262,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             let settings = Preferences::new();
                             match settings
                                 .command()
-                                .env("PASSWORD_STORE_DIR", &settings.store())
+                                .env("PASSWORD_STORE_DIR", &store_for_otp)
                                 .args(["otp", &label_for_otp])
                                 .output()
                             {
@@ -272,6 +283,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                     overlay.add_toast(toast);
                                 }
                             }
+                        } else {
+                            otp_entry.set_text("");
                         }
 
                         glib::ControlFlow::Break
@@ -359,6 +372,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let popover_git = git_popover.clone();
         let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
+        let otp = otp_entry.clone();
         let text = text_view.clone();
         let status = password_status.clone();
         let win = window_title.clone();
@@ -371,8 +385,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             }
+            let opened_pass_file = OpenPassFile::from_label(store_root, &path);
+            set_opened_pass_file(opened_pass_file);
             status.set_visible(false);
             entry.set_visible(true);
+            otp.set_visible(false);
             text.set_visible(true);
             add.set_visible(false);
             find.set_visible(false);
@@ -383,13 +400,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             popover_add.popdown();
             popover_git.popdown();
-            unsafe {
-                page.set_data("label", path.clone());
-                page.set_data("root", store_root.clone());
-            };
             win.set_title("New password");
             win.set_subtitle(&path);
             entry.set_text("");
+            otp.set_text("");
             let buffer = text.buffer();
             buffer.set_text("");
         });
@@ -397,19 +411,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     // actions
     {
-        let page = text_page.clone();
         let entry = password_entry.clone();
         let text = text_view.clone();
         let overlay = toast_overlay.clone();
         let action = SimpleAction::new("save-password", None);
         action.connect_activate(move |_, _| {
-            let Some(label) = non_null_to_string_option(&page, "label") else {
+            let Some(pass_file) = get_opened_pass_file() else {
                 let toast = Toast::new("No password entry selected");
-                overlay.add_toast(toast);
-                return;
-            };
-            let Some(root) = non_null_to_string_option(&page, "root") else {
-                let toast = Toast::new("Unknown password store");
                 overlay.add_toast(toast);
                 return;
             };
@@ -422,8 +430,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             }
-            match write_pass_entry(&root, &label, &password, &notes, true) {
+            let label = pass_file.label();
+            match write_pass_entry(pass_file.store_path(), &label, &password, &notes, true) {
                 Ok(()) => {
+                    let contents = if notes.is_empty() {
+                        password.clone()
+                    } else {
+                        format!("{password}\n{notes}")
+                    };
+                    let _ = refresh_opened_pass_file_from_contents(&pass_file, &contents);
                     let toast = Toast::new("Password saved");
                     overlay.add_toast(toast);
                 }
@@ -556,6 +571,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let page = text_page.clone();
         let entry = password_entry.clone();
+        let otp = otp_entry.clone();
         let text = text_view.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
@@ -580,12 +596,17 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .unwrap_or(false);
                 save.set_visible(is_text_page);
                 if is_text_page {
-                    win.set_title("Password Store");
-                    let label = non_null_to_string_option(&page, "label")
-                        .unwrap_or_else(|| "Unknown pass file".to_string());
-                    win.set_subtitle(&label);
+                    if let Some(pass_file) = get_opened_pass_file() {
+                        let label = pass_file.label();
+                        win.set_title(pass_file.title());
+                        win.set_subtitle(&label);
+                    } else {
+                        win.set_title("Password Store");
+                        win.set_subtitle("Manage your passwords");
+                    }
                 }
             } else {
+                clear_opened_pass_file();
                 back.set_visible(false);
                 save.set_visible(false);
                 add.set_visible(true);
@@ -595,6 +616,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 win.set_subtitle("Manage your passwords");
 
                 entry.set_text("");
+                otp.set_visible(false);
+                otp.set_text("");
                 let buffer = text.buffer();
                 buffer.set_text("");
             }
@@ -788,7 +811,6 @@ fn load_passwords_async(
 
                     // Store full path on row for later use
                     unsafe {
-                        row.set_data("name", item.basename.clone());
                         row.set_data("root", item.store_path.clone());
                         row.set_data("label", item.label());
                     }

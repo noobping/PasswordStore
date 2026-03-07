@@ -1910,6 +1910,8 @@ fn load_passwords_async(
         list.remove(&child);
     }
 
+    let has_store_dirs = !Preferences::new().stores().is_empty();
+
     git.set_visible(false);
     find.set_visible(show_list_actions);
 
@@ -1943,6 +1945,7 @@ fn load_passwords_async(
     let find_clone = find.clone();
     let save_clone = save.clone();
     let toast_overlay = overlay.clone();
+    let has_store_dirs_for_placeholder = has_store_dirs;
     // Poll the channel from the main thread using a GLib timeout
     glib::timeout_add_local(Duration::from_millis(50), move || {
         match rx.try_recv() {
@@ -2102,11 +2105,7 @@ fn load_passwords_async(
 
                 let symbolic = format!("{APP_ID}-symbolic");
                 let placeholder = if empty {
-                    StatusPage::builder()
-                        .icon_name(symbolic)
-                        .title("No passwords found")
-                        .description("Create a new password to get started.")
-                        .build()
+                    build_empty_password_list_placeholder(&symbolic, has_store_dirs_for_placeholder)
                 } else {
                     StatusPage::builder()
                         .icon_name("edit-find-symbolic")
@@ -2127,7 +2126,8 @@ fn load_passwords_async(
                 // Worker died
 
                 let symbolic = format!("{APP_ID}-symbolic");
-                let placeholder = StatusPage::builder().icon_name(symbolic).build();
+                let placeholder =
+                    build_empty_password_list_placeholder(&symbolic, has_store_dirs_for_placeholder);
                 list_clone.set_placeholder(Some(&placeholder));
 
                 save_clone.set_visible(false);
@@ -2138,6 +2138,21 @@ fn load_passwords_async(
             }
         }
     });
+}
+
+fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -> StatusPage {
+    let builder = StatusPage::builder().icon_name(symbolic);
+    if has_store_dirs {
+        builder
+            .title("Empty")
+            .description("Create a new password to get started.")
+            .build()
+    } else {
+        builder
+            .title("No password store folders added")
+            .description("Open Preferences and choose a password store folder to get started.")
+            .build()
+    }
 }
 
 fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {

@@ -316,8 +316,8 @@
                                     </style>
                                     <child type="placeholder">
                                       <object class="AdwActionRow" id="stores_row">
-                                        <property name="title">~/.password-store</property>
-                                        <property name="subtitle">The default password store.</property>
+                                        <property name="title">No password store folders added</property>
+                                        <property name="subtitle">Use the folder chooser to add one.</property>
                                       </object>
                                     </child>
                                   </object>

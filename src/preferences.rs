@@ -123,10 +123,8 @@ impl Preferences {
             let cfg = load_file_prefs();
             if let Some(dirs) = cfg.password_store_dirs {
                 dirs
-            } else if let Ok(home) = std::env::var("HOME") {
-                vec![format!("{home}/.password-store")]
             } else {
-                Vec::new()
+                default_store_dirs()
             }
         }
     }
@@ -165,6 +163,20 @@ fn config_path() -> PathBuf {
     }
 }
 
+#[cfg(not(feature = "flatpak"))]
+fn default_store_dirs() -> Vec<String> {
+    if let Ok(home) = std::env::var("HOME") {
+        vec![format!("{home}/.password-store")]
+    } else {
+        Vec::new()
+    }
+}
+
+#[cfg(feature = "flatpak")]
+fn default_store_dirs() -> Vec<String> {
+    Vec::new()
+}
+
 fn load_file_prefs() -> PreferenceFile {
     let path = config_path();
     if let Ok(data) = fs::read_to_string(&path) {
@@ -187,4 +199,22 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
     fs::write(&path, toml).map_err(|e| bool_error!("Failed to write config file: {e}"))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_store_dirs;
+
+    #[test]
+    fn default_store_dirs_match_build_mode() {
+        #[cfg(feature = "flatpak")]
+        assert!(default_store_dirs().is_empty());
+
+        #[cfg(not(feature = "flatpak"))]
+        if let Ok(home) = std::env::var("HOME") {
+            assert_eq!(default_store_dirs(), vec![format!("{home}/.password-store")]);
+        } else {
+            assert!(default_store_dirs().is_empty());
+        }
+    }
 }

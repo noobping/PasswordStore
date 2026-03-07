@@ -18,6 +18,7 @@ mod ripasso_keys;
 #[cfg(feature = "flatpak")]
 mod ripasso_unlock;
 mod stores;
+mod store_management;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};

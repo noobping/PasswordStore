@@ -11,6 +11,7 @@ mod logging;
 mod methods;
 mod pass_file;
 mod password_list;
+mod password_page;
 #[cfg(feature = "flatpak")]
 mod private_key_dialog;
 mod preferences;
@@ -20,6 +21,7 @@ mod ripasso_keys;
 mod ripasso_unlock;
 mod stores;
 mod store_management;
+mod window_messages;
 mod window_navigation;
 mod window;
 

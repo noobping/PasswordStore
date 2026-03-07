@@ -74,6 +74,20 @@ impl Preferences {
         cmd
     }
 
+    pub fn git_command(&self) -> Command {
+        #[cfg(feature = "flatpak")]
+        {
+            let mut cmd = Command::new("flatpak-spawn");
+            cmd.args(["--host", "git"]);
+            cmd
+        }
+
+        #[cfg(not(feature = "flatpak"))]
+        {
+            Command::new("git")
+        }
+    }
+
     fn command_parts(&self) -> (String, Vec<String>) {
         let cmdline = self.command_value();
         // Try to split like a shell would

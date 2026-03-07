@@ -325,6 +325,26 @@
                   </object>
                 </child>
 
+                <child>
+                  <object class="AdwNavigationPage" id="git_busy_page">
+                    <property name="title" translatable="yes">Git</property>
+                    <child>
+                      <object class="AdwStatusPage" id="git_busy_status">
+                        <property name="title" translatable="yes">Running Git operation</property>
+                        <property name="description" translatable="yes">Please wait while the command finishes.</property>
+                        <property name="icon-name">git-symbolic</property>
+                        <property name="hexpand">true</property>
+                        <property name="vexpand">true</property>
+                        <child>
+                          <object class="GtkSpinner">
+                            <property name="spinning">true</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
               </object>
             </child>
           </object>

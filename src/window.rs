@@ -106,6 +106,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let log_page: NavigationPage = builder
         .object("log_page")
         .expect("Failed to get log page");
+    let git_busy_page: NavigationPage = builder
+        .object("git_busy_page")
+        .expect("Failed to get git busy page");
+    let git_busy_status: StatusPage = builder
+        .object("git_busy_status")
+        .expect("Failed to get git busy status");
     #[cfg(any(feature = "setup", feature = "host"))]
     let pass_row: EntryRow = builder
         .object("pass_command_row")
@@ -608,9 +614,19 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let popover = git_popover.clone();
         let list_clone = list.clone();
+        let nav = navigation_view.clone();
+        let text_page = text_page.clone();
+        let settings_page = settings_page.clone();
+        let log_page = log_page.clone();
+        let busy_page = git_busy_page.clone();
+        let busy_status = git_busy_status.clone();
+        let back = back_button.clone();
         let git = git_button.clone();
+        let add = add_button.clone();
         let find = find_button.clone();
         let save = save_button.clone();
+        let win = window_title.clone();
+        let username = username_entry.clone();
         let action = SimpleAction::new("git-clone", None);
         action.connect_activate(move |_, _| {
             let url = entry.text().trim().to_string();
@@ -619,6 +635,21 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 overlay.add_toast(toast);
                 return;
             }
+
+            popover.popdown();
+            show_git_busy_page(
+                &nav,
+                &busy_page,
+                &busy_status,
+                &back,
+                &add,
+                &find,
+                &git,
+                &save,
+                &win,
+                "Cloning password store",
+                Some(&url),
+            );
 
             let toast = Toast::new(&format!("Cloning from {url}..."));
             overlay.add_toast(toast);
@@ -650,34 +681,84 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             let overlay = overlay.clone();
             let entry = entry.clone();
-            let popover = popover.clone();
             let list = list_clone.clone();
+            let nav = nav.clone();
+            let text_page = text_page.clone();
+            let settings_page = settings_page.clone();
+            let log_page = log_page.clone();
+            let busy_page = busy_page.clone();
+            let back = back.clone();
             let git = git.clone();
+            let add = add.clone();
             let find = find.clone();
             let save = save.clone();
+            let win = win.clone();
+            let username = username.clone();
             glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
                 Ok(Ok(())) => {
                     entry.set_text("");
-                    popover.popdown();
+                    finish_git_busy_page(
+                        &nav,
+                        &busy_page,
+                        &text_page,
+                        &settings_page,
+                        &log_page,
+                        &back,
+                        &add,
+                        &find,
+                        &git,
+                        &save,
+                        &win,
+                        &username,
+                    );
                     let toast = Toast::new("Password store cloned");
                     overlay.add_toast(toast);
+                    let show_list_actions = nav.navigation_stack().n_items() <= 1;
                     load_passwords_async(
                         &list,
                         git.clone(),
                         find.clone(),
                         save.clone(),
                         overlay.clone(),
-                        true,
+                        show_list_actions,
                     );
                     glib::ControlFlow::Break
                 }
                 Ok(Err(message)) => {
+                    finish_git_busy_page(
+                        &nav,
+                        &busy_page,
+                        &text_page,
+                        &settings_page,
+                        &log_page,
+                        &back,
+                        &add,
+                        &find,
+                        &git,
+                        &save,
+                        &win,
+                        &username,
+                    );
                     let toast = Toast::new(&message);
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
                 }
                 Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
+                    finish_git_busy_page(
+                        &nav,
+                        &busy_page,
+                        &text_page,
+                        &settings_page,
+                        &log_page,
+                        &back,
+                        &add,
+                        &find,
+                        &git,
+                        &save,
+                        &win,
+                        &username,
+                    );
                     let toast = Toast::new("Clone command stopped unexpectedly");
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
@@ -705,6 +786,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let page = text_page.clone();
         let settings = settings_page.clone();
         let log_page = log_page.clone();
+        let busy_page = git_busy_page.clone();
         let entry = password_entry.clone();
         let username = username_entry.clone();
         let otp = otp_entry.clone();
@@ -719,6 +801,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let nav = navigation_view.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
+            let busy_visible = nav
+                .visible_page()
+                .as_ref()
+                .map(|visible| visible == &busy_page)
+                .unwrap_or(false);
+            if busy_visible {
+                return;
+            }
+
             nav.pop();
             let stack = nav.navigation_stack();
             if stack.n_items() > 1 {
@@ -788,9 +879,36 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let overlay_clone = toast_overlay.clone();
+        let nav = navigation_view.clone();
+        let text_page = text_page.clone();
+        let settings_page = settings_page.clone();
+        let log_page = log_page.clone();
+        let busy_page = git_busy_page.clone();
+        let busy_status = git_busy_status.clone();
+        let back = back_button.clone();
+        let git = git_button.clone();
+        let add = add_button.clone();
+        let find = find_button.clone();
+        let save = save_button.clone();
+        let win = window_title.clone();
+        let username = username_entry.clone();
+        let list_clone = list.clone();
         let action = SimpleAction::new("synchronize", None);
         action.connect_activate(move |_, _| {
             let overlay = overlay_clone.clone();
+            show_git_busy_page(
+                &nav,
+                &busy_page,
+                &busy_status,
+                &back,
+                &add,
+                &find,
+                &git,
+                &save,
+                &win,
+                "Synchronizing password stores",
+                Some("Running git fetch, pull, and push."),
+            );
             // Channel from worker to main thread
             let (tx, rx) = mpsc::channel::<String>();
             // Background worker
@@ -838,19 +956,74 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             });
 
             // Main-thread: poll for messages
+            let nav = nav.clone();
+            let text_page = text_page.clone();
+            let settings_page = settings_page.clone();
+            let log_page = log_page.clone();
+            let busy_page = busy_page.clone();
+            let back = back.clone();
+            let git = git.clone();
+            let add = add.clone();
+            let find = find.clone();
+            let save = save.clone();
+            let win = win.clone();
+            let username = username.clone();
+            let list = list_clone.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 match rx.try_recv() {
                     Ok(msg) => {
+                        finish_git_busy_page(
+                            &nav,
+                            &busy_page,
+                            &text_page,
+                            &settings_page,
+                            &log_page,
+                            &back,
+                            &add,
+                            &find,
+                            &git,
+                            &save,
+                            &win,
+                            &username,
+                        );
                         let toast = Toast::new(&msg);
                         overlay.add_toast(toast);
-                        glib::ControlFlow::Continue
+                        let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                        load_passwords_async(
+                            &list,
+                            git.clone(),
+                            find.clone(),
+                            save.clone(),
+                            overlay.clone(),
+                            show_list_actions,
+                        );
+                        glib::ControlFlow::Break
                     }
-                    Err(TryRecvError::Empty) => {
-                        // No message yet, keep polling
-                        glib::ControlFlow::Continue
-                    }
+                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        // Worker is done and channel closed
+                        finish_git_busy_page(
+                            &nav,
+                            &busy_page,
+                            &text_page,
+                            &settings_page,
+                            &log_page,
+                            &back,
+                            &add,
+                            &find,
+                            &git,
+                            &save,
+                            &win,
+                            &username,
+                        );
+                        let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                        load_passwords_async(
+                            &list,
+                            git.clone(),
+                            find.clone(),
+                            save.clone(),
+                            overlay.clone(),
+                            show_list_actions,
+                        );
                         glib::ControlFlow::Break
                     }
                 }
@@ -869,6 +1042,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let save = save_button.clone();
         let win = window_title.clone();
         let view = log_view.clone();
+        let busy_page = git_busy_page.clone();
         let seen_revision = Rc::new(RefCell::new(0usize));
         let seen_error_revision = Rc::new(RefCell::new(0usize));
         glib::timeout_add_local(Duration::from_millis(200), move || {
@@ -883,7 +1057,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             if cfg!(debug_assertions) {
                 let mut seen_error = seen_error_revision.borrow_mut();
-                if error_revision > *seen_error {
+                let busy_visible = nav
+                    .visible_page()
+                    .as_ref()
+                    .map(|visible| visible == &busy_page)
+                    .unwrap_or(false);
+                if error_revision > *seen_error && !busy_visible {
                     *seen_error = error_revision;
                     show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
                 }
@@ -950,6 +1129,114 @@ fn show_log_page(
         .unwrap_or(false);
     if !already_visible {
         nav.push(page);
+    }
+}
+
+fn show_git_busy_page(
+    nav: &NavigationView,
+    page: &NavigationPage,
+    status: &StatusPage,
+    back: &Button,
+    add: &Button,
+    find: &Button,
+    git: &Button,
+    save: &Button,
+    win: &WindowTitle,
+    title: &str,
+    description: Option<&str>,
+) {
+    add.set_visible(false);
+    find.set_visible(false);
+    git.set_visible(false);
+    back.set_visible(false);
+    save.set_visible(false);
+    win.set_title("Git");
+    win.set_subtitle(title);
+    status.set_title(title);
+    status.set_description(description);
+
+    let already_visible = nav
+        .visible_page()
+        .as_ref()
+        .map(|visible| visible == page)
+        .unwrap_or(false);
+    if !already_visible {
+        nav.push(page);
+    }
+}
+
+fn finish_git_busy_page(
+    nav: &NavigationView,
+    busy_page: &NavigationPage,
+    text_page: &NavigationPage,
+    settings_page: &NavigationPage,
+    log_page: &NavigationPage,
+    back: &Button,
+    add: &Button,
+    find: &Button,
+    git: &Button,
+    save: &Button,
+    win: &WindowTitle,
+    username: &EntryRow,
+) {
+    let busy_visible = nav
+        .visible_page()
+        .as_ref()
+        .map(|visible| visible == busy_page)
+        .unwrap_or(false);
+    if busy_visible {
+        nav.pop();
+    }
+
+    let stack = nav.navigation_stack();
+    if stack.n_items() <= 1 {
+        back.set_visible(false);
+        save.set_visible(false);
+        add.set_visible(true);
+        find.set_visible(true);
+        git.set_visible(false);
+        win.set_title("Password Store");
+        win.set_subtitle("Manage your passwords");
+        return;
+    }
+
+    back.set_visible(true);
+    add.set_visible(false);
+    find.set_visible(false);
+    git.set_visible(false);
+
+    let visible_page = nav.visible_page();
+    let is_text_page = visible_page
+        .as_ref()
+        .map(|page| page == text_page)
+        .unwrap_or(false);
+    let is_settings_page = visible_page
+        .as_ref()
+        .map(|page| page == settings_page)
+        .unwrap_or(false);
+    let is_log_page = visible_page
+        .as_ref()
+        .map(|page| page == log_page)
+        .unwrap_or(false);
+
+    save.set_visible(is_text_page);
+    if is_text_page {
+        if let Some(pass_file) = get_opened_pass_file() {
+            let label = pass_file.label();
+            win.set_title(pass_file.title());
+            win.set_subtitle(&label);
+            sync_username_row(username, Some(&pass_file));
+        } else {
+            win.set_title("Password Store");
+            win.set_subtitle("Manage your passwords");
+            sync_username_row(username, None);
+        }
+    } else if is_settings_page {
+        win.set_title("Preferences");
+        win.set_subtitle("Password Store");
+    } else if is_log_page {
+        win.set_title("Logs");
+        win.set_subtitle("Command output");
     }
 }
 

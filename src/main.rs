@@ -8,6 +8,8 @@ mod backend;
 mod item;
 mod logging;
 mod methods;
+#[cfg(feature = "flatpak")]
+mod private_key_dialog;
 mod preferences;
 mod window;
 

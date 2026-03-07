@@ -12,6 +12,10 @@ use crate::backend::{
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
     unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
+#[cfg(feature = "flatpak")]
+use crate::private_key_dialog::{
+    build_private_key_progress_dialog, present_private_key_password_dialog,
+};
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
@@ -42,8 +46,6 @@ use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
-#[cfg(feature = "flatpak")]
-use adw::{Dialog, HeaderBar, PreferencesGroup, PreferencesPage, ToolbarView};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::gtk::StringList;
 use adw::gtk::{
@@ -156,6 +158,7 @@ enum GitOperationResult {
 #[derive(Clone)]
 struct PasswordListPageState {
     nav: NavigationView,
+    page: NavigationPage,
     list: ListBox,
     back: Button,
     add: Button,
@@ -163,6 +166,7 @@ struct PasswordListPageState {
     git: Button,
     save: Button,
     win: WindowTitle,
+    status: StatusPage,
     entry: PasswordEntryRow,
     username: EntryRow,
     otp: PasswordEntryRow,
@@ -242,9 +246,7 @@ fn with_logs_hint(message: &str) -> String {
 
 #[cfg(feature = "flatpak")]
 fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
-    if message.contains("is locked") {
-        Some("The selected private key is locked. Unlock it in Preferences and enter its password.")
-    } else if message.contains("cannot decrypt password store entries") {
+    if message.contains("cannot decrypt password store entries") {
         Some("The selected private key cannot decrypt password entries.")
     } else {
         None
@@ -254,6 +256,11 @@ fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> 
 #[cfg(not(feature = "flatpak"))]
 fn friendly_password_entry_error_message(_message: &str) -> Option<&'static str> {
     None
+}
+
+#[cfg(feature = "flatpak")]
+fn is_locked_private_key_error(message: &str) -> bool {
+    message.contains("The selected private key is locked.")
 }
 
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
@@ -669,6 +676,225 @@ fn prune_missing_store_dirs(settings: &Preferences) {
     }
 }
 
+fn open_password_entry_page(
+    state: &PasswordListPageState,
+    opened_pass_file: OpenPassFile,
+    push_page: bool,
+    #[cfg(feature = "flatpak")] ripasso_private_keys_state: Option<RipassoPrivateKeysState>,
+) {
+    let pass_label = opened_pass_file.label();
+    let store_for_thread = opened_pass_file.store_path().to_string();
+    set_opened_pass_file(opened_pass_file.clone());
+
+    state.add.set_visible(false);
+    state.find.set_visible(false);
+    state.git.set_visible(false);
+    state.back.set_visible(true);
+    state.save.set_visible(true);
+    set_save_button_for_password(&state.save);
+    state.win.set_title(opened_pass_file.title());
+    state.win.set_subtitle(&pass_label);
+    state.entry.set_visible(false);
+    sync_username_row(&state.username, Some(&opened_pass_file));
+    state.otp.set_visible(false);
+    state.dynamic_box.set_visible(false);
+    state.raw_button.set_visible(false);
+    state.status.set_visible(true);
+    state.status.set_title("Decrypting Password Entry");
+    state
+        .status
+        .set_description(Some("Please wait while the pass file is opened."));
+    if push_page {
+        state.nav.push(&state.page);
+    }
+
+    let (tx, rx) = mpsc::channel::<Result<String, String>>();
+    let label_for_thread = pass_label.clone();
+    thread::spawn(move || {
+        #[cfg(any(feature = "setup", feature = "flatpak"))]
+        let result = read_password_entry(&store_for_thread, &label_for_thread);
+        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+        let result = {
+            let settings = Preferences::new();
+            let mut cmd = settings.command();
+            cmd.env("PASSWORD_STORE_DIR", &store_for_thread)
+                .arg(&label_for_thread);
+            let output = run_command_output(
+                &mut cmd,
+                "Read password entry",
+                CommandLogOptions::SENSITIVE,
+            );
+            match output {
+                Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
+                Ok(o) => {
+                    let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                    if stderr.is_empty() {
+                        Err(format!("pass failed: {}", o.status))
+                    } else {
+                        Err(stderr)
+                    }
+                }
+                Err(e) => Err(format!("Failed to run pass: {e}")),
+            }
+        };
+        let _ = tx.send(result);
+    });
+
+    #[cfg(feature = "flatpak")]
+    let list_state = state.clone();
+    let password_status = state.status.clone();
+    let password_entry = state.entry.clone();
+    let username_entry = state.username.clone();
+    let otp_entry = state.otp.clone();
+    let text_view = state.text.clone();
+    let dynamic_box = state.dynamic_box.clone();
+    let raw_button = state.raw_button.clone();
+    let structured_templates = state.structured_templates.clone();
+    let dynamic_rows = state.dynamic_rows.clone();
+    let overlay = state.overlay.clone();
+    let opened_pass_file_for_result = opened_pass_file.clone();
+    let label_for_otp = pass_label.clone();
+    let store_for_otp = opened_pass_file.store_path().to_string();
+    #[cfg(feature = "flatpak")]
+    let ripasso_private_keys_state_for_result = ripasso_private_keys_state.clone();
+    glib::timeout_add_local(Duration::from_millis(50), move || {
+        use std::sync::mpsc::TryRecvError;
+
+        if !is_opened_pass_file(&opened_pass_file_for_result) {
+            return glib::ControlFlow::Break;
+        }
+
+        match rx.try_recv() {
+            Ok(Ok(output)) => {
+                let updated_pass_file = refresh_opened_pass_file_from_contents(
+                    &opened_pass_file_for_result,
+                    &output,
+                );
+                password_status.set_visible(false);
+                password_entry.set_visible(true);
+                raw_button.set_visible(true);
+
+                let (password, structured_lines) = parse_structured_pass_lines(&output);
+                password_entry.set_text(&password);
+                text_view.buffer().set_text(&output);
+                rebuild_dynamic_fields_from_lines(
+                    &dynamic_box,
+                    &overlay,
+                    &structured_templates,
+                    &dynamic_rows,
+                    &structured_lines,
+                );
+                sync_username_row_from_parsed_lines(
+                    &username_entry,
+                    updated_pass_file.as_ref(),
+                    &structured_lines,
+                );
+
+                let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
+                otp_entry.set_visible(otp);
+                if otp {
+                    #[cfg(any(feature = "setup", feature = "flatpak"))]
+                    match read_otp_code(&store_for_otp, &label_for_otp) {
+                        Ok(code) => otp_entry.set_text(&code),
+                        Err(err) => {
+                            log_error(format!("Failed to read OTP code: {err}"));
+                            otp_entry.set_text("");
+                            let toast =
+                                Toast::new(&with_logs_hint("Couldn't load the one-time password."));
+                            overlay.add_toast(toast);
+                        }
+                    }
+                    #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+                    {
+                        let settings = Preferences::new();
+                        let mut cmd = settings.command();
+                        cmd.env("PASSWORD_STORE_DIR", &store_for_otp)
+                            .args(["otp", &label_for_otp]);
+                        match run_command_output(
+                            &mut cmd,
+                            "Read OTP code",
+                            CommandLogOptions::SENSITIVE,
+                        ) {
+                            Ok(o) if o.status.success() => {
+                                let code =
+                                    String::from_utf8_lossy(&o.stdout).trim().to_string();
+                                otp_entry.set_text(&code);
+                            }
+                            Ok(_) => {
+                                let toast =
+                                    Toast::new(&with_logs_hint("Couldn't load the one-time password."));
+                                overlay.add_toast(toast);
+                            }
+                            Err(e) => {
+                                log_error(format!("Failed to read OTP code: {e}"));
+                                let toast =
+                                    Toast::new(&with_logs_hint("Couldn't load the one-time password."));
+                                overlay.add_toast(toast);
+                            }
+                        }
+                    }
+                } else {
+                    otp_entry.set_text("");
+                }
+
+                glib::ControlFlow::Break
+            }
+            Ok(Err(msg)) => {
+                log_error(format!("Failed to open password entry: {msg}"));
+                #[cfg(feature = "flatpak")]
+                if is_locked_private_key_error(&msg) {
+                    password_status.set_title("Private Key Locked");
+                    password_status.set_description(Some(
+                        "Unlock the selected private key to continue opening this pass file.",
+                    ));
+                    if let Some(ripasso_state) = ripasso_private_keys_state_for_result.clone() {
+                        match resolved_ripasso_own_fingerprint() {
+                            Ok(fingerprint) => {
+                                let retry_state = list_state.clone();
+                                let retry_pass_file = opened_pass_file_for_result.clone();
+                                let retry_ripasso_state = ripasso_state.clone();
+                                prompt_ripasso_private_key_unlock(
+                                    &ripasso_state,
+                                    fingerprint,
+                                    false,
+                                    Some(Rc::new(move || {
+                                        open_password_entry_page(
+                                            &retry_state,
+                                            retry_pass_file.clone(),
+                                            false,
+                                            Some(retry_ripasso_state.clone()),
+                                        );
+                                    })),
+                                );
+                                return glib::ControlFlow::Break;
+                            }
+                            Err(err) => {
+                                log_error(format!(
+                                    "Failed to resolve the selected ripasso private key: {err}"
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                let toast = if let Some(message) = friendly_password_entry_error_message(&msg) {
+                    Toast::new(message)
+                } else {
+                    Toast::new(&with_logs_hint("Couldn't open the password entry."))
+                };
+                overlay.add_toast(toast);
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => {
+                let toast = Toast::new(&with_logs_hint("Couldn't open the password entry."));
+                overlay.add_toast(toast);
+                glib::ControlFlow::Break
+            }
+        }
+    });
+}
+
 fn show_password_list_page(state: &PasswordListPageState) {
     while state.nav.navigation_stack().n_items() > 1 {
         state.nav.pop();
@@ -975,39 +1201,12 @@ fn finish_ripasso_private_key_import(
 }
 
 #[cfg(feature = "flatpak")]
-fn build_ripasso_progress_dialog(
-    window: &ApplicationWindow,
-    title: &str,
-    description: &str,
-) -> Dialog {
-    let status = StatusPage::builder()
-        .title(title)
-        .description(description)
-        .build();
-    status.set_child(Some(&Spinner::builder().spinning(true).build()));
-
-    let header = HeaderBar::new();
-    let toolbar_view = ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&status));
-
-    let dialog = Dialog::builder()
-        .title(title)
-        .content_width(460)
-        .child(&toolbar_view)
-        .build();
-    dialog.set_can_close(false);
-    dialog.present(Some(window));
-    dialog
-}
-
-#[cfg(feature = "flatpak")]
 fn start_ripasso_private_key_import(
     state: &RipassoPrivateKeysState,
     bytes: Vec<u8>,
     passphrase: Option<String>,
 ) {
-    let progress_dialog = build_ripasso_progress_dialog(
+    let progress_dialog = build_private_key_progress_dialog(
         &state.window,
         "Importing Private Key",
         "Please wait while ripasso imports the private key.",
@@ -1056,8 +1255,9 @@ fn start_ripasso_private_key_unlock(
     fingerprint: String,
     passphrase: String,
     select_after_unlock: bool,
+    after_unlock: Option<Rc<dyn Fn()>>,
 ) {
-    let progress_dialog = build_ripasso_progress_dialog(
+    let progress_dialog = build_private_key_progress_dialog(
         &state.window,
         "Unlocking Private Key",
         "Please wait while ripasso unlocks the private key for this session.",
@@ -1071,6 +1271,7 @@ fn start_ripasso_private_key_unlock(
 
     let state = state.clone();
     let fingerprint_for_result = fingerprint.clone();
+    let after_unlock = after_unlock.clone();
     glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
         Ok(Ok(_)) => {
             progress_dialog.force_close();
@@ -1078,6 +1279,9 @@ fn start_ripasso_private_key_unlock(
                 select_ripasso_private_key(&state, &fingerprint_for_result);
             } else {
                 rebuild_ripasso_private_keys_list(&state);
+            }
+            if let Some(after_unlock) = after_unlock.as_ref() {
+                after_unlock();
             }
             let toast = Toast::new("Private key unlocked for this session.");
             state.overlay.add_toast(toast);
@@ -1109,77 +1313,19 @@ fn start_ripasso_private_key_unlock(
 }
 
 #[cfg(feature = "flatpak")]
-fn build_ripasso_private_key_password_dialog(
-    _window: &ApplicationWindow,
-    title: &str,
-) -> (Dialog, PasswordEntryRow) {
-    let password_row = PasswordEntryRow::new();
-    password_row.set_title("Private key password");
-    password_row.set_show_apply_button(true);
-
-    let password_group = PreferencesGroup::builder().build();
-    password_group.add(&password_row);
-
-    let page = PreferencesPage::new();
-    page.add(&password_group);
-
-    let header = HeaderBar::new();
-    let toolbar_view = ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&page));
-
-    let dialog = Dialog::builder()
-        .title(title)
-        .content_width(460)
-        .child(&toolbar_view)
-        .build();
-    dialog.set_focus(Some(&password_row));
-
-    (dialog, password_row)
-}
-
-#[cfg(feature = "flatpak")]
-fn submit_ripasso_private_key_passphrase(
-    dialog: &Dialog,
-    state: &RipassoPrivateKeysState,
-    bytes: &[u8],
-    password_row: &PasswordEntryRow,
-) {
-    let passphrase = password_row.text().to_string();
-    if passphrase.is_empty() {
-        let toast = Toast::new("Enter the private key password.");
-        state.overlay.add_toast(toast);
-        return;
-    }
-
-    dialog.close();
-    start_ripasso_private_key_import(state, bytes.to_vec(), Some(passphrase));
-}
-
-#[cfg(feature = "flatpak")]
 fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes: Vec<u8>) {
-    let (dialog, password_row) =
-        build_ripasso_private_key_password_dialog(&state.window, "Unlock Private Key");
-
     let bytes = Rc::new(bytes);
-    let submit = Rc::new({
-        let dialog = dialog.clone();
-        let password_row = password_row.clone();
-        let state = state.clone();
-        let bytes = Rc::clone(&bytes);
-        move || {
-            submit_ripasso_private_key_passphrase(&dialog, &state, bytes.as_slice(), &password_row);
-        }
-    });
-
-    {
-        let submit = Rc::clone(&submit);
-        password_row.connect_apply(move |_| {
-            submit();
-        });
-    }
-
-    dialog.present(Some(&state.window));
+    let state = state.clone();
+    let window = state.window.clone();
+    let overlay = state.overlay.clone();
+    present_private_key_password_dialog(
+        &window,
+        &overlay,
+        "Unlock Private Key",
+        move |passphrase| {
+            start_ripasso_private_key_import(&state, bytes.as_slice().to_vec(), Some(passphrase));
+        },
+    );
 }
 
 #[cfg(feature = "flatpak")]
@@ -1187,41 +1333,26 @@ fn prompt_ripasso_private_key_unlock(
     state: &RipassoPrivateKeysState,
     fingerprint: String,
     select_after_unlock: bool,
+    after_unlock: Option<Rc<dyn Fn()>>,
 ) {
-    let (dialog, password_row) =
-        build_ripasso_private_key_password_dialog(&state.window, "Unlock Private Key");
+    let state = state.clone();
     let fingerprint = Rc::new(fingerprint);
-    let submit = Rc::new({
-        let dialog = dialog.clone();
-        let password_row = password_row.clone();
-        let state = state.clone();
-        let fingerprint = Rc::clone(&fingerprint);
-        move || {
-            let passphrase = password_row.text().to_string();
-            if passphrase.is_empty() {
-                let toast = Toast::new("Enter the private key password.");
-                state.overlay.add_toast(toast);
-                return;
-            }
-
-            dialog.close();
+    let window = state.window.clone();
+    let overlay = state.overlay.clone();
+    present_private_key_password_dialog(
+        &window,
+        &overlay,
+        "Unlock Private Key",
+        move |passphrase| {
             start_ripasso_private_key_unlock(
                 &state,
-                fingerprint.to_string(),
+                fingerprint.as_str().to_string(),
                 passphrase,
                 select_after_unlock,
+                after_unlock.clone(),
             );
-        }
-    });
-
-    {
-        let submit = Rc::clone(&submit);
-        password_row.connect_apply(move |_| {
-            submit();
-        });
-    }
-
-    dialog.present(Some(&state.window));
+        },
+    );
 }
 
 #[cfg(feature = "flatpak")]
@@ -1335,6 +1466,7 @@ fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
                         &select_state,
                         key_for_select.fingerprint.clone(),
                         !is_selected,
+                        None,
                     );
                     return;
                 }
@@ -1579,6 +1711,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     store_recipients_entry.set_show_apply_button(true);
     let password_list_state = PasswordListPageState {
         nav: navigation_view.clone(),
+        page: text_page.clone(),
         list: list.clone(),
         back: back_button.clone(),
         add: add_button.clone(),
@@ -1586,6 +1719,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         git: git_button.clone(),
         save: save_button.clone(),
         win: window_title.clone(),
+        status: password_status.clone(),
         entry: password_entry.clone(),
         username: username_entry.clone(),
         otp: otp_entry.clone(),
@@ -1628,24 +1762,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     // Selecting an item from the list
     {
-        let nav = navigation_view.clone();
-        let page = text_page.clone();
-        let back = back_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let git = git_button.clone();
-        let save = save_button.clone();
-        let entry = password_entry.clone();
-        let username = username_entry.clone();
-        let otp = otp_entry.clone();
-        let status = password_status.clone();
-        let text = text_view.clone();
-        let dynamic_box = dynamic_fields_box.clone();
-        let raw_button = open_raw_button.clone();
-        let structured_templates = structured_templates.clone();
-        let dynamic_rows = dynamic_field_rows.clone();
         let overlay = toast_overlay.clone();
-        let win = window_title.clone();
+        let list_state = password_list_state.clone();
+        #[cfg(feature = "flatpak")]
+        let ripasso_state = ripasso_private_keys_state.clone();
         list.connect_row_activated(move |_list, row| {
             let label = non_null_to_string_option(row, "label");
             let root = non_null_to_string_option(row, "root");
@@ -1661,182 +1781,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 return;
             };
             let opened_pass_file = OpenPassFile::from_label(root, &label);
-            let pass_label = opened_pass_file.label();
-            let store_for_thread = opened_pass_file.store_path().to_string();
-            set_opened_pass_file(opened_pass_file.clone());
-
-            // Navigate to the text editor page and update header buttons
-            add.set_visible(false);
-            find.set_visible(false);
-            git.set_visible(false);
-            back.set_visible(true);
-            save.set_visible(true);
-            set_save_button_for_password(&save);
-            win.set_title(opened_pass_file.title());
-            win.set_subtitle(&pass_label);
-            entry.set_visible(false);
-            sync_username_row(&username, Some(&opened_pass_file));
-            otp.set_visible(false);
-            dynamic_box.set_visible(false);
-            raw_button.set_visible(false);
-            status.set_visible(true);
-            status.set_title("Decrypting Password Entry");
-            status.set_description(Some("Please wait while the pass file is opened."));
-            nav.push(&page);
-
-            // Background worker: run `pass <label>`
-            let (tx, rx) = mpsc::channel::<Result<String, String>>();
-            let label_for_thread = pass_label.clone();
-            thread::spawn(move || {
-                #[cfg(any(feature = "setup", feature = "flatpak"))]
-                let result = read_password_entry(&store_for_thread, &label_for_thread);
-                #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-                let result = {
-                    let settings = Preferences::new();
-                    let mut cmd = settings.command();
-                    cmd.env("PASSWORD_STORE_DIR", &store_for_thread)
-                        .arg(&label_for_thread);
-                    let output = run_command_output(
-                        &mut cmd,
-                        "Read password entry",
-                        CommandLogOptions::SENSITIVE,
-                    );
-                    match output {
-                        Ok(o) if o.status.success() => {
-                            Ok(String::from_utf8_lossy(&o.stdout).to_string())
-                        }
-                        Ok(o) => {
-                            let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
-                            if stderr.is_empty() {
-                                Err(format!("pass failed: {}", o.status))
-                            } else {
-                                Err(stderr)
-                            }
-                        }
-                        Err(e) => Err(format!("Failed to run pass: {e}")),
-                    }
-                };
-                let _ = tx.send(result);
-            });
-
-            // UI updater: poll the channel from the main thread
-            let password_status = status.clone();
-            let password_entry = entry.clone();
-            let username_entry = username.clone();
-            let otp_entry = otp.clone();
-            let text_view = text.clone();
-            let dynamic_box = dynamic_box.clone();
-            let raw_button = raw_button.clone();
-            let structured_templates = structured_templates.clone();
-            let dynamic_rows = dynamic_rows.clone();
-            let overlay = overlay.clone();
-            let opened_pass_file_for_result = opened_pass_file.clone();
-            let label_for_otp = pass_label.clone();
-            let store_for_otp = opened_pass_file.store_path().to_string();
-            glib::timeout_add_local(Duration::from_millis(50), move || {
-                use std::sync::mpsc::TryRecvError;
-
-                if !is_opened_pass_file(&opened_pass_file_for_result) {
-                    return glib::ControlFlow::Break;
-                }
-
-                match rx.try_recv() {
-                    Ok(Ok(output)) => {
-                        let updated_pass_file = refresh_opened_pass_file_from_contents(
-                            &opened_pass_file_for_result,
-                            &output,
-                        );
-                        password_status.set_visible(false);
-                        password_entry.set_visible(true);
-                        raw_button.set_visible(true);
-
-                        let (password, structured_lines) = parse_structured_pass_lines(&output);
-                        password_entry.set_text(&password);
-                        text_view.buffer().set_text(&output);
-                        rebuild_dynamic_fields_from_lines(
-                            &dynamic_box,
-                            &overlay,
-                            &structured_templates,
-                            &dynamic_rows,
-                            &structured_lines,
-                        );
-                        sync_username_row_from_parsed_lines(
-                            &username_entry,
-                            updated_pass_file.as_ref(),
-                            &structured_lines,
-                        );
-
-                        let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
-                        otp_entry.set_visible(otp);
-                        if otp {
-                            #[cfg(any(feature = "setup", feature = "flatpak"))]
-                            match read_otp_code(&store_for_otp, &label_for_otp) {
-                                Ok(code) => otp_entry.set_text(&code),
-                                Err(err) => {
-                                    log_error(format!("Failed to read OTP code: {err}"));
-                                    otp_entry.set_text("");
-                                    let toast = Toast::new(&with_logs_hint(
-                                        "Couldn't load the one-time password.",
-                                    ));
-                                    overlay.add_toast(toast);
-                                }
-                            }
-                            #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-                            {
-                                let settings = Preferences::new();
-                                let mut cmd = settings.command();
-                                cmd.env("PASSWORD_STORE_DIR", &store_for_otp)
-                                    .args(["otp", &label_for_otp]);
-                                match run_command_output(
-                                    &mut cmd,
-                                    "Read OTP code",
-                                    CommandLogOptions::SENSITIVE,
-                                ) {
-                                    Ok(o) if o.status.success() => {
-                                        let code =
-                                            String::from_utf8_lossy(&o.stdout).trim().to_string();
-                                        otp_entry.set_text(&code);
-                                    }
-                                    Ok(_) => {
-                                        let toast = Toast::new(&with_logs_hint(
-                                            "Couldn't load the one-time password.",
-                                        ));
-                                        overlay.add_toast(toast);
-                                    }
-                                    Err(e) => {
-                                        log_error(format!("Failed to read OTP code: {e}"));
-                                        let toast = Toast::new(&with_logs_hint(
-                                            "Couldn't load the one-time password.",
-                                        ));
-                                        overlay.add_toast(toast);
-                                    }
-                                }
-                            }
-                        } else {
-                            otp_entry.set_text("");
-                        }
-
-                        glib::ControlFlow::Break
-                    }
-                    Ok(Err(msg)) => {
-                        log_error(format!("Failed to open password entry: {msg}"));
-                        let toast = if let Some(message) = friendly_password_entry_error_message(&msg)
-                        {
-                            Toast::new(message)
-                        } else {
-                            Toast::new(&with_logs_hint("Couldn't open the password entry."))
-                        };
-                        overlay.add_toast(toast);
-                        glib::ControlFlow::Break
-                    }
-                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(TryRecvError::Disconnected) => {
-                        let toast = Toast::new(&with_logs_hint("Couldn't open the password entry."));
-                        overlay.add_toast(toast);
-                        glib::ControlFlow::Break
-                    }
-                }
-            });
+            open_password_entry_page(
+                &list_state,
+                opened_pass_file,
+                true,
+                #[cfg(feature = "flatpak")]
+                Some(ripasso_state.clone()),
+            );
         });
     }
 
@@ -4314,5 +4265,13 @@ mod tests {
             structured_pass_contents_from_values("secret", "alice@example.com", &templates, &values),
             "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
         );
+    }
+
+    #[cfg(feature = "flatpak")]
+    #[test]
+    fn locked_private_key_errors_are_detected() {
+        assert!(super::is_locked_private_key_error(
+            "The selected private key is locked. Unlock it in Preferences and enter its password."
+        ));
     }
 }

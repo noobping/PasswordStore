@@ -1,17 +1,17 @@
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
-use shlex;
 use std::path::PathBuf;
+#[cfg(not(feature = "flatpak"))]
 use std::process::Command;
-use std::{env, fs};
+#[cfg(not(feature = "flatpak"))]
+use std::env;
+use std::fs;
 
 use crate::config::APP_ID;
 
 #[cfg(not(feature = "flatpak"))]
 const DEFAULT_CMD: &str = "pass";
-#[cfg(feature = "flatpak")]
-const DEFAULT_CMD: &str = "flatpak-spawn --host pass";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PreferenceFile {
@@ -47,9 +47,7 @@ impl Preferences {
         }
     }
 
-    #[cfg(feature = "flatpak")]
-    pub fn command_value(&self) -> String { DEFAULT_CMD.into() }
-
+    #[cfg(not(feature = "flatpak"))]
     pub fn command(&self) -> Command {
         let (program, args) = self.command_parts();
         let mut cmd = Command::new(program);
@@ -79,6 +77,7 @@ impl Preferences {
         Command::new("git")
     }
 
+    #[cfg(not(feature = "flatpak"))]
     fn command_parts(&self) -> (String, Vec<String>) {
         let cmdline = self.command_value();
         // Try to split like a shell would

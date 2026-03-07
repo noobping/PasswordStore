@@ -3,6 +3,8 @@
 mod setup;
 
 mod config;
+#[cfg(feature = "flatpak")]
+mod backend;
 mod item;
 mod logging;
 mod methods;

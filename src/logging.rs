@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "flatpak", allow(dead_code))]
+
 use std::ffi::OsStr;
 use std::io::{self, Read, Write};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};

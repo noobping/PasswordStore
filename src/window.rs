@@ -1,5 +1,10 @@
 #[cfg(feature = "setup")]
 use crate::setup::*;
+#[cfg(feature = "flatpak")]
+use crate::backend::{
+    delete_password_entry, read_otp_code, read_password_entry, read_password_line,
+    rename_password_entry, save_password_entry, save_store_recipients,
+};
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
@@ -7,9 +12,10 @@ use adw::gio::MenuItem;
 
 use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
+use crate::logging::{log_error, CommandControl};
+#[cfg(not(feature = "flatpak"))]
 use crate::logging::{
-    log_error, log_info, log_snapshot, run_command_output, run_command_status,
-    run_command_with_input, CommandControl, CommandLogOptions,
+    log_snapshot, run_command_output, run_command_status, run_command_with_input, CommandLogOptions,
 };
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::run_command_output_controlled;
@@ -193,13 +199,76 @@ struct StoreRecipientsPageState {
     save_queued: Rc<Cell<bool>>,
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn with_logs_hint(message: &str) -> String {
     format!("{message} Check Logs for details.")
+}
+
+#[cfg(feature = "flatpak")]
+fn with_logs_hint(message: &str) -> String {
+    message.to_string()
 }
 
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     let toast = Toast::new("Clipboard is not available right now.");
     overlay.add_toast(toast);
+}
+
+#[cfg(feature = "flatpak")]
+fn set_clipboard_text(text: &str, overlay: &ToastOverlay) {
+    if let Some(display) = Display::default() {
+        let clipboard = display.clipboard();
+        clipboard.set_text(text);
+    } else {
+        show_clipboard_unavailable_toast(overlay);
+    }
+}
+
+fn copy_password_entry_to_clipboard(item: PassEntry, _overlay: ToastOverlay) {
+    #[cfg(not(feature = "flatpak"))]
+    {
+        thread::spawn(move || {
+            let settings = Preferences::new();
+            let mut cmd = settings.command();
+            cmd.env("PASSWORD_STORE_DIR", &item.store_path)
+                .arg("-c")
+                .arg(item.label());
+            let _ = run_command_status(
+                &mut cmd,
+                "Copy password to clipboard",
+                CommandLogOptions::SENSITIVE,
+            );
+        });
+    }
+
+    #[cfg(feature = "flatpak")]
+    {
+        let (tx, rx) = mpsc::channel::<Result<String, String>>();
+        thread::spawn(move || {
+            let label = item.label();
+            let result = read_password_line(&item.store_path, &label);
+            let _ = tx.send(result);
+        });
+
+        glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+            Ok(Ok(password)) => {
+                set_clipboard_text(&password, &_overlay);
+                glib::ControlFlow::Break
+            }
+            Ok(Err(err)) => {
+                log_error(format!("Failed to copy password entry: {err}"));
+                let toast = Toast::new("Couldn't copy the password.");
+                _overlay.add_toast(toast);
+                glib::ControlFlow::Break
+            }
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => {
+                let toast = Toast::new("Couldn't copy the password.");
+                _overlay.add_toast(toast);
+                glib::ControlFlow::Break
+            }
+        });
+    }
 }
 
 fn is_username_field_key(key: &str) -> bool {
@@ -643,7 +712,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let menu = Menu::new();
         menu.append(Some("_Find password file"), Some("win.toggle-find"));
         menu.append(Some("_Preferences"), Some("win.open-preferences"));
-        menu.append(Some("_Logs"), Some("win.open-log"));
         menu.append(Some("_About PasswordStore"), Some("app.about"));
         primary_menu_button.set_menu_model(Some(&menu));
     }
@@ -781,6 +849,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let open_raw_button: Button = builder
         .object("open_raw_button")
         .expect("Failed to get open_raw_button");
+    #[cfg(not(feature = "flatpak"))]
     let log_view: TextView = builder
         .object("log_view")
         .expect("Failed to get log_view");
@@ -892,27 +961,34 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let (tx, rx) = mpsc::channel::<Result<String, String>>();
             let label_for_thread = pass_label.clone();
             thread::spawn(move || {
-                let settings = Preferences::new();
-                let mut cmd = settings.command();
-                cmd.env("PASSWORD_STORE_DIR", &store_for_thread)
-                    .arg(&label_for_thread);
-                let output =
-                    run_command_output(&mut cmd, "Read password entry", CommandLogOptions::SENSITIVE);
-                let result = match output {
-                    Ok(o) if o.status.success() => {
-                        Ok(String::from_utf8_lossy(&o.stdout).to_string())
-                    }
-                    Ok(o) => {
-                        let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
-                        if stderr.is_empty() {
-                            Err(format!("pass failed: {}", o.status))
-                        } else {
-                            Err(stderr)
+                #[cfg(feature = "flatpak")]
+                let result = read_password_entry(&store_for_thread, &label_for_thread);
+                #[cfg(not(feature = "flatpak"))]
+                let result = {
+                    let settings = Preferences::new();
+                    let mut cmd = settings.command();
+                    cmd.env("PASSWORD_STORE_DIR", &store_for_thread)
+                        .arg(&label_for_thread);
+                    let output = run_command_output(
+                        &mut cmd,
+                        "Read password entry",
+                        CommandLogOptions::SENSITIVE,
+                    );
+                    match output {
+                        Ok(o) if o.status.success() => {
+                            Ok(String::from_utf8_lossy(&o.stdout).to_string())
                         }
+                        Ok(o) => {
+                            let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                            if stderr.is_empty() {
+                                Err(format!("pass failed: {}", o.status))
+                            } else {
+                                Err(stderr)
+                            }
+                        }
+                        Err(e) => Err(format!("Failed to run pass: {e}")),
                     }
-                    Err(e) => Err(format!("Failed to run pass: {e}")),
                 };
-
                 let _ = tx.send(result);
             });
 
@@ -962,32 +1038,47 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
                         otp_entry.set_visible(otp);
                         if otp {
-                            let settings = Preferences::new();
-                            let mut cmd = settings.command();
-                            cmd.env("PASSWORD_STORE_DIR", &store_for_otp)
-                                .args(["otp", &label_for_otp]);
-                            match run_command_output(
-                                &mut cmd,
-                                "Read OTP code",
-                                CommandLogOptions::SENSITIVE,
-                            ) {
-                                Ok(o) if o.status.success() => {
-                                    let code =
-                                        String::from_utf8_lossy(&o.stdout).trim().to_string();
-                                    otp_entry.set_text(&code);
-                                }
-                                Ok(_) => {
+                            #[cfg(feature = "flatpak")]
+                            match read_otp_code(&store_for_otp, &label_for_otp) {
+                                Ok(code) => otp_entry.set_text(&code),
+                                Err(err) => {
+                                    log_error(format!("Failed to read OTP code: {err}"));
+                                    otp_entry.set_text("");
                                     let toast = Toast::new(&with_logs_hint(
                                         "Couldn't load the one-time password.",
                                     ));
                                     overlay.add_toast(toast);
                                 }
-                                Err(e) => {
-                                    log_error(format!("Failed to read OTP code: {e}"));
-                                    let toast = Toast::new(&with_logs_hint(
-                                        "Couldn't load the one-time password.",
-                                    ));
-                                    overlay.add_toast(toast);
+                            }
+                            #[cfg(not(feature = "flatpak"))]
+                            {
+                                let settings = Preferences::new();
+                                let mut cmd = settings.command();
+                                cmd.env("PASSWORD_STORE_DIR", &store_for_otp)
+                                    .args(["otp", &label_for_otp]);
+                                match run_command_output(
+                                    &mut cmd,
+                                    "Read OTP code",
+                                    CommandLogOptions::SENSITIVE,
+                                ) {
+                                    Ok(o) if o.status.success() => {
+                                        let code =
+                                            String::from_utf8_lossy(&o.stdout).trim().to_string();
+                                        otp_entry.set_text(&code);
+                                    }
+                                    Ok(_) => {
+                                        let toast = Toast::new(&with_logs_hint(
+                                            "Couldn't load the one-time password.",
+                                        ));
+                                        overlay.add_toast(toast);
+                                    }
+                                    Err(e) => {
+                                        log_error(format!("Failed to read OTP code: {e}"));
+                                        let toast = Toast::new(&with_logs_hint(
+                                            "Couldn't load the one-time password.",
+                                        ));
+                                        overlay.add_toast(toast);
+                                    }
                                 }
                             }
                         } else {
@@ -1213,20 +1304,29 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
                     otp.set_visible(otp_visible);
                     if otp_visible {
-                        let settings = Preferences::new();
-                        let mut cmd = settings.command();
-                        cmd.env("PASSWORD_STORE_DIR", pass_file.store_path())
-                            .args(["otp", &label]);
-                        match run_command_output(
-                            &mut cmd,
-                            "Read OTP code",
-                            CommandLogOptions::SENSITIVE,
-                        ) {
-                            Ok(output) if output.status.success() => {
-                                let code = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                                otp.set_text(&code);
+                        #[cfg(feature = "flatpak")]
+                        match read_otp_code(pass_file.store_path(), &label) {
+                            Ok(code) => otp.set_text(&code),
+                            Err(_) => otp.set_text(""),
+                        }
+                        #[cfg(not(feature = "flatpak"))]
+                        {
+                            let settings = Preferences::new();
+                            let mut cmd = settings.command();
+                            cmd.env("PASSWORD_STORE_DIR", pass_file.store_path())
+                                .args(["otp", &label]);
+                            match run_command_output(
+                                &mut cmd,
+                                "Read OTP code",
+                                CommandLogOptions::SENSITIVE,
+                            ) {
+                                Ok(output) if output.status.success() => {
+                                    let code =
+                                        String::from_utf8_lossy(&output.stdout).trim().to_string();
+                                    otp.set_text(&code);
+                                }
+                                _ => otp.set_text(""),
                             }
-                            _ => otp.set_text(""),
                         }
                     } else {
                         otp.set_text("");
@@ -1409,6 +1509,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    #[cfg(not(feature = "flatpak"))]
     {
         let nav = navigation_view.clone();
         let page = log_page.clone();
@@ -1809,7 +1910,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 }
                 match git_operation.request_cancel() {
                     Ok(true) => {
-                        log_info("Git operation cancellation requested");
+                        crate::logging::log_info("Git operation cancellation requested");
                         busy_status.set_title("Stopping Git operation");
                         busy_status
                             .set_description(Some("Waiting for the current git command to stop."));
@@ -2153,6 +2254,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    #[cfg(not(feature = "flatpak"))]
     {
         let nav = navigation_view.clone();
         let page = log_page.clone();
@@ -2191,6 +2293,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
+    #[cfg(not(feature = "flatpak"))]
     app.set_accels_for_action("win.open-log", &["F12"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
     #[cfg(not(feature = "flatpak"))]
@@ -2221,6 +2324,7 @@ fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
     }
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn show_log_page(
     nav: &NavigationView,
     page: &NavigationPage,
@@ -2511,23 +2615,10 @@ fn load_passwords_async(
                     {
                         let entry = item.clone();
                         let popover = popover.clone();
+                        let copy_overlay = toast_overlay.clone();
                         copy_btn.connect_clicked(move |_| {
                             popover.popdown();
-                            let item = entry.clone();
-                            std::thread::spawn({
-                                move || {
-                                    let settings = Preferences::new();
-                                    let mut cmd = settings.command();
-                                    cmd.env("PASSWORD_STORE_DIR", &item.store_path)
-                                        .arg("-c")
-                                        .arg(item.label());
-                                    let _ = run_command_status(
-                                        &mut cmd,
-                                        "Copy password to clipboard",
-                                        CommandLogOptions::SENSITIVE,
-                                    );
-                                }
-                            });
+                            copy_password_entry_to_clipboard(entry.clone(), copy_overlay.clone());
                         });
                     }
                     // rename pass file
@@ -2549,19 +2640,28 @@ fn load_passwords_async(
                             }
 
                             let root = entry.store_path.clone();
-                            let settings = Preferences::new();
-                            let mut cmd = settings.command();
-                            cmd.env("PASSWORD_STORE_DIR", &root)
-                                .arg("mv")
-                                .arg(&old_label)
-                                .arg(&new_label);
-                            let status = run_command_status(
-                                &mut cmd,
-                                "Rename password entry",
-                                CommandLogOptions::DEFAULT,
-                            );
-                            match status {
-                                Ok(s) if s.success() => {
+                            #[cfg(feature = "flatpak")]
+                            let rename_result = rename_password_entry(&root, &old_label, &new_label);
+                            #[cfg(not(feature = "flatpak"))]
+                            let rename_result = {
+                                let settings = Preferences::new();
+                                let mut cmd = settings.command();
+                                cmd.env("PASSWORD_STORE_DIR", &root)
+                                    .arg("mv")
+                                    .arg(&old_label)
+                                    .arg(&new_label);
+                                match run_command_status(
+                                    &mut cmd,
+                                    "Rename password entry",
+                                    CommandLogOptions::DEFAULT,
+                                ) {
+                                    Ok(status) if status.success() => Ok(()),
+                                    Ok(_) => Err(()),
+                                    Err(_) => Err(()),
+                                }
+                            };
+                            match rename_result {
+                                Ok(()) => {
                                     let (parent, tail) = match new_label.rsplit_once('/') {
                                         Some((parent, tail)) => (parent, tail),
                                         None => ("", new_label.as_str()),
@@ -2569,7 +2669,7 @@ fn load_passwords_async(
                                     action_row.set_title(&tail);
                                     action_row.set_subtitle(&parent);
                                 }
-                                Ok(_) | Err(_) => {
+                                Err(_) => {
                                     let toast =
                                         adw::Toast::new("Couldn't rename the password entry.");
                                     overlay.add_toast(toast);
@@ -2582,25 +2682,69 @@ fn load_passwords_async(
                         let entry = item.clone();
                         let row_clone = row.clone();
                         let list = list_clone.clone();
+                        let _overlay = toast_overlay.clone();
                         delete_btn.connect_clicked(move |_| {
-                            std::thread::spawn({
+                            #[cfg(feature = "flatpak")]
+                            {
+                                let (tx, rx) = mpsc::channel::<Result<(), String>>();
                                 let root = entry.store_path.clone();
                                 let label = entry.label();
-                                move || {
-                                    let settings = Preferences::new();
-                                    let mut cmd = settings.command();
-                                    cmd.env("PASSWORD_STORE_DIR", root)
-                                        .arg("rm")
-                                        .arg("-rf")
-                                        .arg(&label);
-                                    let _ = run_command_status(
-                                        &mut cmd,
-                                        "Delete password entry",
-                                        CommandLogOptions::DEFAULT,
-                                    );
-                                }
-                            });
-                            list.remove(&row_clone);
+                                thread::spawn(move || {
+                                    let result = delete_password_entry(&root, &label);
+                                    let _ = tx.send(result);
+                                });
+
+                                let list = list.clone();
+                                let row_clone = row_clone.clone();
+                                let overlay = _overlay.clone();
+                                glib::timeout_add_local(
+                                    Duration::from_millis(50),
+                                    move || match rx.try_recv() {
+                                        Ok(Ok(())) => {
+                                            list.remove(&row_clone);
+                                            glib::ControlFlow::Break
+                                        }
+                                        Ok(Err(err)) => {
+                                            log_error(format!(
+                                                "Failed to delete password entry: {err}"
+                                            ));
+                                            let toast = Toast::new(
+                                                "Couldn't delete the password entry.",
+                                            );
+                                            overlay.add_toast(toast);
+                                            glib::ControlFlow::Break
+                                        }
+                                        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                                        Err(TryRecvError::Disconnected) => {
+                                            let toast =
+                                                Toast::new("Couldn't delete the password entry.");
+                                            overlay.add_toast(toast);
+                                            glib::ControlFlow::Break
+                                        }
+                                    },
+                                );
+                            }
+                            #[cfg(not(feature = "flatpak"))]
+                            {
+                                std::thread::spawn({
+                                    let root = entry.store_path.clone();
+                                    let label = entry.label();
+                                    move || {
+                                        let settings = Preferences::new();
+                                        let mut cmd = settings.command();
+                                        cmd.env("PASSWORD_STORE_DIR", root)
+                                            .arg("rm")
+                                            .arg("-rf")
+                                            .arg(&label);
+                                        let _ = run_command_status(
+                                            &mut cmd,
+                                            "Delete password entry",
+                                            CommandLogOptions::DEFAULT,
+                                        );
+                                    }
+                                });
+                                list.remove(&row_clone);
+                            }
                         });
                     }
                     list_clone.append(&row);
@@ -2730,6 +2874,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
     });
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn write_pass_entry(
     store_root: &str,
     label: &str,
@@ -2762,6 +2907,16 @@ fn write_pass_entry(
             Err(stderr)
         }
     }
+}
+
+#[cfg(feature = "flatpak")]
+fn write_pass_entry(
+    store_root: &str,
+    label: &str,
+    contents: &str,
+    overwrite: bool,
+) -> Result<(), String> {
+    save_password_entry(store_root, label, contents, overwrite)
 }
 
 fn rebuild_store_list(
@@ -3125,6 +3280,7 @@ fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String
     ordered
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     let settings = Preferences::new();
     let mut cmd = settings.command();
@@ -3144,6 +3300,11 @@ fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> R
             Err(with_logs_hint("Couldn't save the password store recipients."))
         }
     }
+}
+
+#[cfg(feature = "flatpak")]
+fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
+    save_store_recipients(store_root, recipients)
 }
 
 #[cfg(test)]

@@ -41,14 +41,14 @@ use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
+#[cfg(feature = "flatpak")]
+use adw::{Dialog, HeaderBar, PreferencesGroup, PreferencesPage, ToolbarView};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::gtk::StringList;
 use adw::gtk::{
     Box as GtkBox, Widget, gdk::Display, Builder, Button, Image, ListBox, ListBoxRow,
     MenuButton, Popover, SearchEntry, Spinner, TextView,
 };
-#[cfg(feature = "flatpak")]
-use adw::gtk::{Dialog, Label, Orientation};
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::{Cell, RefCell};
 use std::fs;
@@ -973,57 +973,78 @@ fn finish_ripasso_private_key_import(
 }
 
 #[cfg(feature = "flatpak")]
+fn submit_ripasso_private_key_passphrase(
+    dialog: &Dialog,
+    state: &RipassoPrivateKeysState,
+    bytes: &[u8],
+    password_row: &PasswordEntryRow,
+) {
+    let passphrase = password_row.text().to_string();
+    if passphrase.is_empty() {
+        let toast = Toast::new("Enter the private key password.");
+        state.overlay.add_toast(toast);
+        return;
+    }
+
+    finish_ripasso_private_key_import(
+        state,
+        import_ripasso_private_key_bytes(bytes, Some(&passphrase)),
+    );
+    dialog.close();
+}
+
+#[cfg(feature = "flatpak")]
 fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes: Vec<u8>) {
-    let dialog = Dialog::builder()
-        .modal(true)
-        .transient_for(&state.window)
-        .title("Unlock Private Key")
-        .build();
-    dialog.add_button("Cancel", ResponseType::Cancel);
-    dialog.add_button("Import", ResponseType::Accept);
-    dialog.set_default_response(ResponseType::Accept);
-
-    let content = dialog.content_area();
-    let box_widget = GtkBox::new(Orientation::Vertical, 12);
-    box_widget.set_margin_top(18);
-    box_widget.set_margin_bottom(18);
-    box_widget.set_margin_start(18);
-    box_widget.set_margin_end(18);
-
-    let label = Label::new(Some(
-        "Enter the private key password so ripasso can store an unlocked copy.",
-    ));
-    label.set_wrap(true);
-    label.set_xalign(0.0);
-    box_widget.append(&label);
-
     let password_row = PasswordEntryRow::new();
     password_row.set_title("Private key password");
-    box_widget.append(&password_row);
-    content.append(&box_widget);
+    password_row.set_show_apply_button(true);
 
-    let state_for_response = state.clone();
-    dialog.connect_response(move |dialog, response| {
-        if response != ResponseType::Accept {
-            dialog.close();
-            return;
+    let password_group = PreferencesGroup::builder().build();
+    password_group.add(&password_row);
+
+    let page = PreferencesPage::new();
+    page.add(&password_group);
+
+    let title = WindowTitle::new(
+        "Unlock Private Key",
+        "Ripasso needs the private key password once to store an unlocked copy.",
+    );
+    let header_bar = HeaderBar::builder()
+        .title_widget(&title)
+        .show_end_title_buttons(true)
+        .build();
+    let toolbar_view = ToolbarView::new();
+    toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.set_content(Some(&page));
+
+    let dialog = Dialog::builder()
+        .title("Unlock Private Key")
+        .content_width(540)
+        .content_height(160)
+        .follows_content_size(false)
+        .child(&toolbar_view)
+        .build();
+    dialog.set_focus(Some(&password_row));
+
+    let bytes = Rc::new(bytes);
+    let submit = Rc::new({
+        let dialog = dialog.clone();
+        let password_row = password_row.clone();
+        let state = state.clone();
+        let bytes = Rc::clone(&bytes);
+        move || {
+            submit_ripasso_private_key_passphrase(&dialog, &state, bytes.as_slice(), &password_row);
         }
-
-        let passphrase = password_row.text().to_string();
-        if passphrase.is_empty() {
-            let toast = Toast::new("Enter the private key password.");
-            state_for_response.overlay.add_toast(toast);
-            return;
-        }
-
-        finish_ripasso_private_key_import(
-            &state_for_response,
-            import_ripasso_private_key_bytes(&bytes, Some(&passphrase)),
-        );
-        dialog.close();
     });
 
-    dialog.present();
+    {
+        let submit = Rc::clone(&submit);
+        password_row.connect_apply(move |_| {
+            submit();
+        });
+    }
+
+    dialog.present(Some(&state.window));
 }
 
 #[cfg(feature = "flatpak")]

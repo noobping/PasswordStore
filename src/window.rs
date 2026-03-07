@@ -69,8 +69,15 @@ struct DynamicFieldTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct UsernameFieldTemplate {
+    raw_key: String,
+    separator_spacing: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum StructuredPassLine {
     Field(DynamicFieldTemplate),
+    Username(UsernameFieldTemplate),
     Preserved(String),
 }
 
@@ -292,27 +299,11 @@ fn is_url_field_key(key: &str) -> bool {
     key.trim().eq_ignore_ascii_case("url")
 }
 
-fn explicit_username_value(contents: &str) -> Option<String> {
-    contents.lines().skip(1).find_map(|line| {
-        let (key, value) = line.split_once(':')?;
-        if !is_username_field_key(key) {
-            return None;
-        }
-        Some(value.trim().to_string())
+fn structured_username_value(lines: &[(StructuredPassLine, Option<String>)]) -> Option<String> {
+    lines.iter().find_map(|(line, value)| match line {
+        StructuredPassLine::Username(_) => value.clone(),
+        _ => None,
     })
-}
-
-fn rewrite_username_preserved_line(line: &str, username_value: &str) -> Option<String> {
-    let (raw_key, raw_value) = line.split_once(':')?;
-    if !is_username_field_key(raw_key) {
-        return None;
-    }
-
-    let separator_spacing = raw_value
-        .chars()
-        .take_while(|c| c.is_ascii_whitespace())
-        .collect::<String>();
-    Some(format!("{raw_key}:{separator_spacing}{username_value}"))
 }
 
 fn uri_to_open(value: &str) -> Option<String> {
@@ -424,7 +415,21 @@ fn parse_structured_pass_lines(contents: &str) -> (String, Vec<(StructuredPassLi
                 return (StructuredPassLine::Preserved(line.to_string()), None);
             }
 
-            if is_username_field_key(&title) || is_otpauth_line(&title, raw_value, line) {
+            if is_username_field_key(&title) {
+                let separator_spacing = raw_value
+                    .chars()
+                    .take_while(|c| c.is_ascii_whitespace())
+                    .collect::<String>();
+                let value = raw_value.trim().to_string();
+                let template = UsernameFieldTemplate {
+                    raw_key: raw_key.to_string(),
+                    separator_spacing,
+                };
+
+                return (StructuredPassLine::Username(template), Some(value));
+            }
+
+            if is_otpauth_line(&title, raw_value, line) {
                 return (StructuredPassLine::Preserved(line.to_string()), None);
             }
 
@@ -449,28 +454,30 @@ fn parse_structured_pass_lines(contents: &str) -> (String, Vec<(StructuredPassLi
     (password, structured)
 }
 
-fn rebuild_dynamic_fields(
+fn rebuild_dynamic_fields_from_lines(
     box_widget: &GtkBox,
     overlay: &ToastOverlay,
     templates_state: &Rc<RefCell<Vec<StructuredPassLine>>>,
     rows_state: &Rc<RefCell<Vec<DynamicFieldRow>>>,
-    contents: &str,
+    structured_lines: &[(StructuredPassLine, Option<String>)],
 ) {
     clear_box_children(box_widget);
     templates_state.borrow_mut().clear();
     rows_state.borrow_mut().clear();
 
-    let (_, structured_lines) = parse_structured_pass_lines(contents);
     let mut rows = Vec::new();
     let mut templates = Vec::new();
 
-    for (line, value) in structured_lines {
+    for (line, value) in structured_lines.iter().cloned() {
         match line {
             StructuredPassLine::Field(template) => {
                 let row = build_dynamic_field_row(&template, value.as_deref().unwrap_or_default(), overlay);
                 box_widget.append(&row.widget());
                 rows.push(row);
                 templates.push(StructuredPassLine::Field(template));
+            }
+            StructuredPassLine::Username(template) => {
+                templates.push(StructuredPassLine::Username(template));
             }
             StructuredPassLine::Preserved(line) => {
                 templates.push(StructuredPassLine::Preserved(line));
@@ -513,13 +520,13 @@ fn structured_pass_contents_from_values(
                 output.push_str(values[row_index].as_str());
                 row_index += 1;
             }
-            StructuredPassLine::Preserved(line) => {
-                if let Some(updated_line) = rewrite_username_preserved_line(line, username_value) {
-                    output.push_str(&updated_line);
-                } else {
-                    output.push_str(line);
-                }
+            StructuredPassLine::Username(template) => {
+                output.push_str(&template.raw_key);
+                output.push(':');
+                output.push_str(&template.separator_spacing);
+                output.push_str(username_value);
             }
+            StructuredPassLine::Preserved(line) => output.push_str(line),
         }
     }
 
@@ -1104,20 +1111,20 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         password_entry.set_visible(true);
                         raw_button.set_visible(true);
 
-                        let (password, _) = parse_structured_pass_lines(&output);
+                        let (password, structured_lines) = parse_structured_pass_lines(&output);
                         password_entry.set_text(&password);
                         text_view.buffer().set_text(&output);
-                        rebuild_dynamic_fields(
+                        rebuild_dynamic_fields_from_lines(
                             &dynamic_box,
                             &overlay,
                             &structured_templates,
                             &dynamic_rows,
-                            &output,
+                            &structured_lines,
                         );
-                        sync_username_row_from_contents(
+                        sync_username_row_from_parsed_lines(
                             &username_entry,
                             updated_pass_file.as_ref(),
-                            &output,
+                            &structured_lines,
                         );
 
                         let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
@@ -1324,9 +1331,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 &template_contents,
             )
             .or_else(get_opened_pass_file);
+            let (_, structured_lines) = parse_structured_pass_lines(&template_contents);
             status.set_visible(false);
             entry.set_visible(true);
-            sync_username_row_from_contents(&username, template_pass_file.as_ref(), &template_contents);
+            sync_username_row_from_parsed_lines(&username, template_pass_file.as_ref(), &structured_lines);
             otp.set_visible(false);
             raw_button.set_visible(true);
             add.set_visible(false);
@@ -1344,12 +1352,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             entry.set_text("");
             otp.set_text("");
             text.buffer().set_text(&template_contents);
-            rebuild_dynamic_fields(
+            rebuild_dynamic_fields_from_lines(
                 &dynamic_box,
                 &overlay,
                 &structured_templates,
                 &dynamic_rows,
-                &template_contents,
+                &structured_lines,
             );
         });
     }
@@ -1404,16 +1412,21 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 Ok(()) => {
                     let updated_pass_file =
                         refresh_opened_pass_file_from_contents(&pass_file, &contents);
+                    let (_, structured_lines) = parse_structured_pass_lines(&contents);
                     text.buffer().set_text(&contents);
-                    rebuild_dynamic_fields(
+                    rebuild_dynamic_fields_from_lines(
                         &dynamic_box,
                         &overlay,
                         &structured_templates,
                         &dynamic_rows,
-                        &contents,
+                        &structured_lines,
                     );
                     entry.set_text(&password);
-                    sync_username_row_from_contents(&username, updated_pass_file.as_ref(), &contents);
+                    sync_username_row_from_parsed_lines(
+                        &username,
+                        updated_pass_file.as_ref(),
+                        &structured_lines,
+                    );
                     let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
                     otp.set_visible(otp_visible);
                     if otp_visible {
@@ -2444,12 +2457,12 @@ fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
     }
 }
 
-fn sync_username_row_from_contents(
+fn sync_username_row_from_parsed_lines(
     row: &EntryRow,
     pass_file: Option<&OpenPassFile>,
-    contents: &str,
+    lines: &[(StructuredPassLine, Option<String>)],
 ) {
-    if let Some(username) = explicit_username_value(contents) {
+    if let Some(username) = structured_username_value(lines) {
         row.set_text(&username);
         row.set_visible(true);
         row.set_editable(true);
@@ -3444,10 +3457,9 @@ fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> R
 #[cfg(test)]
 mod tests {
     use super::{
-        append_gpg_recipients, explicit_username_value, new_pass_file_contents_from_template,
-        normalize_gpg_recipient, parse_gpg_recipients, rewrite_username_preserved_line, uri_to_open,
-        parse_structured_pass_lines, should_show_restore_button,
-        stores_with_preferred_first,
+        append_gpg_recipients, new_pass_file_contents_from_template, normalize_gpg_recipient,
+        parse_gpg_recipients, parse_structured_pass_lines, should_show_restore_button,
+        stores_with_preferred_first, structured_username_value, uri_to_open,
         structured_pass_contents_from_values, StructuredPassLine,
     };
     use std::{cell::RefCell, rc::Rc};
@@ -3538,6 +3550,7 @@ mod tests {
             .iter()
             .filter_map(|(line, value)| match line {
                 StructuredPassLine::Field(_) => value.clone(),
+                StructuredPassLine::Username(_) => None,
                 StructuredPassLine::Preserved(_) => None,
             })
             .collect::<Vec<_>>();
@@ -3556,8 +3569,9 @@ mod tests {
 
         assert!(matches!(
             parsed[0].0,
-            StructuredPassLine::Preserved(ref line) if line == "username:alice"
+            StructuredPassLine::Username(_)
         ));
+        assert_eq!(parsed[0].1.as_deref(), Some("alice"));
         assert!(matches!(
             parsed[1].0,
             StructuredPassLine::Preserved(ref line) if line == "otpauth://totp/example"
@@ -3600,13 +3614,17 @@ mod tests {
 
     #[test]
     fn blank_username_line_is_detected() {
-        assert_eq!(explicit_username_value("secret\nusername:\nurl:https://example.com"), Some(String::new()));
+        let (_, parsed) = parse_structured_pass_lines("secret\nusername:\nurl:https://example.com");
+        assert_eq!(structured_username_value(&parsed), Some(String::new()));
     }
 
     #[test]
-    fn structured_save_rewrites_username_line() {
+    fn structured_save_preserves_username_field_template() {
         let templates = vec![
-            StructuredPassLine::Preserved("username:".to_string()),
+            StructuredPassLine::Username(super::UsernameFieldTemplate {
+                raw_key: "username".to_string(),
+                separator_spacing: String::new(),
+            }),
             StructuredPassLine::Preserved("url: https://example.com".to_string()),
         ];
         let values = Vec::<String>::new();
@@ -3614,10 +3632,6 @@ mod tests {
         assert_eq!(
             structured_pass_contents_from_values("secret", "alice@example.com", &templates, &values),
             "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
-        );
-        assert_eq!(
-            rewrite_username_preserved_line("username: ", ""),
-            Some("username: ".to_string())
         );
     }
 }

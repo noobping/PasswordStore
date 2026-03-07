@@ -124,6 +124,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         find_button.clone(),
         save_button.clone(),
         toast_overlay.clone(),
+        true,
     );
 
     // Text editor page
@@ -663,6 +664,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 find.clone(),
                 save.clone(),
                 overlay.clone(),
+                stack.n_items() <= 1,
             );
         });
         window.add_action(&action);
@@ -778,13 +780,14 @@ fn load_passwords_async(
     find: Button,
     save: Button,
     overlay: ToastOverlay,
+    show_list_actions: bool,
 ) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
     git.set_visible(false);
-    find.set_visible(true);
+    find.set_visible(show_list_actions);
 
     let bussy = Spinner::new();
     bussy.start();
@@ -952,11 +955,18 @@ fn load_passwords_async(
                     index += 1;
                 }
 
-                if empty {
-                    save_clone.set_visible(false);
+                if show_list_actions {
+                    if empty {
+                        save_clone.set_visible(false);
+                        find_clone.set_visible(false);
+                    } else {
+                        find_clone.set_visible(true);
+                    }
+                    git_clone.set_visible(empty);
+                } else {
                     find_clone.set_visible(false);
+                    git_clone.set_visible(false);
                 }
-                git_clone.set_visible(empty);
 
                 let symbolic = format!("{APP_ID}-symbolic");
                 let placeholder = if empty {
@@ -989,7 +999,8 @@ fn load_passwords_async(
                 list_clone.set_placeholder(Some(&placeholder));
 
                 save_clone.set_visible(false);
-                git_clone.set_visible(true);
+                git_clone.set_visible(show_list_actions);
+                find_clone.set_visible(false);
 
                 glib::ControlFlow::Break
             }

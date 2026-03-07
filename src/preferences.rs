@@ -12,6 +12,7 @@ use crate::config::APP_ID;
 
 #[cfg(not(feature = "flatpak"))]
 const DEFAULT_CMD: &str = "pass";
+const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PreferenceFile {
@@ -109,7 +110,8 @@ impl Preferences {
             s.string("new-pass-file-template").to_string()
         } else {
             let cfg = load_file_prefs();
-            cfg.new_pass_file_template.unwrap_or_default()
+            cfg.new_pass_file_template
+                .unwrap_or_else(|| DEFAULT_NEW_PASS_FILE_TEMPLATE.to_string())
         }
     }
 

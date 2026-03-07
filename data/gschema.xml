@@ -18,7 +18,7 @@
     </key>
 
     <key name="new-pass-file-template" type="s">
-      <default>''</default>
+      <default>'username:\nurl:'</default>
       <summary>New pass file template</summary>
       <description>
         Lines added after the password line when creating a new password entry.

@@ -14,6 +14,14 @@ A graphical frontend for the `pass` password store with the goal of offering fea
 - Written in Rust, using GTK4 + Libadwaita
 - Responsive layout for desktop and mobile form factors
 
+## App versions
+
+There are some differences between the build versions.
+
+The Flatpak application has built-in key management, which reduces the number of external dependencies as much as possible.
+
+The AppImage version only bundles the `pass` command. The standalone application can either use a custom `pass` command available on the host system or the built-in backend. However, it still relies on the system’s key management instead of using its own key management implementation.
+
 ## Screenshots
 
 ![list and menu screenshot](screenshots/menu.png)

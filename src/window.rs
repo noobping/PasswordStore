@@ -48,6 +48,11 @@ use crate::store_management::{
     sync_store_recipients_page_header, StoreRecipientsMode, StoreRecipientsPageState,
     StoreRecipientsRequest,
 };
+use crate::window_navigation::{
+    restore_window_for_current_page, set_save_button_for_password, WindowNavigationState,
+};
+#[cfg(not(feature = "flatpak"))]
+use crate::window_navigation::{finish_git_busy_page, show_git_busy_page, show_log_page};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::ComboRow;
 use adw::gio::{prelude::*, SimpleAction};
@@ -190,11 +195,6 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
     ] {
         set_window_action_enabled(window, action, enabled);
     }
-}
-
-fn set_save_button_for_password(save: &Button) {
-    save.set_action_name(Some("win.save-password"));
-    save.set_tooltip_text(Some("Save password"));
 }
 
 fn open_password_entry_page(
@@ -696,6 +696,20 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         list: ripasso_private_keys_list.clone(),
         overlay: toast_overlay.clone(),
     };
+    let window_navigation_state = WindowNavigationState {
+        nav: navigation_view.clone(),
+        text_page: text_page.clone(),
+        raw_text_page: raw_text_page.clone(),
+        settings_page: settings_page.clone(),
+        log_page: log_page.clone(),
+        back: back_button.clone(),
+        add: add_button.clone(),
+        find: find_button.clone(),
+        git: git_button.clone(),
+        save: save_button.clone(),
+        win: window_title.clone(),
+        username: username_entry.clone(),
+    };
 
     // Selecting an item from the list
     {
@@ -1170,17 +1184,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     #[cfg(not(feature = "flatpak"))]
     {
-        let nav = navigation_view.clone();
-        let page = log_page.clone();
-        let back = back_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let git = git_button.clone();
-        let save = save_button.clone();
-        let win = window_title.clone();
+        let navigation_state = window_navigation_state.clone();
         let action = SimpleAction::new("open-log", None);
         action.connect_activate(move |_, _| {
-            show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
+            show_log_page(&navigation_state);
         });
         window.add_action(&action);
     }
@@ -1307,21 +1314,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let popover = git_popover.clone();
         let window_for_action = window.clone();
         let list_clone = list.clone();
-        let nav = navigation_view.clone();
-        let text_page = text_page.clone();
-        let raw_text_page = raw_text_page.clone();
-        let settings_page = settings_page.clone();
+        let navigation_state = window_navigation_state.clone();
         let recipients_page = store_recipients_page_state.clone();
-        let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
         let busy_status = git_busy_status.clone();
-        let back = back_button.clone();
-        let git = git_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let save = save_button.clone();
-        let win = window_title.clone();
-        let username = username_entry.clone();
         let git_operation = git_operation.clone();
         let action = SimpleAction::new("git-clone", None);
         action.connect_activate(move |_, _| {
@@ -1336,15 +1332,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             git_operation.begin();
             set_git_busy_actions_enabled(&window_for_action, false);
             show_git_busy_page(
-                &nav,
+                &navigation_state,
                 &busy_page,
                 &busy_status,
-                &back,
-                &add,
-                &find,
-                &git,
-                &save,
-                &win,
                 "Restoring password store",
                 Some("Downloading the password store from the repository."),
             );
@@ -1400,20 +1390,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let entry = entry.clone();
             let window = window_for_action.clone();
             let list = list_clone.clone();
-            let nav = nav.clone();
-            let text_page = text_page.clone();
-            let raw_text_page = raw_text_page.clone();
-            let settings_page = settings_page.clone();
+            let navigation_state = navigation_state.clone();
             let recipients_page = recipients_page.clone();
-            let log_page = log_page.clone();
             let busy_page = busy_page.clone();
-            let back = back.clone();
-            let git = git.clone();
-            let add = add.clone();
-            let find = find.clone();
-            let save = save.clone();
-            let win = win.clone();
-            let username = username.clone();
             let git_operation = git_operation.clone();
             glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
                 Ok(GitOperationResult::Success) => {
@@ -1421,29 +1400,19 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     git_operation.finish();
                     finish_git_busy_page(
                         &window,
-                        &nav,
+                        &navigation_state,
                         &busy_page,
-                        &text_page,
-                        &raw_text_page,
-                        &settings_page,
                         &recipients_page,
-                        &log_page,
-                        &back,
-                        &add,
-                        &find,
-                        &git,
-                        &save,
-                        &win,
-                        &username,
+                        set_git_busy_actions_enabled,
                     );
                     let toast = Toast::new("Password store restored.");
                     overlay.add_toast(toast);
-                    let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                    let show_list_actions = navigation_state.nav.navigation_stack().n_items() <= 1;
                     load_passwords_async(
                         &list,
-                        git.clone(),
-                        find.clone(),
-                        save.clone(),
+                        navigation_state.git.clone(),
+                        navigation_state.find.clone(),
+                        navigation_state.save.clone(),
                         overlay.clone(),
                         show_list_actions,
                     );
@@ -1453,20 +1422,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     git_operation.finish();
                     finish_git_busy_page(
                         &window,
-                        &nav,
+                        &navigation_state,
                         &busy_page,
-                        &text_page,
-                        &raw_text_page,
-                        &settings_page,
                         &recipients_page,
-                        &log_page,
-                        &back,
-                        &add,
-                        &find,
-                        &git,
-                        &save,
-                        &win,
-                        &username,
+                        set_git_busy_actions_enabled,
                     );
                     let toast = Toast::new(&message);
                     overlay.add_toast(toast);
@@ -1476,20 +1435,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     git_operation.finish();
                     finish_git_busy_page(
                         &window,
-                        &nav,
+                        &navigation_state,
                         &busy_page,
-                        &text_page,
-                        &raw_text_page,
-                        &settings_page,
                         &recipients_page,
-                        &log_page,
-                        &back,
-                        &add,
-                        &find,
-                        &git,
-                        &save,
-                        &win,
-                        &username,
+                        set_git_busy_actions_enabled,
                     );
                     let toast = Toast::new("Restore canceled.");
                     overlay.add_toast(toast);
@@ -1500,20 +1449,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     git_operation.finish();
                     finish_git_busy_page(
                         &window,
-                        &nav,
+                        &navigation_state,
                         &busy_page,
-                        &text_page,
-                        &raw_text_page,
-                        &settings_page,
                         &recipients_page,
-                        &log_page,
-                        &back,
-                        &add,
-                        &find,
-                        &git,
-                        &save,
-                        &win,
-                        &username,
+                        set_git_busy_actions_enabled,
                     );
                     let toast =
                         Toast::new(&with_logs_hint("The restore operation stopped unexpectedly."));
@@ -1540,27 +1479,17 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let overlay = toast_overlay.clone();
-        let page = text_page.clone();
-        let raw_page = raw_text_page.clone();
-        let settings = settings_page.clone();
-        let log_page = log_page.clone();
+        let navigation_state = window_navigation_state.clone();
         let busy_page = git_busy_page.clone();
         let busy_status = git_busy_status.clone();
-        let username = username_entry.clone();
         let list_clone = list.clone();
-        let win = window_title.clone();
-        let back = back_button.clone();
-        let git = git_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let save = save_button.clone();
-        let nav = navigation_view.clone();
         let git_operation = git_operation.clone();
         let list_state = password_list_state.clone();
         let recipients_page = store_recipients_page_state.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
-            let busy_visible = nav
+            let busy_visible = navigation_state
+                .nav
                 .visible_page()
                 .as_ref()
                 .map(|visible| visible == &busy_page)
@@ -1586,78 +1515,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 return;
             }
 
-            nav.pop();
-            let stack = nav.navigation_stack();
-            if stack.n_items() > 1 {
-                back.set_visible(true);
-                add.set_visible(false);
-                find.set_visible(false);
-                let visible_page = nav.visible_page();
-                let is_text_page = visible_page
-                    .as_ref()
-                    .map(|p| p == &page)
-                    .unwrap_or(false);
-                let is_raw_page = visible_page
-                    .as_ref()
-                    .map(|p| p == &raw_page)
-                    .unwrap_or(false);
-                let is_settings_page = visible_page
-                    .as_ref()
-                    .map(|p| p == &settings)
-                    .unwrap_or(false);
-                let is_recipients_page = visible_page
-                    .as_ref()
-                    .map(|p| p == &recipients_page.page)
-                    .unwrap_or(false);
-                let is_log_page = visible_page
-                    .as_ref()
-                    .map(|p| p == &log_page)
-                    .unwrap_or(false);
-                save.set_visible(is_text_page || is_raw_page);
-                if is_text_page {
-                    set_save_button_for_password(&save);
-                    if let Some(pass_file) = get_opened_pass_file() {
-                        let label = pass_file.label();
-                        win.set_title(pass_file.title());
-                        win.set_subtitle(&label);
-                        sync_username_row(&username, Some(&pass_file));
-                    } else {
-                        win.set_title("Password Store");
-                        win.set_subtitle("Manage your passwords");
-                        sync_username_row(&username, None);
-                    }
-                } else if is_raw_page {
-                    set_save_button_for_password(&save);
-                    win.set_title("Raw Pass File");
-                    if let Some(pass_file) = get_opened_pass_file() {
-                        let label = pass_file.label();
-                        win.set_subtitle(&label);
-                    } else {
-                        win.set_subtitle("Password Store");
-                    }
-                } else if is_settings_page {
-                    set_save_button_for_password(&save);
-                    win.set_title("Preferences");
-                    win.set_subtitle("Password Store");
-                } else if is_recipients_page {
-                    set_save_button_for_password(&save);
-                    sync_store_recipients_page_header(&recipients_page);
-                } else if is_log_page {
-                    set_save_button_for_password(&save);
-                    win.set_title("Logs");
-                    win.set_subtitle("Command output");
-                }
-            } else {
+            navigation_state.nav.pop();
+            if restore_window_for_current_page(&navigation_state, &recipients_page) {
                 show_password_list_page(&list_state);
                 return;
             }
             load_passwords_async(
                 &list_clone,
-                git.clone(),
-                find.clone(),
-                save.clone(),
+                navigation_state.git.clone(),
+                navigation_state.find.clone(),
+                navigation_state.save.clone(),
                 overlay.clone(),
-                stack.n_items() <= 1,
+                navigation_state.nav.navigation_stack().n_items() <= 1,
             );
         });
         window.add_action(&action);
@@ -1667,21 +1536,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let overlay_clone = toast_overlay.clone();
         let window_for_action = window.clone();
-        let nav = navigation_view.clone();
-        let text_page = text_page.clone();
-        let raw_text_page = raw_text_page.clone();
-        let settings_page = settings_page.clone();
+        let navigation_state = window_navigation_state.clone();
         let recipients_page = store_recipients_page_state.clone();
-        let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
         let busy_status = git_busy_status.clone();
-        let back = back_button.clone();
-        let git = git_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let save = save_button.clone();
-        let win = window_title.clone();
-        let username = username_entry.clone();
         let list_clone = list.clone();
         let git_operation = git_operation.clone();
         let action = SimpleAction::new("synchronize", None);
@@ -1690,15 +1548,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             git_operation.begin();
             set_git_busy_actions_enabled(&window_for_action, false);
             show_git_busy_page(
-                &nav,
+                &navigation_state,
                 &busy_page,
                 &busy_status,
-                &back,
-                &add,
-                &find,
-                &git,
-                &save,
-                &win,
                 "Syncing password stores",
                 Some("Checking for changes and pushing updates."),
             );
@@ -1775,20 +1627,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
             // Main-thread: poll for messages
             let window = window_for_action.clone();
-            let nav = nav.clone();
-            let text_page = text_page.clone();
-            let raw_text_page = raw_text_page.clone();
-            let settings_page = settings_page.clone();
+            let navigation_state = navigation_state.clone();
             let recipients_page = recipients_page.clone();
-            let log_page = log_page.clone();
             let busy_page = busy_page.clone();
-            let back = back.clone();
-            let git = git.clone();
-            let add = add.clone();
-            let find = find.clone();
-            let save = save.clone();
-            let win = win.clone();
-            let username = username.clone();
             let list = list_clone.clone();
             let git_operation = git_operation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
@@ -1797,27 +1638,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         git_operation.finish();
                         finish_git_busy_page(
                             &window,
-                            &nav,
+                            &navigation_state,
                             &busy_page,
-                            &text_page,
-                            &raw_text_page,
-                            &settings_page,
                             &recipients_page,
-                            &log_page,
-                            &back,
-                            &add,
-                            &find,
-                            &git,
-                            &save,
-                            &win,
-                            &username,
+                            set_git_busy_actions_enabled,
                         );
-                        let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                        let show_list_actions =
+                            navigation_state.nav.navigation_stack().n_items() <= 1;
                         load_passwords_async(
                             &list,
-                            git.clone(),
-                            find.clone(),
-                            save.clone(),
+                            navigation_state.git.clone(),
+                            navigation_state.find.clone(),
+                            navigation_state.save.clone(),
                             overlay.clone(),
                             show_list_actions,
                         );
@@ -1827,29 +1659,20 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         git_operation.finish();
                         finish_git_busy_page(
                             &window,
-                            &nav,
+                            &navigation_state,
                             &busy_page,
-                            &text_page,
-                            &raw_text_page,
-                            &settings_page,
                             &recipients_page,
-                            &log_page,
-                            &back,
-                            &add,
-                            &find,
-                            &git,
-                            &save,
-                            &win,
-                            &username,
+                            set_git_busy_actions_enabled,
                         );
                         let toast = Toast::new(&msg);
                         overlay.add_toast(toast);
-                        let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                        let show_list_actions =
+                            navigation_state.nav.navigation_stack().n_items() <= 1;
                         load_passwords_async(
                             &list,
-                            git.clone(),
-                            find.clone(),
-                            save.clone(),
+                            navigation_state.git.clone(),
+                            navigation_state.find.clone(),
+                            navigation_state.save.clone(),
                             overlay.clone(),
                             show_list_actions,
                         );
@@ -1859,20 +1682,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         git_operation.finish();
                         finish_git_busy_page(
                             &window,
-                            &nav,
+                            &navigation_state,
                             &busy_page,
-                            &text_page,
-                            &raw_text_page,
-                            &settings_page,
                             &recipients_page,
-                            &log_page,
-                            &back,
-                            &add,
-                            &find,
-                            &git,
-                            &save,
-                            &win,
-                            &username,
+                            set_git_busy_actions_enabled,
                         );
                         let toast = Toast::new("Sync canceled.");
                         overlay.add_toast(toast);
@@ -1883,27 +1696,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         git_operation.finish();
                         finish_git_busy_page(
                             &window,
-                            &nav,
+                            &navigation_state,
                             &busy_page,
-                            &text_page,
-                            &raw_text_page,
-                            &settings_page,
                             &recipients_page,
-                            &log_page,
-                            &back,
-                            &add,
-                            &find,
-                            &git,
-                            &save,
-                            &win,
-                            &username,
+                            set_git_busy_actions_enabled,
                         );
-                        let show_list_actions = nav.navigation_stack().n_items() <= 1;
+                        let show_list_actions =
+                            navigation_state.nav.navigation_stack().n_items() <= 1;
                         load_passwords_async(
                             &list,
-                            git.clone(),
-                            find.clone(),
-                            save.clone(),
+                            navigation_state.git.clone(),
+                            navigation_state.find.clone(),
+                            navigation_state.save.clone(),
                             overlay.clone(),
                             show_list_actions,
                         );
@@ -1917,14 +1721,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     #[cfg(not(feature = "flatpak"))]
     {
-        let nav = navigation_view.clone();
-        let page = log_page.clone();
-        let back = back_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let git = git_button.clone();
-        let save = save_button.clone();
-        let win = window_title.clone();
+        let navigation_state = window_navigation_state.clone();
         let view = log_view.clone();
         let seen_revision = Rc::new(RefCell::new(0usize));
         let seen_error_revision = Rc::new(RefCell::new(0usize));
@@ -1942,7 +1739,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let mut seen_error = seen_error_revision.borrow_mut();
                 if error_revision > *seen_error {
                     *seen_error = error_revision;
-                    show_log_page(&nav, &page, &back, &add, &find, &git, &save, &win);
+                    show_log_page(&navigation_state);
                 }
             }
 
@@ -1974,200 +1771,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     window
 }
-#[cfg(not(feature = "flatpak"))]
-fn show_log_page(
-    nav: &NavigationView,
-    page: &NavigationPage,
-    back: &Button,
-    add: &Button,
-    find: &Button,
-    git: &Button,
-    save: &Button,
-    win: &WindowTitle,
-) {
-    add.set_visible(false);
-    find.set_visible(false);
-    git.set_visible(false);
-    back.set_visible(true);
-    save.set_visible(false);
-    win.set_title("Logs");
-    win.set_subtitle("Command output");
-
-    let already_visible = nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == page)
-        .unwrap_or(false);
-    if !already_visible {
-        nav.push(page);
-    }
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn show_git_busy_page(
-    nav: &NavigationView,
-    page: &NavigationPage,
-    status: &StatusPage,
-    back: &Button,
-    add: &Button,
-    find: &Button,
-    git: &Button,
-    save: &Button,
-    win: &WindowTitle,
-    title: &str,
-    description: Option<&str>,
-) {
-    add.set_visible(false);
-    find.set_visible(false);
-    git.set_visible(false);
-    back.set_visible(true);
-    save.set_visible(false);
-    win.set_title("Git");
-    win.set_subtitle(title);
-    status.set_title(title);
-    status.set_description(description);
-
-    let already_visible = nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == page)
-        .unwrap_or(false);
-    if !already_visible {
-        nav.push(page);
-    }
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn finish_git_busy_page(
-    window: &ApplicationWindow,
-    nav: &NavigationView,
-    busy_page: &NavigationPage,
-    text_page: &NavigationPage,
-    raw_text_page: &NavigationPage,
-    settings_page: &NavigationPage,
-    recipients_page: &StoreRecipientsPageState,
-    log_page: &NavigationPage,
-    back: &Button,
-    add: &Button,
-    find: &Button,
-    git: &Button,
-    save: &Button,
-    win: &WindowTitle,
-    username: &EntryRow,
-) {
-    set_git_busy_actions_enabled(window, true);
-
-    let current_page = nav.visible_page();
-    let busy_visible = current_page
-        .as_ref()
-        .map(|visible| visible == busy_page)
-        .unwrap_or(false);
-    let busy_in_stack = navigation_stack_contains_page(nav, busy_page);
-
-    if busy_visible {
-        nav.pop();
-    } else if busy_in_stack {
-        if let Some(current_page) = current_page.filter(|page| page != busy_page) {
-            let _ = nav.pop_to_page(busy_page);
-            let _ = nav.pop();
-            nav.push(&current_page);
-        }
-    }
-
-    let stack = nav.navigation_stack();
-    if stack.n_items() <= 1 {
-        back.set_visible(false);
-        save.set_visible(false);
-        set_save_button_for_password(save);
-        add.set_visible(true);
-        find.set_visible(true);
-        git.set_visible(false);
-        win.set_title("Password Store");
-        win.set_subtitle("Manage your passwords");
-        return;
-    }
-
-    back.set_visible(true);
-    add.set_visible(false);
-    find.set_visible(false);
-    git.set_visible(false);
-
-    let visible_page = nav.visible_page();
-    let is_text_page = visible_page
-        .as_ref()
-        .map(|page| page == text_page)
-        .unwrap_or(false);
-    let is_raw_page = visible_page
-        .as_ref()
-        .map(|page| page == raw_text_page)
-        .unwrap_or(false);
-    let is_settings_page = visible_page
-        .as_ref()
-        .map(|page| page == settings_page)
-        .unwrap_or(false);
-    let is_recipients_page = visible_page
-        .as_ref()
-        .map(|page| page == &recipients_page.page)
-        .unwrap_or(false);
-    let is_log_page = visible_page
-        .as_ref()
-        .map(|page| page == log_page)
-        .unwrap_or(false);
-
-    save.set_visible(is_text_page || is_raw_page);
-    if is_text_page {
-        set_save_button_for_password(save);
-        if let Some(pass_file) = get_opened_pass_file() {
-            let label = pass_file.label();
-            win.set_title(pass_file.title());
-            win.set_subtitle(&label);
-            sync_username_row(username, Some(&pass_file));
-        } else {
-            win.set_title("Password Store");
-            win.set_subtitle("Manage your passwords");
-            sync_username_row(username, None);
-        }
-    } else if is_raw_page {
-        set_save_button_for_password(save);
-        win.set_title("Raw Pass File");
-        if let Some(pass_file) = get_opened_pass_file() {
-            let label = pass_file.label();
-            win.set_subtitle(&label);
-        } else {
-            win.set_subtitle("Password Store");
-        }
-    } else if is_settings_page {
-        set_save_button_for_password(save);
-        win.set_title("Preferences");
-        win.set_subtitle("Password Store");
-    } else if is_recipients_page {
-        set_save_button_for_password(save);
-        sync_store_recipients_page_header(recipients_page);
-    } else if is_log_page {
-        set_save_button_for_password(save);
-        win.set_title("Logs");
-        win.set_subtitle("Command output");
-    }
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {
-    let stack = nav.navigation_stack();
-    let mut index = 0;
-    let len = stack.n_items();
-    while index < len {
-        if let Some(item) = stack.item(index) {
-            if let Ok(stack_page) = item.downcast::<NavigationPage>() {
-                if stack_page == *page {
-                    return true;
-                }
-            }
-        }
-        index += 1;
-    }
-    false
-}
-
 #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
 fn write_pass_entry(
     store_root: &str,

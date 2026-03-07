@@ -20,6 +20,7 @@ mod ripasso_keys;
 mod ripasso_unlock;
 mod stores;
 mod store_management;
+mod window_navigation;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};

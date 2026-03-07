@@ -973,8 +973,9 @@ fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
         state.list.append(&empty_row);
     } else {
         for key in keys {
+            let title = glib::markup_escape_text(&key.title());
             let row = ActionRow::builder()
-                .title(key.title())
+                .title(title.as_str())
                 .subtitle(&key.fingerprint)
                 .build();
             row.set_activatable(true);

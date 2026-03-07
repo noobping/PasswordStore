@@ -77,6 +77,9 @@ const SENSITIVE_FIELD_HINTS: [&str; 8] = [
     "phrase",
     "credential",
 ];
+const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";
+const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";
+const COPY_BUTTON_FEEDBACK_MS: u64 = 1200;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DynamicFieldTemplate {
@@ -361,18 +364,33 @@ fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     overlay.add_toast(toast);
 }
 
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-fn set_clipboard_text(text: &str, overlay: &ToastOverlay) {
+fn show_copy_feedback(button: &Button) {
+    button.set_icon_name(COPIED_BUTTON_ICON_NAME);
+
+    let button = button.clone();
+    glib::timeout_add_local_once(Duration::from_millis(COPY_BUTTON_FEEDBACK_MS), move || {
+        button.set_icon_name(COPY_BUTTON_ICON_NAME);
+    });
+}
+
+fn set_clipboard_text(text: &str, overlay: &ToastOverlay, button: Option<&Button>) {
     if let Some(display) = Display::default() {
         let clipboard = display.clipboard();
         clipboard.set_text(text);
+        if let Some(button) = button {
+            show_copy_feedback(button);
+        }
     } else {
         show_clipboard_unavailable_toast(overlay);
     }
 }
 
 #[cfg(not(feature = "flatpak"))]
-fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry) {
+fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry, button: Option<&Button>) {
+    if let Some(button) = button {
+        show_copy_feedback(button);
+    }
+
     thread::spawn(move || {
         let settings = Preferences::new();
         let mut cmd = settings.command();
@@ -388,7 +406,11 @@ fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry) {
 }
 
 #[cfg(any(feature = "setup", feature = "flatpak"))]
-fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOverlay) {
+fn copy_password_entry_to_clipboard_via_read(
+    item: PassEntry,
+    overlay: ToastOverlay,
+    button: Option<Button>,
+) {
     let retry_item = item.clone();
     let (tx, rx) = mpsc::channel::<Result<String, String>>();
     thread::spawn(move || {
@@ -399,7 +421,7 @@ fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOver
 
     glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
         Ok(Ok(password)) => {
-            set_clipboard_text(&password, &overlay);
+            set_clipboard_text(&password, &overlay, button.as_ref());
             glib::ControlFlow::Break
         }
         Ok(Err(err)) => {
@@ -410,6 +432,7 @@ fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOver
                     Ok(fingerprint) => {
                         let retry_overlay = overlay.clone();
                         let retry_item_for_unlock = retry_item.clone();
+                        let retry_button = button.clone();
                         prompt_ripasso_private_key_unlock_for_action(
                             &overlay,
                             fingerprint,
@@ -417,6 +440,7 @@ fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOver
                                 copy_password_entry_to_clipboard_via_read(
                                     retry_item_for_unlock.clone(),
                                     retry_overlay.clone(),
+                                    retry_button.clone(),
                                 );
                             }),
                         );
@@ -442,10 +466,10 @@ fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOver
     });
 }
 
-fn copy_password_entry_to_clipboard(item: PassEntry, overlay: ToastOverlay) {
+fn copy_password_entry_to_clipboard(item: PassEntry, overlay: ToastOverlay, button: Option<Button>) {
     #[cfg(feature = "flatpak")]
     {
-        copy_password_entry_to_clipboard_via_read(item, overlay);
+        copy_password_entry_to_clipboard_via_read(item, overlay, button);
         return;
     }
 
@@ -453,9 +477,9 @@ fn copy_password_entry_to_clipboard(item: PassEntry, overlay: ToastOverlay) {
     {
         let settings = Preferences::new();
         if settings.uses_ripasso_backend() {
-            copy_password_entry_to_clipboard_via_read(item, overlay);
+            copy_password_entry_to_clipboard_via_read(item, overlay, button);
         } else {
-            copy_password_entry_to_clipboard_via_pass_command(item);
+            copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());
         }
         return;
     }
@@ -463,7 +487,7 @@ fn copy_password_entry_to_clipboard(item: PassEntry, overlay: ToastOverlay) {
     #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
     {
         let _ = overlay;
-        copy_password_entry_to_clipboard_via_pass_command(item);
+        copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());
     }
 }
 
@@ -527,18 +551,14 @@ fn add_copy_suffix<W: IsA<Widget>>(widget: &W, text: impl Fn() -> String + 'stat
 where
     W: Clone,
 {
-    let button = Button::from_icon_name("edit-copy-symbolic");
+    let button = Button::from_icon_name(COPY_BUTTON_ICON_NAME);
     button.set_tooltip_text(Some("Copy value"));
     button.add_css_class("flat");
     let overlay = overlay.clone();
+    let feedback_button = button.clone();
     button.connect_clicked(move |_| {
         let text = text();
-        if let Some(display) = Display::default() {
-            let clipboard = display.clipboard();
-            clipboard.set_text(&text);
-        } else {
-            show_clipboard_unavailable_toast(&overlay);
-        }
+        set_clipboard_text(&text, &overlay, Some(&feedback_button));
     });
 
     if let Some(row) = widget.dynamic_cast_ref::<EntryRow>() {
@@ -1987,15 +2007,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
         let btn = copy_password_button.clone();
+        let feedback_button = btn.clone();
         btn.connect_clicked(move |_| {
             entry.grab_focus_without_selecting();
             let text = entry.text().to_string();
-            if let Some(display) = Display::default() {
-                let clipboard = display.clipboard();
-                clipboard.set_text(&text);
-            } else {
-                show_clipboard_unavailable_toast(&overlay);
-            }
+            set_clipboard_text(&text, &overlay, Some(&feedback_button));
         });
     }
     // Copy username button on password page
@@ -2003,15 +2019,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let entry = username_entry.clone();
         let btn = copy_username_button.clone();
+        let feedback_button = btn.clone();
         btn.connect_clicked(move |_| {
             entry.grab_focus_without_selecting();
             let text = entry.text().to_string();
-            if let Some(display) = Display::default() {
-                let clipboard = display.clipboard();
-                clipboard.set_text(&text);
-            } else {
-                show_clipboard_unavailable_toast(&overlay);
-            }
+            set_clipboard_text(&text, &overlay, Some(&feedback_button));
         });
     }
     // Copy OTP button on password page
@@ -2019,15 +2031,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let entry = otp_entry.clone();
         let btn = copy_otp_button.clone();
+        let feedback_button = btn.clone();
         btn.connect_clicked(move |_| {
             entry.grab_focus_without_selecting();
             let text = entry.text().to_string();
-            if let Some(display) = Display::default() {
-                let clipboard = display.clipboard();
-                clipboard.set_text(&text);
-            } else {
-                show_clipboard_unavailable_toast(&overlay);
-            }
+            set_clipboard_text(&text, &overlay, Some(&feedback_button));
         });
     }
     // new password
@@ -3510,9 +3518,14 @@ fn load_passwords_async(
                         let entry = item.clone();
                         let popover = popover.clone();
                         let copy_overlay = toast_overlay.clone();
+                        let copy_button = copy_btn.clone();
                         copy_btn.connect_clicked(move |_| {
                             popover.popdown();
-                            copy_password_entry_to_clipboard(entry.clone(), copy_overlay.clone());
+                            copy_password_entry_to_clipboard(
+                                entry.clone(),
+                                copy_overlay.clone(),
+                                Some(copy_button.clone()),
+                            );
                         });
                     }
                     // rename pass file

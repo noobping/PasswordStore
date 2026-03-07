@@ -6,7 +6,10 @@ use crate::logging::{run_command_output, run_command_with_input, CommandLogOptio
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
-use sequoia_openpgp::{Cert, Fingerprint, parse::Parse, serialize::Serialize};
+use sequoia_openpgp::{
+    Cert, Fingerprint, Packet, cert::amalgamation::key::PrimaryKey, crypto::Password,
+    parse::Parse, serialize::Serialize,
+};
 use std::env;
 #[cfg(feature = "flatpak")]
 use std::fs::File;
@@ -108,6 +111,149 @@ fn parse_managed_private_key_bytes(
 }
 
 #[cfg(feature = "flatpak")]
+fn cert_requires_passphrase(cert: &Cert) -> bool {
+    cert.keys()
+        .secret()
+        .any(|key_amalgamation| !key_amalgamation.key().has_unencrypted_secret())
+}
+
+#[cfg(feature = "flatpak")]
+fn cert_can_decrypt_password_entries(cert: &Cert) -> bool {
+    let policy = sequoia_openpgp::policy::StandardPolicy::new();
+    cert.keys()
+        .with_policy(&policy, None)
+        .supported()
+        .alive()
+        .revoked(false)
+        .for_transport_encryption()
+        .unencrypted_secret()
+        .next()
+        .is_some()
+}
+
+#[cfg(feature = "flatpak")]
+fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert, String> {
+    let trimmed = passphrase.trim();
+    if trimmed.is_empty() {
+        return Err("Enter the private key password.".to_string());
+    }
+
+    let password: Password = trimmed.into();
+    let mut unlocked = cert.clone();
+    for key_amalgamation in cert.keys().secret() {
+        if key_amalgamation.key().has_unencrypted_secret() {
+            continue;
+        }
+
+        let key = key_amalgamation
+            .key()
+            .clone()
+            .decrypt_secret(&password)
+            .map_err(|_| "The private key password is incorrect.".to_string())?;
+        let packet: Packet = if key_amalgamation.primary() {
+            key.role_into_primary().into()
+        } else {
+            key.role_into_subordinate().into()
+        };
+        unlocked = unlocked
+            .insert_packets(vec![packet])
+            .map_err(|err| err.to_string())?
+            .0;
+    }
+
+    Ok(unlocked)
+}
+
+#[cfg(feature = "flatpak")]
+fn prepare_managed_private_key_bytes(
+    bytes: &[u8],
+    passphrase: Option<&str>,
+) -> Result<(Cert, ManagedRipassoPrivateKey), String> {
+    let (parsed_cert, key) = parse_managed_private_key_bytes(bytes)?;
+    let cert = if cert_requires_passphrase(&parsed_cert) {
+        let passphrase = passphrase.ok_or_else(|| {
+            "This private key is password protected.".to_string()
+        })?;
+        unlock_managed_private_key_cert(&parsed_cert, passphrase)?
+    } else {
+        parsed_cert
+    };
+
+    if !cert_can_decrypt_password_entries(&cert) {
+        return Err(
+            "That private key cannot decrypt password store entries.".to_string(),
+        );
+    }
+
+    Ok((cert, key))
+}
+
+#[cfg(feature = "flatpak")]
+fn read_ripasso_private_key_cert(path: &PathBuf) -> Result<(Cert, ManagedRipassoPrivateKey), String> {
+    let data = fs::read(path).map_err(|err| err.to_string())?;
+    parse_managed_private_key_bytes(&data)
+}
+
+#[cfg(feature = "flatpak")]
+fn find_ripasso_private_key_cert(
+    fingerprint: &str,
+) -> Result<(PathBuf, Cert, ManagedRipassoPrivateKey), String> {
+    let requested = Fingerprint::from_hex(fingerprint)
+        .map_err(|err| format!("Invalid private key fingerprint '{fingerprint}': {err}"))?
+        .to_hex();
+    let keys_dir = ripasso_keys_dir()?;
+    let direct_path = keys_dir.join(requested.to_ascii_lowercase());
+    if direct_path.exists() {
+        let (cert, key) = read_ripasso_private_key_cert(&direct_path)?;
+        return Ok((direct_path, cert, key));
+    }
+
+    if !keys_dir.exists() {
+        return Err("That private key is not stored in ripasso.".to_string());
+    }
+
+    for entry in fs::read_dir(&keys_dir).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Ok((cert, key)) = read_ripasso_private_key_cert(&path) else {
+            continue;
+        };
+        if key.fingerprint.eq_ignore_ascii_case(&requested) {
+            return Ok((path, cert, key));
+        }
+    }
+
+    Err("That private key is not stored in ripasso.".to_string())
+}
+
+#[cfg(feature = "flatpak")]
+fn ensure_ripasso_private_key_is_ready(fingerprint: &str) -> Result<(), String> {
+    let (_, cert, _) = find_ripasso_private_key_cert(fingerprint)?;
+    if cert_requires_passphrase(&cert) {
+        return Err(
+            "The selected private key is still locked. Re-import it in Preferences and enter its password."
+                .to_string(),
+        );
+    }
+    if !cert_can_decrypt_password_entries(&cert) {
+        return Err(
+            "The selected private key cannot decrypt password store entries.".to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(feature = "flatpak")]
+pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, String> {
+    let (cert, _) = parse_managed_private_key_bytes(bytes)?;
+    Ok(cert_requires_passphrase(&cert))
+}
+
+#[cfg(feature = "flatpak")]
 pub fn list_ripasso_private_keys() -> Result<Vec<ManagedRipassoPrivateKey>, String> {
     let keys_dir = ripasso_keys_dir()?;
     if !keys_dir.exists() {
@@ -161,11 +307,14 @@ pub fn list_ripasso_private_keys() -> Result<Vec<ManagedRipassoPrivateKey>, Stri
 }
 
 #[cfg(feature = "flatpak")]
-pub fn import_ripasso_private_key_bytes(bytes: &[u8]) -> Result<ManagedRipassoPrivateKey, String> {
+pub fn import_ripasso_private_key_bytes(
+    bytes: &[u8],
+    passphrase: Option<&str>,
+) -> Result<ManagedRipassoPrivateKey, String> {
     let keys_dir = ripasso_keys_dir()?;
     fs::create_dir_all(&keys_dir).map_err(|err| err.to_string())?;
 
-    let (cert, key) = parse_managed_private_key_bytes(bytes)?;
+    let (cert, key) = prepare_managed_private_key_bytes(bytes, passphrase)?;
     let mut file = File::create(keys_dir.join(key.fingerprint.to_ascii_lowercase()))
         .map_err(|err| err.to_string())?;
     cert.as_tsk()
@@ -177,48 +326,8 @@ pub fn import_ripasso_private_key_bytes(bytes: &[u8]) -> Result<ManagedRipassoPr
 
 #[cfg(feature = "flatpak")]
 pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {
-    let requested = Fingerprint::from_hex(fingerprint)
-        .map_err(|err| format!("Invalid private key fingerprint '{fingerprint}': {err}"))?
-        .to_hex();
-    let keys_dir = ripasso_keys_dir()?;
-    let direct_path = keys_dir.join(requested.to_ascii_lowercase());
-    if direct_path.exists() {
-        fs::remove_file(direct_path).map_err(|err| err.to_string())?;
-        return Ok(());
-    }
-
-    if !keys_dir.exists() {
-        return Err("That private key is not stored in ripasso.".to_string());
-    }
-
-    for entry in fs::read_dir(&keys_dir).map_err(|err| err.to_string())? {
-        let entry = entry.map_err(|err| err.to_string())?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let data = match fs::read(&path) {
-            Ok(data) => data,
-            Err(err) => {
-                log_error(format!(
-                    "Failed to read ripasso managed key '{}': {err}",
-                    path.display()
-                ));
-                continue;
-            }
-        };
-
-        let Ok((_, key)) = parse_managed_private_key_bytes(&data) else {
-            continue;
-        };
-        if key.fingerprint.eq_ignore_ascii_case(&requested) {
-            fs::remove_file(&path).map_err(|err| err.to_string())?;
-            return Ok(());
-        }
-    }
-
-    Err("That private key is not stored in ripasso.".to_string())
+    let (path, _, _) = find_ripasso_private_key_cert(fingerprint)?;
+    fs::remove_file(path).map_err(|err| err.to_string())
 }
 
 #[cfg(feature = "flatpak")]
@@ -248,7 +357,9 @@ pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
 
 #[cfg(feature = "flatpak")]
 fn resolve_ripasso_own_fingerprint_bytes() -> Result<[u8; 20], String> {
-    fingerprint_from_string(&resolved_ripasso_own_fingerprint()?)
+    let fingerprint = resolved_ripasso_own_fingerprint()?;
+    ensure_ripasso_private_key_is_ready(&fingerprint)?;
+    fingerprint_from_string(&fingerprint)
 }
 
 fn load_store_entry(
@@ -654,8 +765,12 @@ pub fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<
 
 #[cfg(all(test, feature = "flatpak"))]
 mod tests {
-    use super::parse_managed_private_key_bytes;
+    use super::{
+        parse_managed_private_key_bytes, prepare_managed_private_key_bytes,
+        ripasso_private_key_requires_passphrase,
+    };
     use sequoia_openpgp::{
+        crypto::Password,
         cert::CertBuilder,
         serialize::Serialize,
     };
@@ -699,5 +814,42 @@ mod tests {
         let err = parse_managed_private_key_bytes(&bytes)
             .expect_err("public-only keys should not be accepted as managed private keys");
         assert!(err.contains("does not include a private key"));
+    }
+
+    #[test]
+    fn encrypted_private_keys_report_that_a_passphrase_is_required() {
+        let password: Password = "hunter2".into();
+        let (cert, _) = CertBuilder::general_purpose(Some("Carol Example <carol@example.com>"))
+            .set_password(Some(password))
+            .generate()
+            .expect("failed to generate password-protected certificate");
+        let mut bytes = Vec::new();
+        cert.as_tsk()
+            .serialize(&mut bytes)
+            .expect("failed to serialize protected test certificate");
+
+        assert!(
+            ripasso_private_key_requires_passphrase(&bytes)
+                .expect("expected password inspection to work")
+        );
+    }
+
+    #[test]
+    fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
+        let password: Password = "hunter2".into();
+        let (cert, _) = CertBuilder::general_purpose(Some("Dana Example <dana@example.com>"))
+            .set_password(Some(password.clone()))
+            .generate()
+            .expect("failed to generate password-protected certificate");
+        let mut bytes = Vec::new();
+        cert.as_tsk()
+            .serialize(&mut bytes)
+            .expect("failed to serialize protected test certificate");
+
+        let (unlocked, key) = prepare_managed_private_key_bytes(&bytes, Some("hunter2"))
+            .expect("expected protected key to unlock successfully");
+
+        assert_eq!(key.fingerprint.len(), 40);
+        assert!(unlocked.keys().all(|key| key.key().has_unencrypted_secret()));
     }
 }

@@ -8,7 +8,8 @@ use crate::backend::{
 #[cfg(feature = "flatpak")]
 use crate::backend::{
     import_ripasso_private_key_bytes, list_ripasso_private_keys, remove_ripasso_private_key,
-    resolved_ripasso_own_fingerprint, ManagedRipassoPrivateKey,
+    resolved_ripasso_own_fingerprint, ripasso_private_key_requires_passphrase,
+    ManagedRipassoPrivateKey,
 };
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
@@ -46,6 +47,8 @@ use adw::gtk::{
     Box as GtkBox, Widget, gdk::Display, Builder, Button, Image, ListBox, ListBoxRow,
     MenuButton, Popover, SearchEntry, Spinner, TextView,
 };
+#[cfg(feature = "flatpak")]
+use adw::gtk::{Dialog, Label, Orientation};
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::{Cell, RefCell};
 use std::fs;
@@ -234,6 +237,22 @@ fn with_logs_hint(message: &str) -> String {
 #[cfg(feature = "flatpak")]
 fn with_logs_hint(message: &str) -> String {
     message.to_string()
+}
+
+#[cfg(feature = "flatpak")]
+fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
+    if message.contains("still locked") {
+        Some("The selected private key is locked. Re-import it in Preferences and enter its password.")
+    } else if message.contains("cannot decrypt password store entries") {
+        Some("The selected private key cannot decrypt password entries.")
+    } else {
+        None
+    }
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn friendly_password_entry_error_message(_message: &str) -> Option<&'static str> {
+    None
 }
 
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
@@ -882,33 +901,26 @@ fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
         };
 
         match file.load_bytes(None::<&gio::Cancellable>) {
-            Ok((bytes, _)) => match import_ripasso_private_key_bytes(bytes.as_ref()) {
-                Ok(key) => {
-                    let settings = Preferences::new();
-                    if let Err(err) = settings.set_ripasso_own_fingerprint(Some(&key.fingerprint))
-                    {
-                        log_error(format!(
-                            "Failed to store the imported ripasso private key fingerprint: {err}"
-                        ));
-                        let toast = Toast::new("The private key was imported, but it could not be selected.");
-                        state_for_response.overlay.add_toast(toast);
-                    } else {
-                        rebuild_ripasso_private_keys_list(&state_for_response);
-                        let toast = Toast::new("Private key imported.");
+            Ok((bytes, _)) => {
+                let bytes = bytes.as_ref().to_vec();
+                match ripasso_private_key_requires_passphrase(&bytes) {
+                    Ok(true) => prompt_ripasso_private_key_passphrase(&state_for_response, bytes),
+                    Ok(false) => finish_ripasso_private_key_import(
+                        &state_for_response,
+                        import_ripasso_private_key_bytes(&bytes, None),
+                    ),
+                    Err(err) => {
+                        log_error(format!("Failed to inspect ripasso private key: {err}"));
+                        let message = if err.contains("does not include a private key") {
+                            "That file does not contain a private key."
+                        } else {
+                            "Couldn't read that private key."
+                        };
+                        let toast = Toast::new(message);
                         state_for_response.overlay.add_toast(toast);
                     }
                 }
-                Err(err) => {
-                    log_error(format!("Failed to import ripasso private key: {err}"));
-                    let message = if err.contains("does not include a private key") {
-                        "That file does not contain a private key."
-                    } else {
-                        "Couldn't import that private key."
-                    };
-                    let toast = Toast::new(message);
-                    state_for_response.overlay.add_toast(toast);
-                }
-            },
+            }
             Err(err) => {
                 log_error(format!("Failed to read the selected private key file: {err}"));
                 let toast = Toast::new("Couldn't read that private key file.");
@@ -920,6 +932,98 @@ fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
     });
 
     dialog.show();
+}
+
+#[cfg(feature = "flatpak")]
+fn finish_ripasso_private_key_import(
+    state: &RipassoPrivateKeysState,
+    result: Result<ManagedRipassoPrivateKey, String>,
+) {
+    match result {
+        Ok(key) => {
+            let settings = Preferences::new();
+            if let Err(err) = settings.set_ripasso_own_fingerprint(Some(&key.fingerprint)) {
+                log_error(format!(
+                    "Failed to store the imported ripasso private key fingerprint: {err}"
+                ));
+                let toast =
+                    Toast::new("The private key was imported, but it could not be selected.");
+                state.overlay.add_toast(toast);
+            } else {
+                rebuild_ripasso_private_keys_list(state);
+                let toast = Toast::new("Private key imported.");
+                state.overlay.add_toast(toast);
+            }
+        }
+        Err(err) => {
+            log_error(format!("Failed to import ripasso private key: {err}"));
+            let message = if err.contains("does not include a private key") {
+                "That file does not contain a private key."
+            } else if err.contains("password protected") || err.contains("incorrect") {
+                "Couldn't unlock that private key."
+            } else if err.contains("cannot decrypt password store entries") {
+                "That private key cannot decrypt password entries."
+            } else {
+                "Couldn't import that private key."
+            };
+            let toast = Toast::new(message);
+            state.overlay.add_toast(toast);
+        }
+    }
+}
+
+#[cfg(feature = "flatpak")]
+fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes: Vec<u8>) {
+    let dialog = Dialog::builder()
+        .modal(true)
+        .transient_for(&state.window)
+        .title("Unlock Private Key")
+        .build();
+    dialog.add_button("Cancel", ResponseType::Cancel);
+    dialog.add_button("Import", ResponseType::Accept);
+    dialog.set_default_response(ResponseType::Accept);
+
+    let content = dialog.content_area();
+    let box_widget = GtkBox::new(Orientation::Vertical, 12);
+    box_widget.set_margin_top(18);
+    box_widget.set_margin_bottom(18);
+    box_widget.set_margin_start(18);
+    box_widget.set_margin_end(18);
+
+    let label = Label::new(Some(
+        "Enter the private key password so ripasso can store an unlocked copy.",
+    ));
+    label.set_wrap(true);
+    label.set_xalign(0.0);
+    box_widget.append(&label);
+
+    let password_row = PasswordEntryRow::new();
+    password_row.set_title("Private key password");
+    box_widget.append(&password_row);
+    content.append(&box_widget);
+
+    let state_for_response = state.clone();
+    dialog.connect_response(move |dialog, response| {
+        if response != ResponseType::Accept {
+            dialog.close();
+            return;
+        }
+
+        let passphrase = password_row.text().to_string();
+        if passphrase.is_empty() {
+            let toast = Toast::new("Enter the private key password.");
+            state_for_response.overlay.add_toast(toast);
+            return;
+        }
+
+        finish_ripasso_private_key_import(
+            &state_for_response,
+            import_ripasso_private_key_bytes(&bytes, Some(&passphrase)),
+        );
+        dialog.close();
+    });
+
+    dialog.present();
 }
 
 #[cfg(feature = "flatpak")]
@@ -1490,7 +1594,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     }
                     Ok(Err(msg)) => {
                         log_error(format!("Failed to open password entry: {msg}"));
-                        let toast = Toast::new(&with_logs_hint("Couldn't open the password entry."));
+                        let toast = if let Some(message) = friendly_password_entry_error_message(&msg)
+                        {
+                            Toast::new(message)
+                        } else {
+                            Toast::new(&with_logs_hint("Couldn't open the password entry."))
+                        };
                         overlay.add_toast(toast);
                         glib::ControlFlow::Break
                     }

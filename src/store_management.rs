@@ -1,16 +1,23 @@
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::stores::{
-    read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
+    apply_password_store_recipients, read_store_gpg_recipients,
+    store_gpg_recipients_subtitle, stores_with_preferred_first, suggested_gpg_recipients,
 };
+use crate::window_messages::with_logs_hint;
+use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, Toast,
+    glib, ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, Toast,
     ToastOverlay, WindowTitle,
 };
 use adw::gtk::{Button, FileChooserAction, FileChooserNative, Image, ListBox, ResponseType};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StoreRecipientsMode {
@@ -111,6 +118,107 @@ pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) 
         adw::prelude::WidgetExt::activate_action(&state.window, "win.save-store-recipients", None);
 }
 
+fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty: bool) {
+    state.save_in_flight.set(false);
+    if state.save_queued.get() || (include_dirty && store_recipients_are_dirty(state)) {
+        state.save_queued.set(false);
+        queue_store_recipients_autosave(state);
+    }
+}
+
+pub(crate) fn save_store_recipients_async(
+    overlay: &ToastOverlay,
+    stores_list: &ListBox,
+    state: &StoreRecipientsPageState,
+) {
+    let Some(request) = current_store_recipients_request(state) else {
+        return;
+    };
+
+    let recipients = state.recipients.borrow().clone();
+    if recipients.is_empty() {
+        return;
+    }
+    if !store_recipients_are_dirty(state) {
+        state.save_queued.set(false);
+        return;
+    }
+    if state.save_in_flight.replace(true) {
+        state.save_queued.set(true);
+        return;
+    }
+    state.save_queued.set(false);
+
+    let (tx, rx) = mpsc::channel::<Result<(), String>>();
+    let store_for_thread = request.store.clone();
+    let recipients_for_save = recipients.clone();
+    thread::spawn(move || {
+        let result = apply_password_store_recipients(&store_for_thread, &recipients_for_save);
+        let _ = tx.send(result);
+    });
+
+    let overlay = overlay.clone();
+    let stores_list = stores_list.clone();
+    let state = state.clone();
+    let request = request.clone();
+    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+        Ok(Ok(())) => {
+            let settings = Preferences::new();
+            *state.saved_recipients.borrow_mut() = recipients.clone();
+            match request.mode {
+                StoreRecipientsMode::Create => {
+                    let stores = stores_with_preferred_first(&settings.stores(), &request.store);
+                    if let Err(err) = settings.set_stores(stores) {
+                        log_error(format!("Failed to save stores: {err}"));
+                        overlay.add_toast(Toast::new(
+                            "Password store created, but it couldn't be added to Preferences.",
+                        ));
+                    } else {
+                        rebuild_store_list(
+                            &stores_list,
+                            &settings,
+                            &state.window,
+                            &overlay,
+                            &state,
+                        );
+                        *state.request.borrow_mut() = Some(StoreRecipientsRequest {
+                            store: request.store.clone(),
+                            mode: StoreRecipientsMode::Edit,
+                        });
+                        sync_store_recipients_page_header(&state);
+                    }
+                }
+                StoreRecipientsMode::Edit => {
+                    rebuild_store_list(&stores_list, &settings, &state.window, &overlay, &state);
+                }
+            }
+            finish_store_recipients_save(&state, true);
+            glib::ControlFlow::Break
+        }
+        Ok(Err(message)) => {
+            let message = if request.mode == StoreRecipientsMode::Create {
+                with_logs_hint("Couldn't create the password store.")
+            } else {
+                message
+            };
+            finish_store_recipients_save(&state, false);
+            overlay.add_toast(Toast::new(&message));
+            glib::ControlFlow::Break
+        }
+        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(TryRecvError::Disconnected) => {
+            let message = if request.mode == StoreRecipientsMode::Create {
+                with_logs_hint("Couldn't create the password store.")
+            } else {
+                with_logs_hint("Couldn't save the password store recipients.")
+            };
+            finish_store_recipients_save(&state, false);
+            overlay.add_toast(Toast::new(&message));
+            glib::ControlFlow::Break
+        }
+    });
+}
+
 pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     while let Some(child) = state.list.first_child() {
         state.list.remove(&child);
@@ -154,6 +262,22 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             queue_store_recipients_autosave(&page_state);
         });
     }
+}
+
+pub(crate) fn register_store_recipients_save_action(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    stores_list: &ListBox,
+    state: &StoreRecipientsPageState,
+) {
+    let overlay = overlay.clone();
+    let stores_list = stores_list.clone();
+    let state = state.clone();
+    let action = SimpleAction::new("save-store-recipients", None);
+    action.connect_activate(move |_, _| {
+        save_store_recipients_async(&overlay, &stores_list, &state);
+    });
+    window.add_action(&action);
 }
 
 pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {

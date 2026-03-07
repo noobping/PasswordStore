@@ -24,18 +24,15 @@ use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
 use crate::ripasso_keys::{rebuild_ripasso_private_keys_list, RipassoPrivateKeysState};
-use crate::stores::{
-    append_gpg_recipients, apply_password_store_recipients, stores_with_preferred_first,
-};
+use crate::stores::append_gpg_recipients;
 use crate::store_management::{
-    current_store_recipients_request, queue_store_recipients_autosave, rebuild_store_list,
-    rebuild_store_recipients_list, store_recipients_are_dirty,
-    sync_store_recipients_page_header, StoreRecipientsMode, StoreRecipientsPageState,
-    StoreRecipientsRequest,
+    queue_store_recipients_autosave, rebuild_store_list, rebuild_store_recipients_list,
+    register_store_recipients_save_action, StoreRecipientsPageState, StoreRecipientsRequest,
 };
 use crate::window_navigation::{
     restore_window_for_current_page, set_save_button_for_password, WindowNavigationState,
 };
+#[cfg(not(feature = "flatpak"))]
 use crate::window_messages::with_logs_hint;
 #[cfg(not(feature = "flatpak"))]
 use crate::window_navigation::{finish_git_busy_page, show_git_busy_page, show_log_page};
@@ -43,9 +40,11 @@ use crate::window_navigation::{finish_git_busy_page, show_git_busy_page, show_lo
 use adw::ComboRow;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
-    glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
+    prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
     PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
+#[cfg(not(feature = "flatpak"))]
+use adw::glib;
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::gtk::StringList;
 #[cfg(feature = "flatpak")]
@@ -58,9 +57,13 @@ use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(feature = "flatpak"))]
 use std::sync::mpsc;
+#[cfg(not(feature = "flatpak"))]
 use std::sync::mpsc::TryRecvError;
+#[cfg(not(feature = "flatpak"))]
 use std::thread;
+#[cfg(not(feature = "flatpak"))]
 use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
@@ -544,122 +547,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
     {
-        let overlay = toast_overlay.clone();
-        let stores_list = password_stores.clone();
-        let recipients_page = store_recipients_page_state.clone();
-        let action = SimpleAction::new("save-store-recipients", None);
-        action.connect_activate(move |_, _| {
-            let Some(request) = current_store_recipients_request(&recipients_page) else {
-                return;
-            };
-
-            let recipients = recipients_page.recipients.borrow().clone();
-            if recipients.is_empty() {
-                return;
-            }
-            if !store_recipients_are_dirty(&recipients_page) {
-                recipients_page.save_queued.set(false);
-                return;
-            }
-            if recipients_page.save_in_flight.replace(true) {
-                recipients_page.save_queued.set(true);
-                return;
-            }
-            recipients_page.save_queued.set(false);
-
-            let (tx, rx) = mpsc::channel::<Result<(), String>>();
-            let store_for_thread = request.store.clone();
-            let recipients_for_save = recipients.clone();
-            thread::spawn(move || {
-                let result = apply_password_store_recipients(&store_for_thread, &recipients_for_save);
-                let _ = tx.send(result);
-            });
-
-            let overlay = overlay.clone();
-            let stores_list = stores_list.clone();
-            let recipients_page = recipients_page.clone();
-            let request = request.clone();
-            glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-                Ok(Ok(())) => {
-                    let settings = Preferences::new();
-                    *recipients_page.saved_recipients.borrow_mut() = recipients.clone();
-                    match request.mode {
-                        StoreRecipientsMode::Create => {
-                            let stores = stores_with_preferred_first(&settings.stores(), &request.store);
-                            if let Err(err) = settings.set_stores(stores) {
-                                log_error(format!("Failed to save stores: {err}"));
-                                let toast = Toast::new(
-                                    "Password store created, but it couldn't be added to Preferences.",
-                                );
-                                overlay.add_toast(toast);
-                            } else {
-                                rebuild_store_list(
-                                    &stores_list,
-                                    &settings,
-                                    &recipients_page.window,
-                                    &overlay,
-                                    &recipients_page,
-                                );
-                                *recipients_page.request.borrow_mut() = Some(StoreRecipientsRequest {
-                                    store: request.store.clone(),
-                                    mode: StoreRecipientsMode::Edit,
-                                });
-                                sync_store_recipients_page_header(&recipients_page);
-                            }
-                        }
-                        StoreRecipientsMode::Edit => {
-                            rebuild_store_list(
-                                &stores_list,
-                                &settings,
-                                &recipients_page.window,
-                                &overlay,
-                                &recipients_page,
-                            );
-                        }
-                    }
-                    recipients_page.save_in_flight.set(false);
-                    if recipients_page.save_queued.get() || store_recipients_are_dirty(&recipients_page)
-                    {
-                        recipients_page.save_queued.set(false);
-                        queue_store_recipients_autosave(&recipients_page);
-                    }
-                    glib::ControlFlow::Break
-                }
-                Ok(Err(message)) => {
-                    let message = if request.mode == StoreRecipientsMode::Create {
-                        with_logs_hint("Couldn't create the password store.")
-                    } else {
-                        message
-                    };
-                    recipients_page.save_in_flight.set(false);
-                    if recipients_page.save_queued.get() {
-                        recipients_page.save_queued.set(false);
-                        queue_store_recipients_autosave(&recipients_page);
-                    }
-                    let toast = Toast::new(&message);
-                    overlay.add_toast(toast);
-                    glib::ControlFlow::Break
-                }
-                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(TryRecvError::Disconnected) => {
-                    let message = if request.mode == StoreRecipientsMode::Create {
-                        with_logs_hint("Couldn't create the password store.")
-                    } else {
-                        with_logs_hint("Couldn't save the password store recipients.")
-                    };
-                    recipients_page.save_in_flight.set(false);
-                    if recipients_page.save_queued.get() {
-                        recipients_page.save_queued.set(false);
-                        queue_store_recipients_autosave(&recipients_page);
-                    }
-                    let toast = Toast::new(&message);
-                    overlay.add_toast(toast);
-                    glib::ControlFlow::Break
-                }
-            });
-        });
-
-        window.add_action(&action);
+        register_store_recipients_save_action(
+            &window,
+            &toast_overlay,
+            &password_stores,
+            &store_recipients_page_state,
+        );
     }
     // open preferences
     {

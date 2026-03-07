@@ -5,49 +5,53 @@ use crate::clipboard::connect_copy_button;
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
+#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+use adw::ComboRow;
 
 use crate::item::OpenPassFile;
-#[cfg(not(feature = "flatpak"))]
-use crate::logging::log_snapshot;
 use crate::methods::non_null_to_string_option;
 use crate::pass_file::{DynamicFieldRow, StructuredPassLine};
 use crate::password_list::{load_passwords_async, setup_search_filter};
 use crate::password_page::{
     begin_new_password_entry, open_password_entry_page, save_current_password_entry,
-    show_password_list_page, show_raw_pass_file_page, PasswordPageState,
+    show_raw_pass_file_page, PasswordPageState,
 };
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
-use crate::preferences::BackendKind;
+#[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
-use crate::ripasso_keys::{rebuild_ripasso_private_keys_list, RipassoPrivateKeysState};
+use crate::ripasso_keys::RipassoPrivateKeysState;
 use crate::stores::append_gpg_recipients;
 use crate::store_management::{
-    queue_store_recipients_autosave, rebuild_store_list, rebuild_store_recipients_list,
+    queue_store_recipients_autosave, rebuild_store_recipients_list,
     register_store_recipients_save_action, StoreRecipientsPageState, StoreRecipientsRequest,
 };
+use crate::window_controls::{
+    apply_startup_query, configure_window_shortcuts, register_back_action,
+    register_open_new_password_action, register_toggle_find_action, BackActionState,
+};
+#[cfg(not(feature = "flatpak"))]
+use crate::window_logs::{register_open_log_action, start_log_poller};
+use crate::window_preferences::{
+    connect_new_password_template_autosave, register_open_preferences_action,
+    PreferencesActionState,
+};
+#[cfg(not(feature = "flatpak"))]
+use crate::window_preferences::connect_pass_command_row;
+#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+use crate::window_preferences::{connect_backend_row, initialize_backend_row};
+#[cfg(feature = "setup")]
+use crate::window_preferences::register_install_locally_action;
 #[cfg(not(feature = "flatpak"))]
 use crate::window_git::{
-    connect_git_clone_apply, handle_git_busy_back, register_git_clone_action,
-    register_open_git_action, register_synchronize_action, GitActionState,
-    GitOperationControl,
+    connect_git_clone_apply, register_git_clone_action, register_open_git_action,
+    register_synchronize_action, GitActionState, GitOperationControl,
 };
-use crate::window_navigation::{
-    restore_window_for_current_page, set_save_button_for_password, WindowNavigationState,
-};
-#[cfg(not(feature = "flatpak"))]
-use crate::window_navigation::show_log_page;
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
-use adw::ComboRow;
+use crate::window_navigation::{set_save_button_for_password, WindowNavigationState};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
     PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
-#[cfg(not(feature = "flatpak"))]
-use adw::glib;
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
-use adw::gtk::StringList;
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
 use adw::gtk::{
@@ -55,19 +59,8 @@ use adw::gtk::{
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-#[cfg(not(feature = "flatpak"))]
-use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
-
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
-fn sync_backend_preferences_rows(backend_row: &ComboRow, pass_row: &EntryRow, preferences: &Preferences) {
-    let backend = preferences.backend_kind();
-    if backend_row.selected() != backend.combo_position() {
-        backend_row.set_selected(backend.combo_position());
-    }
-    pass_row.set_visible(backend.uses_pass_command());
-}
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     let builder = Builder::from_string(UI_SRC);
@@ -196,11 +189,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .object("pass_command_row")
         .expect("Failed to get pass row");
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
-    {
-        backend_row.set_model(Some(&StringList::new(&["Ripasso", "Pass command"])));
-        backend_row.set_visible(true);
-        sync_backend_preferences_rows(&backend_row, &pass_row, &settings);
-    }
+    initialize_backend_row(&backend_row, &pass_row, &settings);
     let new_pass_file_template_view: TextView = builder
         .object("new_pass_file_template_view")
         .expect("Failed to get new_pass_file_template_view");
@@ -337,6 +326,27 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         win: window_title.clone(),
         username: username_entry.clone(),
     };
+    let preferences_action_state = PreferencesActionState {
+        window: window.clone(),
+        nav: navigation_view.clone(),
+        page: settings_page.clone(),
+        back: back_button.clone(),
+        add: add_button.clone(),
+        find: find_button.clone(),
+        git: git_button.clone(),
+        save: save_button.clone(),
+        win: window_title.clone(),
+        template_view: new_pass_file_template_view.clone(),
+        stores_list: password_stores.clone(),
+        overlay: toast_overlay.clone(),
+        recipients_page: store_recipients_page_state.clone(),
+        #[cfg(not(feature = "flatpak"))]
+        pass_row: pass_row.clone(),
+        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+        backend_row: backend_row.clone(),
+        #[cfg(feature = "flatpak")]
+        ripasso_keys_state: ripasso_private_keys_state.clone(),
+    };
     #[cfg(not(feature = "flatpak"))]
     let git_action_state = GitActionState {
         window: window.clone(),
@@ -346,6 +356,17 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         recipients_page: store_recipients_page_state.clone(),
         busy_page: git_busy_page.clone(),
         busy_status: git_busy_status.clone(),
+    };
+    let back_action_state = BackActionState {
+        overlay: toast_overlay.clone(),
+        list: list.clone(),
+        password_page: password_list_state.clone(),
+        recipients_page: store_recipients_page_state.clone(),
+        navigation: window_navigation_state.clone(),
+        #[cfg(not(feature = "flatpak"))]
+        git_actions: git_action_state.clone(),
+        #[cfg(not(feature = "flatpak"))]
+        git_operation: git_operation.clone(),
     };
 
     // Selecting an item from the list
@@ -374,64 +395,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     // Pass command preference
     #[cfg(not(feature = "flatpak"))]
     {
-        let overlay = toast_overlay.clone();
-        let preferences = settings.clone();
-        pass_row.connect_apply(move |row| {
-            let text = row.text().to_string();
-            let text = text.trim();
-            if text.is_empty() {
-                let toast = Toast::new("Enter a command for pass.");
-                overlay.add_toast(toast);
-                return;
-            }
-            if let Err(err) = preferences.set_command(text) {
-                let message = err.message.to_string();
-                let toast = Toast::new(&message);
-                overlay.add_toast(toast);
-            }
-        });
+        connect_pass_command_row(&pass_row, &toast_overlay, &settings);
     }
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        let overlay = toast_overlay.clone();
-        let preferences = settings.clone();
-        let pass_row = pass_row.clone();
-        backend_row.connect_selected_notify(move |row| {
-            let selected_backend = BackendKind::from_combo_position(row.selected());
-            let current_backend = preferences.backend_kind();
-            if selected_backend == current_backend {
-                pass_row.set_visible(selected_backend.uses_pass_command());
-                return;
-            }
-
-            if let Err(err) = preferences.set_backend_kind(selected_backend) {
-                pass_row.set_visible(current_backend.uses_pass_command());
-                row.set_selected(current_backend.combo_position());
-                let toast = Toast::new(&err.message.to_string());
-                overlay.add_toast(toast);
-                return;
-            }
-
-            pass_row.set_visible(selected_backend.uses_pass_command());
-        });
+        connect_backend_row(&backend_row, &pass_row, &toast_overlay, &settings);
     }
-    {
-        let overlay = toast_overlay.clone();
-        let preferences = Preferences::new();
-        let buffer = new_pass_file_template_view.buffer();
-        buffer.connect_changed(move |buffer| {
-            let (start, end) = buffer.bounds();
-            let template = buffer.text(&start, &end, false).to_string();
-            if template == preferences.new_pass_file_template() {
-                return;
-            }
-            if let Err(err) = preferences.set_new_pass_file_template(&template) {
-                let message = err.message.to_string();
-                let toast = Toast::new(&message);
-                overlay.add_toast(toast);
-            }
-        });
-    }
+    connect_new_password_template_autosave(&new_pass_file_template_view, &toast_overlay);
     {
         let page_state = store_recipients_page_state.clone();
         store_recipients_entry.connect_apply(move |entry| {
@@ -499,66 +469,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
     // open preferences
     {
-        let nav = navigation_view.clone();
-        let page = settings_page.clone();
-        let back = back_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let git = git_button.clone();
-        let save = save_button.clone();
-        let win = window_title.clone();
-        #[cfg(not(feature = "flatpak"))]
-        let command = pass_row.clone();
-        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
-        let backend = backend_row.clone();
-        #[cfg(feature = "flatpak")]
-        let ripasso_keys = ripasso_private_keys_state.clone();
-        let template_view = new_pass_file_template_view.clone();
-        let list = password_stores.clone();
-        let parent = window.clone();
-        let overlay = toast_overlay.clone();
-        let recipients_page = store_recipients_page_state.clone();
-        let action = SimpleAction::new("open-preferences", None);
-        action.connect_activate(move |_, _| {
-            add.set_visible(false);
-            find.set_visible(false);
-            git.set_visible(false);
-            back.set_visible(true);
-            save.set_visible(false);
-            set_save_button_for_password(&save);
-            win.set_title("Preferences");
-            win.set_subtitle("Password Store");
-            nav.push(&page);
-
-            let settings = Preferences::new();
-            #[cfg(not(feature = "flatpak"))]
-            command.set_text(&settings.command_value());
-            #[cfg(all(feature = "setup", not(feature = "flatpak")))]
-            sync_backend_preferences_rows(&backend, &command, &settings);
-            template_view
-                .buffer()
-                .set_text(&settings.new_pass_file_template());
-            #[cfg(feature = "flatpak")]
-            rebuild_ripasso_private_keys_list(&ripasso_keys);
-            rebuild_store_list(
-                &list,
-                &settings,
-                &parent,
-                &overlay,
-                &recipients_page,
-            );
-        });
-        window.add_action(&action);
+        register_open_preferences_action(&window, &preferences_action_state);
     }
 
     #[cfg(not(feature = "flatpak"))]
     {
-        let navigation_state = window_navigation_state.clone();
-        let action = SimpleAction::new("open-log", None);
-        action.connect_activate(move |_, _| {
-            show_log_page(&navigation_state);
-        });
-        window.add_action(&action);
+        register_open_log_action(&window, &window_navigation_state);
     }
 
     {
@@ -572,43 +488,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     #[cfg(feature = "setup")]
     {
-        let menu = primary_menu.clone();
-        let overlay = toast_overlay.clone();
-        let action = SimpleAction::new("install-locally", None);
-        action.connect_activate(move |_, _| {
-            if !can_install_locally() {
-                let toast = Toast::new("This app cannot be installed here.");
-                overlay.add_toast(toast);
-                return;
-            }
-            let items = menu.n_items();
-            if items > 0 {
-                menu.remove(items - 1);
-            }
-            let installed = is_installed_locally();
-            let ok: bool = !installed && install_locally().is_ok();
-            let uninstalled = installed && uninstall_locally().is_ok();
-            let item = if ok || !uninstalled {
-                MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
-            } else {
-                MenuItem::new(Some("Install this App"), Some("win.install-locally"))
-            };
-            menu.append_item(&item);
-        });
-        window.add_action(&action);
+        register_install_locally_action(&window, &primary_menu, &toast_overlay);
     }
 
     {
-        let popover = add_button_popover.clone();
-        let action = SimpleAction::new("open-new-password", None);
-        action.connect_activate(move |_, _| {
-            if popover.is_visible() {
-                popover.popdown()
-            } else {
-                popover.popup()
-            }
-        });
-        window.add_action(&action);
+        register_open_new_password_action(&window, &add_button_popover);
     }
 
     #[cfg(not(feature = "flatpak"))]
@@ -632,50 +516,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
-        let find = search_entry.clone();
-        let action = SimpleAction::new("toggle-find", None);
-        action.connect_activate(move |_, _| {
-            let visible = find.is_visible();
-            find.set_visible(!visible);
-            if !visible {
-                find.grab_focus();
-            }
-        });
-        window.add_action(&action);
+        register_toggle_find_action(&window, &search_entry);
     }
 
     {
-        let overlay = toast_overlay.clone();
-        let list_clone = list.clone();
-        let list_state = password_list_state.clone();
-        let recipients_page = store_recipients_page_state.clone();
-        #[cfg(not(feature = "flatpak"))]
-        let git_action_state = git_action_state.clone();
-        #[cfg(not(feature = "flatpak"))]
-        let git_operation = git_operation.clone();
-        let navigation_state = window_navigation_state.clone();
-        let action = SimpleAction::new("back", None);
-        action.connect_activate(move |_, _| {
-            #[cfg(not(feature = "flatpak"))]
-            if handle_git_busy_back(&git_action_state, &git_operation) {
-                return;
-            }
-
-            navigation_state.nav.pop();
-            if restore_window_for_current_page(&navigation_state, &recipients_page) {
-                show_password_list_page(&list_state);
-                return;
-            }
-            load_passwords_async(
-                &list_clone,
-                navigation_state.git.clone(),
-                navigation_state.find.clone(),
-                navigation_state.save.clone(),
-                overlay.clone(),
-                navigation_state.nav.navigation_stack().n_items() <= 1,
-            );
-        });
-        window.add_action(&action);
+        register_back_action(&window, &back_action_state);
     }
 
     #[cfg(not(feature = "flatpak"))]
@@ -685,53 +530,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     #[cfg(not(feature = "flatpak"))]
     {
-        let navigation_state = window_navigation_state.clone();
-        let view = log_view.clone();
-        let seen_revision = Rc::new(RefCell::new(0usize));
-        let seen_error_revision = Rc::new(RefCell::new(0usize));
-        glib::timeout_add_local(Duration::from_millis(50), move || {
-            let (revision, error_revision, text) = log_snapshot();
-            {
-                let mut seen = seen_revision.borrow_mut();
-                if revision != *seen {
-                    view.buffer().set_text(&text);
-                    *seen = revision;
-                }
-            }
-
-            if cfg!(debug_assertions) {
-                let mut seen_error = seen_error_revision.borrow_mut();
-                if error_revision > *seen_error {
-                    *seen_error = error_revision;
-                    show_log_page(&navigation_state);
-                }
-            }
-
-            glib::ControlFlow::Continue
-        });
+        start_log_poller(&log_view, &window_navigation_state);
     }
 
     // keyboard shortcuts
-    app.set_accels_for_action("win.back", &["Escape"]);
-    app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
-    app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
-    #[cfg(not(feature = "flatpak"))]
-    app.set_accels_for_action("win.open-log", &["F12"]);
-    app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
-    #[cfg(not(feature = "flatpak"))]
-    app.set_accels_for_action("win.synchronize", &["<primary>s"]);
-    #[cfg(not(feature = "flatpak"))]
-    app.set_accels_for_action("win.open-git", &["<primary>i"]);
+    configure_window_shortcuts(app);
 
     setup_search_filter(&list, &search_entry);
 
-    if let Some(q) = startup_query {
-        if !q.is_empty() {
-            search_entry.set_visible(true);
-            search_entry.set_text(&q);
-            list.invalidate_filter();
-        }
-    }
+    apply_startup_query(startup_query, &search_entry, &list);
 
     window
 }

@@ -16,5 +16,13 @@
         Command used to invoke pass. Can be "pass" or a full wrapper like a podman command.
       </description>
     </key>
+
+    <key name="new-pass-file-template" type="s">
+      <default>''</default>
+      <summary>New pass file template</summary>
+      <description>
+        Lines added after the password line when creating a new password entry.
+      </description>
+    </key>
   </schema>
 </schemalist>

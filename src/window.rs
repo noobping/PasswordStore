@@ -457,6 +457,15 @@ fn structured_pass_contents_from_values(
     output
 }
 
+fn new_pass_file_contents_from_template(template: &str) -> String {
+    let template = template.trim_matches('\n');
+    if template.is_empty() {
+        String::new()
+    } else {
+        format!("\n{template}")
+    }
+}
+
 #[cfg(not(feature = "flatpak"))]
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
     let Some(action) = window.lookup_action(name) else {
@@ -790,6 +799,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let pass_row: EntryRow = builder
         .object("pass_command_row")
         .expect("Failed to get pass row");
+    let new_pass_file_template_view: TextView = builder
+        .object("new_pass_file_template_view")
+        .expect("Failed to get new_pass_file_template_view");
     let password_stores: ListBox = builder
         .object("password_stores")
         .expect("Failed to get the password store list");
@@ -1125,6 +1137,23 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         });
     }
     {
+        let overlay = toast_overlay.clone();
+        let preferences = Preferences::new();
+        let buffer = new_pass_file_template_view.buffer();
+        buffer.connect_changed(move |buffer| {
+            let (start, end) = buffer.bounds();
+            let template = buffer.text(&start, &end, false).to_string();
+            if template == preferences.new_pass_file_template() {
+                return;
+            }
+            if let Err(err) = preferences.set_new_pass_file_template(&template) {
+                let message = err.message.to_string();
+                let toast = Toast::new(&message);
+                overlay.add_toast(toast);
+            }
+        });
+    }
+    {
         let page_state = store_recipients_page_state.clone();
         store_recipients_entry.connect_apply(move |entry| {
             if append_gpg_recipients(&page_state.recipients, entry.text().as_str()) {
@@ -1208,18 +1237,24 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let path = row.text().to_string();
             let settings = Preferences::new();
             let store_root = settings.store();
+            let template_contents =
+                new_pass_file_contents_from_template(&settings.new_pass_file_template());
             if path.is_empty() {
                 let toast = Toast::new("Enter a name or path for the new entry.");
                 overlay.add_toast(toast);
                 return;
             }
             let opened_pass_file = OpenPassFile::from_label(store_root, &path);
-            set_opened_pass_file(opened_pass_file);
+            set_opened_pass_file(opened_pass_file.clone());
+            let template_pass_file = refresh_opened_pass_file_from_contents(
+                &opened_pass_file,
+                &template_contents,
+            )
+            .or_else(get_opened_pass_file);
             status.set_visible(false);
             entry.set_visible(true);
-            sync_username_row(&username, get_opened_pass_file().as_ref());
+            sync_username_row(&username, template_pass_file.as_ref());
             otp.set_visible(false);
-            dynamic_box.set_visible(false);
             raw_button.set_visible(true);
             add.set_visible(false);
             find.set_visible(false);
@@ -1235,10 +1270,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             win.set_subtitle(&path);
             entry.set_text("");
             otp.set_text("");
-            clear_box_children(&dynamic_box);
-            structured_templates.borrow_mut().clear();
-            dynamic_rows.borrow_mut().clear();
-            text.buffer().set_text("");
+            text.buffer().set_text(&template_contents);
+            rebuild_dynamic_fields(
+                &dynamic_box,
+                &overlay,
+                &structured_templates,
+                &dynamic_rows,
+                &template_contents,
+            );
         });
     }
 
@@ -1477,6 +1516,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let win = window_title.clone();
         #[cfg(not(feature = "flatpak"))]
         let command = pass_row.clone();
+        let template_view = new_pass_file_template_view.clone();
         let list = password_stores.clone();
         let parent = window.clone();
         let overlay = toast_overlay.clone();
@@ -1497,6 +1537,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
+            template_view
+                .buffer()
+                .set_text(&settings.new_pass_file_template());
             rebuild_store_list(
                 &list,
                 &settings,
@@ -3310,7 +3353,7 @@ fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> R
 #[cfg(test)]
 mod tests {
     use super::{
-        append_gpg_recipients, normalize_gpg_recipient, parse_gpg_recipients,
+        append_gpg_recipients, new_pass_file_contents_from_template, normalize_gpg_recipient, parse_gpg_recipients,
         parse_structured_pass_lines, should_show_restore_button,
         stores_with_preferred_first,
         structured_pass_contents_from_values, StructuredPassLine,
@@ -3429,5 +3472,21 @@ mod tests {
         ));
         assert!(matches!(parsed[2].0, StructuredPassLine::Field(_)));
         assert_eq!(parsed[2].1.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn new_password_template_becomes_body_after_password_line() {
+        assert_eq!(
+            new_pass_file_contents_from_template("username:alice\nurl:https://example.com"),
+            "\nusername:alice\nurl:https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn new_password_template_trims_only_edge_newlines() {
+        assert_eq!(
+            new_pass_file_contents_from_template("\nusername:alice\n\nurl:https://example.com\n"),
+            "\nusername:alice\n\nurl:https://example.com".to_string()
+        );
     }
 }

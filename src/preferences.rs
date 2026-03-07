@@ -17,6 +17,7 @@ const DEFAULT_CMD: &str = "pass";
 struct PreferenceFile {
     pass_command: Option<String>,
     password_store_dirs: Option<Vec<String>>,
+    new_pass_file_template: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +104,15 @@ impl Preferences {
         Self::expand_path(&self.stores().into_iter().next().unwrap_or_default())
     }
 
+    pub fn new_pass_file_template(&self) -> String {
+        if let Some(s) = &self.settings {
+            s.string("new-pass-file-template").to_string()
+        } else {
+            let cfg = load_file_prefs();
+            cfg.new_pass_file_template.unwrap_or_default()
+        }
+    }
+
     pub fn stores(&self) -> Vec<String> {
         if let Some(s) = &self.settings {
             s.strv("password-store-dirs")
@@ -140,6 +150,16 @@ impl Preferences {
         } else {
             let mut cfg = load_file_prefs();
             cfg.password_store_dirs = Some(stores);
+            save_file_prefs(&cfg)
+        }
+    }
+
+    pub fn set_new_pass_file_template(&self, template: &str) -> Result<(), BoolError> {
+        if let Some(s) = &self.settings {
+            s.set_string("new-pass-file-template", template)
+        } else {
+            let mut cfg = load_file_prefs();
+            cfg.new_pass_file_template = Some(template.to_string());
             save_file_prefs(&cfg)
         }
     }

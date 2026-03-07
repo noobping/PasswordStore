@@ -2,9 +2,10 @@
 use crate::setup::*;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{
-    delete_password_entry, read_otp_code, read_password_entry, read_password_line,
-    rename_password_entry, save_password_entry, save_store_recipients,
+    delete_password_entry, read_otp_code, read_password_entry, rename_password_entry,
+    save_password_entry, save_store_recipients,
 };
+use crate::clipboard::{connect_copy_button, copy_password_entry_to_clipboard};
 #[cfg(feature = "flatpak")]
 use crate::backend::{
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
@@ -25,18 +26,27 @@ use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
 use crate::logging::{log_error, CommandControl};
 #[cfg(not(feature = "flatpak"))]
-use crate::logging::{log_snapshot, run_command_status, CommandLogOptions};
+use crate::logging::{log_snapshot, CommandLogOptions};
 #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::{run_command_output, run_command_with_input};
+use crate::logging::{run_command_output, run_command_status, run_command_with_input};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::run_command_output_controlled;
 use crate::methods::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     non_null_to_string_option, refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
+use crate::pass_file::{
+    clear_box_children, new_pass_file_contents_from_template, parse_structured_pass_lines,
+    rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row,
+    sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
+};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
+#[cfg(feature = "flatpak")]
+use crate::ripasso_unlock::{
+    is_locked_private_key_error, prompt_private_key_unlock_for_action,
+};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::ComboRow;
 #[cfg(feature = "flatpak")]
@@ -49,8 +59,8 @@ use adw::{
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::gtk::StringList;
 use adw::gtk::{
-    Box as GtkBox, Widget, gdk::Display, Builder, Button, Image, ListBox, ListBoxRow,
-    MenuButton, Popover, SearchEntry, Spinner, TextView,
+    Box as GtkBox, Builder, Button, Image, ListBox, ListBoxRow, MenuButton, Popover,
+    SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::{Cell, RefCell};
@@ -65,64 +75,6 @@ use std::thread;
 use std::time::Duration;
 
 const UI_SRC: &str = include_str!("../data/window.ui");
-
-const USERNAME_FIELD_KEYS: [&str; 3] = ["login", "username", "user"];
-const SENSITIVE_FIELD_HINTS: [&str; 8] = [
-    "pass",
-    "secret",
-    "token",
-    "pin",
-    "key",
-    "code",
-    "phrase",
-    "credential",
-];
-const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";
-const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";
-const COPY_BUTTON_FEEDBACK_MS: u64 = 1200;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct DynamicFieldTemplate {
-    raw_key: String,
-    title: String,
-    separator_spacing: String,
-    sensitive: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct UsernameFieldTemplate {
-    raw_key: String,
-    separator_spacing: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum StructuredPassLine {
-    Field(DynamicFieldTemplate),
-    Username(UsernameFieldTemplate),
-    Preserved(String),
-}
-
-#[derive(Clone)]
-enum DynamicFieldRow {
-    Plain(EntryRow),
-    Secret(PasswordEntryRow),
-}
-
-impl DynamicFieldRow {
-    fn text(&self) -> String {
-        match self {
-            Self::Plain(row) => row.text().to_string(),
-            Self::Secret(row) => row.text().to_string(),
-        }
-    }
-
-    fn widget(&self) -> Widget {
-        match self {
-            Self::Plain(row) => row.clone().upcast(),
-            Self::Secret(row) => row.clone().upcast(),
-        }
-    }
-}
 
 #[derive(Clone, Default)]
 struct GitOperationControl {
@@ -261,236 +213,6 @@ fn friendly_password_entry_error_message(_message: &str) -> Option<&'static str>
     None
 }
 
-#[cfg(feature = "flatpak")]
-fn is_locked_private_key_error(message: &str) -> bool {
-    message.contains("The selected private key is locked.")
-}
-
-#[cfg(feature = "flatpak")]
-fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
-    overlay
-        .root()
-        .and_then(|root| root.downcast::<ApplicationWindow>().ok())
-}
-
-#[cfg(feature = "flatpak")]
-fn start_ripasso_private_key_unlock_for_action(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    fingerprint: String,
-    passphrase: String,
-    after_unlock: Rc<dyn Fn()>,
-) {
-    let progress_dialog = build_private_key_progress_dialog(
-        window,
-        "Unlocking Private Key",
-        "Please wait while ripasso unlocks the private key for this session.",
-    );
-    let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
-    let fingerprint_for_thread = fingerprint.clone();
-    thread::spawn(move || {
-        let result = unlock_ripasso_private_key_for_session(&fingerprint_for_thread, &passphrase);
-        let _ = tx.send(result);
-    });
-
-    let overlay = overlay.clone();
-    let after_unlock = after_unlock.clone();
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(Ok(_)) => {
-            progress_dialog.force_close();
-            after_unlock();
-            let toast = Toast::new("Private key unlocked for this session.");
-            overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-        Ok(Err(err)) => {
-            progress_dialog.force_close();
-            log_error(format!("Failed to unlock ripasso private key: {err}"));
-            let message = if err.contains("incorrect") {
-                "Couldn't unlock that private key."
-            } else if err.contains("cannot decrypt password store entries") {
-                "That private key cannot decrypt password entries."
-            } else {
-                "Couldn't unlock that private key."
-            };
-            let toast = Toast::new(message);
-            overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            progress_dialog.force_close();
-            log_error("Private key unlock worker disconnected unexpectedly.".to_string());
-            let toast = Toast::new("Couldn't unlock that private key.");
-            overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-    });
-}
-
-#[cfg(feature = "flatpak")]
-fn prompt_ripasso_private_key_unlock_for_action(
-    overlay: &ToastOverlay,
-    fingerprint: String,
-    after_unlock: Rc<dyn Fn()>,
-) {
-    let Some(window) = toast_overlay_window(overlay) else {
-        log_error("Couldn't find the application window for the private key unlock dialog.".to_string());
-        let toast = Toast::new("Couldn't unlock that private key.");
-        overlay.add_toast(toast);
-        return;
-    };
-
-    let window_for_submit = window.clone();
-    let overlay_for_submit = overlay.clone();
-    present_private_key_password_dialog(
-        &window,
-        overlay,
-        "Unlock Private Key",
-        move |passphrase| {
-            start_ripasso_private_key_unlock_for_action(
-                &window_for_submit,
-                &overlay_for_submit,
-                fingerprint.clone(),
-                passphrase,
-                after_unlock.clone(),
-            );
-        },
-    );
-}
-
-fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
-    let toast = Toast::new("Clipboard is not available right now.");
-    overlay.add_toast(toast);
-}
-
-fn show_copy_feedback(button: &Button) {
-    button.set_icon_name(COPIED_BUTTON_ICON_NAME);
-
-    let button = button.clone();
-    glib::timeout_add_local_once(Duration::from_millis(COPY_BUTTON_FEEDBACK_MS), move || {
-        button.set_icon_name(COPY_BUTTON_ICON_NAME);
-    });
-}
-
-fn set_clipboard_text(text: &str, overlay: &ToastOverlay, button: Option<&Button>) {
-    if let Some(display) = Display::default() {
-        let clipboard = display.clipboard();
-        clipboard.set_text(text);
-        if let Some(button) = button {
-            show_copy_feedback(button);
-        }
-    } else {
-        show_clipboard_unavailable_toast(overlay);
-    }
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry, button: Option<&Button>) {
-    if let Some(button) = button {
-        show_copy_feedback(button);
-    }
-
-    thread::spawn(move || {
-        let settings = Preferences::new();
-        let mut cmd = settings.command();
-        cmd.env("PASSWORD_STORE_DIR", &item.store_path)
-            .arg("-c")
-            .arg(item.label());
-        let _ = run_command_status(
-            &mut cmd,
-            "Copy password to clipboard",
-            CommandLogOptions::SENSITIVE,
-        );
-    });
-}
-
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-fn copy_password_entry_to_clipboard_via_read(
-    item: PassEntry,
-    overlay: ToastOverlay,
-    button: Option<Button>,
-) {
-    let retry_item = item.clone();
-    let (tx, rx) = mpsc::channel::<Result<String, String>>();
-    thread::spawn(move || {
-        let label = item.label();
-        let result = read_password_line(&item.store_path, &label);
-        let _ = tx.send(result);
-    });
-
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(Ok(password)) => {
-            set_clipboard_text(&password, &overlay, button.as_ref());
-            glib::ControlFlow::Break
-        }
-        Ok(Err(err)) => {
-            log_error(format!("Failed to copy password entry: {err}"));
-            #[cfg(feature = "flatpak")]
-            if is_locked_private_key_error(&err) {
-                match resolved_ripasso_own_fingerprint() {
-                    Ok(fingerprint) => {
-                        let retry_overlay = overlay.clone();
-                        let retry_item_for_unlock = retry_item.clone();
-                        let retry_button = button.clone();
-                        prompt_ripasso_private_key_unlock_for_action(
-                            &overlay,
-                            fingerprint,
-                            Rc::new(move || {
-                                copy_password_entry_to_clipboard_via_read(
-                                    retry_item_for_unlock.clone(),
-                                    retry_overlay.clone(),
-                                    retry_button.clone(),
-                                );
-                            }),
-                        );
-                        return glib::ControlFlow::Break;
-                    }
-                    Err(resolve_err) => {
-                        log_error(format!(
-                            "Failed to resolve the selected ripasso private key for copy retry: {resolve_err}"
-                        ));
-                    }
-                }
-            }
-            let toast = Toast::new("Couldn't copy the password.");
-            overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            let toast = Toast::new("Couldn't copy the password.");
-            overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-    });
-}
-
-fn copy_password_entry_to_clipboard(item: PassEntry, overlay: ToastOverlay, button: Option<Button>) {
-    #[cfg(feature = "flatpak")]
-    {
-        copy_password_entry_to_clipboard_via_read(item, overlay, button);
-        return;
-    }
-
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
-    {
-        let settings = Preferences::new();
-        if settings.uses_ripasso_backend() {
-            copy_password_entry_to_clipboard_via_read(item, overlay, button);
-        } else {
-            copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());
-        }
-        return;
-    }
-
-    #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-    {
-        let _ = overlay;
-        copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());
-    }
-}
-
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 fn sync_backend_preferences_rows(backend_row: &ComboRow, pass_row: &EntryRow, preferences: &Preferences) {
     let backend = preferences.backend_kind();
@@ -498,282 +220,6 @@ fn sync_backend_preferences_rows(backend_row: &ComboRow, pass_row: &EntryRow, pr
         backend_row.set_selected(backend.combo_position());
     }
     pass_row.set_visible(backend.uses_pass_command());
-}
-
-fn is_username_field_key(key: &str) -> bool {
-    let key = key.trim().to_ascii_lowercase();
-    USERNAME_FIELD_KEYS.contains(&key.as_str())
-}
-
-fn is_otpauth_line(key: &str, value: &str, raw_line: &str) -> bool {
-    let key = key.trim().to_ascii_lowercase();
-    key == "otpauth" || value.contains("otpauth://") || raw_line.contains("otpauth://")
-}
-
-fn is_sensitive_field(key: &str) -> bool {
-    let key = key.trim().to_ascii_lowercase();
-    SENSITIVE_FIELD_HINTS
-        .iter()
-        .any(|hint| key.contains(hint))
-}
-
-fn is_url_field_key(key: &str) -> bool {
-    key.trim().eq_ignore_ascii_case("url")
-}
-
-fn structured_username_value(lines: &[(StructuredPassLine, Option<String>)]) -> Option<String> {
-    lines.iter().find_map(|(line, value)| match line {
-        StructuredPassLine::Username(_) => value.clone(),
-        _ => None,
-    })
-}
-
-fn uri_to_open(value: &str) -> Option<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        return None;
-    }
-
-    if value.contains("://") {
-        Some(value.to_string())
-    } else {
-        Some(format!("https://{value}"))
-    }
-}
-
-fn clear_box_children(box_widget: &GtkBox) {
-    while let Some(child) = box_widget.first_child() {
-        box_widget.remove(&child);
-    }
-}
-
-fn add_copy_suffix<W: IsA<Widget>>(widget: &W, text: impl Fn() -> String + 'static, overlay: &ToastOverlay)
-where
-    W: Clone,
-{
-    let button = Button::from_icon_name(COPY_BUTTON_ICON_NAME);
-    button.set_tooltip_text(Some("Copy value"));
-    button.add_css_class("flat");
-    let overlay = overlay.clone();
-    let feedback_button = button.clone();
-    button.connect_clicked(move |_| {
-        let text = text();
-        set_clipboard_text(&text, &overlay, Some(&feedback_button));
-    });
-
-    if let Some(row) = widget.dynamic_cast_ref::<EntryRow>() {
-        row.add_suffix(&button);
-    } else if let Some(row) = widget.dynamic_cast_ref::<PasswordEntryRow>() {
-        row.add_suffix(&button);
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn add_open_url_suffix(row: &EntryRow, text: impl Fn() -> String + 'static, overlay: &ToastOverlay) {
-    let button = Button::from_icon_name("adw-external-link-symbolic");
-    button.set_tooltip_text(Some("Open URL"));
-    button.add_css_class("flat");
-    let overlay = overlay.clone();
-    button.connect_clicked(move |_| {
-        let Some(uri) = uri_to_open(&text()) else {
-            let toast = Toast::new("Enter a URL first.");
-            overlay.add_toast(toast);
-            return;
-        };
-
-        let launch_result = Display::default().map_or_else(
-            || adw::gio::AppInfo::launch_default_for_uri(&uri, None::<&adw::gio::AppLaunchContext>),
-            |display| {
-                let context = display.app_launch_context();
-                adw::gio::AppInfo::launch_default_for_uri(&uri, Some(&context))
-            },
-        );
-
-        if let Err(error) = launch_result {
-            log_error(format!(
-                "Failed to open URL in the default browser.\nURL: {uri}\nerror: {error}"
-            ));
-            let toast = Toast::new("Could not open the URL in your browser.");
-            overlay.add_toast(toast);
-        }
-    });
-    row.add_suffix(&button);
-}
-
-fn apply_field_row_style<W: IsA<Widget>>(widget: &W) {
-    widget.set_margin_start(15);
-    widget.set_margin_end(15);
-    widget.set_margin_bottom(6);
-}
-
-fn build_dynamic_field_row(
-    template: &DynamicFieldTemplate,
-    value: &str,
-    overlay: &ToastOverlay,
-) -> DynamicFieldRow {
-    if template.sensitive {
-        let row = PasswordEntryRow::new();
-        row.set_title(&template.title);
-        row.set_text(value);
-        apply_field_row_style(&row);
-        let row_clone = row.clone();
-        add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
-        DynamicFieldRow::Secret(row)
-    } else {
-        let row = EntryRow::new();
-        row.set_title(&template.title);
-        row.set_text(value);
-        apply_field_row_style(&row);
-        let row_clone = row.clone();
-        add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
-        #[cfg(target_os = "linux")]
-        if is_url_field_key(&template.raw_key) {
-            let row_clone = row.clone();
-            add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);
-        }
-        DynamicFieldRow::Plain(row)
-    }
-}
-
-fn parse_structured_pass_lines(contents: &str) -> (String, Vec<(StructuredPassLine, Option<String>)>) {
-    let mut lines = contents.lines();
-    let password = lines.next().unwrap_or_default().to_string();
-    let structured = lines
-        .map(|line| {
-            let Some((raw_key, raw_value)) = line.split_once(':') else {
-                return (StructuredPassLine::Preserved(line.to_string()), None);
-            };
-
-            let title = raw_key.trim().to_string();
-            if title.is_empty() {
-                return (StructuredPassLine::Preserved(line.to_string()), None);
-            }
-
-            if is_username_field_key(&title) {
-                let separator_spacing = raw_value
-                    .chars()
-                    .take_while(|c| c.is_ascii_whitespace())
-                    .collect::<String>();
-                let value = raw_value.trim().to_string();
-                let template = UsernameFieldTemplate {
-                    raw_key: raw_key.to_string(),
-                    separator_spacing,
-                };
-
-                return (StructuredPassLine::Username(template), Some(value));
-            }
-
-            if is_otpauth_line(&title, raw_value, line) {
-                return (StructuredPassLine::Preserved(line.to_string()), None);
-            }
-
-            let separator_spacing = raw_value
-                .chars()
-                .take_while(|c| c.is_ascii_whitespace())
-                .collect::<String>();
-            let value = raw_value
-                .trim_start_matches(|c: char| c.is_ascii_whitespace())
-                .to_string();
-            let template = DynamicFieldTemplate {
-                raw_key: raw_key.to_string(),
-                title,
-                separator_spacing,
-                sensitive: is_sensitive_field(raw_key),
-            };
-
-            (StructuredPassLine::Field(template), Some(value))
-        })
-        .collect();
-
-    (password, structured)
-}
-
-fn rebuild_dynamic_fields_from_lines(
-    box_widget: &GtkBox,
-    overlay: &ToastOverlay,
-    templates_state: &Rc<RefCell<Vec<StructuredPassLine>>>,
-    rows_state: &Rc<RefCell<Vec<DynamicFieldRow>>>,
-    structured_lines: &[(StructuredPassLine, Option<String>)],
-) {
-    clear_box_children(box_widget);
-    templates_state.borrow_mut().clear();
-    rows_state.borrow_mut().clear();
-
-    let mut rows = Vec::new();
-    let mut templates = Vec::new();
-
-    for (line, value) in structured_lines.iter().cloned() {
-        match line {
-            StructuredPassLine::Field(template) => {
-                let row = build_dynamic_field_row(&template, value.as_deref().unwrap_or_default(), overlay);
-                box_widget.append(&row.widget());
-                rows.push(row);
-                templates.push(StructuredPassLine::Field(template));
-            }
-            StructuredPassLine::Username(template) => {
-                templates.push(StructuredPassLine::Username(template));
-            }
-            StructuredPassLine::Preserved(line) => {
-                templates.push(StructuredPassLine::Preserved(line));
-            }
-        }
-    }
-
-    box_widget.set_visible(!rows.is_empty());
-    *rows_state.borrow_mut() = rows;
-    *templates_state.borrow_mut() = templates;
-}
-
-fn structured_pass_contents(
-    password: &str,
-    username_value: &str,
-    templates: &[StructuredPassLine],
-    rows: &[DynamicFieldRow],
-) -> String {
-    let values = rows.iter().map(DynamicFieldRow::text).collect::<Vec<_>>();
-    structured_pass_contents_from_values(password, username_value, templates, &values)
-}
-
-fn structured_pass_contents_from_values(
-    password: &str,
-    username_value: &str,
-    templates: &[StructuredPassLine],
-    values: &[String],
-) -> String {
-    let mut output = String::new();
-    output.push_str(password);
-
-    let mut row_index = 0usize;
-    for line in templates {
-        output.push('\n');
-        match line {
-            StructuredPassLine::Field(template) => {
-                output.push_str(&template.raw_key);
-                output.push(':');
-                output.push_str(&template.separator_spacing);
-                output.push_str(values[row_index].as_str());
-                row_index += 1;
-            }
-            StructuredPassLine::Username(template) => {
-                output.push_str(&template.raw_key);
-                output.push(':');
-                output.push_str(&template.separator_spacing);
-                output.push_str(username_value);
-            }
-            StructuredPassLine::Preserved(line) => output.push_str(line),
-        }
-    }
-
-    output
-}
-
-fn new_pass_file_contents_from_template(template: &str) -> String {
-    let template = template.trim_matches('\n');
-    if template.is_empty() {
-        String::new()
-    } else {
-        format!("\n{template}")
-    }
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -819,7 +265,6 @@ fn open_password_entry_page(
     state: &PasswordListPageState,
     opened_pass_file: OpenPassFile,
     push_page: bool,
-    #[cfg(feature = "flatpak")] ripasso_private_keys_state: Option<RipassoPrivateKeysState>,
 ) {
     let pass_label = opened_pass_file.label();
     let store_for_thread = opened_pass_file.store_path().to_string();
@@ -880,8 +325,6 @@ fn open_password_entry_page(
         let _ = tx.send(result);
     });
 
-    #[cfg(feature = "flatpak")]
-    let list_state = state.clone();
     let password_status = state.status.clone();
     let password_entry = state.entry.clone();
     let username_entry = state.username.clone();
@@ -896,7 +339,7 @@ fn open_password_entry_page(
     let label_for_otp = pass_label.clone();
     let store_for_otp = opened_pass_file.store_path().to_string();
     #[cfg(feature = "flatpak")]
-    let ripasso_private_keys_state_for_result = ripasso_private_keys_state.clone();
+    let retry_state = state.clone();
     glib::timeout_add_local(Duration::from_millis(50), move || {
         use std::sync::mpsc::TryRecvError;
 
@@ -987,32 +430,27 @@ fn open_password_entry_page(
                     password_status.set_description(Some(
                         "Unlock the selected private key to continue opening this pass file.",
                     ));
-                    if let Some(ripasso_state) = ripasso_private_keys_state_for_result.clone() {
-                        match resolved_ripasso_own_fingerprint() {
-                            Ok(fingerprint) => {
-                                let retry_state = list_state.clone();
-                                let retry_pass_file = opened_pass_file_for_result.clone();
-                                let retry_ripasso_state = ripasso_state.clone();
-                                prompt_ripasso_private_key_unlock(
-                                    &ripasso_state,
-                                    fingerprint,
-                                    false,
-                                    Some(Rc::new(move || {
-                                        open_password_entry_page(
-                                            &retry_state,
-                                            retry_pass_file.clone(),
-                                            false,
-                                            Some(retry_ripasso_state.clone()),
-                                        );
-                                    })),
-                                );
-                                return glib::ControlFlow::Break;
-                            }
-                            Err(err) => {
-                                log_error(format!(
-                                    "Failed to resolve the selected ripasso private key: {err}"
-                                ));
-                            }
+                    match resolved_ripasso_own_fingerprint() {
+                        Ok(fingerprint) => {
+                            let retry_pass_file = opened_pass_file_for_result.clone();
+                            let retry_page_state = retry_state.clone();
+                            prompt_private_key_unlock_for_action(
+                                &overlay,
+                                fingerprint,
+                                Rc::new(move || {
+                                    open_password_entry_page(
+                                        &retry_page_state,
+                                        retry_pass_file.clone(),
+                                        false,
+                                    );
+                                }),
+                            );
+                            return glib::ControlFlow::Break;
+                        }
+                        Err(err) => {
+                            log_error(format!(
+                                "Failed to resolve the selected ripasso private key: {err}"
+                            ));
                         }
                     }
                 }
@@ -1904,8 +1342,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let overlay = toast_overlay.clone();
         let list_state = password_list_state.clone();
-        #[cfg(feature = "flatpak")]
-        let ripasso_state = ripasso_private_keys_state.clone();
         list.connect_row_activated(move |_list, row| {
             let label = non_null_to_string_option(row, "label");
             let root = non_null_to_string_option(row, "root");
@@ -1921,13 +1357,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 return;
             };
             let opened_pass_file = OpenPassFile::from_label(root, &label);
-            open_password_entry_page(
-                &list_state,
-                opened_pass_file,
-                true,
-                #[cfg(feature = "flatpak")]
-                Some(ripasso_state.clone()),
-            );
+            open_password_entry_page(&list_state, opened_pass_file, true);
         });
     }
 
@@ -2004,38 +1434,29 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
     // Copy password button on password page
     {
-        let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
         let btn = copy_password_button.clone();
-        let feedback_button = btn.clone();
-        btn.connect_clicked(move |_| {
+        connect_copy_button(&btn, &toast_overlay, move || {
             entry.grab_focus_without_selecting();
-            let text = entry.text().to_string();
-            set_clipboard_text(&text, &overlay, Some(&feedback_button));
+            entry.text().to_string()
         });
     }
     // Copy username button on password page
     {
-        let overlay = toast_overlay.clone();
         let entry = username_entry.clone();
         let btn = copy_username_button.clone();
-        let feedback_button = btn.clone();
-        btn.connect_clicked(move |_| {
+        connect_copy_button(&btn, &toast_overlay, move || {
             entry.grab_focus_without_selecting();
-            let text = entry.text().to_string();
-            set_clipboard_text(&text, &overlay, Some(&feedback_button));
+            entry.text().to_string()
         });
     }
     // Copy OTP button on password page
     {
-        let overlay = toast_overlay.clone();
         let entry = otp_entry.clone();
         let btn = copy_otp_button.clone();
-        let feedback_button = btn.clone();
-        btn.connect_clicked(move |_| {
+        connect_copy_button(&btn, &toast_overlay, move || {
             entry.grab_focus_without_selecting();
-            let text = entry.text().to_string();
-            set_clipboard_text(&text, &overlay, Some(&feedback_button));
+            entry.text().to_string()
         });
     }
     // new password
@@ -3200,32 +2621,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     window
 }
-
-fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
-    row.set_editable(false);
-    if let Some(username) = pass_file.and_then(OpenPassFile::username) {
-        row.set_text(username);
-        row.set_visible(true);
-    } else {
-        row.set_text("");
-        row.set_visible(false);
-    }
-}
-
-fn sync_username_row_from_parsed_lines(
-    row: &EntryRow,
-    pass_file: Option<&OpenPassFile>,
-    lines: &[(StructuredPassLine, Option<String>)],
-) {
-    if let Some(username) = structured_username_value(lines) {
-        row.set_text(&username);
-        row.set_visible(true);
-        row.set_editable(true);
-    } else {
-        sync_username_row(row, pass_file);
-    }
-}
-
 #[cfg(not(feature = "flatpak"))]
 fn show_log_page(
     nav: &NavigationView,
@@ -4222,10 +3617,13 @@ fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> R
 #[cfg(test)]
 mod tests {
     use super::{
-        append_gpg_recipients, new_pass_file_contents_from_template, normalize_gpg_recipient,
-        parse_gpg_recipients, parse_structured_pass_lines, should_show_restore_button,
-        stores_with_preferred_first, structured_username_value, uri_to_open,
-        structured_pass_contents_from_values, StructuredPassLine,
+        append_gpg_recipients, normalize_gpg_recipient, parse_gpg_recipients,
+        should_show_restore_button, stores_with_preferred_first,
+    };
+    use crate::pass_file::{
+        new_pass_file_contents_from_template, parse_structured_pass_lines,
+        structured_pass_contents_from_values, structured_username_value, uri_to_open,
+        StructuredPassLine, UsernameFieldTemplate,
     };
     use std::{cell::RefCell, rc::Rc};
 
@@ -4386,7 +3784,7 @@ mod tests {
     #[test]
     fn structured_save_preserves_username_field_template() {
         let templates = vec![
-            StructuredPassLine::Username(super::UsernameFieldTemplate {
+            StructuredPassLine::Username(UsernameFieldTemplate {
                 raw_key: "username".to_string(),
                 separator_spacing: String::new(),
             }),
@@ -4398,13 +3796,5 @@ mod tests {
             structured_pass_contents_from_values("secret", "alice@example.com", &templates, &values),
             "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
         );
-    }
-
-    #[cfg(feature = "flatpak")]
-    #[test]
-    fn locked_private_key_errors_are_detected() {
-        assert!(super::is_locked_private_key_error(
-            "The selected private key is locked. Unlock it in Preferences and enter its password."
-        ));
     }
 }

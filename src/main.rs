@@ -5,12 +5,16 @@ mod setup;
 mod config;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 mod backend;
+mod clipboard;
 mod item;
 mod logging;
 mod methods;
+mod pass_file;
 #[cfg(feature = "flatpak")]
 mod private_key_dialog;
 mod preferences;
+#[cfg(feature = "flatpak")]
+mod ripasso_unlock;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};

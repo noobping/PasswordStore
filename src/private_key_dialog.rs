@@ -1,14 +1,10 @@
-#[cfg(feature = "flatpak")]
 use adw::gtk::Spinner;
-#[cfg(feature = "flatpak")]
 use adw::prelude::*;
-#[cfg(feature = "flatpak")]
 use adw::{
     ApplicationWindow, Dialog, HeaderBar, PasswordEntryRow, PreferencesGroup, PreferencesPage,
     StatusPage, Toast, ToastOverlay, ToolbarView,
 };
 
-#[cfg(feature = "flatpak")]
 pub fn build_private_key_progress_dialog(
     window: &ApplicationWindow,
     title: &str,
@@ -35,7 +31,6 @@ pub fn build_private_key_progress_dialog(
     dialog
 }
 
-#[cfg(feature = "flatpak")]
 pub fn present_private_key_password_dialog<F>(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,

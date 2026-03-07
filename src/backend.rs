@@ -82,7 +82,7 @@ fn ripasso_config_path() -> Result<PathBuf, String> {
 
 #[cfg(feature = "flatpak")]
 fn ripasso_keys_dir() -> Result<PathBuf, String> {
-    Ok(ripasso_config_path()?.join("share").join("ripasso").join("keys"))
+    Ok(ripasso_config_path()?.join("share").join(env!("CARGO_PKG_NAME")).join("keys"))
 }
 
 #[cfg(feature = "flatpak")]

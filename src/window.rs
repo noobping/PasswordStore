@@ -288,6 +288,46 @@ fn is_sensitive_field(key: &str) -> bool {
         .any(|hint| key.contains(hint))
 }
 
+fn is_url_field_key(key: &str) -> bool {
+    key.trim().eq_ignore_ascii_case("url")
+}
+
+fn explicit_username_value(contents: &str) -> Option<String> {
+    contents.lines().skip(1).find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        if !is_username_field_key(key) {
+            return None;
+        }
+        Some(value.trim().to_string())
+    })
+}
+
+fn rewrite_username_preserved_line(line: &str, username_value: &str) -> Option<String> {
+    let (raw_key, raw_value) = line.split_once(':')?;
+    if !is_username_field_key(raw_key) {
+        return None;
+    }
+
+    let separator_spacing = raw_value
+        .chars()
+        .take_while(|c| c.is_ascii_whitespace())
+        .collect::<String>();
+    Some(format!("{raw_key}:{separator_spacing}{username_value}"))
+}
+
+fn uri_to_open(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    if value.contains("://") {
+        Some(value.to_string())
+    } else {
+        Some(format!("https://{value}"))
+    }
+}
+
 fn clear_box_children(box_widget: &GtkBox) {
     while let Some(child) = box_widget.first_child() {
         box_widget.remove(&child);
@@ -319,6 +359,23 @@ where
     }
 }
 
+fn add_open_url_suffix(row: &EntryRow, text: impl Fn() -> String + 'static, overlay: &ToastOverlay) {
+    let button = Button::from_icon_name("adw-external-link-symbolic");
+    button.set_tooltip_text(Some("Open URL"));
+    button.add_css_class("flat");
+    let overlay = overlay.clone();
+    button.connect_clicked(move |_| {
+        let Some(uri) = uri_to_open(&text()) else {
+            let toast = Toast::new("Enter a URL first.");
+            overlay.add_toast(toast);
+            return;
+        };
+
+        adw::gtk::show_uri(None::<&adw::gtk::Window>, &uri, 0);
+    });
+    row.add_suffix(&button);
+}
+
 fn apply_field_row_style<W: IsA<Widget>>(widget: &W) {
     widget.set_margin_start(15);
     widget.set_margin_end(15);
@@ -345,6 +402,10 @@ fn build_dynamic_field_row(
         apply_field_row_style(&row);
         let row_clone = row.clone();
         add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
+        if is_url_field_key(&template.raw_key) {
+            let row_clone = row.clone();
+            add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);
+        }
         DynamicFieldRow::Plain(row)
     }
 }
@@ -424,15 +485,17 @@ fn rebuild_dynamic_fields(
 
 fn structured_pass_contents(
     password: &str,
+    username_value: &str,
     templates: &[StructuredPassLine],
     rows: &[DynamicFieldRow],
 ) -> String {
     let values = rows.iter().map(DynamicFieldRow::text).collect::<Vec<_>>();
-    structured_pass_contents_from_values(password, templates, &values)
+    structured_pass_contents_from_values(password, username_value, templates, &values)
 }
 
 fn structured_pass_contents_from_values(
     password: &str,
+    username_value: &str,
     templates: &[StructuredPassLine],
     values: &[String],
 ) -> String {
@@ -450,7 +513,13 @@ fn structured_pass_contents_from_values(
                 output.push_str(values[row_index].as_str());
                 row_index += 1;
             }
-            StructuredPassLine::Preserved(line) => output.push_str(line),
+            StructuredPassLine::Preserved(line) => {
+                if let Some(updated_line) = rewrite_username_preserved_line(line, username_value) {
+                    output.push_str(&updated_line);
+                } else {
+                    output.push_str(line);
+                }
+            }
         }
     }
 
@@ -1045,7 +1114,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                             &dynamic_rows,
                             &output,
                         );
-                        sync_username_row(&username_entry, updated_pass_file.as_ref());
+                        sync_username_row_from_contents(
+                            &username_entry,
+                            updated_pass_file.as_ref(),
+                            &output,
+                        );
 
                         let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
                         otp_entry.set_visible(otp);
@@ -1253,7 +1326,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             .or_else(get_opened_pass_file);
             status.set_visible(false);
             entry.set_visible(true);
-            sync_username_row(&username, template_pass_file.as_ref());
+            sync_username_row_from_contents(&username, template_pass_file.as_ref(), &template_contents);
             otp.set_visible(false);
             raw_button.set_visible(true);
             add.set_visible(false);
@@ -1314,6 +1387,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             } else {
                 structured_pass_contents(
                     &entry.text(),
+                    &username.text(),
                     &structured_templates.borrow(),
                     &dynamic_rows.borrow(),
                 )
@@ -1339,7 +1413,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         &contents,
                     );
                     entry.set_text(&password);
-                    sync_username_row(&username, updated_pass_file.as_ref());
+                    sync_username_row_from_contents(&username, updated_pass_file.as_ref(), &contents);
                     let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
                     otp.set_visible(otp_visible);
                     if otp_visible {
@@ -1579,6 +1653,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let save = save_button.clone();
         let win = window_title.clone();
         let entry = password_entry.clone();
+        let username = username_entry.clone();
         let text = text_view.clone();
         let structured_templates = structured_templates.clone();
         let dynamic_rows = dynamic_field_rows.clone();
@@ -1586,6 +1661,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         action.connect_activate(move |_, _| {
             let contents = structured_pass_contents(
                 &entry.text(),
+                &username.text(),
                 &structured_templates.borrow(),
                 &dynamic_rows.borrow(),
             );
@@ -2358,12 +2434,27 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 }
 
 fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
+    row.set_editable(false);
     if let Some(username) = pass_file.and_then(OpenPassFile::username) {
         row.set_text(username);
         row.set_visible(true);
     } else {
         row.set_text("");
         row.set_visible(false);
+    }
+}
+
+fn sync_username_row_from_contents(
+    row: &EntryRow,
+    pass_file: Option<&OpenPassFile>,
+    contents: &str,
+) {
+    if let Some(username) = explicit_username_value(contents) {
+        row.set_text(&username);
+        row.set_visible(true);
+        row.set_editable(true);
+    } else {
+        sync_username_row(row, pass_file);
     }
 }
 
@@ -3353,7 +3444,8 @@ fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> R
 #[cfg(test)]
 mod tests {
     use super::{
-        append_gpg_recipients, new_pass_file_contents_from_template, normalize_gpg_recipient, parse_gpg_recipients,
+        append_gpg_recipients, explicit_username_value, new_pass_file_contents_from_template,
+        normalize_gpg_recipient, parse_gpg_recipients, rewrite_username_preserved_line, uri_to_open,
         parse_structured_pass_lines, should_show_restore_button,
         stores_with_preferred_first,
         structured_pass_contents_from_values, StructuredPassLine,
@@ -3452,7 +3544,7 @@ mod tests {
 
         assert_eq!(values, vec!["hello@example.com".to_string(), "hello".to_string()]);
         assert_eq!(
-            structured_pass_contents_from_values(&password, &templates, &values),
+            structured_pass_contents_from_values(&password, "", &templates, &values),
             contents
         );
     }
@@ -3487,6 +3579,45 @@ mod tests {
         assert_eq!(
             new_pass_file_contents_from_template("\nusername:alice\n\nurl:https://example.com\n"),
             "\nusername:alice\n\nurl:https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn bare_urls_get_https_when_opened() {
+        assert_eq!(
+            uri_to_open("example.com/path"),
+            Some("https://example.com/path".to_string())
+        );
+    }
+
+    #[test]
+    fn explicit_url_schemes_are_preserved() {
+        assert_eq!(
+            uri_to_open("https://example.com/path"),
+            Some("https://example.com/path".to_string())
+        );
+    }
+
+    #[test]
+    fn blank_username_line_is_detected() {
+        assert_eq!(explicit_username_value("secret\nusername:\nurl:https://example.com"), Some(String::new()));
+    }
+
+    #[test]
+    fn structured_save_rewrites_username_line() {
+        let templates = vec![
+            StructuredPassLine::Preserved("username:".to_string()),
+            StructuredPassLine::Preserved("url: https://example.com".to_string()),
+        ];
+        let values = Vec::<String>::new();
+
+        assert_eq!(
+            structured_pass_contents_from_values("secret", "alice@example.com", &templates, &values),
+            "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
+        );
+        assert_eq!(
+            rewrite_username_preserved_line("username: ", ""),
+            Some("username: ".to_string())
         );
     }
 }

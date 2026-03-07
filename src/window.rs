@@ -23,7 +23,6 @@ use adw::gtk::{
     Box as GtkBox, Widget, gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton,
     Popover, SearchEntry, Spinner, TextView,
 };
-#[cfg(feature = "flatpak")]
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::RefCell;
 use std::io;
@@ -2224,41 +2223,7 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences, _window: &Applicat
         append_store_row(list, settings, &store);
     }
 
-    #[cfg(feature = "flatpak")]
-    {
-        append_store_picker_row(list, settings, _window);
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    {
-    let add_row = EntryRow::new();
-    add_row.set_title("Add password store (absolute path)");
-    add_row.set_show_apply_button(true);
-    list.append(&add_row);
-
-    {
-        let settings = settings.clone();
-        let list = list.clone();
-        add_row.connect_apply(move |row| {
-            let text = row.text().trim().to_string();
-            if text.is_empty() {
-                return;
-            }
-            let mut stores = settings.stores();
-            if stores.contains(&text) {
-                return;
-            }
-            stores.push(text.clone());
-            if let Err(err) = settings.set_stores(stores) {
-                log_error(format!("Failed to save stores: {err}"));
-                return;
-            } else {
-                append_store_row(&list, &settings, &text);
-                row.set_text(""); // clear field
-            }
-        });
-    }
-    }
+    append_store_picker_row(list, settings, _window);
 }
 
 fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
@@ -2289,7 +2254,6 @@ fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
     });
 }
 
-#[cfg(feature = "flatpak")]
 fn append_store_picker_row(list: &ListBox, settings: &Preferences, window: &ApplicationWindow) {
     let row = ActionRow::builder()
         .title("Add password store folder")
@@ -2321,7 +2285,6 @@ fn append_store_picker_row(list: &ListBox, settings: &Preferences, window: &Appl
     }
 }
 
-#[cfg(feature = "flatpak")]
 fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Preferences) {
     let dialog = FileChooserNative::new(
         Some("Choose password store folder"),

@@ -2700,13 +2700,27 @@ fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> 
 fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
     for recipient in value.split(|c| c == ',' || c == ';' || c == '\n') {
-        let recipient = recipient.trim();
-        if recipient.is_empty() || recipients.iter().any(|existing| existing == recipient) {
+        let recipient = normalize_gpg_recipient(recipient);
+        if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
             continue;
         }
-        recipients.push(recipient.to_string());
+        recipients.push(recipient);
     }
     recipients
+}
+
+fn normalize_gpg_recipient(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let compact = trimmed.chars().filter(|c| !c.is_ascii_whitespace()).collect::<String>();
+    if trimmed.contains(char::is_whitespace) && compact.chars().all(|c| c.is_ascii_hexdigit()) {
+        compact
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
@@ -2743,7 +2757,8 @@ fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        append_gpg_recipients, parse_gpg_recipients, parse_structured_pass_lines,
+        append_gpg_recipients, normalize_gpg_recipient, parse_gpg_recipients,
+        parse_structured_pass_lines,
         stores_with_preferred_first,
         structured_pass_contents_from_values, StructuredPassLine,
     };
@@ -2757,6 +2772,22 @@ mod tests {
                 "alice@example.com".to_string(),
                 "bob@example.com".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn gpg_fingerprints_drop_internal_spaces() {
+        assert_eq!(
+            normalize_gpg_recipient("7D FF 03 8D EE 12 AB 34"),
+            "7DFF038DEE12AB34".to_string()
+        );
+    }
+
+    #[test]
+    fn gpg_user_ids_keep_internal_spaces() {
+        assert_eq!(
+            normalize_gpg_recipient("Alice Example <alice@example.com>"),
+            "Alice Example <alice@example.com>".to_string()
         );
     }
 

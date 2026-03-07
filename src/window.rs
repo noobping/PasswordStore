@@ -598,15 +598,24 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         let popover = git_popover.clone();
+        let entry = git_url_entry.clone();
         let action = SimpleAction::new("open-git", None);
         action.connect_activate(move |_, _| {
             if popover.is_visible() {
                 popover.popdown()
             } else {
-                popover.popup()
+                popover.popup();
+                entry.grab_focus();
             }
         });
         window.add_action(&action);
+    }
+
+    {
+        let window = window.clone();
+        git_url_entry.connect_apply(move |_| {
+            let _ = adw::prelude::WidgetExt::activate_action(&window, "win.git-clone", None);
+        });
     }
 
     {
@@ -659,9 +668,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             thread::spawn(move || {
                 let settings = Preferences::new();
                 let store_root = settings.store();
-                let mut cmd = settings.command();
-                cmd.env("PASSWORD_STORE_DIR", &store_root)
-                    .args(["git", "clone", &url_for_thread]);
+                if store_root.is_empty() {
+                    let _ = tx.send(Err("No password store directory configured".to_string()));
+                    return;
+                }
+
+                let mut cmd = settings.git_command();
+                cmd.arg("clone").arg(&url_for_thread).arg(&store_root);
                 let result =
                     match run_command_output(&mut cmd, "Clone password store", CommandLogOptions::DEFAULT)
                     {
@@ -916,14 +929,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let settings = Preferences::new();
                 let roots = settings.stores();
                 for root in roots {
-                    let commands: [&[&str]; 3] = [
-                        &["git", "fetch", "--all"],
-                        &["git", "pull"],
-                        &["git", "push"],
-                    ];
+                    let commands: [&[&str]; 3] = [&["fetch", "--all"], &["pull"], &["push"]];
                     for args in commands {
-                        let mut cmd = settings.command();
-                        cmd.env("PASSWORD_STORE_DIR", &root).args(args);
+                        let mut cmd = settings.git_command();
+                        cmd.arg("-C").arg(&root).args(args);
                         let output = run_command_output(
                             &mut cmd,
                             &format!("Synchronize password store {root}"),

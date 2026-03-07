@@ -1,7 +1,5 @@
 #[cfg(feature = "setup")]
 use crate::setup::*;
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-use crate::backend::{read_otp_code, save_password_entry};
 use crate::clipboard::connect_copy_button;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
@@ -12,22 +10,14 @@ use crate::item::OpenPassFile;
 use crate::logging::{log_error, CommandControl};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{log_snapshot, CommandLogOptions};
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::{run_command_output, run_command_with_input};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::run_command_output_controlled;
-use crate::methods::{
-    get_opened_pass_file, non_null_to_string_option, refresh_opened_pass_file_from_contents,
-    set_opened_pass_file,
-};
-use crate::pass_file::{
-    new_pass_file_contents_from_template, parse_structured_pass_lines,
-    rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row_from_parsed_lines,
-    DynamicFieldRow, StructuredPassLine,
-};
+use crate::methods::non_null_to_string_option;
+use crate::pass_file::{DynamicFieldRow, StructuredPassLine};
 use crate::password_list::{load_passwords_async, setup_search_filter};
 use crate::password_page::{
-    open_password_entry_page, show_password_list_page, PasswordPageState,
+    begin_new_password_entry, open_password_entry_page, save_current_password_entry,
+    show_password_list_page, show_raw_pass_file_page, PasswordPageState,
 };
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use crate::preferences::BackendKind;
@@ -349,6 +339,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let password_list_state = PasswordPageState {
         nav: navigation_view.clone(),
         page: text_page.clone(),
+        raw_page: raw_text_page.clone(),
         list: list.clone(),
         back: back_button.clone(),
         add: add_button.clone(),
@@ -534,178 +525,20 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
     // new password
     {
-        let back = back_button.clone();
-        let git = git_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let save = save_button.clone();
-        let nav = navigation_view.clone();
-        let page = text_page.clone();
         let popover_add = add_button_popover.clone();
         let popover_git = git_popover.clone();
-        let overlay = toast_overlay.clone();
-        let entry = password_entry.clone();
-        let username = username_entry.clone();
-        let otp = otp_entry.clone();
-        let text = text_view.clone();
-        let dynamic_box = dynamic_fields_box.clone();
-        let raw_button = open_raw_button.clone();
-        let structured_templates = structured_templates.clone();
-        let dynamic_rows = dynamic_field_rows.clone();
-        let status = password_status.clone();
-        let win = window_title.clone();
+        let page_state = password_list_state.clone();
         path_entry.connect_apply(move |row| {
-            let path = row.text().to_string();
-            let settings = Preferences::new();
-            let store_root = settings.store();
-            let template_contents =
-                new_pass_file_contents_from_template(&settings.new_pass_file_template());
-            if path.is_empty() {
-                let toast = Toast::new("Enter a name or path for the new entry.");
-                overlay.add_toast(toast);
-                return;
-            }
-            let opened_pass_file = OpenPassFile::from_label(store_root, &path);
-            set_opened_pass_file(opened_pass_file.clone());
-            let template_pass_file = refresh_opened_pass_file_from_contents(
-                &opened_pass_file,
-                &template_contents,
-            )
-            .or_else(get_opened_pass_file);
-            let (_, structured_lines) = parse_structured_pass_lines(&template_contents);
-            status.set_visible(false);
-            entry.set_visible(true);
-            sync_username_row_from_parsed_lines(&username, template_pass_file.as_ref(), &structured_lines);
-            otp.set_visible(false);
-            raw_button.set_visible(true);
-            add.set_visible(false);
-            find.set_visible(false);
-            git.set_visible(false);
-            back.set_visible(true);
-            save.set_visible(true);
-            set_save_button_for_password(&save);
-            nav.push(&page);
-
-            popover_add.popdown();
-            popover_git.popdown();
-            win.set_title("New password");
-            win.set_subtitle(&path);
-            entry.set_text("");
-            otp.set_text("");
-            text.buffer().set_text(&template_contents);
-            rebuild_dynamic_fields_from_lines(
-                &dynamic_box,
-                &overlay,
-                &structured_templates,
-                &dynamic_rows,
-                &structured_lines,
-            );
+            begin_new_password_entry(&page_state, &row.text(), &popover_add, &popover_git);
         });
     }
 
     // actions
     {
-        let nav = navigation_view.clone();
-        let raw_page = raw_text_page.clone();
-        let entry = password_entry.clone();
-        let username = username_entry.clone();
-        let otp = otp_entry.clone();
-        let text = text_view.clone();
-        let dynamic_box = dynamic_fields_box.clone();
-        let structured_templates = structured_templates.clone();
-        let dynamic_rows = dynamic_field_rows.clone();
-        let overlay = toast_overlay.clone();
+        let page_state = password_list_state.clone();
         let action = SimpleAction::new("save-password", None);
         action.connect_activate(move |_, _| {
-            let Some(pass_file) = get_opened_pass_file() else {
-                let toast = Toast::new("Open a password entry before saving.");
-                overlay.add_toast(toast);
-                return;
-            };
-
-            let raw_visible = nav
-                .visible_page()
-                .as_ref()
-                .map(|page| page == &raw_page)
-                .unwrap_or(false);
-
-            let contents = if raw_visible {
-                let buffer = text.buffer();
-                let (start, end) = buffer.bounds();
-                buffer.text(&start, &end, false).to_string()
-            } else {
-                structured_pass_contents(
-                    &entry.text(),
-                    &username.text(),
-                    &structured_templates.borrow(),
-                    &dynamic_rows.borrow(),
-                )
-            };
-
-            let password = contents.lines().next().unwrap_or_default().to_string();
-            if password.is_empty() {
-                let toast = Toast::new("Enter a password before saving.");
-                overlay.add_toast(toast);
-                return;
-            }
-            let label = pass_file.label();
-            match write_pass_entry(pass_file.store_path(), &label, &contents, true) {
-                Ok(()) => {
-                    let updated_pass_file =
-                        refresh_opened_pass_file_from_contents(&pass_file, &contents);
-                    let (_, structured_lines) = parse_structured_pass_lines(&contents);
-                    text.buffer().set_text(&contents);
-                    rebuild_dynamic_fields_from_lines(
-                        &dynamic_box,
-                        &overlay,
-                        &structured_templates,
-                        &dynamic_rows,
-                        &structured_lines,
-                    );
-                    entry.set_text(&password);
-                    sync_username_row_from_parsed_lines(
-                        &username,
-                        updated_pass_file.as_ref(),
-                        &structured_lines,
-                    );
-                    let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
-                    otp.set_visible(otp_visible);
-                    if otp_visible {
-                        #[cfg(any(feature = "setup", feature = "flatpak"))]
-                        match read_otp_code(pass_file.store_path(), &label) {
-                            Ok(code) => otp.set_text(&code),
-                            Err(_) => otp.set_text(""),
-                        }
-                        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-                        {
-                            let settings = Preferences::new();
-                            let mut cmd = settings.command();
-                            cmd.env("PASSWORD_STORE_DIR", pass_file.store_path())
-                                .args(["otp", &label]);
-                            match run_command_output(
-                                &mut cmd,
-                                "Read OTP code",
-                                CommandLogOptions::SENSITIVE,
-                            ) {
-                                Ok(output) if output.status.success() => {
-                                    let code =
-                                        String::from_utf8_lossy(&output.stdout).trim().to_string();
-                                    otp.set_text(&code);
-                                }
-                                _ => otp.set_text(""),
-                            }
-                        }
-                    } else {
-                        otp.set_text("");
-                    }
-                    let toast = Toast::new("Changes saved.");
-                    overlay.add_toast(toast);
-                }
-                Err(msg) => {
-                    let toast = Toast::new(&msg);
-                    overlay.add_toast(toast);
-                }
-            }
+            save_current_password_entry(&page_state);
         });
 
         window.add_action(&action);
@@ -893,51 +726,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
-        let nav = navigation_view.clone();
-        let page = raw_text_page.clone();
-        let back = back_button.clone();
-        let add = add_button.clone();
-        let find = find_button.clone();
-        let git = git_button.clone();
-        let save = save_button.clone();
-        let win = window_title.clone();
-        let entry = password_entry.clone();
-        let username = username_entry.clone();
-        let text = text_view.clone();
-        let structured_templates = structured_templates.clone();
-        let dynamic_rows = dynamic_field_rows.clone();
+        let page_state = password_list_state.clone();
         let action = SimpleAction::new("open-raw-pass-file", None);
         action.connect_activate(move |_, _| {
-            let contents = structured_pass_contents(
-                &entry.text(),
-                &username.text(),
-                &structured_templates.borrow(),
-                &dynamic_rows.borrow(),
-            );
-            text.buffer().set_text(&contents);
-
-            add.set_visible(false);
-            find.set_visible(false);
-            git.set_visible(false);
-            back.set_visible(true);
-            save.set_visible(true);
-            set_save_button_for_password(&save);
-            win.set_title("Raw Pass File");
-            if let Some(pass_file) = get_opened_pass_file() {
-                let label = pass_file.label();
-                win.set_subtitle(&label);
-            } else {
-                win.set_subtitle("Password Store");
-            }
-
-            let already_visible = nav
-                .visible_page()
-                .as_ref()
-                .map(|visible| visible == &page)
-                .unwrap_or(false);
-            if !already_visible {
-                nav.push(&page);
-            }
+            show_raw_pass_file_page(&page_state);
         });
         window.add_action(&action);
     }
@@ -1470,50 +1262,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     window
-}
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-fn write_pass_entry(
-    store_root: &str,
-    label: &str,
-    contents: &str,
-    overwrite: bool,
-) -> Result<(), String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root)
-        .arg("insert")
-        .arg("-m"); // read from stdin
-    if overwrite {
-        cmd.arg("-f");
-    }
-    cmd.arg(label);
-
-    let output = run_command_with_input(
-        &mut cmd,
-        "Save password entry",
-        contents,
-        CommandLogOptions::SENSITIVE,
-    )?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            Err(format!("pass insert failed: {}", output.status))
-        } else {
-            Err(stderr)
-        }
-    }
-}
-
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-fn write_pass_entry(
-    store_root: &str,
-    label: &str,
-    contents: &str,
-    overwrite: bool,
-) -> Result<(), String> {
-    save_password_entry(store_root, label, contents, overwrite)
 }
 
 #[cfg(test)]

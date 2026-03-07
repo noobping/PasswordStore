@@ -117,6 +117,27 @@ enum GitOperationResult {
     Canceled,
 }
 
+#[derive(Clone)]
+struct PasswordListPageState {
+    nav: NavigationView,
+    list: ListBox,
+    back: Button,
+    add: Button,
+    find: Button,
+    git: Button,
+    save: Button,
+    win: WindowTitle,
+    entry: PasswordEntryRow,
+    username: EntryRow,
+    otp: PasswordEntryRow,
+    dynamic_box: GtkBox,
+    raw_button: Button,
+    structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
+    dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
+    text: TextView,
+    overlay: ToastOverlay,
+}
+
 fn with_logs_hint(message: &str) -> String {
     format!("{message} Check Logs for details.")
 }
@@ -337,6 +358,48 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
     }
 }
 
+fn prune_missing_store_dirs(settings: &Preferences) {
+    if let Err(err) = settings.prune_missing_stores() {
+        log_error(format!("Failed to remove missing password stores: {err}"));
+    }
+}
+
+fn show_password_list_page(state: &PasswordListPageState) {
+    while state.nav.navigation_stack().n_items() > 1 {
+        state.nav.pop();
+    }
+
+    clear_opened_pass_file();
+    state.back.set_visible(false);
+    state.save.set_visible(false);
+    state.add.set_visible(true);
+    state.find.set_visible(true);
+    state.git.set_visible(false);
+
+    state.win.set_title("Password Store");
+    state.win.set_subtitle("Manage your passwords");
+
+    state.entry.set_text("");
+    sync_username_row(&state.username, None);
+    state.otp.set_visible(false);
+    state.otp.set_text("");
+    clear_box_children(&state.dynamic_box);
+    state.dynamic_box.set_visible(false);
+    state.raw_button.set_visible(false);
+    state.structured_templates.borrow_mut().clear();
+    state.dynamic_rows.borrow_mut().clear();
+    state.text.buffer().set_text("");
+
+    load_passwords_async(
+        &state.list,
+        state.git.clone(),
+        state.find.clone(),
+        state.save.clone(),
+        state.overlay.clone(),
+        true,
+    );
+}
+
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     let builder = Builder::from_string(UI_SRC);
     let window: ApplicationWindow = builder
@@ -486,6 +549,25 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get log_view");
     let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
     let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
+    let password_list_state = PasswordListPageState {
+        nav: navigation_view.clone(),
+        list: list.clone(),
+        back: back_button.clone(),
+        add: add_button.clone(),
+        find: find_button.clone(),
+        git: git_button.clone(),
+        save: save_button.clone(),
+        win: window_title.clone(),
+        entry: password_entry.clone(),
+        username: username_entry.clone(),
+        otp: otp_entry.clone(),
+        dynamic_box: dynamic_fields_box.clone(),
+        raw_button: open_raw_button.clone(),
+        structured_templates: structured_templates.clone(),
+        dynamic_rows: dynamic_field_rows.clone(),
+        text: text_view.clone(),
+        overlay: toast_overlay.clone(),
+    };
 
     // Selecting an item from the list
     {
@@ -901,6 +983,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let list = password_stores.clone();
         let parent = window.clone();
         let overlay = toast_overlay.clone();
+        let list_state = password_list_state.clone();
         let action = SimpleAction::new("open-preferences", None);
         action.connect_activate(move |_, _| {
             add.set_visible(false);
@@ -915,7 +998,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
-            rebuild_store_list(&list, &settings, &parent, &overlay);
+            rebuild_store_list(&list, &settings, &parent, &overlay, &list_state);
         });
         window.add_action(&action);
     }
@@ -1285,14 +1368,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let log_page = log_page.clone();
         let busy_page = git_busy_page.clone();
         let busy_status = git_busy_status.clone();
-        let entry = password_entry.clone();
         let username = username_entry.clone();
-        let otp = otp_entry.clone();
-        let text = text_view.clone();
-        let dynamic_box = dynamic_fields_box.clone();
-        let raw_button = open_raw_button.clone();
-        let structured_templates = structured_templates.clone();
-        let dynamic_rows = dynamic_field_rows.clone();
         let list_clone = list.clone();
         let win = window_title.clone();
         let back = back_button.clone();
@@ -1302,6 +1378,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let save = save_button.clone();
         let nav = navigation_view.clone();
         let git_operation = git_operation.clone();
+        let list_state = password_list_state.clone();
         let action = SimpleAction::new("back", None);
         action.connect_activate(move |_, _| {
             let busy_visible = nav
@@ -1381,25 +1458,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     win.set_subtitle("Command output");
                 }
             } else {
-                clear_opened_pass_file();
-                back.set_visible(false);
-                save.set_visible(false);
-                add.set_visible(true);
-                find.set_visible(true);
-
-                win.set_title("Password Store");
-                win.set_subtitle("Manage your passwords");
-
-                entry.set_text("");
-                sync_username_row(&username, None);
-                otp.set_visible(false);
-                otp.set_text("");
-                clear_box_children(&dynamic_box);
-                dynamic_box.set_visible(false);
-                raw_button.set_visible(false);
-                structured_templates.borrow_mut().clear();
-                dynamic_rows.borrow_mut().clear();
-                text.buffer().set_text("");
+                show_password_list_page(&list_state);
+                return;
             }
             load_passwords_async(
                 &list_clone,
@@ -1913,7 +1973,9 @@ fn load_passwords_async(
         list.remove(&child);
     }
 
-    let has_store_dirs = !Preferences::new().stores().is_empty();
+    let settings = Preferences::new();
+    prune_missing_store_dirs(&settings);
+    let has_store_dirs = !settings.stores().is_empty();
 
     git.set_visible(false);
     find.set_visible(show_list_actions);
@@ -2249,17 +2311,20 @@ fn rebuild_store_list(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    list_state: &PasswordListPageState,
 ) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
 
+    prune_missing_store_dirs(settings);
+
     for store in settings.stores() {
         append_store_row(list, settings, &store);
     }
 
-    append_store_picker_row(list, settings, window, overlay);
-    append_store_creator_row(list, settings, window, overlay);
+    append_store_picker_row(list, settings, window, overlay, list_state);
+    append_store_creator_row(list, settings, window, overlay, list_state);
 }
 
 fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
@@ -2295,6 +2360,7 @@ fn append_store_picker_row(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    list_state: &PasswordListPageState,
 ) {
     let row = ActionRow::builder()
         .title("Add password store folder")
@@ -2312,8 +2378,9 @@ fn append_store_picker_row(
         let list = list.clone();
         let window = window.clone();
         let overlay = overlay.clone();
+        let list_state = list_state.clone();
         row.connect_activated(move |_| {
-            open_store_picker(&window, &list, &settings, &overlay);
+            open_store_picker(&window, &list, &settings, &overlay, &list_state);
         });
     }
 
@@ -2322,8 +2389,9 @@ fn append_store_picker_row(
         let list = list.clone();
         let window = window.clone();
         let overlay = overlay.clone();
+        let list_state = list_state.clone();
         button.connect_clicked(move |_| {
-            open_store_picker(&window, &list, &settings, &overlay);
+            open_store_picker(&window, &list, &settings, &overlay, &list_state);
         });
     }
 }
@@ -2333,6 +2401,7 @@ fn open_store_picker(
     list: &ListBox,
     settings: &Preferences,
     overlay: &ToastOverlay,
+    list_state: &PasswordListPageState,
 ) {
     let dialog = FileChooserNative::new(
         Some("Choose password store folder"),
@@ -2345,6 +2414,7 @@ fn open_store_picker(
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
+    let list_state = list_state.clone();
 
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {
@@ -2377,7 +2447,7 @@ fn open_store_picker(
                 let toast = Toast::new("Couldn't add the password store folder.");
                 overlay.add_toast(toast);
             } else {
-                rebuild_store_list(&list, &settings, &window, &overlay);
+                rebuild_store_list(&list, &settings, &window, &overlay, &list_state);
             }
         }
 
@@ -2392,6 +2462,7 @@ fn append_store_creator_row(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    list_state: &PasswordListPageState,
 ) {
     let row = ActionRow::builder()
         .title("Create password store")
@@ -2406,30 +2477,30 @@ fn append_store_creator_row(
 
     {
         let settings = settings.clone();
-        let list = list.clone();
         let window = window.clone();
         let overlay = overlay.clone();
+        let list_state = list_state.clone();
         row.connect_activated(move |_| {
-            open_store_creator_picker(&window, &list, &settings, &overlay);
+            open_store_creator_picker(&window, &settings, &overlay, &list_state);
         });
     }
 
     {
         let settings = settings.clone();
-        let list = list.clone();
         let window = window.clone();
         let overlay = overlay.clone();
+        let list_state = list_state.clone();
         button.connect_clicked(move |_| {
-            open_store_creator_picker(&window, &list, &settings, &overlay);
+            open_store_creator_picker(&window, &settings, &overlay, &list_state);
         });
     }
 }
 
 fn open_store_creator_picker(
     window: &ApplicationWindow,
-    list: &ListBox,
     settings: &Preferences,
     overlay: &ToastOverlay,
+    list_state: &PasswordListPageState,
 ) {
     let dialog = FileChooserNative::new(
         Some("Choose new password store folder"),
@@ -2440,10 +2511,10 @@ fn open_store_creator_picker(
     );
     dialog.set_create_folders(true);
 
-    let list = list.clone();
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
+    let list_state = list_state.clone();
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {
             dialog.hide();
@@ -2467,7 +2538,7 @@ fn open_store_creator_picker(
         };
 
         let store = path.to_string_lossy().to_string();
-        open_store_creator_dialog(&window, &list, &settings, &overlay, &store);
+        open_store_creator_dialog(&window, &settings, &overlay, &store, &list_state);
         dialog.hide();
     });
 
@@ -2476,10 +2547,10 @@ fn open_store_creator_picker(
 
 fn open_store_creator_dialog(
     window: &ApplicationWindow,
-    list: &ListBox,
     settings: &Preferences,
     overlay: &ToastOverlay,
     store: &str,
+    list_state: &PasswordListPageState,
 ) {
     let dialog = Dialog::builder()
         .title("Create password store")
@@ -2559,14 +2630,13 @@ fn open_store_creator_dialog(
     }
 
     {
-        let list = list.clone();
         let settings = settings.clone();
-        let window = window.clone();
         let overlay = overlay.clone();
         let store = store.to_string();
         let recipients_entry = recipients_entry.clone();
         let recipients = recipients.clone();
         let recipients_list = recipients_list.clone();
+        let list_state = list_state.clone();
         dialog.connect_response(move |dialog, response| {
             if response != ResponseType::Accept {
                 dialog.close();
@@ -2594,11 +2664,10 @@ fn open_store_creator_dialog(
                 let _ = tx.send(result);
             });
 
-            let list = list.clone();
             let settings = settings.clone();
-            let window = window.clone();
             let overlay = overlay.clone();
             let store = store.clone();
+            let list_state = list_state.clone();
             glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
                 Ok(Ok(())) => {
                     let stores = stores_with_preferred_first(&settings.stores(), &store);
@@ -2609,7 +2678,7 @@ fn open_store_creator_dialog(
                         );
                         overlay.add_toast(toast);
                     } else {
-                        rebuild_store_list(&list, &settings, &window, &overlay);
+                        show_password_list_page(&list_state);
                         let toast = Toast::new("Password store created and set as default.");
                         overlay.add_toast(toast);
                     }

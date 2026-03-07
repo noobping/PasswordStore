@@ -1,7 +1,8 @@
 use std::ffi::OsStr;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::process::{Command, Output, Stdio};
 use std::sync::{OnceLock, RwLock};
+use std::thread;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CommandLogOptions {
@@ -120,52 +121,121 @@ fn describe_command(cmd: &Command) -> String {
     parts.join(" ")
 }
 
-fn append_stream(message: &mut String, label: &str, bytes: &[u8], redacted: bool) {
+fn log_command_state(
+    context: &str,
+    command: &str,
+    status: &str,
+    stdin_was_provided: bool,
+    redact_stdin: bool,
+    is_error: bool,
+) {
+    let mut message = format!("{context}\n$ {command}\nstatus: {status}");
+    if stdin_was_provided {
+        message.push('\n');
+        if redact_stdin {
+            message.push_str("stdin: [redacted]");
+        } else {
+            message.push_str("stdin: provided");
+        }
+    }
+
+    if is_error {
+        log_error(message);
+    } else {
+        log_info(message);
+    }
+}
+
+fn log_command_stream(
+    context: &str,
+    command: &str,
+    label: &str,
+    bytes: &[u8],
+    redacted: bool,
+) {
     if bytes.is_empty() {
         return;
     }
 
-    message.push('\n');
-    message.push_str(label);
-    message.push(':');
+    let mut message = format!("{context}\n$ {command}\n{label}:");
     if redacted {
         message.push_str(" [redacted]");
+        log_info(message);
         return;
     }
 
     let text = String::from_utf8_lossy(bytes);
-    let text = text.trim_end();
+    let text = text.trim_end_matches(['\n', '\r']);
     if text.is_empty() {
         return;
     }
 
     message.push('\n');
     message.push_str(text);
+    log_info(message);
 }
 
-fn log_command_completion(
+fn spawn_stream_logger<R>(
+    mut reader: R,
+    context: String,
+    command: String,
+    label: &'static str,
+    redacted: bool,
+) -> thread::JoinHandle<io::Result<Vec<u8>>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut buf = [0u8; 4096];
+        let mut logged_redaction = false;
+
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => return Ok(bytes),
+                Ok(n) => {
+                    let chunk = &buf[..n];
+                    bytes.extend_from_slice(chunk);
+                    if redacted {
+                        if !logged_redaction {
+                            log_command_stream(&context, &command, label, chunk, true);
+                            logged_redaction = true;
+                        }
+                    } else {
+                        log_command_stream(&context, &command, label, chunk, false);
+                    }
+                }
+                Err(err) => {
+                    log_error(format!(
+                        "{context}\n$ {command}\nfailed to read {label}: {err}"
+                    ));
+                    return Err(err);
+                }
+            }
+        }
+    })
+}
+
+fn join_stream_logger(
+    handle: Option<thread::JoinHandle<io::Result<Vec<u8>>>>,
     context: &str,
     command: &str,
-    output: &Output,
-    options: CommandLogOptions,
-    stdin_was_provided: bool,
-) {
-    let mut message = format!("{context}\n$ {command}\nstatus: {}", output.status);
-    if stdin_was_provided {
-        message.push('\n');
-        if options.redact_stdin {
-            message.push_str("stdin: [redacted]");
-        } else {
-            message.push_str("stdin: provided");
-        }
-    }
-    append_stream(&mut message, "stdout", &output.stdout, options.redact_stdout);
-    append_stream(&mut message, "stderr", &output.stderr, false);
+    label: &str,
+) -> io::Result<Vec<u8>> {
+    let Some(handle) = handle else {
+        return Ok(Vec::new());
+    };
 
-    if output.status.success() {
-        log_info(message);
-    } else {
-        log_error(message);
+    match handle.join() {
+        Ok(result) => result,
+        Err(_) => {
+            let err = io::Error::new(
+                io::ErrorKind::Other,
+                format!("stream logger panicked while reading {label}"),
+            );
+            log_error(format!("{context}\n$ {command}\n{err}"));
+            Err(err)
+        }
     }
 }
 
@@ -178,9 +248,53 @@ pub fn run_command_output(
     cmd.stderr(Stdio::piped());
     let command = describe_command(cmd);
 
-    match cmd.output() {
-        Ok(output) => {
-            log_command_completion(context, &command, &output, options, false);
+    match cmd.spawn() {
+        Ok(mut child) => {
+            log_command_state(context, &command, "running", false, false, false);
+
+            let stdout_handle = child.stdout.take().map(|stdout| {
+                spawn_stream_logger(
+                    stdout,
+                    context.to_string(),
+                    command.clone(),
+                    "stdout",
+                    options.redact_stdout,
+                )
+            });
+            let stderr_handle = child.stderr.take().map(|stderr| {
+                spawn_stream_logger(
+                    stderr,
+                    context.to_string(),
+                    command.clone(),
+                    "stderr",
+                    false,
+                )
+            });
+
+            let status = match child.wait() {
+                Ok(status) => status,
+                Err(err) => {
+                    log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
+                    return Err(err);
+                }
+            };
+
+            let stdout = join_stream_logger(stdout_handle, context, &command, "stdout")?;
+            let stderr = join_stream_logger(stderr_handle, context, &command, "stderr")?;
+            let output = Output {
+                status,
+                stdout,
+                stderr,
+            };
+
+            log_command_state(
+                context,
+                &command,
+                &output.status.to_string(),
+                false,
+                false,
+                !output.status.success(),
+            );
             Ok(output)
         }
         Err(err) => {
@@ -217,6 +331,27 @@ pub fn run_command_with_input(
         }
     };
 
+    log_command_state(context, &command, "running", true, options.redact_stdin, false);
+
+    let stdout_handle = child.stdout.take().map(|stdout| {
+        spawn_stream_logger(
+            stdout,
+            context.to_string(),
+            command.clone(),
+            "stdout",
+            options.redact_stdout,
+        )
+    });
+    let stderr_handle = child.stderr.take().map(|stderr| {
+        spawn_stream_logger(
+            stderr,
+            context.to_string(),
+            command.clone(),
+            "stderr",
+            false,
+        )
+    });
+
     let Some(mut stdin) = child.stdin.take() else {
         let message = format!("{context}\n$ {command}\nfailed to open stdin");
         log_error(message.clone());
@@ -229,21 +364,40 @@ pub fn run_command_with_input(
     }
     drop(stdin);
 
-    match child.wait_with_output() {
-        Ok(output) => {
-            log_command_completion(context, &command, &output, options, true);
-            Ok(output)
-        }
+    let status = match child.wait() {
+        Ok(status) => status,
         Err(err) => {
             log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
-            Err(format!("Failed to wait for command: {err}"))
+            return Err(format!("Failed to wait for command: {err}"));
         }
-    }
+    };
+
+    let stdout = join_stream_logger(stdout_handle, context, &command, "stdout")
+        .map_err(|err| format!("Failed to read command stdout: {err}"))?;
+    let stderr = join_stream_logger(stderr_handle, context, &command, "stderr")
+        .map_err(|err| format!("Failed to read command stderr: {err}"))?;
+    let output = Output {
+        status,
+        stdout,
+        stderr,
+    };
+
+    log_command_state(
+        context,
+        &command,
+        &output.status.to_string(),
+        true,
+        options.redact_stdin,
+        !output.status.success(),
+    );
+
+    Ok(output)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{log_error, log_snapshot, log_info};
+    use super::{log_error, log_info, log_snapshot, run_command_output, CommandLogOptions};
+    use std::process::Command;
 
     #[test]
     fn log_snapshot_tracks_revisions() {
@@ -259,5 +413,25 @@ mod tests {
         assert!(rev_after > rev);
         assert_eq!(err_after, rev_after);
         assert!(text_after.contains("second log line"));
+    }
+
+    #[test]
+    fn run_command_output_logs_streams() {
+        let marker = format!("stream-log-test-{}", std::process::id());
+        let mut cmd = Command::new("sh");
+        cmd.args([
+            "-lc",
+            &format!("printf '{marker} stdout'; printf '{marker} stderr' >&2"),
+        ]);
+
+        let output =
+            run_command_output(&mut cmd, &marker, CommandLogOptions::DEFAULT).expect("command should run");
+
+        assert!(output.status.success());
+
+        let (_, _, text) = log_snapshot();
+        assert!(text.contains(&marker));
+        assert!(text.contains(&format!("stdout:\n{marker} stdout")));
+        assert!(text.contains(&format!("stderr:\n{marker} stderr")));
     }
 }

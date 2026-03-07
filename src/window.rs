@@ -1053,7 +1053,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let view = log_view.clone();
         let seen_revision = Rc::new(RefCell::new(0usize));
         let seen_error_revision = Rc::new(RefCell::new(0usize));
-        glib::timeout_add_local(Duration::from_millis(200), move || {
+        glib::timeout_add_local(Duration::from_millis(50), move || {
             let (revision, error_revision, text) = log_snapshot();
             {
                 let mut seen = seen_revision.borrow_mut();

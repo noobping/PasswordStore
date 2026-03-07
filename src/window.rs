@@ -1007,13 +1007,13 @@ fn start_ripasso_private_key_import(
     let state = state.clone();
     glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
         Ok(result) => {
-            progress_dialog.close();
+            progress_dialog.force_close();
             finish_ripasso_private_key_import(&state, result);
             glib::ControlFlow::Break
         }
         Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
         Err(TryRecvError::Disconnected) => {
-            progress_dialog.close();
+            progress_dialog.force_close();
             log_error("Private key import worker disconnected unexpectedly.".to_string());
             let toast = Toast::new("Couldn't import that private key.");
             state.overlay.add_toast(toast);

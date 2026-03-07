@@ -362,7 +362,21 @@ fn add_open_url_suffix(row: &EntryRow, text: impl Fn() -> String + 'static, over
             return;
         };
 
-        adw::gtk::show_uri(None::<&adw::gtk::Window>, &uri, 0);
+        let launch_result = Display::default().map_or_else(
+            || adw::gio::AppInfo::launch_default_for_uri(&uri, None::<&adw::gio::AppLaunchContext>),
+            |display| {
+                let context = display.app_launch_context();
+                adw::gio::AppInfo::launch_default_for_uri(&uri, Some(&context))
+            },
+        );
+
+        if let Err(error) = launch_result {
+            log_error(format!(
+                "Failed to open URL in the default browser.\nURL: {uri}\nerror: {error}"
+            ));
+            let toast = Toast::new("Could not open the URL in your browser.");
+            overlay.add_toast(toast);
+        }
     });
     row.add_suffix(&button);
 }

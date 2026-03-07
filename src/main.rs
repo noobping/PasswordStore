@@ -10,6 +10,7 @@ mod item;
 mod logging;
 mod methods;
 mod pass_file;
+mod password_list;
 #[cfg(feature = "flatpak")]
 mod private_key_dialog;
 mod preferences;

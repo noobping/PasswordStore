@@ -2,10 +2,9 @@
 use crate::setup::*;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{
-    delete_password_entry, read_otp_code, read_password_entry, rename_password_entry,
-    save_password_entry,
+    read_otp_code, read_password_entry, save_password_entry,
 };
-use crate::clipboard::{connect_copy_button, copy_password_entry_to_clipboard};
+use crate::clipboard::connect_copy_button;
 #[cfg(feature = "flatpak")]
 use crate::backend::resolved_ripasso_own_fingerprint;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
@@ -13,13 +12,12 @@ use adw::gio::Menu;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
 
-use crate::config::APP_ID;
-use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
+use crate::item::OpenPassFile;
 use crate::logging::{log_error, CommandControl};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{log_snapshot, CommandLogOptions};
 #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::{run_command_output, run_command_status, run_command_with_input};
+use crate::logging::{run_command_output, run_command_with_input};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::run_command_output_controlled;
 use crate::methods::{
@@ -31,6 +29,7 @@ use crate::pass_file::{
     rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row,
     sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
 };
+use crate::password_list::{load_passwords_async, setup_search_filter};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
@@ -53,14 +52,15 @@ use crate::store_management::{
 use adw::ComboRow;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
-    glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
+    glib, prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
+    PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::gtk::StringList;
+#[cfg(feature = "flatpak")]
+use adw::gtk::MenuButton;
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry,
-    Spinner, TextView,
+    Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView,
 };
 use std::cell::{Cell, RefCell};
 use std::io;
@@ -195,12 +195,6 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
 fn set_save_button_for_password(save: &Button) {
     save.set_action_name(Some("win.save-password"));
     save.set_tooltip_text(Some("Save password"));
-}
-
-fn prune_missing_store_dirs(settings: &Preferences) {
-    if let Err(err) = settings.prune_missing_stores() {
-        log_error(format!("Failed to remove missing password stores: {err}"));
-    }
 }
 
 fn open_password_entry_page(
@@ -2174,368 +2168,6 @@ fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -
     false
 }
 
-fn load_passwords_async(
-    list: &ListBox,
-    git: Button,
-    find: Button,
-    save: Button,
-    overlay: ToastOverlay,
-    show_list_actions: bool,
-) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-
-    let settings = Preferences::new();
-    prune_missing_store_dirs(&settings);
-    let has_store_dirs = !settings.stores().is_empty();
-
-    git.set_visible(false);
-    find.set_visible(show_list_actions);
-
-    let bussy = Spinner::new();
-    bussy.start();
-
-    let symbolic = format!("{APP_ID}-symbolic");
-    let placeholder = StatusPage::builder()
-        .icon_name(symbolic)
-        .child(&bussy)
-        .build();
-    list.set_placeholder(Some(&placeholder));
-
-    // Standard library channel: main thread will own `rx`, worker gets `tx`
-    let (tx, rx) = mpsc::channel::<Vec<PassEntry>>();
-    // Spawn worker thread
-    thread::spawn(move || {
-        let all_items = match collect_all_password_items() {
-            Ok(v) => v,
-            Err(err) => {
-                log_error(format!("Error scanning pass stores: {err}"));
-                Vec::new()
-            }
-        };
-        // Send everything back to main thread
-        let _ = tx.send(all_items);
-    });
-    // Clone GTK widgets on the main thread
-    let list_clone = list.clone();
-    let git_clone = git.clone();
-    let find_clone = find.clone();
-    let save_clone = save.clone();
-    let toast_overlay = overlay.clone();
-    let has_store_dirs_for_placeholder = has_store_dirs;
-    // Poll the channel from the main thread using a GLib timeout
-    glib::timeout_add_local(Duration::from_millis(50), move || {
-        match rx.try_recv() {
-            Ok(items) => {
-                let mut index = 0;
-                let len = items.len();
-                let empty = items.is_empty();
-                while index < len {
-                    let item = items[index].clone();
-
-                    let row = ListBoxRow::new();
-                    let action_row = ActionRow::builder()
-                        .title(item.basename.clone()) // first column: basename
-                        .subtitle(item.relative_path.clone()) // second line: relative_path
-                        .activatable(true) // makes row respond to double-click/Enter
-                        .build();
-                    let menu_button = MenuButton::builder()
-                        .icon_name("view-more-symbolic")
-                        .has_frame(false)
-                        .css_classes(vec!["flat"])
-                        .build();
-                    let popover = Popover::new();
-                    let rename_row = EntryRow::new();
-                    rename_row.set_title("Rename or move");
-                    rename_row.set_show_apply_button(true);
-                    rename_row.set_text(&item.label());
-                    let copy_btn = Button::from_icon_name("edit-copy-symbolic");
-                    copy_btn.add_css_class("flat");
-                    action_row.add_suffix(&copy_btn);
-                    let delete_btn = Button::from_icon_name("user-trash-symbolic");
-                    delete_btn.add_css_class("flat");
-                    delete_btn.add_css_class("destructive-action");
-                    rename_row.add_suffix(&delete_btn);
-
-                    popover.set_child(Some(&rename_row));
-                    menu_button.set_popover(Some(&popover));
-                    action_row.add_suffix(&menu_button);
-                    row.set_child(Some(&action_row));
-
-                    // Store full path on row for later use
-                    unsafe {
-                        row.set_data("root", item.store_path.clone());
-                        row.set_data("label", item.label());
-                    }
-                    // Copy password
-                    {
-                        let entry = item.clone();
-                        let popover = popover.clone();
-                        let copy_overlay = toast_overlay.clone();
-                        let copy_button = copy_btn.clone();
-                        copy_btn.connect_clicked(move |_| {
-                            popover.popdown();
-                            copy_password_entry_to_clipboard(
-                                entry.clone(),
-                                copy_overlay.clone(),
-                                Some(copy_button.clone()),
-                            );
-                        });
-                    }
-                    // rename pass file
-                    {
-                        let entry = item.clone();
-                        let overlay = toast_overlay.clone();
-                        rename_row.connect_apply(move |row| {
-                            let new_label = row.text().to_string();
-
-                            if new_label.is_empty() {
-                                let toast = adw::Toast::new("Enter a new name.");
-                                overlay.add_toast(toast);
-                                return;
-                            }
-
-                            let old_label = entry.label();
-                            if new_label == old_label {
-                                return;
-                            }
-
-                            let root = entry.store_path.clone();
-                            #[cfg(any(feature = "setup", feature = "flatpak"))]
-                            let rename_result = rename_password_entry(&root, &old_label, &new_label);
-                            #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-                            let rename_result = {
-                                let settings = Preferences::new();
-                                let mut cmd = settings.command();
-                                cmd.env("PASSWORD_STORE_DIR", &root)
-                                    .arg("mv")
-                                    .arg(&old_label)
-                                    .arg(&new_label);
-                                match run_command_status(
-                                    &mut cmd,
-                                    "Rename password entry",
-                                    CommandLogOptions::DEFAULT,
-                                ) {
-                                    Ok(status) if status.success() => Ok(()),
-                                    Ok(_) => Err(()),
-                                    Err(_) => Err(()),
-                                }
-                            };
-                            match rename_result {
-                                Ok(()) => {
-                                    let (parent, tail) = match new_label.rsplit_once('/') {
-                                        Some((parent, tail)) => (parent, tail),
-                                        None => ("", new_label.as_str()),
-                                    };
-                                    action_row.set_title(&tail);
-                                    action_row.set_subtitle(&parent);
-                                }
-                                Err(_) => {
-                                    let toast =
-                                        adw::Toast::new("Couldn't rename the password entry.");
-                                    overlay.add_toast(toast);
-                                }
-                            }
-                        });
-                    }
-                    // delete pass file
-                    {
-                        let entry = item.clone();
-                        let row_clone = row.clone();
-                        let list = list_clone.clone();
-                        let _overlay = toast_overlay.clone();
-                        delete_btn.connect_clicked(move |_| {
-                            #[cfg(any(feature = "setup", feature = "flatpak"))]
-                            {
-                                let (tx, rx) = mpsc::channel::<Result<(), String>>();
-                                let root = entry.store_path.clone();
-                                let label = entry.label();
-                                thread::spawn(move || {
-                                    let result = delete_password_entry(&root, &label);
-                                    let _ = tx.send(result);
-                                });
-
-                                let list = list.clone();
-                                let row_clone = row_clone.clone();
-                                let overlay = _overlay.clone();
-                                glib::timeout_add_local(
-                                    Duration::from_millis(50),
-                                    move || match rx.try_recv() {
-                                        Ok(Ok(())) => {
-                                            list.remove(&row_clone);
-                                            glib::ControlFlow::Break
-                                        }
-                                        Ok(Err(err)) => {
-                                            log_error(format!(
-                                                "Failed to delete password entry: {err}"
-                                            ));
-                                            let toast = Toast::new(
-                                                "Couldn't delete the password entry.",
-                                            );
-                                            overlay.add_toast(toast);
-                                            glib::ControlFlow::Break
-                                        }
-                                        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                                        Err(TryRecvError::Disconnected) => {
-                                            let toast =
-                                                Toast::new("Couldn't delete the password entry.");
-                                            overlay.add_toast(toast);
-                                            glib::ControlFlow::Break
-                                        }
-                                    },
-                                );
-                            }
-                            #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-                            {
-                                std::thread::spawn({
-                                    let root = entry.store_path.clone();
-                                    let label = entry.label();
-                                    move || {
-                                        let settings = Preferences::new();
-                                        let mut cmd = settings.command();
-                                        cmd.env("PASSWORD_STORE_DIR", root)
-                                            .arg("rm")
-                                            .arg("-rf")
-                                            .arg(&label);
-                                        let _ = run_command_status(
-                                            &mut cmd,
-                                            "Delete password entry",
-                                            CommandLogOptions::DEFAULT,
-                                        );
-                                    }
-                                });
-                                list.remove(&row_clone);
-                            }
-                        });
-                    }
-                    list_clone.append(&row);
-                    index += 1;
-                }
-
-                if show_list_actions {
-                    if empty {
-                        save_clone.set_visible(false);
-                        find_clone.set_visible(false);
-                    } else {
-                        find_clone.set_visible(true);
-                    }
-                    git_clone.set_visible(should_show_restore_button(
-                        show_list_actions,
-                        has_store_dirs_for_placeholder,
-                        empty,
-                    ));
-                } else {
-                    find_clone.set_visible(false);
-                    git_clone.set_visible(false);
-                }
-
-                let symbolic = format!("{APP_ID}-symbolic");
-                let placeholder = if empty {
-                    build_empty_password_list_placeholder(&symbolic, has_store_dirs_for_placeholder)
-                } else {
-                    StatusPage::builder()
-                        .icon_name("edit-find-symbolic")
-                        .title("No passwords found")
-                        .description("Try another query.")
-                        .build()
-                };
-                list_clone.set_placeholder(Some(&placeholder));
-
-                // One-shot: stop calling this timeout
-                glib::ControlFlow::Break
-            }
-            Err(TryRecvError::Empty) => {
-                // Worker not done yet
-                glib::ControlFlow::Continue
-            }
-            Err(TryRecvError::Disconnected) => {
-                // Worker died
-
-                let symbolic = format!("{APP_ID}-symbolic");
-                let placeholder =
-                    build_empty_password_list_placeholder(&symbolic, has_store_dirs_for_placeholder);
-                list_clone.set_placeholder(Some(&placeholder));
-
-                save_clone.set_visible(false);
-                git_clone.set_visible(should_show_restore_button(
-                    show_list_actions,
-                    has_store_dirs_for_placeholder,
-                    true,
-                ));
-                find_clone.set_visible(false);
-
-                glib::ControlFlow::Break
-            }
-        }
-    });
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn should_show_restore_button(show_list_actions: bool, has_store_dirs: bool, empty: bool) -> bool {
-    show_list_actions && empty && !has_store_dirs
-}
-
-#[cfg(feature = "flatpak")]
-fn should_show_restore_button(_show_list_actions: bool, _has_store_dirs: bool, _empty: bool) -> bool {
-    false
-}
-
-fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -> StatusPage {
-    let builder = StatusPage::builder().icon_name(symbolic);
-    if has_store_dirs {
-        builder
-            .title("Empty")
-            .description("Create a new password to get started.")
-            .build()
-    } else {
-        builder
-            .title("No password store folders added")
-            .description("Open Preferences and choose a password store folder to get started.")
-            .build()
-    }
-}
-
-fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
-    // shared state for the current query
-    let query = Rc::new(RefCell::new(String::new()));
-
-    // 1) Filter function for the ListBox
-    let query_for_filter = query.clone();
-    list.set_filter_func(move |row: &ListBoxRow| {
-        let q_ref = query_for_filter.borrow();
-        let q = q_ref.as_str();
-
-        // empty query, show everything
-        if q.is_empty() {
-            return true;
-        }
-
-        if let Some(label) = non_null_to_string_option(row, "label") {
-            let query_lower = q.to_lowercase();
-            return label.to_lowercase().contains(&query_lower);
-        }
-
-        true
-    });
-
-    // 2) Update query when the user types, then invalidate the filter
-    let query_for_entry = query.clone();
-    let list_for_entry = list.clone();
-
-    search_entry.connect_search_changed(move |entry| {
-        let text = entry.text().to_string();
-
-        {
-            let mut q_mut = query_for_entry.borrow_mut();
-            *q_mut = text;
-        }
-
-        // trigger re-evaluation of filter_func for all rows
-        list_for_entry.invalidate_filter();
-    });
-}
-
 #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
 fn write_pass_entry(
     store_root: &str,
@@ -2583,22 +2215,11 @@ fn write_pass_entry(
 
 #[cfg(test)]
 mod tests {
-    use super::should_show_restore_button;
     use crate::pass_file::{
         new_pass_file_contents_from_template, parse_structured_pass_lines,
         structured_pass_contents_from_values, structured_username_value, uri_to_open,
         StructuredPassLine, UsernameFieldTemplate,
     };
-
-    #[test]
-    fn restore_button_is_hidden_for_an_empty_existing_store() {
-        assert!(!should_show_restore_button(true, true, true));
-    }
-
-    #[test]
-    fn restore_button_stays_hidden_off_the_list_page() {
-        assert!(!should_show_restore_button(false, false, true));
-    }
 
     #[test]
     fn structured_fields_strip_display_spacing_but_preserve_it_on_save() {

@@ -136,12 +136,18 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let password_entry: PasswordEntryRow = builder
         .object("password_entry")
         .expect("Failed to get password_entry");
+    let username_entry: EntryRow = builder
+        .object("username_entry")
+        .expect("Failed to get username_entry");
     let otp_entry: PasswordEntryRow = builder
         .object("otp_entry")
         .expect("Failed to get otp_entry");
     let copy_password_button: Button = builder
         .object("copy_password_button")
         .expect("Failed to get copy_password_button");
+    let copy_username_button: Button = builder
+        .object("copy_username_button")
+        .expect("Failed to get copy_username_button");
     let copy_otp_button: Button = builder
         .object("copy_otp_button")
         .expect("Failed to get copy_otp_button");
@@ -159,6 +165,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let git = git_button.clone();
         let save = save_button.clone();
         let entry = password_entry.clone();
+        let username = username_entry.clone();
         let otp = otp_entry.clone();
         let status = password_status.clone();
         let text = text_view.clone();
@@ -193,6 +200,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             win.set_subtitle(&pass_label);
             text.set_visible(false);
             entry.set_visible(false);
+            sync_username_row(&username, Some(&opened_pass_file));
             otp.set_visible(false);
             status.set_visible(true);
             nav.push(&page);
@@ -221,6 +229,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             // UI updater: poll the channel from the main thread
             let password_status = status.clone();
             let password_entry = entry.clone();
+            let username_entry = username.clone();
             let otp_entry = otp.clone();
             let text_view = text.clone();
             let overlay = overlay.clone();
@@ -236,7 +245,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
                 match rx.try_recv() {
                     Ok(Ok(output)) => {
-                        let _ = refresh_opened_pass_file_from_contents(
+                        let updated_pass_file = refresh_opened_pass_file_from_contents(
                             &opened_pass_file_for_result,
                             &output,
                         );
@@ -256,6 +265,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         let otp = rest.contains("otpauth://");
                         let buffer = text_view.buffer();
                         buffer.set_text(&rest);
+                        sync_username_row(&username_entry, updated_pass_file.as_ref());
 
                         otp_entry.set_visible(otp);
                         if otp {
@@ -342,6 +352,23 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             }
         });
     }
+    // Copy username button on password page
+    {
+        let overlay = toast_overlay.clone();
+        let entry = username_entry.clone();
+        let btn = copy_username_button.clone();
+        btn.connect_clicked(move |_| {
+            entry.grab_focus_without_selecting();
+            let text = entry.text().to_string();
+            if let Some(display) = Display::default() {
+                let clipboard = display.clipboard();
+                clipboard.set_text(&text);
+            } else {
+                let toast = Toast::new("No display or clipboard available");
+                overlay.add_toast(toast);
+            }
+        });
+    }
     // Copy OTP button on password page
     {
         let overlay = toast_overlay.clone();
@@ -372,6 +399,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let popover_git = git_popover.clone();
         let overlay = toast_overlay.clone();
         let entry = password_entry.clone();
+        let username = username_entry.clone();
         let otp = otp_entry.clone();
         let text = text_view.clone();
         let status = password_status.clone();
@@ -389,6 +417,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             set_opened_pass_file(opened_pass_file);
             status.set_visible(false);
             entry.set_visible(true);
+            sync_username_row(&username, get_opened_pass_file().as_ref());
             otp.set_visible(false);
             text.set_visible(true);
             add.set_visible(false);
@@ -412,6 +441,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     // actions
     {
         let entry = password_entry.clone();
+        let username = username_entry.clone();
         let text = text_view.clone();
         let overlay = toast_overlay.clone();
         let action = SimpleAction::new("save-password", None);
@@ -438,7 +468,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     } else {
                         format!("{password}\n{notes}")
                     };
-                    let _ = refresh_opened_pass_file_from_contents(&pass_file, &contents);
+                    let updated_pass_file =
+                        refresh_opened_pass_file_from_contents(&pass_file, &contents);
+                    sync_username_row(&username, updated_pass_file.as_ref());
                     let toast = Toast::new("Password saved");
                     overlay.add_toast(toast);
                 }
@@ -571,6 +603,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let overlay = toast_overlay.clone();
         let page = text_page.clone();
         let entry = password_entry.clone();
+        let username = username_entry.clone();
         let otp = otp_entry.clone();
         let text = text_view.clone();
         let list_clone = list.clone();
@@ -600,9 +633,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         let label = pass_file.label();
                         win.set_title(pass_file.title());
                         win.set_subtitle(&label);
+                        sync_username_row(&username, Some(&pass_file));
                     } else {
                         win.set_title("Password Store");
                         win.set_subtitle("Manage your passwords");
+                        sync_username_row(&username, None);
                     }
                 }
             } else {
@@ -616,6 +651,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 win.set_subtitle("Manage your passwords");
 
                 entry.set_text("");
+                sync_username_row(&username, None);
                 otp.set_visible(false);
                 otp.set_text("");
                 let buffer = text.buffer();
@@ -724,6 +760,16 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     window
+}
+
+fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
+    if let Some(username) = pass_file.and_then(OpenPassFile::username) {
+        row.set_text(username);
+        row.set_visible(true);
+    } else {
+        row.set_text("");
+        row.set_visible(false);
+    }
 }
 
 fn load_passwords_async(

@@ -69,6 +69,10 @@ impl OpenPassFile {
         &self.entry.basename
     }
 
+    pub fn username(&self) -> Option<&str> {
+        self.username.as_deref()
+    }
+
     pub fn store_path(&self) -> &str {
         &self.entry.store_path
     }

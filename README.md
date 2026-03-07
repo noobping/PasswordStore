@@ -5,12 +5,12 @@
 
 A modern Rust-based password manager for Linux, built with GTK4/Libadwaita.
 
-A graphical frontend for the `pass` password store with the goal of offering **feature parity with QtPass**, but with a **modern, responsive Adwaita/GTK4 UI** that works great on both **desktop and mobile Linux**.
+A graphical frontend for the `pass` password store with the goal of offering feature parity with QtPass, but with a modern, responsive Adwaita/GTK4 UI that works great on both desktop and mobile Linux.
 
 ## Features
 
 - Uses the existing [`pass`](https://www.passwordstore.org/) command-line password store
-- Can run as a **standalone/local app** or **system-wide install**
+- Can run as a **standalone/local app**
 - Written in Rust, using GTK4 + Libadwaita
 - Responsive layout for desktop and mobile form factors
 

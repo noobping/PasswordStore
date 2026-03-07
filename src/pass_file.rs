@@ -122,7 +122,7 @@ fn add_open_url_suffix(
     let overlay = overlay.clone();
     button.connect_clicked(move |_| {
         let Some(uri) = uri_to_open(&text()) else {
-            overlay.add_toast(Toast::new("Enter a URL first."));
+            overlay.add_toast(Toast::new("Enter a URL."));
             return;
         };
 
@@ -138,7 +138,7 @@ fn add_open_url_suffix(
             log_error(format!(
                 "Failed to open URL in the default browser.\nURL: {uri}\nerror: {error}"
             ));
-            overlay.add_toast(Toast::new("Could not open the URL in your browser."));
+            overlay.add_toast(Toast::new("Couldn't open the link."));
         }
     });
     row.add_suffix(&button);

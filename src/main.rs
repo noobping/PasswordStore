@@ -121,10 +121,13 @@ fn main() -> ExitCode {
             #[cfg(not(feature = "flatpak"))]
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
-            let backend_details = if settings.uses_ripasso_backend() {
-                "backend: ripasso".to_string()
+            let backend_details = if settings.uses_integrated_backend() {
+                "backend: integrated".to_string()
             } else {
-                get_pass_version(&settings).unwrap_or_else(|| "pass version unknown".to_string())
+                get_pass_version(&settings).map_or_else(
+                    || "backend: host command".to_string(),
+                    |version| format!("backend: host command\n{version}"),
+                )
             };
             #[cfg(not(feature = "flatpak"))]
             let full_comments = if comments.is_empty() {

@@ -75,14 +75,10 @@ fn open_store(store_root: &str) -> Result<PasswordStore, String> {
 }
 
 #[cfg(feature = "flatpak")]
-fn ripasso_config_path() -> Result<PathBuf, String> {
-    let home = user_home().ok_or_else(|| "Could not determine the home folder.".to_string())?;
-    Ok(home.join(".local"))
-}
-
-#[cfg(feature = "flatpak")]
 fn ripasso_keys_dir() -> Result<PathBuf, String> {
-    Ok(ripasso_config_path()?.join("share").join(env!("CARGO_PKG_NAME")).join("keys"))
+    let data_dir = dirs_next::data_local_dir()
+        .ok_or_else(|| "Could not determine the data folder.".to_string())?;
+    Ok(data_dir.join(env!("CARGO_PKG_NAME")).join("keys"))
 }
 
 #[cfg(feature = "flatpak")]
@@ -914,8 +910,8 @@ fn save_store_recipients_ripasso(store_root: &str, recipients: &[String]) -> Res
 }
 
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
-fn use_ripasso_backend() -> bool {
-    Preferences::new().uses_ripasso_backend()
+fn use_integrated_backend() -> bool {
+    Preferences::new().uses_integrated_backend()
 }
 
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
@@ -1083,7 +1079,7 @@ pub fn read_password_entry(store_root: &str, label: &str) -> Result<String, Stri
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             read_password_entry_ripasso(store_root, label)
         } else {
             read_password_entry_command(store_root, label)
@@ -1099,7 +1095,7 @@ pub fn read_password_line(store_root: &str, label: &str) -> Result<String, Strin
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             read_password_line_ripasso(store_root, label)
         } else {
             read_password_line_command(store_root, label)
@@ -1115,7 +1111,7 @@ pub fn read_otp_code(store_root: &str, label: &str) -> Result<String, String> {
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             read_otp_code_ripasso(store_root, label)
         } else {
             read_otp_code_command(store_root, label)
@@ -1136,7 +1132,7 @@ pub fn save_password_entry(
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             save_password_entry_ripasso(store_root, label, contents, overwrite)
         } else {
             save_password_entry_command(store_root, label, contents, overwrite)
@@ -1156,7 +1152,7 @@ pub fn rename_password_entry(
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             rename_password_entry_ripasso(store_root, old_label, new_label)
         } else {
             rename_password_entry_command(store_root, old_label, new_label)
@@ -1172,7 +1168,7 @@ pub fn delete_password_entry(store_root: &str, label: &str) -> Result<(), String
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             delete_password_entry_ripasso(store_root, label)
         } else {
             delete_password_entry_command(store_root, label)
@@ -1188,7 +1184,7 @@ pub fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<
 
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
-        if use_ripasso_backend() {
+        if use_integrated_backend() {
             save_store_recipients_ripasso(store_root, recipients)
         } else {
             save_store_recipients_command(store_root, recipients)

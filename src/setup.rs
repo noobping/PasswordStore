@@ -7,10 +7,10 @@ use std::{env, fs};
 use crate::config::{APP_ID, RESOURCE_ID};
 
 pub fn can_install_locally() -> bool {
-    let Some(bin) = dirs::executable_dir() else {
+    let Some(bin) = dirs_next::executable_dir() else {
         return false;
     };
-    let Some(data) = dirs::data_dir() else {
+    let Some(data) = dirs_next::data_dir() else {
         return false;
     };
     let apps = data.join("applications");
@@ -23,10 +23,10 @@ pub fn can_install_locally() -> bool {
 }
 
 pub fn is_installed_locally() -> bool {
-    let Some(bin) = dirs::executable_dir() else {
+    let Some(bin) = dirs_next::executable_dir() else {
         return false;
     };
-    let Some(data) = dirs::data_dir() else {
+    let Some(data) = dirs_next::data_dir() else {
         return false;
     };
     let bin = bin.join(env!("CARGO_PKG_NAME"));
@@ -39,13 +39,13 @@ pub fn is_installed_locally() -> bool {
 pub fn install_locally() -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
     let exe_path = std::env::current_exe()?;
-    let Some(bin) = dirs::executable_dir() else {
+    let Some(bin) = dirs_next::executable_dir() else {
         return Err(Error::new(
             ErrorKind::NotFound,
             "No executable directory found",
         ));
     };
-    let Some(data) = dirs::data_dir() else {
+    let Some(data) = dirs_next::data_dir() else {
         return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
     };
     let apps = data.join("applications");
@@ -72,13 +72,13 @@ pub fn install_locally() -> std::io::Result<()> {
 }
 
 pub fn uninstall_locally() -> std::io::Result<()> {
-    let Some(bin) = dirs::executable_dir() else {
+    let Some(bin) = dirs_next::executable_dir() else {
         return Err(Error::new(
             ErrorKind::NotFound,
             "No executable directory found",
         ));
     };
-    let Some(data) = dirs::data_dir() else {
+    let Some(data) = dirs_next::data_dir() else {
         return Err(Error::new(ErrorKind::NotFound, "No data directory found"));
     };
     let bin = bin.join(env!("CARGO_PKG_NAME"));

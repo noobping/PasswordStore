@@ -88,7 +88,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     #[cfg(feature = "flatpak")]
     {
         let menu = Menu::new();
-        menu.append(Some("_Find password file"), Some("win.toggle-find"));
+        menu.append(Some("_Find item"), Some("win.toggle-find"));
         #[cfg(not(feature = "flatpak"))]
         menu.append(Some("_Logs"), Some("win.open-log"));
         menu.append(Some("_Preferences"), Some("win.open-preferences"));
@@ -258,7 +258,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
     let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
     let store_recipients_entry = EntryRow::new();
-    store_recipients_entry.set_title("Add recipients");
+    store_recipients_entry.set_title("Add recipient");
     store_recipients_entry.set_show_apply_button(true);
     let password_list_state = PasswordPageState {
         nav: navigation_view.clone(),
@@ -377,12 +377,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let root = non_null_to_string_option(row, "root");
 
             let Some(label) = label else {
-                let toast = Toast::new("This password entry could not be opened.");
+                let toast = Toast::new("Couldn't open that item.");
                 overlay.add_toast(toast);
                 return;
             };
             let Some(root) = root else {
-                let toast = Toast::new("This password entry is missing its password store.");
+                let toast = Toast::new("That item is missing its store.");
                 overlay.add_toast(toast);
                 return;
             };

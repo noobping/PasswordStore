@@ -18,48 +18,56 @@ const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
-    Ripasso,
-    Pass,
+    Integrated,
+    HostCommand,
 }
 
 #[cfg_attr(feature = "flatpak", allow(dead_code))]
 impl BackendKind {
     #[cfg(feature = "setup")]
-    pub fn as_str(self) -> &'static str {
+    pub fn stored_value(self) -> &'static str {
         match self {
-            Self::Ripasso => "ripasso",
-            Self::Pass => "pass",
+            Self::Integrated => "ripasso",
+            Self::HostCommand => "pass",
         }
     }
 
     #[cfg(feature = "setup")]
     fn from_stored(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
-            "ripasso" => Self::Ripasso,
-            "pass" | "pass-command" | "pass command" => Self::Pass,
+            "ripasso" => Self::Integrated,
+            "pass" | "pass-command" | "pass command" => Self::HostCommand,
             _ => default_backend_kind(),
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Integrated => "Integrated",
+            Self::HostCommand => "Host command",
         }
     }
 
     #[cfg(feature = "setup")]
     pub fn combo_position(self) -> u32 {
         match self {
-            Self::Ripasso => 0,
-            Self::Pass => 1,
+            Self::Integrated => 0,
+            Self::HostCommand => 1,
         }
     }
 
     #[cfg(feature = "setup")]
     pub fn from_combo_position(position: u32) -> Self {
         match position {
-            1 => Self::Pass,
-            _ => Self::Ripasso,
+            1 => Self::HostCommand,
+            _ => Self::Integrated,
         }
     }
 
     #[cfg(feature = "setup")]
-    pub fn uses_pass_command(self) -> bool {
-        matches!(self, Self::Pass)
+    pub fn uses_host_command(self) -> bool {
+        matches!(self, Self::HostCommand)
     }
 }
 
@@ -68,12 +76,12 @@ impl BackendKind {
 fn default_backend_kind() -> BackendKind {
     #[cfg(any(feature = "setup", feature = "flatpak"))]
     {
-        BackendKind::Ripasso
+        BackendKind::Integrated
     }
 
     #[cfg(not(any(feature = "setup", feature = "flatpak")))]
     {
-        BackendKind::Pass
+        BackendKind::HostCommand
     }
 }
 
@@ -174,7 +182,7 @@ impl Preferences {
     pub fn backend_kind(&self) -> BackendKind {
         #[cfg(feature = "flatpak")]
         {
-            BackendKind::Ripasso
+            BackendKind::Integrated
         }
 
         #[cfg(all(feature = "setup", not(feature = "flatpak")))]
@@ -192,13 +200,13 @@ impl Preferences {
 
         #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
         {
-            BackendKind::Pass
+            BackendKind::HostCommand
         }
     }
 
     #[cfg_attr(feature = "flatpak", allow(dead_code))]
-    pub fn uses_ripasso_backend(&self) -> bool {
-        matches!(self.backend_kind(), BackendKind::Ripasso)
+    pub fn uses_integrated_backend(&self) -> bool {
+        matches!(self.backend_kind(), BackendKind::Integrated)
     }
 
     pub fn new_pass_file_template(&self) -> String {
@@ -245,10 +253,10 @@ impl Preferences {
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     pub fn set_backend_kind(&self, backend: BackendKind) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
-            s.set_string("backend", backend.as_str())
+            s.set_string("backend", backend.stored_value())
         } else {
             let mut cfg = load_file_prefs();
-            cfg.backend = Some(backend.as_str().to_string());
+            cfg.backend = Some(backend.stored_value().to_string());
             save_file_prefs(&cfg)
         }
     }
@@ -328,7 +336,7 @@ impl Preferences {
 }
 
 fn config_path() -> PathBuf {
-    if let Some(dir) = dirs::preference_dir() {
+    if let Some(dir) = dirs_next::config_dir() {
         dir.join(format!("{}.toml", env!("CARGO_PKG_NAME")))
     } else {
         PathBuf::from(format!("{}.toml", env!("CARGO_PKG_NAME")))
@@ -395,10 +403,10 @@ mod tests {
     #[test]
     fn default_backend_matches_build_mode() {
         #[cfg(any(feature = "setup", feature = "flatpak"))]
-        assert_eq!(default_backend_kind(), BackendKind::Ripasso);
+        assert_eq!(default_backend_kind(), BackendKind::Integrated);
 
         #[cfg(not(any(feature = "setup", feature = "flatpak")))]
-        assert_eq!(default_backend_kind(), BackendKind::Pass);
+        assert_eq!(default_backend_kind(), BackendKind::HostCommand);
     }
 
     #[test]

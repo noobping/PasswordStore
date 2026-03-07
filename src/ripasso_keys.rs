@@ -24,9 +24,22 @@ pub(crate) struct RipassoPrivateKeysState {
     pub(crate) overlay: ToastOverlay,
 }
 
-fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Option<String> {
+fn store_selected_private_key_fingerprint(
+    fingerprint: Option<&str>,
+    context: &str,
+) -> Result<(), ()> {
     let settings = Preferences::new();
-    let configured = settings.ripasso_own_fingerprint();
+    settings
+        .set_ripasso_own_fingerprint(fingerprint)
+        .map_err(|err| {
+            log_error(format!(
+                "Failed to store the selected private key ({context}): {err}"
+            ));
+        })
+}
+
+fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Option<String> {
+    let configured = Preferences::new().ripasso_own_fingerprint();
     let resolved = configured
         .as_deref()
         .and_then(|fingerprint| {
@@ -37,11 +50,7 @@ fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Opti
         .or_else(|| keys.first().map(|key| key.fingerprint.clone()));
 
     if configured.as_deref() != resolved.as_deref() {
-        if let Err(err) = settings.set_ripasso_own_fingerprint(resolved.as_deref()) {
-            log_error(format!(
-                "Failed to store the selected ripasso private key fingerprint: {err}"
-            ));
-        }
+        let _ = store_selected_private_key_fingerprint(resolved.as_deref(), "sync");
     }
 
     resolved
@@ -78,7 +87,7 @@ fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
                         let message = if err.contains("does not include a private key") {
                             "That file does not contain a private key."
                         } else {
-                            "Couldn't read that private key."
+                            "Couldn't read that key."
                         };
                         state_for_response.overlay.add_toast(Toast::new(message));
                     }
@@ -88,7 +97,7 @@ fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
                 log_error(format!("Failed to read the selected private key file: {err}"));
                 state_for_response
                     .overlay
-                    .add_toast(Toast::new("Couldn't read that private key file."));
+                    .add_toast(Toast::new("Couldn't read that file."));
             }
         }
 
@@ -104,17 +113,13 @@ fn finish_ripasso_private_key_import(
 ) {
     match result {
         Ok(key) => {
-            let settings = Preferences::new();
-            if let Err(err) = settings.set_ripasso_own_fingerprint(Some(&key.fingerprint)) {
-                log_error(format!(
-                    "Failed to store the imported ripasso private key fingerprint: {err}"
-                ));
+            if store_selected_private_key_fingerprint(Some(&key.fingerprint), "import").is_err() {
                 state.overlay.add_toast(Toast::new(
-                    "The private key was imported, but it could not be selected.",
+                    "Key imported, but it wasn't selected.",
                 ));
             } else {
                 rebuild_ripasso_private_keys_list(state);
-                state.overlay.add_toast(Toast::new("Private key imported."));
+                state.overlay.add_toast(Toast::new("Key imported."));
             }
         }
         Err(err) => {
@@ -130,13 +135,13 @@ fn import_private_key_error_message(message: &str) -> &'static str {
     if message.contains("does not include a private key") {
         "That file does not contain a private key."
     } else if message.contains("must be password protected") {
-        "Protect that private key with a password before importing it."
+        "Add a password to that key first."
     } else if message.contains("cannot decrypt password store entries") {
-        "That private key cannot decrypt password entries."
+        "This key can't open your items."
     } else if message.contains("password protected") || message.contains("incorrect") {
-        "Couldn't unlock that private key."
+        "Couldn't unlock the key."
     } else {
-        "Couldn't import that private key."
+        "Couldn't import the key."
     }
 }
 
@@ -147,8 +152,8 @@ fn start_ripasso_private_key_import(
 ) {
     let progress_dialog = build_private_key_progress_dialog(
         &state.window,
-        "Importing Private Key",
-        "Please wait while ripasso imports the private key.",
+        "Importing key",
+        "Please wait.",
     );
     let state = state.clone();
     let progress_dialog_for_disconnect = progress_dialog.clone();
@@ -164,20 +169,16 @@ fn start_ripasso_private_key_import(
             log_error("Private key import worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .overlay
-                .add_toast(Toast::new("Couldn't import that private key."));
+                .add_toast(Toast::new("Couldn't import the key."));
         },
     );
 }
 
 fn select_ripasso_private_key(state: &RipassoPrivateKeysState, fingerprint: &str) {
-    let settings = Preferences::new();
-    if let Err(err) = settings.set_ripasso_own_fingerprint(Some(fingerprint)) {
-        log_error(format!(
-            "Failed to store the selected ripasso private key fingerprint: {err}"
-        ));
+    if store_selected_private_key_fingerprint(Some(fingerprint), "select").is_err() {
         state
             .overlay
-            .add_toast(Toast::new("Couldn't select that private key."));
+            .add_toast(Toast::new("Couldn't select that key."));
     } else {
         rebuild_ripasso_private_keys_list(state);
     }
@@ -191,7 +192,7 @@ fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes:
     present_private_key_password_dialog(
         &window,
         &overlay,
-        "Unlock Private Key",
+        "Unlock key",
         move |passphrase| {
             start_ripasso_private_key_import(&state, bytes.as_slice().to_vec(), Some(passphrase));
         },
@@ -201,7 +202,7 @@ fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes:
 fn append_ripasso_private_key_import_row(state: &RipassoPrivateKeysState) {
     let row = ActionRow::builder()
         .title("Import private key")
-        .subtitle("Choose an OpenPGP private key file.")
+        .subtitle("Choose a private key file.")
         .build();
     row.set_activatable(true);
 
@@ -252,7 +253,7 @@ fn activate_private_key_row(state: &RipassoPrivateKeysState, key: &ManagedRipass
             ));
             state
                 .overlay
-                .add_toast(Toast::new("Couldn't open that private key."));
+                .add_toast(Toast::new("Couldn't open that key."));
             return;
         }
     };
@@ -283,7 +284,7 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
             log_error(format!("Failed to read ripasso private keys: {err}"));
             state
                 .overlay
-                .add_toast(Toast::new("Couldn't load the private keys."));
+                .add_toast(Toast::new("Couldn't load your keys."));
             append_ripasso_private_key_import_row(state);
             return;
         }
@@ -292,8 +293,8 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
 
     if keys.is_empty() {
         let empty_row = ActionRow::builder()
-            .title("No private keys imported")
-            .subtitle("Import an OpenPGP private key to let ripasso decrypt and save entries.")
+            .title("No private keys yet")
+            .subtitle("Import one to use the integrated backend.")
             .build();
         empty_row.set_activatable(false);
         state.list.append(&empty_row);
@@ -348,7 +349,7 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
                     ));
                     delete_state
                         .overlay
-                        .add_toast(Toast::new("Couldn't remove that private key."));
+                        .add_toast(Toast::new("Couldn't remove that key."));
                     return;
                 }
 
@@ -356,7 +357,7 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
                 if settings.ripasso_own_fingerprint().as_deref()
                     == Some(key_for_delete.fingerprint.as_str())
                 {
-                    let _ = settings.set_ripasso_own_fingerprint(None);
+                    let _ = store_selected_private_key_fingerprint(None, "remove");
                 }
                 rebuild_ripasso_private_keys_list(&delete_state);
             });

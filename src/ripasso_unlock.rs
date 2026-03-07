@@ -21,9 +21,9 @@ fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
 
 fn unlock_private_key_error_message(message: &str) -> &'static str {
     if message.contains("cannot decrypt password store entries") {
-        "That private key cannot decrypt password entries."
+        "This key can't open your items."
     } else {
-        "Couldn't unlock that private key."
+        "Couldn't unlock the key."
     }
 }
 
@@ -36,8 +36,8 @@ fn start_private_key_unlock_for_action(
 ) {
     let progress_dialog = build_private_key_progress_dialog(
         window,
-        "Unlocking Private Key",
-        "Please wait while ripasso unlocks the private key for this session.",
+        "Unlocking key",
+        "Please wait.",
     );
     let overlay = overlay.clone();
     let progress_dialog_for_disconnect = progress_dialog.clone();
@@ -49,7 +49,7 @@ fn start_private_key_unlock_for_action(
             Ok(_) => {
                 progress_dialog.force_close();
                 after_unlock();
-                overlay.add_toast(Toast::new("Private key unlocked for this session."));
+                overlay.add_toast(Toast::new("Key unlocked."));
             }
             Err(err) => {
                 progress_dialog.force_close();
@@ -60,7 +60,7 @@ fn start_private_key_unlock_for_action(
         move || {
             progress_dialog_for_disconnect.force_close();
             log_error("Private key unlock worker disconnected unexpectedly.".to_string());
-            overlay_for_disconnect.add_toast(Toast::new("Couldn't unlock that private key."));
+            overlay_for_disconnect.add_toast(Toast::new("Couldn't unlock the key."));
         },
     );
 }
@@ -72,7 +72,7 @@ pub(crate) fn prompt_private_key_unlock_for_action(
 ) {
     let Some(window) = toast_overlay_window(overlay) else {
         log_error("Couldn't find the application window for the private key unlock dialog.".to_string());
-        overlay.add_toast(Toast::new("Couldn't unlock that private key."));
+        overlay.add_toast(Toast::new("Couldn't unlock the key."));
         return;
     };
 
@@ -81,7 +81,7 @@ pub(crate) fn prompt_private_key_unlock_for_action(
     present_private_key_password_dialog(
         &window,
         overlay,
-        "Unlock Private Key",
+        "Unlock key",
         move |passphrase| {
             start_private_key_unlock_for_action(
                 &window_for_submit,

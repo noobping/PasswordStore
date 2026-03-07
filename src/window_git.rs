@@ -117,7 +117,7 @@ fn run_clone_operation(url: &str, git_operation: &GitOperationControl) -> GitOpe
     let store_root = settings.store();
     if store_root.is_empty() {
         return GitOperationResult::Failed(
-            "Add a password store folder in Preferences before restoring from Git.".to_string(),
+            "Add a store folder in Preferences first.".to_string(),
         );
     }
 
@@ -131,15 +131,11 @@ fn run_clone_operation(url: &str, git_operation: &GitOperationControl) -> GitOpe
     ) {
         Ok(output) if output.status.success() => GitOperationResult::Success,
         Ok(_output) if git_operation.is_cancel_requested() => GitOperationResult::Canceled,
-        Ok(_) => GitOperationResult::Failed(with_logs_hint(
-            "Couldn't restore the password store.",
-        )),
+        Ok(_) => GitOperationResult::Failed(with_logs_hint("Couldn't restore the store.")),
         Err(_err) if git_operation.is_cancel_requested() => GitOperationResult::Canceled,
         Err(err) => {
             log_error(format!("Failed to start restore from Git: {err}"));
-            GitOperationResult::Failed(with_logs_hint(
-                "Couldn't restore the password store.",
-            ))
+            GitOperationResult::Failed(with_logs_hint("Couldn't restore the store."))
         }
     }
 }
@@ -178,18 +174,14 @@ fn run_sync_operation(git_operation: &GitOperationControl) -> GitOperationResult
                     log_error(format!(
                         "Password store sync failed for {root}: {fatal_line}"
                     ));
-                    return GitOperationResult::Failed(with_logs_hint(
-                        "Couldn't sync one of the password stores.",
-                    ));
+                    return GitOperationResult::Failed(with_logs_hint("Couldn't sync a store."));
                 }
                 Err(err) if git_operation.is_cancel_requested() => {
                     return GitOperationResult::Canceled;
                 }
                 Err(err) => {
                     log_error(format!("Password store sync failed for {root}: {err}"));
-                    return GitOperationResult::Failed(with_logs_hint(
-                        "Couldn't sync one of the password stores.",
-                    ));
+                    return GitOperationResult::Failed(with_logs_hint("Couldn't sync a store."));
                 }
             }
         }
@@ -250,8 +242,8 @@ pub(crate) fn register_git_clone_action(
             &state.navigation,
             &state.busy_page,
             &state.busy_status,
-            "Restoring password store",
-            Some("Downloading the password store from the repository."),
+            "Restoring store",
+            Some("Please wait."),
         );
 
         let url_for_thread = url.clone();
@@ -267,7 +259,7 @@ pub(crate) fn register_git_clone_action(
                 GitOperationResult::Success => {
                     entry.set_text("");
                     restore_after_git_operation(&state, &git_operation);
-                    state.overlay.add_toast(Toast::new("Password store restored."));
+                    state.overlay.add_toast(Toast::new("Store restored."));
                     reload_password_list(&state);
                 }
                 GitOperationResult::Failed(message) => {
@@ -283,9 +275,7 @@ pub(crate) fn register_git_clone_action(
                 restore_after_git_operation(&state_for_disconnect, &git_operation_for_disconnect);
                 state_for_disconnect
                     .overlay
-                    .add_toast(Toast::new(&with_logs_hint(
-                        "The restore operation stopped unexpectedly.",
-                    )));
+                    .add_toast(Toast::new(&with_logs_hint("Restore stopped unexpectedly.")));
             },
         );
     });
@@ -307,8 +297,8 @@ pub(crate) fn register_synchronize_action(
             &state.navigation,
             &state.busy_page,
             &state.busy_status,
-            "Syncing password stores",
-            Some("Checking for changes and pushing updates."),
+            "Syncing stores",
+            Some("Please wait."),
         );
 
         let git_operation_for_thread = git_operation.clone();
@@ -364,17 +354,15 @@ pub(crate) fn handle_git_busy_back(
     match git_operation.request_cancel() {
         Ok(true) => {
             crate::logging::log_info("Git operation cancellation requested");
-            state.busy_status.set_title("Stopping Git operation");
-            state
-                .busy_status
-                .set_description(Some("Waiting for the current git command to stop."));
+            state.busy_status.set_title("Canceling");
+            state.busy_status.set_description(Some("Please wait."));
         }
         Ok(false) => {}
         Err(err) => {
             log_error(format!("Failed to cancel Git operation: {err}"));
             state
                 .overlay
-                .add_toast(Toast::new("Couldn't stop the Git operation."));
+                .add_toast(Toast::new("Couldn't cancel right now."));
         }
     }
 

@@ -30,7 +30,7 @@ pub(crate) struct WindowNavigationState {
 
 pub(crate) fn set_save_button_for_password(save: &Button) {
     save.set_action_name(Some("win.save-password"));
-    save.set_tooltip_text(Some("Save password"));
+    save.set_tooltip_text(Some("Save changes"));
 }
 
 pub(crate) fn restore_window_for_current_page(
@@ -109,7 +109,7 @@ pub(crate) fn restore_window_for_current_page(
     } else if is_log_page {
         set_save_button_for_password(&state.save);
         state.win.set_title("Logs");
-        state.win.set_subtitle("Command output");
+        state.win.set_subtitle("Details");
     }
 
     false
@@ -123,7 +123,7 @@ pub(crate) fn show_log_page(state: &WindowNavigationState) {
     state.back.set_visible(true);
     state.save.set_visible(false);
     state.win.set_title("Logs");
-    state.win.set_subtitle("Command output");
+    state.win.set_subtitle("Details");
 
     let already_visible = state
         .nav
@@ -149,7 +149,7 @@ pub(crate) fn show_git_busy_page(
     state.git.set_visible(false);
     state.back.set_visible(true);
     state.save.set_visible(false);
-    state.win.set_title("Git");
+    state.win.set_title("Working");
     state.win.set_subtitle(title);
     status.set_title(title);
     status.set_description(description);

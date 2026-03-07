@@ -5,6 +5,7 @@ use crate::preferences::Preferences;
 use crate::ripasso_keys::{rebuild_ripasso_private_keys_list, RipassoPrivateKeysState};
 use crate::store_management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::window_navigation::set_save_button_for_password;
+use crate::logging::log_error;
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::ComboRow;
 use adw::gio::SimpleAction;
@@ -17,6 +18,11 @@ use adw::EntryRow;
 use adw::gtk::{Button, ListBox, TextView};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use crate::preferences::BackendKind;
+
+fn toast_preferences_save_error(overlay: &ToastOverlay, context: &str, err: &adw::glib::BoolError) {
+    log_error(format!("Failed to save preference ({context}): {}", err.message));
+    overlay.add_toast(Toast::new("Couldn't save that setting."));
+}
 
 #[derive(Clone)]
 pub(crate) struct PreferencesActionState {
@@ -51,7 +57,7 @@ fn sync_backend_preferences_rows(
     if backend_row.selected() != backend.combo_position() {
         backend_row.set_selected(backend.combo_position());
     }
-    pass_row.set_visible(backend.uses_pass_command());
+    pass_row.set_visible(backend.uses_host_command());
 }
 
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
@@ -60,7 +66,10 @@ pub(crate) fn initialize_backend_row(
     pass_row: &EntryRow,
     preferences: &Preferences,
 ) {
-    backend_row.set_model(Some(&adw::gtk::StringList::new(&["Ripasso", "Pass command"])));
+    backend_row.set_model(Some(&adw::gtk::StringList::new(&[
+        BackendKind::Integrated.label(),
+        BackendKind::HostCommand.label(),
+    ])));
     backend_row.set_visible(true);
     sync_backend_preferences_rows(backend_row, pass_row, preferences);
 }
@@ -77,11 +86,11 @@ pub(crate) fn connect_pass_command_row(
         let text = row.text().to_string();
         let text = text.trim();
         if text.is_empty() {
-            overlay.add_toast(Toast::new("Enter a command for pass."));
+            overlay.add_toast(Toast::new("Enter a command."));
             return;
         }
         if let Err(err) = preferences.set_command(text) {
-            overlay.add_toast(Toast::new(&err.message.to_string()));
+            toast_preferences_save_error(&overlay, "host command", &err);
         }
     });
 }
@@ -100,18 +109,18 @@ pub(crate) fn connect_backend_row(
         let selected_backend = BackendKind::from_combo_position(row.selected());
         let current_backend = preferences.backend_kind();
         if selected_backend == current_backend {
-            pass_row.set_visible(selected_backend.uses_pass_command());
+            pass_row.set_visible(selected_backend.uses_host_command());
             return;
         }
 
         if let Err(err) = preferences.set_backend_kind(selected_backend) {
-            pass_row.set_visible(current_backend.uses_pass_command());
+            pass_row.set_visible(current_backend.uses_host_command());
             row.set_selected(current_backend.combo_position());
-            overlay.add_toast(Toast::new(&err.message.to_string()));
+            toast_preferences_save_error(&overlay, "backend", &err);
             return;
         }
 
-        pass_row.set_visible(selected_backend.uses_pass_command());
+        pass_row.set_visible(selected_backend.uses_host_command());
     });
 }
 
@@ -129,7 +138,7 @@ pub(crate) fn connect_new_password_template_autosave(
             return;
         }
         if let Err(err) = preferences.set_new_pass_file_template(&template) {
-            overlay.add_toast(Toast::new(&err.message.to_string()));
+            toast_preferences_save_error(&overlay, "new item template", &err);
         }
     });
 }
@@ -193,7 +202,7 @@ pub(crate) fn register_install_locally_action(
     let action = SimpleAction::new("install-locally", None);
     action.connect_activate(move |_, _| {
         if !can_install_locally() {
-            overlay.add_toast(Toast::new("This app cannot be installed here."));
+            overlay.add_toast(Toast::new("This app can't be installed here."));
             return;
         }
         let items = menu.n_items();

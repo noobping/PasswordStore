@@ -28,15 +28,15 @@ pub(crate) enum StoreRecipientsMode {
 impl StoreRecipientsMode {
     pub(crate) fn page_title(&self) -> &'static str {
         match self {
-            Self::Create => "Create Password Store",
-            Self::Edit => "GPG Recipients",
+            Self::Create => "New Store",
+            Self::Edit => "Recipients",
         }
     }
 
     fn empty_state_subtitle(&self) -> &'static str {
         match self {
-            Self::Create => "Add at least one recipient to initialize the password store.",
-            Self::Edit => "Add at least one recipient before saving your changes.",
+            Self::Create => "Add at least one recipient to create this store.",
+            Self::Edit => "Add at least one recipient to keep saving changes.",
         }
     }
 }
@@ -136,7 +136,7 @@ fn save_store_recipients_async(
                         if let Err(err) = settings.set_stores(stores) {
                             log_error(format!("Failed to save stores: {err}"));
                             overlay.add_toast(Toast::new(
-                                "Password store created, but it couldn't be added to Preferences.",
+                                "Store created, but it wasn't added.",
                             ));
                         } else {
                             rebuild_store_list(
@@ -160,10 +160,14 @@ fn save_store_recipients_async(
                 finish_store_recipients_save(&state, true);
             }
             Err(message) => {
+                log_error(format!(
+                    "Failed to save store recipients for '{}': {message}",
+                    request.store
+                ));
                 let message = if request.mode == StoreRecipientsMode::Create {
-                    with_logs_hint("Couldn't create the password store.")
+                    with_logs_hint("Couldn't create the store.")
                 } else {
-                    message
+                    with_logs_hint("Couldn't save recipients.")
                 };
                 finish_store_recipients_save(&state, false);
                 overlay.add_toast(Toast::new(&message));
@@ -171,9 +175,9 @@ fn save_store_recipients_async(
         },
         move || {
             let message = if request_for_disconnect.mode == StoreRecipientsMode::Create {
-                with_logs_hint("Couldn't create the password store.")
+                with_logs_hint("Couldn't create the store.")
             } else {
-                with_logs_hint("Couldn't save the password store recipients.")
+                with_logs_hint("Couldn't save recipients.")
             };
             finish_store_recipients_save(&state_for_disconnect, false);
             overlay_for_disconnect.add_toast(Toast::new(&message));
@@ -216,7 +220,7 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
     if state.recipients.borrow().is_empty() {
         let empty_row = ActionRow::builder()
-            .title("No GPG recipients added")
+            .title("No recipients yet")
             .subtitle(empty_subtitle)
             .build();
         empty_row.set_activatable(false);
@@ -268,7 +272,7 @@ pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState
     let Some(request) = current_store_recipients_request(state) else {
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
-        state.win.set_title("GPG Recipients");
+        state.win.set_title("Recipients");
         state.win.set_subtitle("Password Store");
         return;
     };
@@ -329,14 +333,14 @@ mod tests {
 
     #[test]
     fn create_mode_has_create_title() {
-        assert_eq!(StoreRecipientsMode::Create.page_title(), "Create Password Store");
+        assert_eq!(StoreRecipientsMode::Create.page_title(), "New Store");
     }
 
     #[test]
     fn edit_mode_has_edit_empty_state_copy() {
         assert_eq!(
             StoreRecipientsMode::Edit.empty_state_subtitle(),
-            "Add at least one recipient before saving your changes."
+            "Add at least one recipient to keep saving changes."
         );
     }
 }

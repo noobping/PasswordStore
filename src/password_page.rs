@@ -55,7 +55,7 @@ pub(crate) struct PasswordPageState {
 #[cfg(feature = "flatpak")]
 fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
     if message.contains("cannot decrypt password store entries") {
-        Some("The selected private key cannot decrypt password entries.")
+        Some("This key can't open your items.")
     } else {
         None
     }
@@ -86,10 +86,8 @@ fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle:
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
     state.status.set_visible(true);
-    state.status.set_title("Decrypting Password Entry");
-    state
-        .status
-        .set_description(Some("Please wait while the pass file is opened."));
+    state.status.set_title("Opening item");
+    state.status.set_description(Some("Please wait."));
 }
 
 fn show_password_editor_fields(state: &PasswordPageState) {
@@ -105,10 +103,16 @@ fn show_password_open_error(state: &PasswordPageState) {
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
     state.status.set_visible(true);
-    state.status.set_title("Couldn't Open Password Entry");
-    state
-        .status
-        .set_description(Some("Try again, or check the logs for more details."));
+    state.status.set_title("Couldn't open item");
+    state.status.set_description(Some("Try again."));
+}
+
+fn save_error_toast(message: &str) -> &'static str {
+    if message.contains("already exists") {
+        "An item with that name already exists."
+    } else {
+        "Couldn't save changes."
+    }
 }
 
 fn structured_editor_contents(state: &PasswordPageState) -> String {
@@ -205,7 +209,7 @@ fn sync_otp_entry_from_contents(
             if show_errors {
                 log_error(format!("Failed to read OTP code: {err}"));
                 state.overlay.add_toast(Toast::new(&with_logs_hint(
-                    "Couldn't load the one-time password.",
+                    "Couldn't load the code.",
                 )));
             }
             state.otp.set_text("");
@@ -294,10 +298,10 @@ pub(crate) fn open_password_entry_page(
                     log_error(format!("Failed to open password entry: {msg}"));
                     #[cfg(feature = "flatpak")]
                     if is_locked_private_key_error(&msg) {
-                        state_for_result.status.set_title("Private Key Locked");
-                        state_for_result.status.set_description(Some(
-                            "Unlock the selected private key to continue opening this pass file.",
-                        ));
+                        state_for_result.status.set_title("Unlock key");
+                        state_for_result
+                            .status
+                            .set_description(Some("Enter your key password to continue."));
                         match resolved_ripasso_own_fingerprint() {
                             Ok(fingerprint) => {
                                 let retry_pass_file = opened_pass_file_for_result.clone();
@@ -327,7 +331,7 @@ pub(crate) fn open_password_entry_page(
                     let toast = if let Some(message) = friendly_password_entry_error_message(&msg) {
                         Toast::new(message)
                     } else {
-                        Toast::new(&with_logs_hint("Couldn't open the password entry."))
+                        Toast::new(&with_logs_hint("Couldn't open the item."))
                     };
                     state_for_result.overlay.add_toast(toast);
                 }
@@ -340,7 +344,7 @@ pub(crate) fn open_password_entry_page(
 
             show_password_open_error(&state_for_disconnect);
             state_for_disconnect.overlay.add_toast(Toast::new(&with_logs_hint(
-                "Couldn't open the password entry.",
+                "Couldn't open the item.",
             )));
         },
     );
@@ -354,14 +358,19 @@ pub(crate) fn begin_new_password_entry(
 ) {
     let path = path.trim();
     if path.is_empty() {
-        state
-            .overlay
-            .add_toast(Toast::new("Enter a name or path for the new entry."));
+        state.overlay.add_toast(Toast::new("Enter a name."));
         return;
     }
 
     let settings = Preferences::new();
     let store_root = settings.store();
+    if store_root.trim().is_empty() {
+        state
+            .overlay
+            .add_toast(Toast::new("Add a store folder first."));
+        add_popover.popdown();
+        return;
+    }
     let template_contents =
         new_pass_file_contents_from_template(&settings.new_pass_file_template());
     let opened_pass_file = OpenPassFile::from_label(store_root, path);
@@ -372,7 +381,7 @@ pub(crate) fn begin_new_password_entry(
     )
     .or_else(get_opened_pass_file);
 
-    show_password_editor_chrome(state, "New password", path);
+    show_password_editor_chrome(state, "New item", path);
     show_password_editor_fields(state);
     state.otp.set_visible(false);
     state.otp.set_text("");
@@ -413,18 +422,14 @@ pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
 
 pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
     let Some(pass_file) = get_opened_pass_file() else {
-        state
-            .overlay
-            .add_toast(Toast::new("Open a password entry before saving."));
+        state.overlay.add_toast(Toast::new("Open an item first."));
         return;
     };
 
     let contents = current_editor_contents(state);
     let password = contents.lines().next().unwrap_or_default().to_string();
     if password.is_empty() {
-        state
-            .overlay
-            .add_toast(Toast::new("Enter a password before saving."));
+        state.overlay.add_toast(Toast::new("Enter a password."));
         return;
     }
 
@@ -436,9 +441,14 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             show_password_editor_fields(state);
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
             sync_otp_entry_from_contents(state, &contents, pass_file.store_path(), &label, false);
-            state.overlay.add_toast(Toast::new("Changes saved."));
+            state.overlay.add_toast(Toast::new("Saved."));
         }
-        Err(message) => state.overlay.add_toast(Toast::new(&message)),
+        Err(message) => {
+            log_error(format!("Failed to save password entry: {message}"));
+            state
+                .overlay
+                .add_toast(Toast::new(save_error_toast(&message)));
+        }
     }
 }
 

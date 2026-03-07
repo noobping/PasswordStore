@@ -119,7 +119,7 @@ fn append_password_row(list: &ListBox, item: PassEntry, overlay: &ToastOverlay) 
         .build();
     let popover = Popover::new();
     let rename_row = EntryRow::new();
-    rename_row.set_title("Rename or move");
+    rename_row.set_title("Move or rename");
     rename_row.set_show_apply_button(true);
     rename_row.set_text(&item.label());
     let copy_btn = Button::from_icon_name("edit-copy-symbolic");
@@ -174,7 +174,7 @@ fn connect_rename_action(
     rename_row.connect_apply(move |row| {
         let new_label = row.text().to_string();
         if new_label.is_empty() {
-            overlay.add_toast(Toast::new("Enter a new name."));
+            overlay.add_toast(Toast::new("Enter a name."));
             return;
         }
 
@@ -215,7 +215,7 @@ fn connect_rename_action(
                 action_row.set_subtitle(parent);
             }
             Err(_) => {
-                overlay.add_toast(Toast::new("Couldn't rename the password entry."));
+                overlay.add_toast(Toast::new("Couldn't rename the item."));
             }
         }
     });
@@ -251,11 +251,11 @@ fn connect_delete_action(
                     }
                     Err(err) => {
                         log_error(format!("Failed to delete password entry: {err}"));
-                        overlay.add_toast(Toast::new("Couldn't delete the password entry."));
+                        overlay.add_toast(Toast::new("Couldn't delete the item."));
                     }
                 },
                 move || {
-                    overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the password entry."));
+                    overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the item."));
                 },
             );
         }
@@ -323,7 +323,7 @@ fn resolved_placeholder(empty: bool, has_store_dirs: bool) -> StatusPage {
     } else {
         StatusPage::builder()
             .icon_name("edit-find-symbolic")
-            .title("No passwords found")
+            .title("No matches")
             .description("Try another query.")
             .build()
     }
@@ -347,13 +347,13 @@ fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -
     let builder = StatusPage::builder().icon_name(symbolic);
     if has_store_dirs {
         builder
-            .title("Empty")
-            .description("Create a new password to get started.")
+            .title("No items yet")
+            .description("Create a new item to get started.")
             .build()
     } else {
         builder
-            .title("No password store folders added")
-            .description("Open Preferences and choose a password store folder to get started.")
+            .title("No folders added")
+            .description("Open Preferences to add a password store folder.")
             .build()
     }
 }

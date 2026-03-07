@@ -11,9 +11,9 @@
 
     <key name="pass-command" type="s">
       <default>'pass'</default>
-      <summary>Pass command</summary>
+      <summary>Host command</summary>
       <description>
-        Command used to invoke pass. Can be "pass" or a full wrapper like a podman command.
+        Command used for the Host command backend.
       </description>
     </key>
 
@@ -21,7 +21,7 @@
       <default>'ripasso'</default>
       <summary>Password backend</summary>
       <description>
-        Backend used to access the password store. Valid values are "ripasso" and "pass".
+        Backend used to open the password store. Valid values are "ripasso" and "pass".
       </description>
     </key>
 
@@ -35,9 +35,9 @@
 
     <key name="ripasso-own-fingerprint" type="s">
       <default>''</default>
-      <summary>Selected ripasso private key</summary>
+      <summary>Selected private key</summary>
       <description>
-        Fingerprint of the private key that ripasso should use for password store operations.
+        Fingerprint of the private key used by the integrated backend.
       </description>
     </key>
   </schema>

@@ -7,6 +7,8 @@ use crate::logging::log_error;
 #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
+#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+use crate::window_messages::with_logs_hint;
 use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
@@ -23,9 +25,9 @@ pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
 pub(crate) fn store_gpg_recipients_subtitle(store_root: &str) -> String {
     let recipients = read_store_gpg_recipients(store_root);
     match recipients.len() {
-        0 => "No GPG recipients configured".to_string(),
-        1 => "1 GPG recipient".to_string(),
-        count => format!("{count} GPG recipients"),
+        0 => "No recipients set".to_string(),
+        1 => "1 recipient".to_string(),
+        count => format!("{count} recipients"),
     }
 }
 
@@ -118,10 +120,10 @@ pub(crate) fn apply_password_store_recipients(
         CommandLogOptions::DEFAULT,
     ) {
         Ok(output) if output.status.success() => Ok(()),
-        Ok(_) => Err("Couldn't save the password store recipients. Check Logs for details.".to_string()),
+        Ok(_) => Err(with_logs_hint("Couldn't save recipients.")),
         Err(err) => {
             log_error(format!("Failed to start password store recipient update: {err}"));
-            Err("Couldn't save the password store recipients. Check Logs for details.".to_string())
+            Err(with_logs_hint("Couldn't save recipients."))
         }
     }
 }

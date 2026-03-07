@@ -28,7 +28,7 @@ const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";
 const COPY_BUTTON_FEEDBACK_MS: u64 = 1200;
 
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
-    overlay.add_toast(Toast::new("Clipboard is not available right now."));
+    overlay.add_toast(Toast::new("Clipboard unavailable."));
 }
 
 fn show_copy_feedback(button: &Button) {
@@ -173,7 +173,7 @@ pub(crate) fn copy_password_entry_to_clipboard(
     #[cfg(all(feature = "setup", not(feature = "flatpak")))]
     {
         let settings = Preferences::new();
-        if settings.uses_ripasso_backend() {
+        if settings.uses_integrated_backend() {
             copy_password_entry_to_clipboard_via_read(item, overlay, button);
         } else {
             copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());

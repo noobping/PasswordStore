@@ -22,7 +22,7 @@
                 <child>
                   <object class="GtkButton" id="add_button">
                     <property name="icon-name">list-add-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Add new password</property>
+                    <property name="tooltip-text" translatable="yes">Add new item</property>
                     <property name="action-name">win.open-new-password</property>
                     <property name="visible">true</property>
                   </object>
@@ -42,7 +42,7 @@
                 <child>
                   <object class="GtkButton" id="find_button">
                     <property name="icon-name">edit-find-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Find a password</property>
+                    <property name="tooltip-text" translatable="yes">Find an item</property>
                     <property name="action-name">win.toggle-find</property>
                     <property name="visible">false</property>
                   </object>
@@ -50,7 +50,7 @@
                 <child>
                   <object class="GtkButton" id="save_button">
                     <property name="icon-name">document-save-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Save password</property>
+                    <property name="tooltip-text" translatable="yes">Save changes</property>
                     <property name="action-name">win.save-password</property>
                     <property name="visible">false</property>
                   </object>
@@ -294,7 +294,7 @@
                               <object class="AdwPreferencesGroup" id="backend_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
-                                <property name="description" translatable="yes">Choose how Password Store accesses your password store. Ripasso is the default in setup builds. If you use the pass command backend, you can set a custom command below.</property>
+                                <property name="description" translatable="yes">Choose how Password Store opens your data. Integrated is the default. Use Host command to run your own command.</property>
                                 <child>
                                   <object class="AdwComboRow" id="backend_row">
                                     <property name="visible">false</property>
@@ -303,7 +303,7 @@
                                 </child>
                                 <child>
                                   <object class="AdwEntryRow" id="pass_command_row">
-                                    <property name="title" translatable="yes">Pass command</property>
+                                    <property name="title" translatable="yes">Host command</property>
                                     <property name="show-apply-button">true</property>
                                   </object>
                                 </child>
@@ -335,8 +335,8 @@
                             <child>
                               <object class="AdwPreferencesGroup" id="ripasso_private_keys_preferences">
                                 <property name="visible">false</property>
-                                <property name="title" translatable="yes">Ripasso Private Keys</property>
-                                <property name="description" translatable="yes">Flatpak builds use ripasso's integrated key storage. Import the private key you want ripasso to use, then select it here.</property>
+                                <property name="title" translatable="yes">Private Keys</property>
+                                <property name="description" translatable="yes">Import and choose the private key used by the integrated backend.</property>
                                 <child>
                                   <object class="GtkListBox" id="ripasso_private_keys_list">
                                     <property name="hexpand">true</property>
@@ -361,7 +361,7 @@
                                     </style>
                                     <child type="placeholder">
                                       <object class="AdwActionRow" id="stores_row">
-                                        <property name="title">No password store folders added</property>
+                                        <property name="title">No folders added</property>
                                         <property name="subtitle">Add an existing folder or create a new store.</property>
                                       </object>
                                     </child>
@@ -379,7 +379,7 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="store_recipients_page">
-                    <property name="title" translatable="yes">GPG Recipients</property>
+                    <property name="title" translatable="yes">Recipients</property>
                     <child>
                       <object class="GtkScrolledWindow">
                         <property name="vscrollbar-policy">automatic</property>
@@ -390,8 +390,8 @@
                           <object class="AdwPreferencesPage">
                             <child>
                               <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">GPG Recipients</property>
-                                <property name="description" translatable="yes">Add one recipient per row. You can paste multiple recipients separated by commas or semicolons.</property>
+                                <property name="title" translatable="yes">Recipients</property>
+                                <property name="description" translatable="yes">Add one recipient per row. You can also paste several at once with commas or semicolons.</property>
                                 <child>
                                   <object class="GtkScrolledWindow">
                                     <property name="hscrollbar-policy">never</property>
@@ -444,11 +444,11 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="git_busy_page">
-                    <property name="title" translatable="yes">Git</property>
+                    <property name="title" translatable="yes">Working</property>
                     <child>
                       <object class="AdwStatusPage" id="git_busy_status">
-                        <property name="title" translatable="yes">Running Git operation</property>
-                        <property name="description" translatable="yes">Please wait while the command finishes.</property>
+                        <property name="title" translatable="yes">Working</property>
+                        <property name="description" translatable="yes">Please wait.</property>
                         <property name="icon-name">git-symbolic</property>
                         <property name="hexpand">true</property>
                         <property name="vexpand">true</property>
@@ -485,7 +485,7 @@
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Find password file</attribute>
+        <attribute name="label" translatable="yes">_Find item</attribute>
         <attribute name="action">win.toggle-find</attribute>
       </item>
       <item>

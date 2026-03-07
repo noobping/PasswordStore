@@ -40,7 +40,7 @@ pub fn present_private_key_password_dialog<F>(
     F: Fn(String) + 'static,
 {
     let password_row = PasswordEntryRow::new();
-    password_row.set_title("Private key password");
+    password_row.set_title("Key password");
     password_row.set_show_apply_button(true);
 
     let password_group = PreferencesGroup::builder().build();
@@ -66,7 +66,7 @@ pub fn present_private_key_password_dialog<F>(
     password_row.connect_apply(move |row| {
         let passphrase = row.text().to_string();
         if passphrase.is_empty() {
-            let toast = Toast::new("Enter the private key password.");
+            let toast = Toast::new("Enter the key password.");
             overlay_clone.add_toast(toast);
             return;
         }

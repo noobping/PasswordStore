@@ -21,7 +21,7 @@ fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> 
             "The selected folder is not available as a local path. Choose a local folder."
                 .to_string(),
         );
-        overlay.add_toast(Toast::new("Choose a local password store folder."));
+        overlay.add_toast(Toast::new("Choose a local folder."));
         None
     })?;
 
@@ -138,8 +138,8 @@ fn append_store_picker_row(
     recipients_page: &StoreRecipientsPageState,
 ) {
     let row = ActionRow::builder()
-        .title("Add password store folder")
-        .subtitle("Choose a folder with the system file chooser.")
+        .title("Add store folder")
+        .subtitle("Choose an existing folder.")
         .build();
     row.set_activatable(true);
 
@@ -185,7 +185,7 @@ fn open_store_picker(
                 if let Err(err) = settings.set_stores(stores) {
                     log_error(format!("Failed to save stores: {err}"));
                     overlay_for_selection
-                        .add_toast(Toast::new("Couldn't add the password store folder."));
+                        .add_toast(Toast::new("Couldn't add that folder."));
                 } else {
                     rebuild_store_list(
                         &list,
@@ -208,8 +208,8 @@ fn append_store_creator_row(
     recipients_page: &StoreRecipientsPageState,
 ) {
     let row = ActionRow::builder()
-        .title("Create password store")
-        .subtitle("Choose a folder and initialize it with GPG recipients.")
+        .title("Create store")
+        .subtitle("Choose a folder and add recipients.")
         .build();
     row.set_activatable(true);
 

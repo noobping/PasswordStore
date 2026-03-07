@@ -3,20 +3,11 @@ use crate::setup::*;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{
     delete_password_entry, read_otp_code, read_password_entry, rename_password_entry,
-    save_password_entry, save_store_recipients,
+    save_password_entry,
 };
 use crate::clipboard::{connect_copy_button, copy_password_entry_to_clipboard};
 #[cfg(feature = "flatpak")]
-use crate::backend::{
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    remove_ripasso_private_key, resolved_ripasso_own_fingerprint,
-    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
-};
-#[cfg(feature = "flatpak")]
-use crate::private_key_dialog::{
-    build_private_key_progress_dialog, present_private_key_password_dialog,
-};
+use crate::backend::resolved_ripasso_own_fingerprint;
 #[cfg(any(feature = "setup", feature = "flatpak"))]
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
@@ -44,13 +35,17 @@ use crate::pass_file::{
 use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
+use crate::ripasso_keys::{rebuild_ripasso_private_keys_list, RipassoPrivateKeysState};
+#[cfg(feature = "flatpak")]
 use crate::ripasso_unlock::{
     is_locked_private_key_error, prompt_private_key_unlock_for_action,
 };
+use crate::stores::{
+    append_gpg_recipients, apply_password_store_recipients, read_store_gpg_recipients,
+    store_gpg_recipients_subtitle, stores_with_preferred_first, suggested_gpg_recipients,
+};
 #[cfg(all(feature = "setup", not(feature = "flatpak")))]
 use adw::ComboRow;
-#[cfg(feature = "flatpak")]
-use adw::gio;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
@@ -64,7 +59,6 @@ use adw::gtk::{
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::{Cell, RefCell};
-use std::fs;
 use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -179,14 +173,6 @@ struct StoreRecipientsPageState {
     saved_recipients: Rc<RefCell<Vec<String>>>,
     save_in_flight: Rc<Cell<bool>>,
     save_queued: Rc<Cell<bool>>,
-}
-
-#[cfg(feature = "flatpak")]
-#[derive(Clone)]
-struct RipassoPrivateKeysState {
-    window: ApplicationWindow,
-    list: ListBox,
-    overlay: ToastOverlay,
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -510,24 +496,6 @@ fn show_password_list_page(state: &PasswordListPageState) {
     );
 }
 
-fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
-    let path = std::path::Path::new(store_root).join(".gpg-id");
-    let Ok(contents) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-
-    parse_gpg_recipients(&contents)
-}
-
-fn store_gpg_recipients_subtitle(store_root: &str) -> String {
-    let recipients = read_store_gpg_recipients(store_root);
-    match recipients.len() {
-        0 => "No GPG recipients configured".to_string(),
-        1 => "1 GPG recipient".to_string(),
-        count => format!("{count} GPG recipients"),
-    }
-}
-
 fn current_store_recipients_request(
     state: &StoreRecipientsPageState,
 ) -> Option<StoreRecipientsRequest> {
@@ -658,433 +626,6 @@ fn show_store_recipients_page(
     {
         queue_store_recipients_autosave(state);
     }
-}
-
-#[cfg(feature = "flatpak")]
-fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Option<String> {
-    let settings = Preferences::new();
-    let configured = settings.ripasso_own_fingerprint();
-    let resolved = configured
-        .as_deref()
-        .and_then(|fingerprint| {
-            keys.iter()
-                .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
-                .map(|key| key.fingerprint.clone())
-        })
-        .or_else(|| keys.first().map(|key| key.fingerprint.clone()));
-
-    if configured.as_deref() != resolved.as_deref() {
-        if let Err(err) = settings.set_ripasso_own_fingerprint(resolved.as_deref()) {
-            log_error(format!(
-                "Failed to store the selected ripasso private key fingerprint: {err}"
-            ));
-        }
-    }
-
-    resolved
-}
-
-#[cfg(feature = "flatpak")]
-fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
-    let dialog = FileChooserNative::new(
-        Some("Import private key"),
-        Some(&state.window),
-        FileChooserAction::Open,
-        Some("Import"),
-        Some("Cancel"),
-    );
-    let state_for_response = state.clone();
-    dialog.connect_response(move |dialog, response| {
-        if response != ResponseType::Accept {
-            dialog.hide();
-            return;
-        }
-
-        let Some(file) = dialog.file() else {
-            dialog.hide();
-            return;
-        };
-
-        match file.load_bytes(None::<&gio::Cancellable>) {
-            Ok((bytes, _)) => {
-                let bytes = bytes.as_ref().to_vec();
-                match ripasso_private_key_requires_passphrase(&bytes) {
-                    Ok(true) => prompt_ripasso_private_key_passphrase(&state_for_response, bytes),
-                    Ok(false) => {
-                        start_ripasso_private_key_import(&state_for_response, bytes, None)
-                    }
-                    Err(err) => {
-                        log_error(format!("Failed to inspect ripasso private key: {err}"));
-                        let message = if err.contains("does not include a private key") {
-                            "That file does not contain a private key."
-                        } else {
-                            "Couldn't read that private key."
-                        };
-                        let toast = Toast::new(message);
-                        state_for_response.overlay.add_toast(toast);
-                    }
-                }
-            }
-            Err(err) => {
-                log_error(format!("Failed to read the selected private key file: {err}"));
-                let toast = Toast::new("Couldn't read that private key file.");
-                state_for_response.overlay.add_toast(toast);
-            }
-        }
-
-        dialog.hide();
-    });
-
-    dialog.show();
-}
-
-#[cfg(feature = "flatpak")]
-fn finish_ripasso_private_key_import(
-    state: &RipassoPrivateKeysState,
-    result: Result<ManagedRipassoPrivateKey, String>,
-) {
-    match result {
-        Ok(key) => {
-            let settings = Preferences::new();
-            if let Err(err) = settings.set_ripasso_own_fingerprint(Some(&key.fingerprint)) {
-                log_error(format!(
-                    "Failed to store the imported ripasso private key fingerprint: {err}"
-                ));
-                let toast =
-                    Toast::new("The private key was imported, but it could not be selected.");
-                state.overlay.add_toast(toast);
-            } else {
-                rebuild_ripasso_private_keys_list(state);
-                let toast = Toast::new("Private key imported.");
-                state.overlay.add_toast(toast);
-            }
-        }
-        Err(err) => {
-            log_error(format!("Failed to import ripasso private key: {err}"));
-            let message = if err.contains("does not include a private key") {
-                "That file does not contain a private key."
-            } else if err.contains("must be password protected") {
-                "Protect that private key with a password before importing it."
-            } else if err.contains("password protected") || err.contains("incorrect") {
-                "Couldn't unlock that private key."
-            } else if err.contains("cannot decrypt password store entries") {
-                "That private key cannot decrypt password entries."
-            } else {
-                "Couldn't import that private key."
-            };
-            let toast = Toast::new(message);
-            state.overlay.add_toast(toast);
-        }
-    }
-}
-
-#[cfg(feature = "flatpak")]
-fn start_ripasso_private_key_import(
-    state: &RipassoPrivateKeysState,
-    bytes: Vec<u8>,
-    passphrase: Option<String>,
-) {
-    let progress_dialog = build_private_key_progress_dialog(
-        &state.window,
-        "Importing Private Key",
-        "Please wait while ripasso imports the private key.",
-    );
-    let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
-    thread::spawn(move || {
-        let result = import_ripasso_private_key_bytes(&bytes, passphrase.as_deref());
-        let _ = tx.send(result);
-    });
-
-    let state = state.clone();
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(result) => {
-            progress_dialog.force_close();
-            finish_ripasso_private_key_import(&state, result);
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            progress_dialog.force_close();
-            log_error("Private key import worker disconnected unexpectedly.".to_string());
-            let toast = Toast::new("Couldn't import that private key.");
-            state.overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-    });
-}
-
-#[cfg(feature = "flatpak")]
-fn select_ripasso_private_key(state: &RipassoPrivateKeysState, fingerprint: &str) {
-    let settings = Preferences::new();
-    if let Err(err) = settings.set_ripasso_own_fingerprint(Some(fingerprint)) {
-        log_error(format!(
-            "Failed to store the selected ripasso private key fingerprint: {err}"
-        ));
-        let toast = Toast::new("Couldn't select that private key.");
-        state.overlay.add_toast(toast);
-    } else {
-        rebuild_ripasso_private_keys_list(state);
-    }
-}
-
-#[cfg(feature = "flatpak")]
-fn start_ripasso_private_key_unlock(
-    state: &RipassoPrivateKeysState,
-    fingerprint: String,
-    passphrase: String,
-    select_after_unlock: bool,
-    after_unlock: Option<Rc<dyn Fn()>>,
-) {
-    let progress_dialog = build_private_key_progress_dialog(
-        &state.window,
-        "Unlocking Private Key",
-        "Please wait while ripasso unlocks the private key for this session.",
-    );
-    let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
-    let fingerprint_for_thread = fingerprint.clone();
-    thread::spawn(move || {
-        let result = unlock_ripasso_private_key_for_session(&fingerprint_for_thread, &passphrase);
-        let _ = tx.send(result);
-    });
-
-    let state = state.clone();
-    let fingerprint_for_result = fingerprint.clone();
-    let after_unlock = after_unlock.clone();
-    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-        Ok(Ok(_)) => {
-            progress_dialog.force_close();
-            if select_after_unlock {
-                select_ripasso_private_key(&state, &fingerprint_for_result);
-            } else {
-                rebuild_ripasso_private_keys_list(&state);
-            }
-            if let Some(after_unlock) = after_unlock.as_ref() {
-                after_unlock();
-            }
-            let toast = Toast::new("Private key unlocked for this session.");
-            state.overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-        Ok(Err(err)) => {
-            progress_dialog.force_close();
-            log_error(format!("Failed to unlock ripasso private key: {err}"));
-            let message = if err.contains("incorrect") {
-                "Couldn't unlock that private key."
-            } else if err.contains("cannot decrypt password store entries") {
-                "That private key cannot decrypt password entries."
-            } else {
-                "Couldn't unlock that private key."
-            };
-            let toast = Toast::new(message);
-            state.overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-        Err(TryRecvError::Disconnected) => {
-            progress_dialog.force_close();
-            log_error("Private key unlock worker disconnected unexpectedly.".to_string());
-            let toast = Toast::new("Couldn't unlock that private key.");
-            state.overlay.add_toast(toast);
-            glib::ControlFlow::Break
-        }
-    });
-}
-
-#[cfg(feature = "flatpak")]
-fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes: Vec<u8>) {
-    let bytes = Rc::new(bytes);
-    let state = state.clone();
-    let window = state.window.clone();
-    let overlay = state.overlay.clone();
-    present_private_key_password_dialog(
-        &window,
-        &overlay,
-        "Unlock Private Key",
-        move |passphrase| {
-            start_ripasso_private_key_import(&state, bytes.as_slice().to_vec(), Some(passphrase));
-        },
-    );
-}
-
-#[cfg(feature = "flatpak")]
-fn prompt_ripasso_private_key_unlock(
-    state: &RipassoPrivateKeysState,
-    fingerprint: String,
-    select_after_unlock: bool,
-    after_unlock: Option<Rc<dyn Fn()>>,
-) {
-    let state = state.clone();
-    let fingerprint = Rc::new(fingerprint);
-    let window = state.window.clone();
-    let overlay = state.overlay.clone();
-    present_private_key_password_dialog(
-        &window,
-        &overlay,
-        "Unlock Private Key",
-        move |passphrase| {
-            start_ripasso_private_key_unlock(
-                &state,
-                fingerprint.as_str().to_string(),
-                passphrase,
-                select_after_unlock,
-                after_unlock.clone(),
-            );
-        },
-    );
-}
-
-#[cfg(feature = "flatpak")]
-fn append_ripasso_private_key_import_row(state: &RipassoPrivateKeysState) {
-    let row = ActionRow::builder()
-        .title("Import private key")
-        .subtitle("Choose an OpenPGP private key file.")
-        .build();
-    row.set_activatable(true);
-
-    let button = Button::from_icon_name("document-open-symbolic");
-    button.add_css_class("flat");
-    row.add_suffix(&button);
-    state.list.append(&row);
-
-    let row_state = state.clone();
-    row.connect_activated(move |_| {
-        open_ripasso_private_key_picker(&row_state);
-    });
-
-    let button_state = state.clone();
-    button.connect_clicked(move |_| {
-        open_ripasso_private_key_picker(&button_state);
-    });
-}
-
-#[cfg(feature = "flatpak")]
-fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState) {
-    while let Some(child) = state.list.first_child() {
-        state.list.remove(&child);
-    }
-
-    let keys = match list_ripasso_private_keys() {
-        Ok(keys) => keys,
-        Err(err) => {
-            log_error(format!("Failed to read ripasso private keys: {err}"));
-            let toast = Toast::new("Couldn't load the private keys.");
-            state.overlay.add_toast(toast);
-            append_ripasso_private_key_import_row(state);
-            return;
-        }
-    };
-    let selected = sync_ripasso_private_key_selection(&keys);
-
-    if keys.is_empty() {
-        let empty_row = ActionRow::builder()
-            .title("No private keys imported")
-            .subtitle("Import an OpenPGP private key to let ripasso decrypt and save entries.")
-            .build();
-        empty_row.set_activatable(false);
-        state.list.append(&empty_row);
-    } else {
-        for key in keys {
-            let unlocked = is_ripasso_private_key_unlocked(&key.fingerprint).unwrap_or(false);
-            let requires_unlock =
-                ripasso_private_key_requires_session_unlock(&key.fingerprint).unwrap_or(false);
-            let title = glib::markup_escape_text(&key.title());
-            let row = ActionRow::builder()
-                .title(title.as_str())
-                .subtitle(&key.fingerprint)
-                .build();
-            row.set_activatable(true);
-
-            let key_icon = Image::from_icon_name("dialog-password-symbolic");
-            key_icon.add_css_class("dim-label");
-            row.add_prefix(&key_icon);
-
-            if requires_unlock {
-                let locked_icon = Image::from_icon_name("system-lock-screen-symbolic");
-                locked_icon.add_css_class("dim-label");
-                row.add_suffix(&locked_icon);
-            } else if unlocked {
-                let unlocked_icon = Image::from_icon_name("changes-allow-symbolic");
-                unlocked_icon.add_css_class("accent");
-                row.add_suffix(&unlocked_icon);
-            }
-
-            if selected.as_deref() == Some(key.fingerprint.as_str()) {
-                let selected_icon = Image::from_icon_name("object-select-symbolic");
-                selected_icon.add_css_class("accent");
-                row.add_suffix(&selected_icon);
-            }
-
-            let delete_button = Button::from_icon_name("user-trash-symbolic");
-            delete_button.add_css_class("flat");
-            row.add_suffix(&delete_button);
-            state.list.append(&row);
-
-            let select_state = state.clone();
-            let key_for_select = key.clone();
-            row.connect_activated(move |_| {
-                let settings = Preferences::new();
-                let is_selected = settings.ripasso_own_fingerprint().as_deref()
-                    == Some(key_for_select.fingerprint.as_str());
-                let requires_unlock =
-                    match ripasso_private_key_requires_session_unlock(&key_for_select.fingerprint) {
-                        Ok(requires_unlock) => requires_unlock,
-                        Err(err) => {
-                            log_error(format!(
-                                "Failed to inspect ripasso private key '{}': {err}",
-                                key_for_select.fingerprint
-                            ));
-                            let toast = Toast::new("Couldn't open that private key.");
-                            select_state.overlay.add_toast(toast);
-                            return;
-                        }
-                    };
-
-                if requires_unlock {
-                    prompt_ripasso_private_key_unlock(
-                        &select_state,
-                        key_for_select.fingerprint.clone(),
-                        !is_selected,
-                        None,
-                    );
-                    return;
-                }
-
-                if is_selected {
-                    return;
-                }
-
-                select_ripasso_private_key(&select_state, &key_for_select.fingerprint);
-            });
-
-            let delete_state = state.clone();
-            let key_for_delete = key.clone();
-            delete_button.connect_clicked(move |_| {
-                if let Err(err) = remove_ripasso_private_key(&key_for_delete.fingerprint) {
-                    log_error(format!(
-                        "Failed to remove ripasso private key '{}': {err}",
-                        key_for_delete.fingerprint
-                    ));
-                    let toast = Toast::new("Couldn't remove that private key.");
-                    delete_state.overlay.add_toast(toast);
-                    return;
-                }
-
-                let remaining = match list_ripasso_private_keys() {
-                    Ok(keys) => keys,
-                    Err(err) => {
-                        log_error(format!(
-                            "Failed to refresh ripasso private keys after removal: {err}"
-                        ));
-                        Vec::new()
-                    }
-                };
-                sync_ripasso_private_key_selection(&remaining);
-                rebuild_ripasso_private_keys_list(&delete_state);
-            });
-        }
-    }
-
-    append_ripasso_private_key_import_row(state);
 }
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
@@ -3518,159 +3059,14 @@ fn open_store_creator_picker(
     dialog.show();
 }
 
-fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
-    for root in settings.paths() {
-        let recipients = read_store_gpg_recipients(root.to_string_lossy().as_ref());
-        if !recipients.is_empty() {
-            return recipients;
-        }
-    }
-
-    #[cfg(feature = "flatpak")]
-    if let Ok(fingerprint) = resolved_ripasso_own_fingerprint() {
-        return vec![fingerprint];
-    }
-
-    Vec::new()
-}
-
-fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
-    let parsed = parse_gpg_recipients(input);
-    if parsed.is_empty() {
-        return false;
-    }
-
-    let mut values = recipients.borrow_mut();
-    let original_len = values.len();
-    for recipient in parsed {
-        if !values.iter().any(|existing| existing == &recipient) {
-            values.push(recipient);
-        }
-    }
-
-    values.len() > original_len
-}
-
-fn parse_gpg_recipients(value: &str) -> Vec<String> {
-    let mut recipients = Vec::new();
-    for recipient in value.split(|c| c == ',' || c == ';' || c == '\n') {
-        let recipient = normalize_gpg_recipient(recipient);
-        if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
-            continue;
-        }
-        recipients.push(recipient);
-    }
-    recipients
-}
-
-fn normalize_gpg_recipient(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-
-    let compact = trimmed.chars().filter(|c| !c.is_ascii_whitespace()).collect::<String>();
-    if trimmed.contains(char::is_whitespace) && compact.chars().all(|c| c.is_ascii_hexdigit()) {
-        compact
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
-    let mut ordered = vec![preferred.to_string()];
-    for store in stores {
-        if store != preferred {
-            ordered.push(store.clone());
-        }
-    }
-    ordered
-}
-
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root)
-        .arg("init")
-        .args(recipients);
-
-    match run_command_output(
-        &mut cmd,
-        "Save password store recipients",
-        CommandLogOptions::DEFAULT,
-    ) {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(_) => Err(with_logs_hint("Couldn't save the password store recipients.")),
-        Err(err) => {
-            log_error(format!("Failed to start password store recipient update: {err}"));
-            Err(with_logs_hint("Couldn't save the password store recipients."))
-        }
-    }
-}
-
-#[cfg(any(feature = "setup", feature = "flatpak"))]
-fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
-    save_store_recipients(store_root, recipients)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        append_gpg_recipients, normalize_gpg_recipient, parse_gpg_recipients,
-        should_show_restore_button, stores_with_preferred_first,
-    };
+    use super::should_show_restore_button;
     use crate::pass_file::{
         new_pass_file_contents_from_template, parse_structured_pass_lines,
         structured_pass_contents_from_values, structured_username_value, uri_to_open,
         StructuredPassLine, UsernameFieldTemplate,
     };
-    use std::{cell::RefCell, rc::Rc};
-
-    #[test]
-    fn gpg_recipients_are_trimmed_and_deduplicated() {
-        assert_eq!(
-            parse_gpg_recipients("alice@example.com; bob@example.com,\nalice@example.com"),
-            vec![
-                "alice@example.com".to_string(),
-                "bob@example.com".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn gpg_fingerprints_drop_internal_spaces() {
-        assert_eq!(
-            normalize_gpg_recipient("7D FF 03 8D EE 12 AB 34"),
-            "7DFF038DEE12AB34".to_string()
-        );
-    }
-
-    #[test]
-    fn gpg_user_ids_keep_internal_spaces() {
-        assert_eq!(
-            normalize_gpg_recipient("Alice Example <alice@example.com>"),
-            "Alice Example <alice@example.com>".to_string()
-        );
-    }
-
-    #[test]
-    fn gpg_recipient_input_appends_unique_values() {
-        let recipients = Rc::new(RefCell::new(vec!["alice@example.com".to_string()]));
-
-        assert_eq!(
-            append_gpg_recipients(&recipients, "alice@example.com; bob@example.com, carol@example.com"),
-            true
-        );
-        assert_eq!(
-            recipients.borrow().clone(),
-            vec![
-                "alice@example.com".to_string(),
-                "bob@example.com".to_string(),
-                "carol@example.com".to_string()
-            ]
-        );
-    }
 
     #[test]
     fn restore_button_is_hidden_for_an_empty_existing_store() {
@@ -3680,23 +3076,6 @@ mod tests {
     #[test]
     fn restore_button_stays_hidden_off_the_list_page() {
         assert!(!should_show_restore_button(false, false, true));
-    }
-
-    #[test]
-    fn preferred_store_moves_to_the_front_once() {
-        let stores = vec![
-            "/tmp/one".to_string(),
-            "/tmp/two".to_string(),
-            "/tmp/three".to_string(),
-        ];
-        assert_eq!(
-            stores_with_preferred_first(&stores, "/tmp/two"),
-            vec![
-                "/tmp/two".to_string(),
-                "/tmp/one".to_string(),
-                "/tmp/three".to_string()
-            ]
-        );
     }
 
     #[test]

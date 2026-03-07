@@ -20,8 +20,8 @@ use adw::{
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use adw::gtk::{
-    Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Label, ListBox, ListBoxRow,
-    MenuButton, Popover, SearchEntry, Spinner, TextView,
+    Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Entry, Label, ListBox,
+    ListBoxRow, MenuButton, Popover, SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::RefCell;
@@ -2473,27 +2473,36 @@ fn open_store_creator_dialog(
         .transient_for(window)
         .modal(true)
         .use_header_bar(1)
+        .default_width(320)
+        .resizable(false)
         .build();
     dialog.add_button("Cancel", ResponseType::Cancel);
     dialog.add_button("Create", ResponseType::Accept);
     dialog.set_default_response(ResponseType::Accept);
 
-    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 12);
-    content.set_margin_top(18);
-    content.set_margin_bottom(18);
-    content.set_margin_start(18);
-    content.set_margin_end(18);
+    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 8);
+    content.set_margin_top(12);
+    content.set_margin_bottom(12);
+    content.set_margin_start(12);
+    content.set_margin_end(12);
 
     let description = Label::new(Some(
-        "Enter one or more GPG recipients separated by commas. The new password store will become the default store.",
+        "Enter GPG recipients separated by commas or semicolons. The new store will become the default.",
     ));
     description.set_wrap(true);
+    description.set_max_width_chars(28);
     description.set_xalign(0.0);
     content.append(&description);
 
-    let recipients_entry = EntryRow::new();
-    recipients_entry.set_title("GPG recipients");
-    recipients_entry.set_text(&suggested_gpg_recipients(settings).join(", "));
+    let recipients_label = Label::new(Some("GPG recipients"));
+    recipients_label.set_xalign(0.0);
+    content.append(&recipients_label);
+
+    let recipients_entry = Entry::new();
+    recipients_entry.set_hexpand(true);
+    recipients_entry.set_activates_default(true);
+    recipients_entry.set_placeholder_text(Some("alice@example.com,bob@example.com"));
+    recipients_entry.set_text(&normalized_gpg_recipients(&suggested_gpg_recipients(settings)));
     content.append(&recipients_entry);
     dialog.content_area().append(&content);
 
@@ -2583,7 +2592,7 @@ fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
 
 fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
-    for recipient in value.split(|c| c == ',' || c == '\n') {
+    for recipient in value.split(|c| c == ',' || c == ';' || c == '\n') {
         let recipient = recipient.trim();
         if recipient.is_empty() || recipients.iter().any(|existing| existing == recipient) {
             continue;
@@ -2591,6 +2600,10 @@ fn parse_gpg_recipients(value: &str) -> Vec<String> {
         recipients.push(recipient.to_string());
     }
     recipients
+}
+
+fn normalized_gpg_recipients(recipients: &[String]) -> String {
+    recipients.join(",")
 }
 
 fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
@@ -2627,18 +2640,29 @@ fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_gpg_recipients, parse_structured_pass_lines, stores_with_preferred_first,
+        normalized_gpg_recipients, parse_gpg_recipients, parse_structured_pass_lines,
+        stores_with_preferred_first,
         structured_pass_contents_from_values, StructuredPassLine,
     };
 
     #[test]
     fn gpg_recipients_are_trimmed_and_deduplicated() {
         assert_eq!(
-            parse_gpg_recipients("alice@example.com, bob@example.com,\nalice@example.com"),
+            parse_gpg_recipients("alice@example.com; bob@example.com,\nalice@example.com"),
             vec![
                 "alice@example.com".to_string(),
                 "bob@example.com".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn gpg_recipients_are_normalized_without_separator_spaces() {
+        assert_eq!(
+            normalized_gpg_recipients(&parse_gpg_recipients(
+                "alice@example.com, bob@example.com; carol@example.com"
+            )),
+            "alice@example.com,bob@example.com,carol@example.com"
         );
     }
 

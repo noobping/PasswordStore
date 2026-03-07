@@ -23,6 +23,8 @@ use adw::gtk::{
     Box as GtkBox, Widget, gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton,
     Popover, SearchEntry, Spinner, TextView,
 };
+#[cfg(feature = "flatpak")]
+use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::RefCell;
 use std::io;
 use std::rc::Rc;
@@ -896,6 +898,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         #[cfg(not(feature = "flatpak"))]
         let command = pass_row.clone();
         let list = password_stores.clone();
+        let parent = window.clone();
         let action = SimpleAction::new("open-preferences", None);
         action.connect_activate(move |_, _| {
             add.set_visible(false);
@@ -910,7 +913,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
-            rebuild_store_list(&list, &settings);
+            rebuild_store_list(&list, &settings, &parent);
         });
         window.add_action(&action);
     }
@@ -2212,7 +2215,7 @@ fn write_pass_entry(
     }
 }
 
-fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
+fn rebuild_store_list(list: &ListBox, settings: &Preferences, _window: &ApplicationWindow) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -2221,6 +2224,13 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
         append_store_row(list, settings, &store);
     }
 
+    #[cfg(feature = "flatpak")]
+    {
+        append_store_picker_row(list, settings, _window);
+    }
+
+    #[cfg(not(feature = "flatpak"))]
+    {
     let add_row = EntryRow::new();
     add_row.set_title("Add password store (absolute path)");
     add_row.set_show_apply_button(true);
@@ -2247,6 +2257,7 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences) {
                 row.set_text(""); // clear field
             }
         });
+    }
     }
 }
 
@@ -2276,6 +2287,87 @@ fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
             }
         }
     });
+}
+
+#[cfg(feature = "flatpak")]
+fn append_store_picker_row(list: &ListBox, settings: &Preferences, window: &ApplicationWindow) {
+    let row = ActionRow::builder()
+        .title("Add password store folder")
+        .subtitle("Choose a folder with the system file chooser.")
+        .build();
+    row.set_activatable(true);
+
+    let button = Button::from_icon_name("folder-open-symbolic");
+    button.add_css_class("flat");
+    row.add_suffix(&button);
+    list.append(&row);
+
+    {
+        let settings = settings.clone();
+        let list = list.clone();
+        let window = window.clone();
+        row.connect_activated(move |_| {
+            open_store_picker(&window, &list, &settings);
+        });
+    }
+
+    {
+        let settings = settings.clone();
+        let list = list.clone();
+        let window = window.clone();
+        button.connect_clicked(move |_| {
+            open_store_picker(&window, &list, &settings);
+        });
+    }
+}
+
+#[cfg(feature = "flatpak")]
+fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Preferences) {
+    let dialog = FileChooserNative::new(
+        Some("Choose password store folder"),
+        Some(window),
+        FileChooserAction::SelectFolder,
+        Some("Select"),
+        Some("Cancel"),
+    );
+    let list = list.clone();
+    let settings = settings.clone();
+
+    dialog.connect_response(move |dialog, response| {
+        if response != ResponseType::Accept {
+            dialog.hide();
+            return;
+        }
+
+        let Some(file) = dialog.file() else {
+            dialog.hide();
+            return;
+        };
+
+        let Some(path) = file.path() else {
+            log_error(
+                "The selected folder is not available as a local path. Choose a local folder."
+                    .to_string(),
+            );
+            dialog.hide();
+            return;
+        };
+
+        let store = path.to_string_lossy().to_string();
+        let mut stores = settings.stores();
+        if !stores.contains(&store) {
+            stores.push(store.clone());
+            if let Err(err) = settings.set_stores(stores) {
+                log_error(format!("Failed to save stores: {err}"));
+            } else {
+                append_store_row(&list, &settings, &store);
+            }
+        }
+
+        dialog.hide();
+    });
+
+    dialog.show();
 }
 
 #[cfg(test)]

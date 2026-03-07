@@ -21,7 +21,7 @@ use adw::{
 };
 use adw::gtk::{
     Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Entry, Label, ListBox,
-    ListBoxRow, MenuButton, Popover, SearchEntry, Spinner, TextView,
+    ListBoxRow, MenuButton, Popover, ScrolledWindow, SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::RefCell;
@@ -2473,24 +2473,25 @@ fn open_store_creator_dialog(
         .transient_for(window)
         .modal(true)
         .use_header_bar(1)
-        .default_width(320)
-        .resizable(false)
+        .default_width(420)
+        .default_height(360)
+        .resizable(true)
         .build();
     dialog.add_button("Cancel", ResponseType::Cancel);
     dialog.add_button("Create", ResponseType::Accept);
     dialog.set_default_response(ResponseType::Accept);
 
-    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 8);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(12);
-    content.set_margin_end(12);
+    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 12);
+    content.set_margin_top(16);
+    content.set_margin_bottom(16);
+    content.set_margin_start(16);
+    content.set_margin_end(16);
 
     let description = Label::new(Some(
-        "Enter GPG recipients separated by commas or semicolons. The new store will become the default.",
+        "Add GPG recipients to the list below. You can paste multiple recipients separated by commas or semicolons.",
     ));
     description.set_wrap(true);
-    description.set_max_width_chars(28);
+    description.set_max_width_chars(40);
     description.set_xalign(0.0);
     content.append(&description);
 
@@ -2498,13 +2499,59 @@ fn open_store_creator_dialog(
     recipients_label.set_xalign(0.0);
     content.append(&recipients_label);
 
+    let recipients = Rc::new(RefCell::new(suggested_gpg_recipients(settings)));
+
+    let input_box = GtkBox::new(adw::gtk::Orientation::Horizontal, 8);
     let recipients_entry = Entry::new();
     recipients_entry.set_hexpand(true);
-    recipients_entry.set_activates_default(true);
-    recipients_entry.set_placeholder_text(Some("alice@example.com,bob@example.com"));
-    recipients_entry.set_text(&normalized_gpg_recipients(&suggested_gpg_recipients(settings)));
-    content.append(&recipients_entry);
+    recipients_entry.set_placeholder_text(Some("alice@example.com"));
+    let add_recipient_button = Button::with_label("Add");
+    input_box.append(&recipients_entry);
+    input_box.append(&add_recipient_button);
+    content.append(&input_box);
+
+    let recipients_list = ListBox::new();
+    recipients_list.set_selection_mode(adw::gtk::SelectionMode::None);
+    recipients_list.add_css_class("boxed-list");
+    let recipients_placeholder = Label::new(Some("No GPG recipients added yet."));
+    recipients_placeholder.set_margin_top(12);
+    recipients_placeholder.set_margin_bottom(12);
+    recipients_placeholder.add_css_class("dim-label");
+    recipients_list.set_placeholder(Some(&recipients_placeholder));
+
+    let recipients_scroll = ScrolledWindow::builder()
+        .hscrollbar_policy(adw::gtk::PolicyType::Never)
+        .min_content_height(180)
+        .vexpand(true)
+        .child(&recipients_list)
+        .build();
+    content.append(&recipients_scroll);
     dialog.content_area().append(&content);
+    rebuild_gpg_recipients_list(&recipients_list, &recipients);
+
+    {
+        let recipients = recipients.clone();
+        let recipients_entry = recipients_entry.clone();
+        let recipients_list = recipients_list.clone();
+        recipients_entry.connect_activate(move |entry| {
+            if append_gpg_recipients(&recipients, entry.text().as_str()) {
+                entry.set_text("");
+                rebuild_gpg_recipients_list(&recipients_list, &recipients);
+            }
+        });
+    }
+
+    {
+        let recipients = recipients.clone();
+        let recipients_entry = recipients_entry.clone();
+        let recipients_list = recipients_list.clone();
+        add_recipient_button.connect_clicked(move |_| {
+            if append_gpg_recipients(&recipients, recipients_entry.text().as_str()) {
+                recipients_entry.set_text("");
+                rebuild_gpg_recipients_list(&recipients_list, &recipients);
+            }
+        });
+    }
 
     {
         let list = list.clone();
@@ -2513,13 +2560,20 @@ fn open_store_creator_dialog(
         let overlay = overlay.clone();
         let store = store.to_string();
         let recipients_entry = recipients_entry.clone();
+        let recipients = recipients.clone();
+        let recipients_list = recipients_list.clone();
         dialog.connect_response(move |dialog, response| {
             if response != ResponseType::Accept {
                 dialog.close();
                 return;
             }
 
-            let recipients = parse_gpg_recipients(recipients_entry.text().as_str());
+            if append_gpg_recipients(&recipients, recipients_entry.text().as_str()) {
+                recipients_entry.set_text("");
+                rebuild_gpg_recipients_list(&recipients_list, &recipients);
+            }
+
+            let recipients = recipients.borrow().clone();
             if recipients.is_empty() {
                 let toast = Toast::new("Enter at least one GPG recipient.");
                 overlay.add_toast(toast);
@@ -2590,6 +2644,46 @@ fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     Vec::new()
 }
 
+fn rebuild_gpg_recipients_list(list: &ListBox, recipients: &Rc<RefCell<Vec<String>>>) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+
+    for recipient in recipients.borrow().iter().cloned() {
+        let row = ActionRow::builder().title(&recipient).build();
+        row.set_activatable(false);
+
+        let delete_button = Button::from_icon_name("user-trash-symbolic");
+        delete_button.add_css_class("flat");
+        row.add_suffix(&delete_button);
+        list.append(&row);
+
+        let list = list.clone();
+        let recipients = recipients.clone();
+        delete_button.connect_clicked(move |_| {
+            recipients.borrow_mut().retain(|value| value != &recipient);
+            rebuild_gpg_recipients_list(&list, &recipients);
+        });
+    }
+}
+
+fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
+    let parsed = parse_gpg_recipients(input);
+    if parsed.is_empty() {
+        return false;
+    }
+
+    let mut values = recipients.borrow_mut();
+    let original_len = values.len();
+    for recipient in parsed {
+        if !values.iter().any(|existing| existing == &recipient) {
+            values.push(recipient);
+        }
+    }
+
+    values.len() > original_len
+}
+
 fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
     for recipient in value.split(|c| c == ',' || c == ';' || c == '\n') {
@@ -2600,10 +2694,6 @@ fn parse_gpg_recipients(value: &str) -> Vec<String> {
         recipients.push(recipient.to_string());
     }
     recipients
-}
-
-fn normalized_gpg_recipients(recipients: &[String]) -> String {
-    recipients.join(",")
 }
 
 fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
@@ -2640,10 +2730,11 @@ fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        normalized_gpg_recipients, parse_gpg_recipients, parse_structured_pass_lines,
+        append_gpg_recipients, parse_gpg_recipients, parse_structured_pass_lines,
         stores_with_preferred_first,
         structured_pass_contents_from_values, StructuredPassLine,
     };
+    use std::{cell::RefCell, rc::Rc};
 
     #[test]
     fn gpg_recipients_are_trimmed_and_deduplicated() {
@@ -2657,12 +2748,20 @@ mod tests {
     }
 
     #[test]
-    fn gpg_recipients_are_normalized_without_separator_spaces() {
+    fn gpg_recipient_input_appends_unique_values() {
+        let recipients = Rc::new(RefCell::new(vec!["alice@example.com".to_string()]));
+
         assert_eq!(
-            normalized_gpg_recipients(&parse_gpg_recipients(
-                "alice@example.com, bob@example.com; carol@example.com"
-            )),
-            "alice@example.com,bob@example.com,carol@example.com"
+            append_gpg_recipients(&recipients, "alice@example.com; bob@example.com, carol@example.com"),
+            true
+        );
+        assert_eq!(
+            recipients.borrow().clone(),
+            vec![
+                "alice@example.com".to_string(),
+                "bob@example.com".to_string(),
+                "carol@example.com".to_string()
+            ]
         );
     }
 

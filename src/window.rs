@@ -20,11 +20,12 @@ use adw::{
     NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use adw::gtk::{
-    Box as GtkBox, Widget, gdk::Display, Builder, Button, ListBox, ListBoxRow, MenuButton,
-    Popover, SearchEntry, Spinner, TextView,
+    Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Label, ListBox, ListBoxRow,
+    MenuButton, Popover, SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use std::cell::RefCell;
+use std::fs;
 use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -898,6 +899,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let command = pass_row.clone();
         let list = password_stores.clone();
         let parent = window.clone();
+        let overlay = toast_overlay.clone();
         let action = SimpleAction::new("open-preferences", None);
         action.connect_activate(move |_, _| {
             add.set_visible(false);
@@ -912,7 +914,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
-            rebuild_store_list(&list, &settings, &parent);
+            rebuild_store_list(&list, &settings, &parent, &overlay);
         });
         window.add_action(&action);
     }
@@ -2229,7 +2231,12 @@ fn write_pass_entry(
     }
 }
 
-fn rebuild_store_list(list: &ListBox, settings: &Preferences, _window: &ApplicationWindow) {
+fn rebuild_store_list(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
@@ -2238,7 +2245,8 @@ fn rebuild_store_list(list: &ListBox, settings: &Preferences, _window: &Applicat
         append_store_row(list, settings, &store);
     }
 
-    append_store_picker_row(list, settings, _window);
+    append_store_picker_row(list, settings, window, overlay);
+    append_store_creator_row(list, settings, window, overlay);
 }
 
 fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
@@ -2269,7 +2277,12 @@ fn append_store_row(list: &ListBox, settings: &Preferences, store: &str) {
     });
 }
 
-fn append_store_picker_row(list: &ListBox, settings: &Preferences, window: &ApplicationWindow) {
+fn append_store_picker_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+) {
     let row = ActionRow::builder()
         .title("Add password store folder")
         .subtitle("Choose a folder with the system file chooser.")
@@ -2285,8 +2298,9 @@ fn append_store_picker_row(list: &ListBox, settings: &Preferences, window: &Appl
         let settings = settings.clone();
         let list = list.clone();
         let window = window.clone();
+        let overlay = overlay.clone();
         row.connect_activated(move |_| {
-            open_store_picker(&window, &list, &settings);
+            open_store_picker(&window, &list, &settings, &overlay);
         });
     }
 
@@ -2294,13 +2308,19 @@ fn append_store_picker_row(list: &ListBox, settings: &Preferences, window: &Appl
         let settings = settings.clone();
         let list = list.clone();
         let window = window.clone();
+        let overlay = overlay.clone();
         button.connect_clicked(move |_| {
-            open_store_picker(&window, &list, &settings);
+            open_store_picker(&window, &list, &settings, &overlay);
         });
     }
 }
 
-fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Preferences) {
+fn open_store_picker(
+    window: &ApplicationWindow,
+    list: &ListBox,
+    settings: &Preferences,
+    overlay: &ToastOverlay,
+) {
     let dialog = FileChooserNative::new(
         Some("Choose password store folder"),
         Some(window),
@@ -2310,6 +2330,8 @@ fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Pref
     );
     let list = list.clone();
     let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
 
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {
@@ -2327,6 +2349,8 @@ fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Pref
                 "The selected folder is not available as a local path. Choose a local folder."
                     .to_string(),
             );
+            let toast = Toast::new("Choose a local password store folder.");
+            overlay.add_toast(toast);
             dialog.hide();
             return;
         };
@@ -2337,8 +2361,10 @@ fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Pref
             stores.push(store.clone());
             if let Err(err) = settings.set_stores(stores) {
                 log_error(format!("Failed to save stores: {err}"));
+                let toast = Toast::new("Couldn't add the password store folder.");
+                overlay.add_toast(toast);
             } else {
-                append_store_row(&list, &settings, &store);
+                rebuild_store_list(&list, &settings, &window, &overlay);
             }
         }
 
@@ -2348,11 +2374,290 @@ fn open_store_picker(window: &ApplicationWindow, list: &ListBox, settings: &Pref
     dialog.show();
 }
 
+fn append_store_creator_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+) {
+    let row = ActionRow::builder()
+        .title("Create password store")
+        .subtitle("Choose a folder and initialize it with GPG recipients.")
+        .build();
+    row.set_activatable(true);
+
+    let button = Button::from_icon_name("folder-new-symbolic");
+    button.add_css_class("flat");
+    row.add_suffix(&button);
+    list.append(&row);
+
+    {
+        let settings = settings.clone();
+        let list = list.clone();
+        let window = window.clone();
+        let overlay = overlay.clone();
+        row.connect_activated(move |_| {
+            open_store_creator_picker(&window, &list, &settings, &overlay);
+        });
+    }
+
+    {
+        let settings = settings.clone();
+        let list = list.clone();
+        let window = window.clone();
+        let overlay = overlay.clone();
+        button.connect_clicked(move |_| {
+            open_store_creator_picker(&window, &list, &settings, &overlay);
+        });
+    }
+}
+
+fn open_store_creator_picker(
+    window: &ApplicationWindow,
+    list: &ListBox,
+    settings: &Preferences,
+    overlay: &ToastOverlay,
+) {
+    let dialog = FileChooserNative::new(
+        Some("Choose new password store folder"),
+        Some(window),
+        FileChooserAction::SelectFolder,
+        Some("Select"),
+        Some("Cancel"),
+    );
+    dialog.set_create_folders(true);
+
+    let list = list.clone();
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    dialog.connect_response(move |dialog, response| {
+        if response != ResponseType::Accept {
+            dialog.hide();
+            return;
+        }
+
+        let Some(file) = dialog.file() else {
+            dialog.hide();
+            return;
+        };
+
+        let Some(path) = file.path() else {
+            log_error(
+                "The selected folder is not available as a local path. Choose a local folder."
+                    .to_string(),
+            );
+            let toast = Toast::new("Choose a local password store folder.");
+            overlay.add_toast(toast);
+            dialog.hide();
+            return;
+        };
+
+        let store = path.to_string_lossy().to_string();
+        open_store_creator_dialog(&window, &list, &settings, &overlay, &store);
+        dialog.hide();
+    });
+
+    dialog.show();
+}
+
+fn open_store_creator_dialog(
+    window: &ApplicationWindow,
+    list: &ListBox,
+    settings: &Preferences,
+    overlay: &ToastOverlay,
+    store: &str,
+) {
+    let dialog = Dialog::builder()
+        .title("Create password store")
+        .transient_for(window)
+        .modal(true)
+        .use_header_bar(1)
+        .build();
+    dialog.add_button("Cancel", ResponseType::Cancel);
+    dialog.add_button("Create", ResponseType::Accept);
+    dialog.set_default_response(ResponseType::Accept);
+
+    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 12);
+    content.set_margin_top(18);
+    content.set_margin_bottom(18);
+    content.set_margin_start(18);
+    content.set_margin_end(18);
+
+    let description = Label::new(Some(
+        "Enter one or more GPG recipients separated by commas. The new password store will become the default store.",
+    ));
+    description.set_wrap(true);
+    description.set_xalign(0.0);
+    content.append(&description);
+
+    let recipients_entry = EntryRow::new();
+    recipients_entry.set_title("GPG recipients");
+    recipients_entry.set_text(&suggested_gpg_recipients(settings).join(", "));
+    content.append(&recipients_entry);
+    dialog.content_area().append(&content);
+
+    {
+        let list = list.clone();
+        let settings = settings.clone();
+        let window = window.clone();
+        let overlay = overlay.clone();
+        let store = store.to_string();
+        let recipients_entry = recipients_entry.clone();
+        dialog.connect_response(move |dialog, response| {
+            if response != ResponseType::Accept {
+                dialog.close();
+                return;
+            }
+
+            let recipients = parse_gpg_recipients(recipients_entry.text().as_str());
+            if recipients.is_empty() {
+                let toast = Toast::new("Enter at least one GPG recipient.");
+                overlay.add_toast(toast);
+                return;
+            }
+
+            dialog.close();
+
+            let (tx, rx) = mpsc::channel::<Result<(), String>>();
+            let store_for_thread = store.clone();
+            thread::spawn(move || {
+                let result = initialize_password_store(&store_for_thread, &recipients);
+                let _ = tx.send(result);
+            });
+
+            let list = list.clone();
+            let settings = settings.clone();
+            let window = window.clone();
+            let overlay = overlay.clone();
+            let store = store.clone();
+            glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+                Ok(Ok(())) => {
+                    let stores = stores_with_preferred_first(&settings.stores(), &store);
+                    if let Err(err) = settings.set_stores(stores) {
+                        log_error(format!("Failed to save stores: {err}"));
+                        let toast = Toast::new(
+                            "Password store created, but it couldn't be added to Preferences.",
+                        );
+                        overlay.add_toast(toast);
+                    } else {
+                        rebuild_store_list(&list, &settings, &window, &overlay);
+                        let toast = Toast::new("Password store created and set as default.");
+                        overlay.add_toast(toast);
+                    }
+                    glib::ControlFlow::Break
+                }
+                Ok(Err(message)) => {
+                    let toast = Toast::new(&message);
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
+                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => {
+                    let toast = Toast::new(&with_logs_hint("Couldn't create the password store."));
+                    overlay.add_toast(toast);
+                    glib::ControlFlow::Break
+                }
+            });
+        });
+    }
+
+    dialog.present();
+}
+
+fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
+    for root in settings.paths() {
+        let path = root.join(".gpg-id");
+        let Ok(contents) = fs::read_to_string(path) else {
+            continue;
+        };
+
+        let recipients = parse_gpg_recipients(&contents);
+        if !recipients.is_empty() {
+            return recipients;
+        }
+    }
+
+    Vec::new()
+}
+
+fn parse_gpg_recipients(value: &str) -> Vec<String> {
+    let mut recipients = Vec::new();
+    for recipient in value.split(|c| c == ',' || c == '\n') {
+        let recipient = recipient.trim();
+        if recipient.is_empty() || recipients.iter().any(|existing| existing == recipient) {
+            continue;
+        }
+        recipients.push(recipient.to_string());
+    }
+    recipients
+}
+
+fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
+    let mut ordered = vec![preferred.to_string()];
+    for store in stores {
+        if store != preferred {
+            ordered.push(store.clone());
+        }
+    }
+    ordered
+}
+
+fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<(), String> {
+    let settings = Preferences::new();
+    let mut cmd = settings.command();
+    cmd.env("PASSWORD_STORE_DIR", store_root)
+        .arg("init")
+        .args(recipients);
+
+    match run_command_output(
+        &mut cmd,
+        "Initialize password store",
+        CommandLogOptions::DEFAULT,
+    ) {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(_) => Err(with_logs_hint("Couldn't create the password store.")),
+        Err(err) => {
+            log_error(format!("Failed to start password store initialization: {err}"));
+            Err(with_logs_hint("Couldn't create the password store."))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_structured_pass_lines, structured_pass_contents_from_values, StructuredPassLine,
+        parse_gpg_recipients, parse_structured_pass_lines, stores_with_preferred_first,
+        structured_pass_contents_from_values, StructuredPassLine,
     };
+
+    #[test]
+    fn gpg_recipients_are_trimmed_and_deduplicated() {
+        assert_eq!(
+            parse_gpg_recipients("alice@example.com, bob@example.com,\nalice@example.com"),
+            vec![
+                "alice@example.com".to_string(),
+                "bob@example.com".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn preferred_store_moves_to_the_front_once() {
+        let stores = vec![
+            "/tmp/one".to_string(),
+            "/tmp/two".to_string(),
+            "/tmp/three".to_string(),
+        ];
+        assert_eq!(
+            stores_with_preferred_first(&stores, "/tmp/two"),
+            vec![
+                "/tmp/two".to_string(),
+                "/tmp/one".to_string(),
+                "/tmp/three".to_string()
+            ]
+        );
+    }
 
     #[test]
     fn structured_fields_strip_display_spacing_but_preserve_it_on_save() {

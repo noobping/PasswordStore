@@ -1,14 +1,18 @@
 #[cfg(feature = "setup")]
 use crate::setup::*;
+#[cfg(any(feature = "setup", feature = "flatpak"))]
+use adw::gio::Menu;
 #[cfg(feature = "setup")]
-use adw::gio::{Menu, MenuItem};
+use adw::gio::MenuItem;
 
 use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
 use crate::logging::{
-    log_error, log_info, log_snapshot, run_command_output, run_command_output_controlled,
-    run_command_status, run_command_with_input, CommandControl, CommandLogOptions,
+    log_error, log_info, log_snapshot, run_command_output, run_command_status,
+    run_command_with_input, CommandControl, CommandLogOptions,
 };
+#[cfg(not(feature = "flatpak"))]
+use crate::logging::run_command_output_controlled;
 use crate::methods::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     non_null_to_string_option, refresh_opened_pass_file_from_contents, set_opened_pass_file,
@@ -93,10 +97,12 @@ struct GitOperationControl {
 }
 
 impl GitOperationControl {
+    #[cfg(not(feature = "flatpak"))]
     fn begin(&self) {
         self.cancel_requested.store(false, Ordering::Relaxed);
     }
 
+    #[cfg(not(feature = "flatpak"))]
     fn finish(&self) {
         self.cancel_requested.store(false, Ordering::Relaxed);
     }
@@ -111,6 +117,7 @@ impl GitOperationControl {
     }
 }
 
+#[cfg(not(feature = "flatpak"))]
 enum GitOperationResult {
     Success,
     Failed(String),
@@ -381,6 +388,7 @@ fn structured_pass_contents_from_values(
     output
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
     let Some(action) = window.lookup_action(name) else {
         return;
@@ -391,6 +399,7 @@ fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bo
     action.set_enabled(enabled);
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
     for action in [
         "open-new-password",
@@ -612,6 +621,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get main_window from UI");
     window.set_application(Some(app));
 
+    #[cfg(feature = "flatpak")]
+    let primary_menu_button: MenuButton = builder
+        .object("primary_menu_button")
+        .expect("Failed to get primary menu button");
     #[cfg(feature = "setup")]
     let primary_menu: Menu = builder
         .object("primary_menu")
@@ -624,6 +637,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             MenuItem::new(Some("Install this App"), Some("win.install-locally"))
         };
         primary_menu.append_item(&item);
+    }
+    #[cfg(feature = "flatpak")]
+    {
+        let menu = Menu::new();
+        menu.append(Some("_Find password file"), Some("win.toggle-find"));
+        menu.append(Some("_Preferences"), Some("win.open-preferences"));
+        menu.append(Some("_Logs"), Some("win.open-log"));
+        menu.append(Some("_About PasswordStore"), Some("app.about"));
+        primary_menu_button.set_menu_model(Some(&menu));
     }
 
     #[cfg(not(feature = "flatpak"))]
@@ -655,9 +677,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let git_popover: Popover = builder
         .object("git_popover")
         .expect("Failed to get git_popover");
+    #[cfg(not(feature = "flatpak"))]
     let git_url_entry: EntryRow = builder
         .object("git_url_entry")
         .expect("Failed to get git_url_entry");
+    #[cfg(feature = "flatpak")]
+    git_button.set_visible(false);
     let window_title: WindowTitle = builder
         .object("window_title")
         .expect("Failed to get window_title");
@@ -1489,6 +1514,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    #[cfg(not(feature = "flatpak"))]
     {
         let popover = git_popover.clone();
         let entry = git_url_entry.clone();
@@ -1504,6 +1530,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    #[cfg(not(feature = "flatpak"))]
     {
         let window = window.clone();
         git_url_entry.connect_apply(move |_| {
@@ -1511,6 +1538,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         });
     }
 
+    #[cfg(not(feature = "flatpak"))]
     {
         let entry = git_url_entry.clone();
         let overlay = toast_overlay.clone();
@@ -1873,6 +1901,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         window.add_action(&action);
     }
 
+    #[cfg(not(feature = "flatpak"))]
     {
         let overlay_clone = toast_overlay.clone();
         let window_for_action = window.clone();
@@ -2161,11 +2190,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     // keyboard shortcuts
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
-    app.set_accels_for_action("win.synchronize", &["<primary>s"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
-    app.set_accels_for_action("win.open-git", &["<primary>i"]);
     app.set_accels_for_action("win.open-log", &["F12"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
+    #[cfg(not(feature = "flatpak"))]
+    app.set_accels_for_action("win.synchronize", &["<primary>s"]);
+    #[cfg(not(feature = "flatpak"))]
+    app.set_accels_for_action("win.open-git", &["<primary>i"]);
 
     setup_search_filter(&list, &search_entry);
 
@@ -2218,6 +2249,7 @@ fn show_log_page(
     }
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn show_git_busy_page(
     nav: &NavigationView,
     page: &NavigationPage,
@@ -2251,6 +2283,7 @@ fn show_git_busy_page(
     }
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn finish_git_busy_page(
     window: &ApplicationWindow,
     nav: &NavigationView,
@@ -2632,8 +2665,14 @@ fn load_passwords_async(
     });
 }
 
+#[cfg(not(feature = "flatpak"))]
 fn should_show_restore_button(show_list_actions: bool, has_store_dirs: bool, empty: bool) -> bool {
     show_list_actions && empty && !has_store_dirs
+}
+
+#[cfg(feature = "flatpak")]
+fn should_show_restore_button(_show_list_actions: bool, _has_store_dirs: bool, _empty: bool) -> bool {
+    false
 }
 
 fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -> StatusPage {

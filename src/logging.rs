@@ -435,6 +435,7 @@ pub fn run_command_output(
     run_command_output_inner(cmd, context, options, None)
 }
 
+#[cfg(not(feature = "flatpak"))]
 pub fn run_command_output_controlled(
     cmd: &mut Command,
     context: &str,
@@ -545,12 +546,13 @@ fn format_exit_status(status: &ExitStatus) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        log_error, log_info, log_snapshot, run_command_output, run_command_output_controlled,
-        CommandControl, CommandLogOptions,
-    };
+    use super::{log_error, log_info, log_snapshot, run_command_output, CommandLogOptions};
+    #[cfg(not(feature = "flatpak"))]
+    use super::{run_command_output_controlled, CommandControl};
     use std::process::Command;
+    #[cfg(not(feature = "flatpak"))]
     use std::thread;
+    #[cfg(not(feature = "flatpak"))]
     use std::time::{Duration, Instant};
 
     #[test]
@@ -589,7 +591,7 @@ mod tests {
         assert!(text.contains(&format!("stderr:\n{marker} stderr")));
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(feature = "flatpak")))]
     #[test]
     fn controlled_cancel_kills_process_group_quickly() {
         let marker = format!("cancel-log-test-{}", std::process::id());

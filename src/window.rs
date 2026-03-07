@@ -355,11 +355,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         primary_menu.append_item(&item);
     }
 
-    #[cfg(any(feature = "setup", feature = "host"))]
+    #[cfg(not(feature = "flatpak"))]
     let backend_preferences: adw::PreferencesGroup = builder
         .object("backend_preferences")
         .expect("Failed to get backend_preferences");
-    #[cfg(any(feature = "setup", feature = "host"))]
+    #[cfg(not(feature = "flatpak"))]
     backend_preferences.set_visible(true);
 
     // Headerbar + top controls
@@ -401,7 +401,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get toast_overlay");
 
     // Settings
-    #[cfg(any(feature = "setup", feature = "host"))]
+    #[cfg(not(feature = "flatpak"))]
     let settings = Preferences::new();
     let settings_page: NavigationPage = builder
         .object("settings_page")
@@ -415,7 +415,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let git_busy_status: StatusPage = builder
         .object("git_busy_status")
         .expect("Failed to get git busy status");
-    #[cfg(any(feature = "setup", feature = "host"))]
+    #[cfg(not(feature = "flatpak"))]
     let pass_row: EntryRow = builder
         .object("pass_command_row")
         .expect("Failed to get pass row");
@@ -665,7 +665,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     // Pass command preference
-    #[cfg(any(feature = "setup", feature = "host"))]
+    #[cfg(not(feature = "flatpak"))]
     {
         let overlay = toast_overlay.clone();
         let preferences = settings.clone();
@@ -893,7 +893,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let git = git_button.clone();
         let save = save_button.clone();
         let win = window_title.clone();
-        #[cfg(any(feature = "setup", feature = "host"))]
+        #[cfg(not(feature = "flatpak"))]
         let command = pass_row.clone();
         let list = password_stores.clone();
         let action = SimpleAction::new("open-preferences", None);
@@ -908,7 +908,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             nav.push(&page);
 
             let settings = Preferences::new();
-            #[cfg(any(feature = "setup", feature = "host"))]
+            #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
             rebuild_store_list(&list, &settings);
         });

@@ -28,7 +28,7 @@ A graphical frontend for the `pass` password store with the goal of offering **f
 
 ```text
 setup = For built-in installer/uninstaller
-libripasso = For the integrated backend
+flathub = Build for a containerised env. 
 ```
 
 ## Development dependencies

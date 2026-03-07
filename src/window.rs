@@ -2100,7 +2100,11 @@ fn load_passwords_async(
                     } else {
                         find_clone.set_visible(true);
                     }
-                    git_clone.set_visible(empty);
+                    git_clone.set_visible(should_show_restore_button(
+                        show_list_actions,
+                        has_store_dirs_for_placeholder,
+                        empty,
+                    ));
                 } else {
                     find_clone.set_visible(false);
                     git_clone.set_visible(false);
@@ -2134,13 +2138,21 @@ fn load_passwords_async(
                 list_clone.set_placeholder(Some(&placeholder));
 
                 save_clone.set_visible(false);
-                git_clone.set_visible(show_list_actions);
+                git_clone.set_visible(should_show_restore_button(
+                    show_list_actions,
+                    has_store_dirs_for_placeholder,
+                    true,
+                ));
                 find_clone.set_visible(false);
 
                 glib::ControlFlow::Break
             }
         }
     });
+}
+
+fn should_show_restore_button(show_list_actions: bool, has_store_dirs: bool, empty: bool) -> bool {
+    show_list_actions && empty && !has_store_dirs
 }
 
 fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -> StatusPage {
@@ -2758,7 +2770,7 @@ fn initialize_password_store(store_root: &str, recipients: &[String]) -> Result<
 mod tests {
     use super::{
         append_gpg_recipients, normalize_gpg_recipient, parse_gpg_recipients,
-        parse_structured_pass_lines,
+        parse_structured_pass_lines, should_show_restore_button,
         stores_with_preferred_first,
         structured_pass_contents_from_values, StructuredPassLine,
     };
@@ -2807,6 +2819,16 @@ mod tests {
                 "carol@example.com".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn restore_button_is_hidden_for_an_empty_existing_store() {
+        assert!(!should_show_restore_button(true, true, true));
+    }
+
+    #[test]
+    fn restore_button_stays_hidden_off_the_list_page() {
+        assert!(!should_show_restore_button(false, false, true));
     }
 
     #[test]

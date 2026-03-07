@@ -3,7 +3,7 @@
 mod setup;
 
 mod config;
-#[cfg(feature = "flatpak")]
+#[cfg(any(feature = "setup", feature = "flatpak"))]
 mod backend;
 mod item;
 mod logging;
@@ -96,13 +96,18 @@ fn main() -> ExitCode {
             let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
             let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
             #[cfg(not(feature = "flatpak"))]
-            let pass_version =
-                get_pass_version().unwrap_or_else(|| "pass version unknown".to_string());
+            let settings = Preferences::new();
+            #[cfg(not(feature = "flatpak"))]
+            let backend_details = if settings.uses_ripasso_backend() {
+                "backend: ripasso".to_string()
+            } else {
+                get_pass_version(&settings).unwrap_or_else(|| "pass version unknown".to_string())
+            };
             #[cfg(not(feature = "flatpak"))]
             let full_comments = if comments.is_empty() {
-                format!("pass: {pass_version}")
+                backend_details
             } else {
-                format!("{project}: {comments}\n\n{pass_version}")
+                format!("{project}: {comments}\n\n{backend_details}")
             };
             #[cfg(feature = "flatpak")]
             let full_comments = comments;
@@ -122,8 +127,7 @@ fn main() -> ExitCode {
 }
 
 #[cfg(not(feature = "flatpak"))]
-fn get_pass_version() -> Option<String> {
-    let settings = Preferences::new();
+fn get_pass_version(settings: &Preferences) -> Option<String> {
     let mut cmd = settings.command();
     cmd.arg("--version");
     let output = run_command_output(&mut cmd, "Read pass version", CommandLogOptions::DEFAULT).ok()?;

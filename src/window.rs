@@ -1,6 +1,6 @@
 #[cfg(feature = "setup")]
 use crate::setup::*;
-#[cfg(feature = "flatpak")]
+#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{
     delete_password_entry, read_otp_code, read_password_entry, read_password_line,
     rename_password_entry, save_password_entry, save_store_recipients,
@@ -14,22 +14,27 @@ use crate::config::APP_ID;
 use crate::item::{collect_all_password_items, OpenPassFile, PassEntry};
 use crate::logging::{log_error, CommandControl};
 #[cfg(not(feature = "flatpak"))]
-use crate::logging::{
-    log_snapshot, run_command_output, run_command_status, run_command_with_input, CommandLogOptions,
-};
+use crate::logging::{log_snapshot, run_command_status, CommandLogOptions};
+#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+use crate::logging::{run_command_output, run_command_with_input};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::run_command_output_controlled;
 use crate::methods::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     non_null_to_string_option, refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
+#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
+#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+use adw::ComboRow;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay,
-    WindowTitle,
+    NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
+#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+use adw::gtk::StringList;
 use adw::gtk::{
     Box as GtkBox, Widget, gdk::Display, Builder, Button, Image, ListBox, ListBoxRow,
     MenuButton, Popover, SearchEntry, Spinner, TextView,
@@ -221,7 +226,7 @@ fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     overlay.add_toast(toast);
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn set_clipboard_text(text: &str, overlay: &ToastOverlay) {
     if let Some(display) = Display::default() {
         let clipboard = display.clipboard();
@@ -231,51 +236,83 @@ fn set_clipboard_text(text: &str, overlay: &ToastOverlay) {
     }
 }
 
-fn copy_password_entry_to_clipboard(item: PassEntry, _overlay: ToastOverlay) {
-    #[cfg(not(feature = "flatpak"))]
-    {
-        thread::spawn(move || {
-            let settings = Preferences::new();
-            let mut cmd = settings.command();
-            cmd.env("PASSWORD_STORE_DIR", &item.store_path)
-                .arg("-c")
-                .arg(item.label());
-            let _ = run_command_status(
-                &mut cmd,
-                "Copy password to clipboard",
-                CommandLogOptions::SENSITIVE,
-            );
-        });
-    }
+#[cfg(not(feature = "flatpak"))]
+fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry) {
+    thread::spawn(move || {
+        let settings = Preferences::new();
+        let mut cmd = settings.command();
+        cmd.env("PASSWORD_STORE_DIR", &item.store_path)
+            .arg("-c")
+            .arg(item.label());
+        let _ = run_command_status(
+            &mut cmd,
+            "Copy password to clipboard",
+            CommandLogOptions::SENSITIVE,
+        );
+    });
+}
 
+#[cfg(any(feature = "setup", feature = "flatpak"))]
+fn copy_password_entry_to_clipboard_via_read(item: PassEntry, overlay: ToastOverlay) {
+    let (tx, rx) = mpsc::channel::<Result<String, String>>();
+    thread::spawn(move || {
+        let label = item.label();
+        let result = read_password_line(&item.store_path, &label);
+        let _ = tx.send(result);
+    });
+
+    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+        Ok(Ok(password)) => {
+            set_clipboard_text(&password, &overlay);
+            glib::ControlFlow::Break
+        }
+        Ok(Err(err)) => {
+            log_error(format!("Failed to copy password entry: {err}"));
+            let toast = Toast::new("Couldn't copy the password.");
+            overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(TryRecvError::Disconnected) => {
+            let toast = Toast::new("Couldn't copy the password.");
+            overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+    });
+}
+
+fn copy_password_entry_to_clipboard(item: PassEntry, overlay: ToastOverlay) {
     #[cfg(feature = "flatpak")]
     {
-        let (tx, rx) = mpsc::channel::<Result<String, String>>();
-        thread::spawn(move || {
-            let label = item.label();
-            let result = read_password_line(&item.store_path, &label);
-            let _ = tx.send(result);
-        });
-
-        glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
-            Ok(Ok(password)) => {
-                set_clipboard_text(&password, &_overlay);
-                glib::ControlFlow::Break
-            }
-            Ok(Err(err)) => {
-                log_error(format!("Failed to copy password entry: {err}"));
-                let toast = Toast::new("Couldn't copy the password.");
-                _overlay.add_toast(toast);
-                glib::ControlFlow::Break
-            }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(TryRecvError::Disconnected) => {
-                let toast = Toast::new("Couldn't copy the password.");
-                _overlay.add_toast(toast);
-                glib::ControlFlow::Break
-            }
-        });
+        copy_password_entry_to_clipboard_via_read(item, overlay);
+        return;
     }
+
+    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    {
+        let settings = Preferences::new();
+        if settings.uses_ripasso_backend() {
+            copy_password_entry_to_clipboard_via_read(item, overlay);
+        } else {
+            copy_password_entry_to_clipboard_via_pass_command(item);
+        }
+        return;
+    }
+
+    #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+    {
+        let _ = overlay;
+        copy_password_entry_to_clipboard_via_pass_command(item);
+    }
+}
+
+#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+fn sync_backend_preferences_rows(backend_row: &ComboRow, pass_row: &EntryRow, preferences: &Preferences) {
+    let backend = preferences.backend_kind();
+    if backend_row.selected() != backend.combo_position() {
+        backend_row.set_selected(backend.combo_position());
+    }
+    pass_row.set_visible(backend.uses_pass_command());
 }
 
 fn is_username_field_key(key: &str) -> bool {
@@ -823,6 +860,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let backend_preferences: adw::PreferencesGroup = builder
         .object("backend_preferences")
         .expect("Failed to get backend_preferences");
+    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    let backend_row: ComboRow = builder
+        .object("backend_row")
+        .expect("Failed to get backend_row");
     #[cfg(not(feature = "flatpak"))]
     backend_preferences.set_visible(true);
 
@@ -893,6 +934,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let pass_row: EntryRow = builder
         .object("pass_command_row")
         .expect("Failed to get pass row");
+    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    {
+        backend_row.set_model(Some(&StringList::new(&["Ripasso", "Pass command"])));
+        backend_row.set_visible(true);
+        sync_backend_preferences_rows(&backend_row, &pass_row, &settings);
+    }
     let new_pass_file_template_view: TextView = builder
         .object("new_pass_file_template_view")
         .expect("Failed to get new_pass_file_template_view");
@@ -1067,9 +1114,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let (tx, rx) = mpsc::channel::<Result<String, String>>();
             let label_for_thread = pass_label.clone();
             thread::spawn(move || {
-                #[cfg(feature = "flatpak")]
+                #[cfg(any(feature = "setup", feature = "flatpak"))]
                 let result = read_password_entry(&store_for_thread, &label_for_thread);
-                #[cfg(not(feature = "flatpak"))]
+                #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
                 let result = {
                     let settings = Preferences::new();
                     let mut cmd = settings.command();
@@ -1148,7 +1195,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                         let otp = output.lines().skip(1).any(|line| line.contains("otpauth://"));
                         otp_entry.set_visible(otp);
                         if otp {
-                            #[cfg(feature = "flatpak")]
+                            #[cfg(any(feature = "setup", feature = "flatpak"))]
                             match read_otp_code(&store_for_otp, &label_for_otp) {
                                 Ok(code) => otp_entry.set_text(&code),
                                 Err(err) => {
@@ -1160,7 +1207,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                     overlay.add_toast(toast);
                                 }
                             }
-                            #[cfg(not(feature = "flatpak"))]
+                            #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
                             {
                                 let settings = Preferences::new();
                                 let mut cmd = settings.command();
@@ -1232,6 +1279,30 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                 let toast = Toast::new(&message);
                 overlay.add_toast(toast);
             }
+        });
+    }
+    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    {
+        let overlay = toast_overlay.clone();
+        let preferences = settings.clone();
+        let pass_row = pass_row.clone();
+        backend_row.connect_selected_notify(move |row| {
+            let selected_backend = BackendKind::from_combo_position(row.selected());
+            let current_backend = preferences.backend_kind();
+            if selected_backend == current_backend {
+                pass_row.set_visible(selected_backend.uses_pass_command());
+                return;
+            }
+
+            if let Err(err) = preferences.set_backend_kind(selected_backend) {
+                pass_row.set_visible(current_backend.uses_pass_command());
+                row.set_selected(current_backend.combo_position());
+                let toast = Toast::new(&err.message.to_string());
+                overlay.add_toast(toast);
+                return;
+            }
+
+            pass_row.set_visible(selected_backend.uses_pass_command());
         });
     }
     {
@@ -1448,12 +1519,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
                     otp.set_visible(otp_visible);
                     if otp_visible {
-                        #[cfg(feature = "flatpak")]
+                        #[cfg(any(feature = "setup", feature = "flatpak"))]
                         match read_otp_code(pass_file.store_path(), &label) {
                             Ok(code) => otp.set_text(&code),
                             Err(_) => otp.set_text(""),
                         }
-                        #[cfg(not(feature = "flatpak"))]
+                        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
                         {
                             let settings = Preferences::new();
                             let mut cmd = settings.command();
@@ -1621,6 +1692,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let win = window_title.clone();
         #[cfg(not(feature = "flatpak"))]
         let command = pass_row.clone();
+        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+        let backend = backend_row.clone();
         let template_view = new_pass_file_template_view.clone();
         let list = password_stores.clone();
         let parent = window.clone();
@@ -1642,6 +1715,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let settings = Preferences::new();
             #[cfg(not(feature = "flatpak"))]
             command.set_text(&settings.command_value());
+            #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+            sync_backend_preferences_rows(&backend, &command, &settings);
             template_view
                 .buffer()
                 .set_text(&settings.new_pass_file_template());
@@ -2805,9 +2880,9 @@ fn load_passwords_async(
                             }
 
                             let root = entry.store_path.clone();
-                            #[cfg(feature = "flatpak")]
+                            #[cfg(any(feature = "setup", feature = "flatpak"))]
                             let rename_result = rename_password_entry(&root, &old_label, &new_label);
-                            #[cfg(not(feature = "flatpak"))]
+                            #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
                             let rename_result = {
                                 let settings = Preferences::new();
                                 let mut cmd = settings.command();
@@ -2849,7 +2924,7 @@ fn load_passwords_async(
                         let list = list_clone.clone();
                         let _overlay = toast_overlay.clone();
                         delete_btn.connect_clicked(move |_| {
-                            #[cfg(feature = "flatpak")]
+                            #[cfg(any(feature = "setup", feature = "flatpak"))]
                             {
                                 let (tx, rx) = mpsc::channel::<Result<(), String>>();
                                 let root = entry.store_path.clone();
@@ -2889,7 +2964,7 @@ fn load_passwords_async(
                                     },
                                 );
                             }
-                            #[cfg(not(feature = "flatpak"))]
+                            #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
                             {
                                 std::thread::spawn({
                                     let root = entry.store_path.clone();
@@ -3039,7 +3114,7 @@ fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
     });
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
 fn write_pass_entry(
     store_root: &str,
     label: &str,
@@ -3074,7 +3149,7 @@ fn write_pass_entry(
     }
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn write_pass_entry(
     store_root: &str,
     label: &str,
@@ -3445,7 +3520,7 @@ fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String
     ordered
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
 fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     let settings = Preferences::new();
     let mut cmd = settings.command();
@@ -3467,7 +3542,7 @@ fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> R
     }
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn apply_password_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     save_store_recipients(store_root, recipients)
 }

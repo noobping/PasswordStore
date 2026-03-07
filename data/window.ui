@@ -294,7 +294,13 @@
                               <object class="AdwPreferencesGroup" id="backend_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
-                                <property name="description" translatable="yes">The method that your system uses to run the password manager. Usually this is just the pass command, but you can replace it with a custom wrapper (for example, a container or script).</property>
+                                <property name="description" translatable="yes">Choose how Password Store accesses your password store. Ripasso is the default in setup builds. If you use the pass command backend, you can set a custom command below.</property>
+                                <child>
+                                  <object class="AdwComboRow" id="backend_row">
+                                    <property name="visible">false</property>
+                                    <property name="title" translatable="yes">Backend</property>
+                                  </object>
+                                </child>
                                 <child>
                                   <object class="AdwEntryRow" id="pass_command_row">
                                     <property name="title" translatable="yes">Pass command</property>

@@ -6,7 +6,7 @@ version = "0.1.2"
 edition = "2021"
 
 [features]
-setup = []
+setup = ["ripasso"]
 flatpak = ["ripasso"]
 
 [dependencies]

@@ -14,8 +14,72 @@ use crate::config::APP_ID;
 const DEFAULT_CMD: &str = "pass";
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 
+#[cfg_attr(feature = "flatpak", allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BackendKind {
+    Ripasso,
+    Pass,
+}
+
+#[cfg_attr(feature = "flatpak", allow(dead_code))]
+impl BackendKind {
+    #[cfg(feature = "setup")]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ripasso => "ripasso",
+            Self::Pass => "pass",
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    fn from_stored(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "ripasso" => Self::Ripasso,
+            "pass" | "pass-command" | "pass command" => Self::Pass,
+            _ => default_backend_kind(),
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    pub fn combo_position(self) -> u32 {
+        match self {
+            Self::Ripasso => 0,
+            Self::Pass => 1,
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    pub fn from_combo_position(position: u32) -> Self {
+        match position {
+            1 => Self::Pass,
+            _ => Self::Ripasso,
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    pub fn uses_pass_command(self) -> bool {
+        matches!(self, Self::Pass)
+    }
+}
+
+#[cfg(any(feature = "setup", feature = "flatpak", test))]
+#[cfg_attr(feature = "flatpak", allow(dead_code))]
+fn default_backend_kind() -> BackendKind {
+    #[cfg(any(feature = "setup", feature = "flatpak"))]
+    {
+        BackendKind::Ripasso
+    }
+
+    #[cfg(not(any(feature = "setup", feature = "flatpak")))]
+    {
+        BackendKind::Pass
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PreferenceFile {
+    backend: Option<String>,
     pass_command: Option<String>,
     password_store_dirs: Option<Vec<String>>,
     new_pass_file_template: Option<String>,
@@ -105,6 +169,37 @@ impl Preferences {
         Self::expand_path(&self.stores().into_iter().next().unwrap_or_default())
     }
 
+    #[cfg_attr(feature = "flatpak", allow(dead_code))]
+    pub fn backend_kind(&self) -> BackendKind {
+        #[cfg(feature = "flatpak")]
+        {
+            BackendKind::Ripasso
+        }
+
+        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+        {
+            if let Some(s) = &self.settings {
+                BackendKind::from_stored(&s.string("backend"))
+            } else {
+                let cfg = load_file_prefs();
+                cfg.backend
+                    .as_deref()
+                    .map(BackendKind::from_stored)
+                    .unwrap_or_else(default_backend_kind)
+            }
+        }
+
+        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+        {
+            BackendKind::Pass
+        }
+    }
+
+    #[cfg_attr(feature = "flatpak", allow(dead_code))]
+    pub fn uses_ripasso_backend(&self) -> bool {
+        matches!(self.backend_kind(), BackendKind::Ripasso)
+    }
+
     pub fn new_pass_file_template(&self) -> String {
         if let Some(s) = &self.settings {
             s.string("new-pass-file-template").to_string()
@@ -142,6 +237,17 @@ impl Preferences {
         } else {
             let mut cfg = load_file_prefs();
             cfg.pass_command = Some(cmd.to_string());
+            save_file_prefs(&cfg)
+        }
+    }
+
+    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    pub fn set_backend_kind(&self, backend: BackendKind) -> Result<(), BoolError> {
+        if let Some(s) = &self.settings {
+            s.set_string("backend", backend.as_str())
+        } else {
+            let mut cfg = load_file_prefs();
+            cfg.backend = Some(backend.as_str().to_string());
             save_file_prefs(&cfg)
         }
     }
@@ -236,7 +342,7 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_store_dirs, Preferences};
+    use super::{default_backend_kind, default_store_dirs, BackendKind, Preferences};
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -251,6 +357,15 @@ mod tests {
         } else {
             assert!(default_store_dirs().is_empty());
         }
+    }
+
+    #[test]
+    fn default_backend_matches_build_mode() {
+        #[cfg(any(feature = "setup", feature = "flatpak"))]
+        assert_eq!(default_backend_kind(), BackendKind::Ripasso);
+
+        #[cfg(not(any(feature = "setup", feature = "flatpak")))]
+        assert_eq!(default_backend_kind(), BackendKind::Pass);
     }
 
     #[test]

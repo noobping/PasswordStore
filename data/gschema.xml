@@ -17,6 +17,14 @@
       </description>
     </key>
 
+    <key name="backend" type="s">
+      <default>'ripasso'</default>
+      <summary>Password backend</summary>
+      <description>
+        Backend used to access the password store. Valid values are "ripasso" and "pass".
+      </description>
+    </key>
+
     <key name="new-pass-file-template" type="s">
       <default>'username:\nurl:'</default>
       <summary>New pass file template</summary>

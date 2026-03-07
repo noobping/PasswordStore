@@ -27,7 +27,7 @@ A graphical frontend for the `pass` password store with the goal of offering **f
 ## Cargo Features
 
 ```text
-setup = For built-in installer/uninstaller
+setup = For built-in installer/uninstaller and backend selection
 flatpak = Build for a containerised env.
 ```
 

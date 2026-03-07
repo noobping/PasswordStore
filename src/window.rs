@@ -905,10 +905,9 @@ fn open_ripasso_private_key_picker(state: &RipassoPrivateKeysState) {
                 let bytes = bytes.as_ref().to_vec();
                 match ripasso_private_key_requires_passphrase(&bytes) {
                     Ok(true) => prompt_ripasso_private_key_passphrase(&state_for_response, bytes),
-                    Ok(false) => finish_ripasso_private_key_import(
-                        &state_for_response,
-                        import_ripasso_private_key_bytes(&bytes, None),
-                    ),
+                    Ok(false) => {
+                        start_ripasso_private_key_import(&state_for_response, bytes, None)
+                    }
                     Err(err) => {
                         log_error(format!("Failed to inspect ripasso private key: {err}"));
                         let message = if err.contains("does not include a private key") {
@@ -973,6 +972,57 @@ fn finish_ripasso_private_key_import(
 }
 
 #[cfg(feature = "flatpak")]
+fn build_ripasso_progress_dialog(window: &ApplicationWindow) -> Dialog {
+    let status = StatusPage::builder()
+        .title("Importing Private Key")
+        .description("Please wait while ripasso prepares the private key.")
+        .build();
+    status.set_child(Some(&Spinner::builder().spinning(true).build()));
+
+    let dialog = Dialog::builder()
+        .title("Import Private Key")
+        .content_width(460)
+        .content_height(220)
+        .follows_content_size(false)
+        .child(&status)
+        .build();
+    dialog.set_can_close(false);
+    dialog.present(Some(window));
+    dialog
+}
+
+#[cfg(feature = "flatpak")]
+fn start_ripasso_private_key_import(
+    state: &RipassoPrivateKeysState,
+    bytes: Vec<u8>,
+    passphrase: Option<String>,
+) {
+    let progress_dialog = build_ripasso_progress_dialog(&state.window);
+    let (tx, rx) = mpsc::channel::<Result<ManagedRipassoPrivateKey, String>>();
+    thread::spawn(move || {
+        let result = import_ripasso_private_key_bytes(&bytes, passphrase.as_deref());
+        let _ = tx.send(result);
+    });
+
+    let state = state.clone();
+    glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
+        Ok(result) => {
+            progress_dialog.close();
+            finish_ripasso_private_key_import(&state, result);
+            glib::ControlFlow::Break
+        }
+        Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(TryRecvError::Disconnected) => {
+            progress_dialog.close();
+            log_error("Private key import worker disconnected unexpectedly.".to_string());
+            let toast = Toast::new("Couldn't import that private key.");
+            state.overlay.add_toast(toast);
+            glib::ControlFlow::Break
+        }
+    });
+}
+
+#[cfg(feature = "flatpak")]
 fn submit_ripasso_private_key_passphrase(
     dialog: &Dialog,
     state: &RipassoPrivateKeysState,
@@ -986,11 +1036,8 @@ fn submit_ripasso_private_key_passphrase(
         return;
     }
 
-    finish_ripasso_private_key_import(
-        state,
-        import_ripasso_private_key_bytes(bytes, Some(&passphrase)),
-    );
     dialog.close();
+    start_ripasso_private_key_import(state, bytes.to_vec(), Some(passphrase));
 }
 
 #[cfg(feature = "flatpak")]
@@ -1005,25 +1052,17 @@ fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes:
     let page = PreferencesPage::new();
     page.add(&password_group);
 
-    let title = WindowTitle::new(
-        "Unlock Private Key",
-        "Ripasso needs the private key password once to store an unlocked copy.",
-    );
-    let header_bar = HeaderBar::builder()
-        .title_widget(&title)
-        .show_end_title_buttons(true)
-        .build();
+    let header = HeaderBar::new();
     let toolbar_view = ToolbarView::new();
-    toolbar_view.add_top_bar(&header_bar);
+    toolbar_view.add_top_bar(&header);
     toolbar_view.set_content(Some(&page));
 
     let dialog = Dialog::builder()
         .title("Unlock Private Key")
         .content_width(540)
-        .content_height(160)
-        .follows_content_size(false)
         .child(&toolbar_view)
         .build();
+
     dialog.set_focus(Some(&password_row));
 
     let bytes = Rc::new(bytes);
@@ -1477,6 +1516,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             dynamic_box.set_visible(false);
             raw_button.set_visible(false);
             status.set_visible(true);
+            status.set_title("Decrypting Password Entry");
+            status.set_description(Some("Please wait while the pass file is opened."));
             nav.push(&page);
 
             // Background worker: run `pass <label>`

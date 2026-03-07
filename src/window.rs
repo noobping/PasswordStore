@@ -25,7 +25,7 @@ use adw::gtk::{
     MenuButton, Popover, SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fs;
 use std::io;
 use std::rc::Rc;
@@ -152,13 +152,6 @@ impl StoreRecipientsMode {
         }
     }
 
-    fn save_tooltip(&self) -> &'static str {
-        match self {
-            Self::Create => "Create password store",
-            Self::Edit => "Save GPG recipients",
-        }
-    }
-
     fn empty_state_subtitle(&self) -> &'static str {
         match self {
             Self::Create => "Add at least one recipient to initialize the password store.",
@@ -175,6 +168,7 @@ struct StoreRecipientsRequest {
 
 #[derive(Clone)]
 struct StoreRecipientsPageState {
+    window: ApplicationWindow,
     nav: NavigationView,
     page: NavigationPage,
     list: ListBox,
@@ -187,6 +181,9 @@ struct StoreRecipientsPageState {
     win: WindowTitle,
     request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
     recipients: Rc<RefCell<Vec<String>>>,
+    saved_recipients: Rc<RefCell<Vec<String>>>,
+    save_in_flight: Rc<Cell<bool>>,
+    save_queued: Rc<Cell<bool>>,
 }
 
 fn with_logs_hint(message: &str) -> String {
@@ -415,11 +412,6 @@ fn set_save_button_for_password(save: &Button) {
     save.set_tooltip_text(Some("Save password"));
 }
 
-fn set_save_button_for_store_recipients(save: &Button, mode: &StoreRecipientsMode) {
-    save.set_action_name(Some("win.save-store-recipients"));
-    save.set_tooltip_text(Some(mode.save_tooltip()));
-}
-
 fn prune_missing_store_dirs(settings: &Preferences) {
     if let Err(err) = settings.prune_missing_stores() {
         log_error(format!("Failed to remove missing password stores: {err}"));
@@ -487,6 +479,28 @@ fn current_store_recipients_request(
     state.request.borrow().clone()
 }
 
+fn store_recipients_are_dirty(state: &StoreRecipientsPageState) -> bool {
+    *state.recipients.borrow() != *state.saved_recipients.borrow()
+}
+
+fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) {
+    if current_store_recipients_request(state).is_none() {
+        return;
+    }
+    if state.recipients.borrow().is_empty() {
+        return;
+    }
+    if !store_recipients_are_dirty(state) {
+        return;
+    }
+    if state.save_in_flight.get() {
+        state.save_queued.set(true);
+        return;
+    }
+
+    let _ = adw::prelude::WidgetExt::activate_action(&state.window, "win.save-store-recipients", None);
+}
+
 fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     while let Some(child) = state.list.first_child() {
         state.list.remove(&child);
@@ -527,6 +541,7 @@ fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
                 .borrow_mut()
                 .retain(|value| value != &recipient);
             rebuild_store_recipients_list(&page_state);
+            queue_store_recipients_autosave(&page_state);
         });
     }
 }
@@ -544,8 +559,8 @@ fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
     state.find.set_visible(false);
     state.git.set_visible(false);
     state.back.set_visible(true);
-    state.save.set_visible(true);
-    set_save_button_for_store_recipients(&state.save, &request.mode);
+    state.save.set_visible(false);
+    set_save_button_for_password(&state.save);
     state.page.set_title(request.mode.page_title());
     state.win.set_title(request.mode.page_title());
     state.win.set_subtitle(&request.store);
@@ -556,8 +571,12 @@ fn show_store_recipients_page(
     request: StoreRecipientsRequest,
     initial_recipients: Vec<String>,
 ) {
+    let saved_recipients = read_store_gpg_recipients(&request.store);
     *state.request.borrow_mut() = Some(request);
     *state.recipients.borrow_mut() = initial_recipients;
+    *state.saved_recipients.borrow_mut() = saved_recipients;
+    state.save_in_flight.set(false);
+    state.save_queued.set(false);
     state.entry.set_text("");
     rebuild_store_recipients_list(state);
     sync_store_recipients_page_header(state);
@@ -576,6 +595,13 @@ fn show_store_recipients_page(
         let _ = state.nav.pop_to_page(&state.page);
     } else {
         state.nav.push(&state.page);
+    }
+
+    if current_store_recipients_request(state)
+        .map(|request| request.mode == StoreRecipientsMode::Create)
+        .unwrap_or(false)
+    {
+        queue_store_recipients_autosave(state);
     }
 }
 
@@ -759,7 +785,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     };
     let store_recipients_request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let store_recipients_values = Rc::new(RefCell::new(Vec::<String>::new()));
+    let store_recipients_saved = Rc::new(RefCell::new(Vec::<String>::new()));
+    let store_recipients_save_in_flight = Rc::new(Cell::new(false));
+    let store_recipients_save_queued = Rc::new(Cell::new(false));
     let store_recipients_page_state = StoreRecipientsPageState {
+        window: window.clone(),
         nav: navigation_view.clone(),
         page: store_recipients_page.clone(),
         list: store_recipients_list.clone(),
@@ -772,6 +802,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         win: window_title.clone(),
         request: store_recipients_request.clone(),
         recipients: store_recipients_values.clone(),
+        saved_recipients: store_recipients_saved.clone(),
+        save_in_flight: store_recipients_save_in_flight.clone(),
+        save_queued: store_recipients_save_queued.clone(),
     };
 
     // Selecting an item from the list
@@ -981,6 +1014,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             if append_gpg_recipients(&page_state.recipients, entry.text().as_str()) {
                 entry.set_text("");
                 rebuild_store_recipients_list(&page_state);
+                queue_store_recipients_autosave(&page_state);
             }
         });
     }
@@ -1186,35 +1220,34 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
     {
         let overlay = toast_overlay.clone();
-        let window_for_action = window.clone();
         let stores_list = password_stores.clone();
         let list_state = password_list_state.clone();
         let recipients_page = store_recipients_page_state.clone();
         let action = SimpleAction::new("save-store-recipients", None);
         action.connect_activate(move |_, _| {
-            if append_gpg_recipients(&recipients_page.recipients, recipients_page.entry.text().as_str())
-            {
-                recipients_page.entry.set_text("");
-                rebuild_store_recipients_list(&recipients_page);
-            }
-
             let Some(request) = current_store_recipients_request(&recipients_page) else {
-                let toast = Toast::new("Open a password store before saving recipients.");
-                overlay.add_toast(toast);
                 return;
             };
 
             let recipients = recipients_page.recipients.borrow().clone();
             if recipients.is_empty() {
-                let toast = Toast::new("Enter at least one GPG recipient.");
-                overlay.add_toast(toast);
                 return;
             }
+            if !store_recipients_are_dirty(&recipients_page) {
+                recipients_page.save_queued.set(false);
+                return;
+            }
+            if recipients_page.save_in_flight.replace(true) {
+                recipients_page.save_queued.set(true);
+                return;
+            }
+            recipients_page.save_queued.set(false);
 
             let (tx, rx) = mpsc::channel::<Result<(), String>>();
             let store_for_thread = request.store.clone();
+            let recipients_for_save = recipients.clone();
             thread::spawn(move || {
-                let result = apply_password_store_recipients(&store_for_thread, &recipients);
+                let result = apply_password_store_recipients(&store_for_thread, &recipients_for_save);
                 let _ = tx.send(result);
             });
 
@@ -1223,10 +1256,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
             let list_state = list_state.clone();
             let recipients_page = recipients_page.clone();
             let request = request.clone();
-            let window = window_for_action.clone();
             glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
                 Ok(Ok(())) => {
                     let settings = Preferences::new();
+                    *recipients_page.saved_recipients.borrow_mut() = recipients.clone();
                     match request.mode {
                         StoreRecipientsMode::Create => {
                             let stores = stores_with_preferred_first(&settings.stores(), &request.store);
@@ -1237,25 +1270,37 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                                 );
                                 overlay.add_toast(toast);
                             } else {
-                                show_password_list_page(&list_state);
-                                let toast = Toast::new("Password store created and set as default.");
-                                overlay.add_toast(toast);
+                                rebuild_store_list(
+                                    &stores_list,
+                                    &settings,
+                                    &recipients_page.window,
+                                    &overlay,
+                                    &list_state,
+                                    &recipients_page,
+                                );
+                                *recipients_page.request.borrow_mut() = Some(StoreRecipientsRequest {
+                                    store: request.store.clone(),
+                                    mode: StoreRecipientsMode::Edit,
+                                });
+                                sync_store_recipients_page_header(&recipients_page);
                             }
                         }
                         StoreRecipientsMode::Edit => {
                             rebuild_store_list(
                                 &stores_list,
                                 &settings,
-                                &window,
+                                &recipients_page.window,
                                 &overlay,
                                 &list_state,
                                 &recipients_page,
                             );
-                            let _ =
-                                adw::prelude::WidgetExt::activate_action(&window, "win.back", None);
-                            let toast = Toast::new("GPG recipients updated.");
-                            overlay.add_toast(toast);
                         }
+                    }
+                    recipients_page.save_in_flight.set(false);
+                    if recipients_page.save_queued.get() || store_recipients_are_dirty(&recipients_page)
+                    {
+                        recipients_page.save_queued.set(false);
+                        queue_store_recipients_autosave(&recipients_page);
                     }
                     glib::ControlFlow::Break
                 }
@@ -1265,6 +1310,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     } else {
                         message
                     };
+                    recipients_page.save_in_flight.set(false);
+                    if recipients_page.save_queued.get() {
+                        recipients_page.save_queued.set(false);
+                        queue_store_recipients_autosave(&recipients_page);
+                    }
                     let toast = Toast::new(&message);
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
@@ -1276,6 +1326,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     } else {
                         with_logs_hint("Couldn't save the password store recipients.")
                     };
+                    recipients_page.save_in_flight.set(false);
+                    if recipients_page.save_queued.get() {
+                        recipients_page.save_queued.set(false);
+                        queue_store_recipients_autosave(&recipients_page);
+                    }
                     let toast = Toast::new(&message);
                     overlay.add_toast(toast);
                     glib::ControlFlow::Break
@@ -1768,7 +1823,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     .as_ref()
                     .map(|p| p == &log_page)
                     .unwrap_or(false);
-                save.set_visible(is_text_page || is_raw_page || is_recipients_page);
+                save.set_visible(is_text_page || is_raw_page);
                 if is_text_page {
                     set_save_button_for_password(&save);
                     if let Some(pass_file) = get_opened_pass_file() {
@@ -1795,6 +1850,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
                     win.set_title("Preferences");
                     win.set_subtitle("Password Store");
                 } else if is_recipients_page {
+                    set_save_button_for_password(&save);
                     sync_store_recipients_page_header(&recipients_page);
                 } else if is_log_page {
                     set_save_button_for_password(&save);
@@ -2271,7 +2327,7 @@ fn finish_git_busy_page(
         .map(|page| page == log_page)
         .unwrap_or(false);
 
-    save.set_visible(is_text_page || is_raw_page || is_recipients_page);
+    save.set_visible(is_text_page || is_raw_page);
     if is_text_page {
         set_save_button_for_password(save);
         if let Some(pass_file) = get_opened_pass_file() {
@@ -2298,6 +2354,7 @@ fn finish_git_busy_page(
         win.set_title("Preferences");
         win.set_subtitle("Password Store");
     } else if is_recipients_page {
+        set_save_button_for_password(save);
         sync_store_recipients_page_header(recipients_page);
     } else if is_log_page {
         set_save_button_for_password(save);

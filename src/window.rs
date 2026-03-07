@@ -810,6 +810,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let menu = Menu::new();
         menu.append(Some("_Find password file"), Some("win.toggle-find"));
+        #[cfg(not(feature = "flatpak"))]
+        menu.append(Some("_Logs"), Some("win.open-log"));
         menu.append(Some("_Preferences"), Some("win.open-preferences"));
         menu.append(Some("_About PasswordStore"), Some("app.about"));
         primary_menu_button.set_menu_model(Some(&menu));

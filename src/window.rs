@@ -17,10 +17,11 @@ use crate::preferences::Preferences;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     glib, prelude::*, ActionRow, Application, ApplicationWindow, EntryRow, NavigationPage,
-    NavigationView, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
+    NavigationView, PasswordEntryRow, PreferencesGroup, PreferencesPage, StatusPage, Toast,
+    ToastOverlay, WindowTitle,
 };
 use adw::gtk::{
-    Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Entry, Label, ListBox,
+    Box as GtkBox, Widget, gdk::Display, Builder, Button, Dialog, Image, ListBox,
     ListBoxRow, MenuButton, Popover, ScrolledWindow, SearchEntry, Spinner, TextView,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
@@ -2487,37 +2488,37 @@ fn open_store_creator_dialog(
     content.set_margin_start(16);
     content.set_margin_end(16);
 
-    let description = Label::new(Some(
-        "Add GPG recipients to the list below. You can paste multiple recipients separated by commas or semicolons.",
-    ));
-    description.set_wrap(true);
-    description.set_max_width_chars(40);
-    description.set_xalign(0.0);
-    content.append(&description);
-
-    let recipients_label = Label::new(Some("GPG recipients"));
-    recipients_label.set_xalign(0.0);
-    content.append(&recipients_label);
-
     let recipients = Rc::new(RefCell::new(suggested_gpg_recipients(settings)));
 
-    let input_box = GtkBox::new(adw::gtk::Orientation::Horizontal, 8);
-    let recipients_entry = Entry::new();
-    recipients_entry.set_hexpand(true);
-    recipients_entry.set_placeholder_text(Some("alice@example.com"));
-    let add_recipient_button = Button::with_label("Add");
-    input_box.append(&recipients_entry);
-    input_box.append(&add_recipient_button);
-    content.append(&input_box);
+    let page = PreferencesPage::new();
+
+    let store_group = PreferencesGroup::builder()
+        .title("Store")
+        .description("The selected folder will be initialized and used as the default password store.")
+        .build();
+    let store_row = ActionRow::builder()
+        .title("Location")
+        .subtitle(store)
+        .build();
+    let store_icon = Image::from_icon_name("folder-symbolic");
+    store_icon.add_css_class("dim-label");
+    store_row.add_prefix(&store_icon);
+    store_group.add(&store_row);
+    page.add(&store_group);
+
+    let recipients_group = PreferencesGroup::builder()
+        .title("GPG recipients")
+        .description("Add one recipient per row. You can paste multiple recipients separated by commas or semicolons.")
+        .build();
 
     let recipients_list = ListBox::new();
     recipients_list.set_selection_mode(adw::gtk::SelectionMode::None);
     recipients_list.add_css_class("boxed-list");
-    let recipients_placeholder = Label::new(Some("No GPG recipients added yet."));
-    recipients_placeholder.set_margin_top(12);
-    recipients_placeholder.set_margin_bottom(12);
-    recipients_placeholder.add_css_class("dim-label");
-    recipients_list.set_placeholder(Some(&recipients_placeholder));
+
+    let recipients_entry = EntryRow::new();
+    recipients_entry.set_title("Add recipients");
+    recipients_entry.set_show_apply_button(true);
+    recipients_entry.set_text("");
 
     let recipients_scroll = ScrolledWindow::builder()
         .hscrollbar_policy(adw::gtk::PolicyType::Never)
@@ -2525,30 +2526,22 @@ fn open_store_creator_dialog(
         .vexpand(true)
         .child(&recipients_list)
         .build();
-    content.append(&recipients_scroll);
+    recipients_group.add(&recipients_scroll);
+    page.add(&recipients_group);
+
+    content.append(&page);
     dialog.content_area().append(&content);
-    rebuild_gpg_recipients_list(&recipients_list, &recipients);
+    rebuild_gpg_recipients_list(&recipients_list, &recipients_entry, &recipients);
 
     {
         let recipients = recipients.clone();
+        let recipients_entry_for_signal = recipients_entry.clone();
         let recipients_entry = recipients_entry.clone();
         let recipients_list = recipients_list.clone();
-        recipients_entry.connect_activate(move |entry| {
+        recipients_entry_for_signal.connect_apply(move |entry| {
             if append_gpg_recipients(&recipients, entry.text().as_str()) {
                 entry.set_text("");
-                rebuild_gpg_recipients_list(&recipients_list, &recipients);
-            }
-        });
-    }
-
-    {
-        let recipients = recipients.clone();
-        let recipients_entry = recipients_entry.clone();
-        let recipients_list = recipients_list.clone();
-        add_recipient_button.connect_clicked(move |_| {
-            if append_gpg_recipients(&recipients, recipients_entry.text().as_str()) {
-                recipients_entry.set_text("");
-                rebuild_gpg_recipients_list(&recipients_list, &recipients);
+                rebuild_gpg_recipients_list(&recipients_list, &recipients_entry, &recipients);
             }
         });
     }
@@ -2570,7 +2563,7 @@ fn open_store_creator_dialog(
 
             if append_gpg_recipients(&recipients, recipients_entry.text().as_str()) {
                 recipients_entry.set_text("");
-                rebuild_gpg_recipients_list(&recipients_list, &recipients);
+                rebuild_gpg_recipients_list(&recipients_list, &recipients_entry, &recipients);
             }
 
             let recipients = recipients.borrow().clone();
@@ -2644,14 +2637,33 @@ fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     Vec::new()
 }
 
-fn rebuild_gpg_recipients_list(list: &ListBox, recipients: &Rc<RefCell<Vec<String>>>) {
+fn rebuild_gpg_recipients_list(
+    list: &ListBox,
+    recipients_entry: &EntryRow,
+    recipients: &Rc<RefCell<Vec<String>>>,
+) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
+    }
+
+    list.append(recipients_entry);
+
+    if recipients.borrow().is_empty() {
+        let empty_row = ActionRow::builder()
+            .title("No GPG recipients added")
+            .subtitle("Add at least one recipient to initialize the password store.")
+            .build();
+        empty_row.set_activatable(false);
+        list.append(&empty_row);
+        return;
     }
 
     for recipient in recipients.borrow().iter().cloned() {
         let row = ActionRow::builder().title(&recipient).build();
         row.set_activatable(false);
+        let row_icon = Image::from_icon_name("dialog-password-symbolic");
+        row_icon.add_css_class("dim-label");
+        row.add_prefix(&row_icon);
 
         let delete_button = Button::from_icon_name("user-trash-symbolic");
         delete_button.add_css_class("flat");
@@ -2659,10 +2671,11 @@ fn rebuild_gpg_recipients_list(list: &ListBox, recipients: &Rc<RefCell<Vec<Strin
         list.append(&row);
 
         let list = list.clone();
+        let recipients_entry = recipients_entry.clone();
         let recipients = recipients.clone();
         delete_button.connect_clicked(move |_| {
             recipients.borrow_mut().retain(|value| value != &recipient);
-            rebuild_gpg_recipients_list(&list, &recipients);
+            rebuild_gpg_recipients_list(&list, &recipients_entry, &recipients);
         });
     }
 }

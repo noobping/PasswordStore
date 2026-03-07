@@ -153,6 +153,27 @@ impl Preferences {
             save_file_prefs(&cfg)
         }
     }
+
+    pub fn prune_missing_stores(&self) -> Result<bool, BoolError> {
+        let stores = self.stores();
+        let existing = stores
+            .iter()
+            .filter(|store| Self::store_dir_exists(store))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if existing.len() == stores.len() {
+            Ok(false)
+        } else {
+            self.set_stores(existing)?;
+            Ok(true)
+        }
+    }
+
+    fn store_dir_exists(store: &str) -> bool {
+        let path = PathBuf::from(Self::expand_path(store));
+        path.exists() && path.is_dir()
+    }
 }
 
 fn config_path() -> PathBuf {
@@ -203,7 +224,9 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
 
 #[cfg(test)]
 mod tests {
-    use super::default_store_dirs;
+    use super::{default_store_dirs, Preferences};
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn default_store_dirs_match_build_mode() {
@@ -216,5 +239,22 @@ mod tests {
         } else {
             assert!(default_store_dirs().is_empty());
         }
+    }
+
+    #[test]
+    fn missing_store_paths_are_filtered_out() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        let existing = std::env::temp_dir().join(format!("passwordstore-test-{nanos}"));
+        std::fs::create_dir_all(&existing).expect("create temp store dir");
+
+        assert!(Preferences::store_dir_exists(existing.to_string_lossy().as_ref()));
+        assert!(!Preferences::store_dir_exists(
+            PathBuf::from(existing.join("missing")).to_string_lossy().as_ref()
+        ));
+
+        std::fs::remove_dir_all(&existing).expect("remove temp store dir");
     }
 }

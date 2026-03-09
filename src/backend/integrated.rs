@@ -5,7 +5,7 @@ use ripasso::crypto::{slice_to_20_bytes, Crypto, Sequoia};
 #[cfg(not(feature = "flatpak"))]
 use ripasso::pass::PasswordStore;
 #[cfg(feature = "flatpak")]
-use ripasso::pass::Recipient;
+use ripasso::pass::{Comment, KeyRingStatus, OwnerTrustLevel, Recipient};
 
 #[cfg(feature = "flatpak")]
 use crate::logging::log_error;
@@ -14,10 +14,10 @@ use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
 use sequoia_openpgp::{
     cert::amalgamation::key::PrimaryKey, crypto::Password, parse::Parse, serialize::Serialize,
-    Cert, Fingerprint, Packet,
+    Cert, Fingerprint, KeyHandle, Packet,
 };
 #[cfg(feature = "flatpak")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 #[cfg(feature = "flatpak")]
 use std::fs::File;
@@ -347,7 +347,23 @@ fn find_ripasso_private_key_cert(
 #[cfg(feature = "flatpak")]
 fn build_ripasso_crypto() -> Result<Sequoia, String> {
     let fingerprint = resolved_ripasso_own_fingerprint()?;
-    let user_key_id = fingerprint_from_string(&fingerprint)?;
+    let key_ring = load_ripasso_key_ring(&fingerprint)?;
+    build_ripasso_crypto_from_key_ring(&fingerprint, key_ring)
+}
+
+#[cfg(feature = "flatpak")]
+fn build_ripasso_crypto_from_key_ring(
+    fingerprint: &str,
+    key_ring: HashMap<[u8; 20], Arc<Cert>>,
+) -> Result<Sequoia, String> {
+    let user_key_id = fingerprint_from_string(fingerprint)?;
+    let home = user_home().ok_or_else(|| "Could not determine the home folder.".to_string())?;
+    Ok(Sequoia::from_values(user_key_id, key_ring, &home))
+}
+
+#[cfg(feature = "flatpak")]
+fn load_ripasso_key_ring(fingerprint: &str) -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
+    let user_key_id = fingerprint_from_string(fingerprint)?;
     let keys_dir = ripasso_keys_dir()?;
     let mut key_ring = HashMap::new();
 
@@ -371,8 +387,7 @@ fn build_ripasso_crypto() -> Result<Sequoia, String> {
         key_ring.insert(user_key_id, cert);
     }
 
-    let home = user_home().ok_or_else(|| "Could not determine the home folder.".to_string())?;
-    Ok(Sequoia::from_values(user_key_id, key_ring, &home))
+    Ok(key_ring)
 }
 
 #[cfg(feature = "flatpak")]
@@ -463,14 +478,98 @@ fn decrypt_password_entry_with_crypto(
 #[cfg(feature = "flatpak")]
 fn encrypt_password_entry_with_crypto(
     crypto: &Sequoia,
-    recipients_file: &Path,
+    recipients: &[Recipient],
     contents: &str,
 ) -> Result<Vec<u8>, String> {
-    let recipients =
-        Recipient::all_recipients(recipients_file, crypto).map_err(|err| err.to_string())?;
     crypto
-        .encrypt_string(contents, &recipients)
+        .encrypt_string(contents, recipients)
         .map_err(|err| err.to_string())
+}
+
+#[cfg(feature = "flatpak")]
+fn recipients_for_encryption(
+    recipients_file: &Path,
+    key_ring: &HashMap<[u8; 20], Arc<Cert>>,
+) -> Result<Vec<Recipient>, String> {
+    let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
+    let mut recipients = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw_line in contents.lines() {
+        let line = raw_line
+            .split_once('#')
+            .map(|(key, _)| key)
+            .unwrap_or(raw_line)
+            .trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let Some((fingerprint, cert)) = resolve_recipient_cert(line, key_ring) else {
+            return Err(format!("Recipient '{line}' is not available in the app."));
+        };
+        if !seen.insert(fingerprint) {
+            continue;
+        }
+
+        let name = cert
+            .userids()
+            .map(|user_id| user_id.userid().to_string())
+            .find(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| line.to_string());
+
+        recipients.push(Recipient {
+            name,
+            comment: Comment {
+                pre_comment: None,
+                post_comment: None,
+            },
+            key_id: cert.fingerprint().to_hex(),
+            fingerprint: Some(fingerprint),
+            key_ring_status: KeyRingStatus::InKeyRing,
+            trust_level: OwnerTrustLevel::Ultimate,
+            not_usable: false,
+        });
+    }
+
+    Ok(recipients)
+}
+
+#[cfg(feature = "flatpak")]
+fn resolve_recipient_cert<'a>(
+    recipient_id: &str,
+    key_ring: &'a HashMap<[u8; 20], Arc<Cert>>,
+) -> Option<([u8; 20], &'a Arc<Cert>)> {
+    if let Ok(fingerprint) = fingerprint_from_string(recipient_id) {
+        if let Some(cert) = key_ring.get(&fingerprint) {
+            return Some((fingerprint, cert));
+        }
+    }
+
+    if let Ok(handle) = recipient_id.parse::<KeyHandle>() {
+        for (fingerprint, cert) in key_ring {
+            if cert.key_handle().aliases(&handle) {
+                return Some((*fingerprint, cert));
+            }
+        }
+    }
+
+    let needle = recipient_id.trim().to_ascii_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+
+    for (fingerprint, cert) in key_ring {
+        if cert.userids().any(|user_id| {
+            let user_id = user_id.userid().to_string();
+            let user_id = user_id.trim().to_ascii_lowercase();
+            user_id == needle || user_id.contains(&format!("<{needle}>"))
+        }) {
+            return Some((*fingerprint, cert));
+        }
+    }
+
+    None
 }
 
 #[cfg(feature = "flatpak")]
@@ -585,9 +684,12 @@ pub(super) fn save_password_entry(
         return Err("That password entry already exists.".to_string());
     }
 
-    let crypto = build_ripasso_crypto()?;
+    let fingerprint = resolved_ripasso_own_fingerprint()?;
+    let key_ring = load_ripasso_key_ring(&fingerprint)?;
+    let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring.clone())?;
     let recipients_file = recipients_file_for_label(store_root, label)?;
-    let ciphertext = encrypt_password_entry_with_crypto(&crypto, &recipients_file, contents)?;
+    let recipients = recipients_for_encryption(&recipients_file, &key_ring)?;
+    let ciphertext = encrypt_password_entry_with_crypto(&crypto, &recipients, contents)?;
     if let Some(parent) = entry_path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
@@ -706,7 +808,8 @@ pub(super) fn save_store_recipients(
         fs::create_dir_all(&store_dir).map_err(|err| err.to_string())?;
     }
 
-    let crypto = build_ripasso_crypto()?;
+    let key_ring = load_ripasso_key_ring(&fingerprint)?;
+    let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring.clone())?;
     let recipients_path = store_dir.join(".gpg-id");
     let previous_recipients = fs::read_to_string(&recipients_path).ok();
     let contents = format!("{}\n", recipients.join("\n"));
@@ -718,8 +821,8 @@ pub(super) fn save_store_recipients(
             let secret = decrypt_password_entry_with_crypto(&crypto, &entry_path)?;
             let label = label_from_entry_path(&store_dir, &entry_path)?;
             let recipients_file = recipients_file_for_label(store_root, &label)?;
-            let ciphertext =
-                encrypt_password_entry_with_crypto(&crypto, &recipients_file, &secret)?;
+            let recipients = recipients_for_encryption(&recipients_file, &key_ring)?;
+            let ciphertext = encrypt_password_entry_with_crypto(&crypto, &recipients, &secret)?;
             fs::write(&entry_path, ciphertext).map_err(|err| err.to_string())?;
         }
         Ok(())
@@ -1195,5 +1298,46 @@ mod tests {
                 .expect("read saved entry"),
             "supersecret\nusername: alice".to_string()
         );
+    }
+
+    #[test]
+    fn new_entries_can_use_email_recipients() {
+        let _guard = test_lock().lock().expect("test lock poisoned");
+        let home = TestHome::new();
+        let password: Password = "hunter2".into();
+        let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
+            .set_password(Some(password.clone()))
+            .generate()
+            .expect("failed to generate password-protected certificate");
+        let mut bytes = Vec::new();
+        cert.as_tsk()
+            .serialize(&mut bytes)
+            .expect("failed to serialize protected test certificate");
+        let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
+            .expect("expected private key import to succeed");
+
+        let secondary_store = home.path.join("secondary-store");
+        fs::create_dir_all(&secondary_store).expect("create secondary store");
+        fs::write(
+            secondary_store.join(".gpg-id"),
+            "store@example.com\n",
+        )
+        .expect("write recipients");
+
+        save_password_entry(
+            secondary_store.to_string_lossy().as_ref(),
+            "team/service",
+            "supersecret\nusername: alice",
+            true,
+        )
+        .expect("save entry with email recipient");
+
+        assert!(secondary_store.join("team/service.gpg").is_file());
+        assert_eq!(
+            read_password_entry(secondary_store.to_string_lossy().as_ref(), "team/service")
+                .expect("read saved entry"),
+            "supersecret\nusername: alice".to_string()
+        );
+        assert_eq!(imported.fingerprint.len(), 40);
     }
 }

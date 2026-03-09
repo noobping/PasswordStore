@@ -2,8 +2,8 @@ use crate::logging::log_error;
 use crate::pass_file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
 use adw::glib::{self, ControlFlow};
 use adw::prelude::*;
-use adw::{EntryRow, Toast, ToastOverlay};
-use adw::gtk::{Align, Button, DrawingArea};
+use adw::{PasswordEntryRow, Toast, ToastOverlay};
+use adw::gtk::{Align, DrawingArea};
 use std::cell::{Cell, RefCell};
 use std::f64::consts::{FRAC_PI_2, TAU};
 use std::rc::Rc;
@@ -28,7 +28,7 @@ impl OtpCountdownCircle {
 
         let fraction = Rc::new(Cell::new(0.0_f64));
         let fraction_for_draw = fraction.clone();
-        area.set_draw_func(move |_area, cr, width, height| {
+        area.set_draw_func(move |area, cr, width, height| {
             let fraction: f64 = fraction_for_draw.get();
             let fraction = fraction.clamp(0.0, 1.0);
             let radius = (width.min(height) as f64 / 2.0) - 2.0;
@@ -40,7 +40,16 @@ impl OtpCountdownCircle {
             cr.arc(center_x, center_y, radius, 0.0, TAU);
             let _ = cr.stroke();
 
-            cr.set_source_rgba(0.18, 0.55, 0.92, 1.0);
+            let accent = area
+                .style_context()
+                .lookup_color("accent_color")
+                .unwrap_or_else(|| adw::gtk::gdk::RGBA::new(0.18, 0.55, 0.92, 1.0));
+            cr.set_source_rgba(
+                accent.red() as f64,
+                accent.green() as f64,
+                accent.blue() as f64,
+                accent.alpha() as f64,
+            );
             cr.arc(
                 center_x,
                 center_y,
@@ -74,27 +83,20 @@ impl OtpCountdownCircle {
 
 #[derive(Clone)]
 pub(crate) struct PasswordOtpState {
-    pub(crate) row: EntryRow,
+    pub(crate) row: PasswordEntryRow,
     overlay: ToastOverlay,
     template: Rc<RefCell<Option<OtpFieldTemplate>>>,
     url: Rc<RefCell<Option<String>>>,
     edit_mode: Rc<Cell<bool>>,
     refresh_generation: Rc<Cell<u64>>,
-    toggle_button: Button,
     countdown: OtpCountdownCircle,
 }
 
 impl PasswordOtpState {
-    pub(crate) fn new(row: &EntryRow, overlay: &ToastOverlay) -> Self {
-        let toggle_button = Button::from_icon_name("document-edit-symbolic");
-        toggle_button.add_css_class("flat");
-        toggle_button.set_valign(Align::Center);
-        toggle_button.set_tooltip_text(Some("Edit OTP secret"));
-
+    pub(crate) fn new(row: &PasswordEntryRow, overlay: &ToastOverlay) -> Self {
         let countdown = OtpCountdownCircle::new();
 
         row.add_suffix(countdown.widget());
-        row.add_suffix(&toggle_button);
 
         let state = Self {
             row: row.clone(),
@@ -103,10 +105,9 @@ impl PasswordOtpState {
             url: Rc::new(RefCell::new(None)),
             edit_mode: Rc::new(Cell::new(false)),
             refresh_generation: Rc::new(Cell::new(0)),
-            toggle_button,
             countdown,
         };
-        state.connect_toggle_button();
+        state.connect_row_signals();
         state
     }
 
@@ -118,12 +119,8 @@ impl PasswordOtpState {
         self.row.set_title("OTP");
         self.row.set_text("");
         self.row.set_editable(false);
+        self.row.set_show_apply_button(false);
         self.row.set_visible(false);
-        self.toggle_button.set_visible(false);
-        self.toggle_button
-            .set_icon_name("document-edit-symbolic");
-        self.toggle_button
-            .set_tooltip_text(Some("Edit OTP secret"));
         self.countdown.set_visible(false);
         self.countdown.set_fraction(0.0);
         self.countdown.set_tooltip_text(None);
@@ -144,7 +141,6 @@ impl PasswordOtpState {
         *self.template.borrow_mut() = Some(template);
         *self.url.borrow_mut() = Some(url);
         self.row.set_visible(true);
-        self.toggle_button.set_visible(true);
         self.render(show_errors);
     }
 
@@ -168,30 +164,38 @@ impl PasswordOtpState {
         Ok(Some(url))
     }
 
-    fn connect_toggle_button(&self) {
+    fn connect_row_signals(&self) {
         let state = self.clone();
-        self.toggle_button.connect_clicked(move |_| {
-            if state.edit_mode.get() {
-                let Some(url) = state.url_for_current_secret() else {
-                    state.overlay.add_toast(Toast::new("Couldn't update the code."));
-                    return;
-                };
-
-                if otp_secret_from_url(&url)
-                    .unwrap_or_default()
-                    .trim()
-                    .is_empty()
-                {
-                    state.overlay.add_toast(Toast::new("Enter an OTP secret."));
-                    return;
-                }
-
-                *state.url.borrow_mut() = Some(url);
-                state.edit_mode.set(false);
-            } else {
+        self.row.connect_notify_local(Some("has-focus"), move |row, _| {
+            if row.has_focus() && !state.edit_mode.get() && state.has_otp() {
                 state.edit_mode.set(true);
+                state.render(false);
+                row.grab_focus_without_selecting();
+            }
+        });
+
+        let state = self.clone();
+        self.row.connect_apply(move |_| {
+            if !state.edit_mode.get() {
+                return;
             }
 
+            let Some(url) = state.url_for_current_secret() else {
+                state.overlay.add_toast(Toast::new("Couldn't update the code."));
+                return;
+            };
+
+            if otp_secret_from_url(&url)
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+            {
+                state.overlay.add_toast(Toast::new("Enter an OTP secret."));
+                return;
+            }
+
+            *state.url.borrow_mut() = Some(url);
+            state.edit_mode.set(false);
             state.render(true);
         });
     }
@@ -228,11 +232,9 @@ impl PasswordOtpState {
             .unwrap_or_default();
         self.row.set_title("OTP secret");
         self.row.set_editable(true);
+        self.row.set_show_apply_button(true);
         self.row.set_text(&secret);
         self.countdown.set_visible(false);
-        self.toggle_button
-            .set_icon_name("object-select-symbolic");
-        self.toggle_button.set_tooltip_text(Some("Show live code"));
     }
 
     fn render_live_mode(&self, show_errors: bool) {
@@ -243,10 +245,7 @@ impl PasswordOtpState {
 
         self.row.set_title("OTP code");
         self.row.set_editable(false);
-        self.toggle_button
-            .set_icon_name("document-edit-symbolic");
-        self.toggle_button
-            .set_tooltip_text(Some("Edit OTP secret"));
+        self.row.set_show_apply_button(false);
         self.countdown.set_visible(true);
 
         match otp_display(&url) {

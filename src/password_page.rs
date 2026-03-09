@@ -9,9 +9,9 @@ use crate::methods::{
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
 use crate::pass_file::{
-    apply_sensitive_field_visibility, clear_box_children, new_pass_file_contents_from_template,
-    parse_structured_pass_lines, rebuild_dynamic_fields_from_lines, structured_pass_contents,
-    sync_username_row, sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
+    clear_box_children, new_pass_file_contents_from_template, parse_structured_pass_lines,
+    rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row,
+    sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
 };
 use crate::password_otp::PasswordOtpState;
 use crate::password_list::load_passwords_async;
@@ -25,7 +25,7 @@ use crate::window_navigation::set_save_button_for_password;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle};
 use adw::gtk::{Box as GtkBox, Button, ListBox, Popover, TextView};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -50,7 +50,6 @@ pub(crate) struct PasswordPageState {
     pub(crate) dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
     pub(crate) text: TextView,
     pub(crate) overlay: ToastOverlay,
-    pub(crate) show_hidden_fields: Rc<Cell<bool>>,
 }
 
 #[cfg(feature = "flatpak")]
@@ -82,7 +81,6 @@ fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle:
 
 fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
     show_password_editor_chrome(state, title, subtitle);
-    set_password_page_hidden_fields_visible(state, false);
     state.entry.set_visible(false);
     state.username.set_text("");
     state.username.set_visible(false);
@@ -98,7 +96,6 @@ fn show_password_editor_fields(state: &PasswordPageState) {
     state.status.set_visible(false);
     state.entry.set_visible(true);
     state.raw_button.set_visible(true);
-    apply_password_page_hidden_fields(state);
 }
 
 fn show_password_open_error(state: &PasswordPageState) {
@@ -163,24 +160,6 @@ fn sync_editor_contents(
     );
     sync_username_row_from_parsed_lines(&state.username, pass_file, &structured_lines);
     state.otp.sync_from_parsed_lines(&structured_lines, true);
-    apply_password_page_hidden_fields(state);
-}
-
-fn apply_password_page_hidden_fields(state: &PasswordPageState) {
-    apply_sensitive_field_visibility(
-        &state.entry,
-        &state.otp.row,
-        &state.dynamic_rows.borrow(),
-        state.show_hidden_fields.get(),
-    );
-}
-
-pub(crate) fn set_password_page_hidden_fields_visible(
-    state: &PasswordPageState,
-    visible: bool,
-) {
-    state.show_hidden_fields.set(visible);
-    apply_password_page_hidden_fields(state);
 }
 
 fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
@@ -464,7 +443,6 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
     }
 
     clear_opened_pass_file();
-    set_password_page_hidden_fields_visible(state, false);
     state.back.set_visible(false);
     state.save.set_visible(false);
     set_save_button_for_password(&state.save);

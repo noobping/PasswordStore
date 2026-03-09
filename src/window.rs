@@ -240,7 +240,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let username_entry: EntryRow = builder
         .object("username_entry")
         .expect("Failed to get username_entry");
-    let otp_entry: EntryRow = builder
+    let otp_entry: PasswordEntryRow = builder
         .object("otp_entry")
         .expect("Failed to get otp_entry");
     let copy_password_button: Button = builder
@@ -277,7 +277,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         store_dropdown: new_password_store_dropdown.clone(),
     };
     let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
-    let show_hidden_fields = Rc::new(Cell::new(false));
     let password_list_state = PasswordPageState {
         nav: navigation_view.clone(),
         page: text_page.clone(),
@@ -299,7 +298,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         dynamic_rows: dynamic_field_rows.clone(),
         text: text_view.clone(),
         overlay: toast_overlay.clone(),
-        show_hidden_fields: show_hidden_fields.clone(),
     };
     let store_recipients_request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let store_recipients_values = Rc::new(RefCell::new(Vec::<String>::new()));
@@ -389,7 +387,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         overlay: toast_overlay.clone(),
         list: list.clone(),
         navigation: window_navigation_state.clone(),
-        password_page: password_list_state.clone(),
         show_hidden: show_hidden_files.clone(),
     };
 

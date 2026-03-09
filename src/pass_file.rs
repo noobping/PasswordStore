@@ -2,7 +2,7 @@ use crate::clipboard::add_copy_suffix;
 use crate::item::OpenPassFile;
 use crate::logging::log_error;
 use adw::{prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Box as GtkBox, Text, Widget, gdk::Display};
+use adw::gtk::{Box as GtkBox, Editable, PasswordEntry, Text, Widget, gdk::Display};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -84,7 +84,9 @@ impl DynamicFieldRow {
 
     fn apply_sensitive_visibility(&self, visible: bool) {
         if let Self::Secret(row) = self {
-            set_internal_text_visibility(row, visible);
+            if !set_editable_delegate_visibility(row, visible) {
+                set_internal_text_visibility(row, visible);
+            }
         }
     }
 }
@@ -236,14 +238,39 @@ fn set_internal_text_visibility(widget: &impl IsA<Widget>, visible: bool) {
     });
 }
 
+fn set_editable_delegate_visibility(editable: &impl IsA<Editable>, visible: bool) -> bool {
+    let Some(delegate) = editable.delegate() else {
+        return false;
+    };
+
+    if let Ok(text) = delegate.clone().downcast::<Text>() {
+        text.set_visibility(visible);
+        return true;
+    }
+
+    if let Ok(password) = delegate.clone().downcast::<PasswordEntry>() {
+        if set_editable_delegate_visibility(&password, visible) {
+            return true;
+        }
+        set_internal_text_visibility(&password, visible);
+        return true;
+    }
+
+    false
+}
+
 pub(crate) fn apply_sensitive_field_visibility(
     password_row: &PasswordEntryRow,
     otp_row: &EntryRow,
     rows: &[DynamicFieldRow],
     visible: bool,
 ) {
-    set_internal_text_visibility(password_row, visible);
-    set_internal_text_visibility(otp_row, visible);
+    if !set_editable_delegate_visibility(password_row, visible) {
+        set_internal_text_visibility(password_row, visible);
+    }
+    if !set_editable_delegate_visibility(otp_row, visible) {
+        set_internal_text_visibility(otp_row, visible);
+    }
     for row in rows {
         row.apply_sensitive_visibility(visible);
     }

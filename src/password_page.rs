@@ -16,6 +16,8 @@ use crate::pass_file::{
 use crate::password_otp::PasswordOtpState;
 use crate::password_list::load_passwords_async;
 use crate::preferences::Preferences;
+#[cfg(not(feature = "flatpak"))]
+use crate::preferences::BackendKind;
 #[cfg(feature = "flatpak")]
 use crate::ripasso_unlock::{is_locked_private_key_error, prompt_private_key_unlock_for_action};
 use crate::window_messages::with_logs_hint;
@@ -185,6 +187,44 @@ fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String,
     read_password_entry(store_root, label)
 }
 
+#[cfg(not(feature = "flatpak"))]
+fn should_switch_to_integrated_backend(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    !lowered.contains("not in the password store")
+        && !lowered.contains("was not found")
+        && !lowered.contains("no such file or directory")
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn switch_to_integrated_backend_and_retry(
+    state: &PasswordPageState,
+    pass_file: &OpenPassFile,
+    message: &str,
+) -> bool {
+    let settings = Preferences::new();
+    if settings.uses_integrated_backend() || !should_switch_to_integrated_backend(message) {
+        return false;
+    }
+
+    if let Err(err) = settings.set_backend_kind(BackendKind::Integrated) {
+        log_error(format!("Failed to switch to the integrated backend: {}", err.message));
+        return false;
+    }
+
+    state.overlay.add_toast(Toast::new("Using Integrated instead."));
+    open_password_entry_page(state, pass_file.clone(), false);
+    true
+}
+
+#[cfg(feature = "flatpak")]
+fn switch_to_integrated_backend_and_retry(
+    _state: &PasswordPageState,
+    _pass_file: &OpenPassFile,
+    _message: &str,
+) -> bool {
+    false
+}
+
 pub(crate) fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
@@ -224,6 +264,13 @@ pub(crate) fn open_password_entry_page(
                 }
                 Err(msg) => {
                     log_error(format!("Failed to open password entry: {msg}"));
+                    if switch_to_integrated_backend_and_retry(
+                        &state_for_result,
+                        &opened_pass_file_for_result,
+                        &msg,
+                    ) {
+                        return;
+                    }
                     #[cfg(feature = "flatpak")]
                     if is_locked_private_key_error(&msg) {
                         state_for_result.status.set_title("Unlock key");

@@ -5,8 +5,8 @@ use crate::clipboard::connect_copy_button;
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
+#[cfg(not(feature = "flatpak"))]
 use adw::ComboRow;
-
 use crate::item::OpenPassFile;
 use crate::methods::non_null_to_string_option;
 use crate::new_password_popover::{
@@ -58,7 +58,7 @@ use adw::{
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView,
+    Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, SearchEntry, TextView,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -133,9 +133,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let add_button_popover: Popover = builder
         .object("add_button_popover")
         .expect("Failed to get add_button_popover");
-    let new_password_store_row: ComboRow = builder
-        .object("new_password_store_row")
-        .expect("Failed to get new_password_store_row");
+    let new_password_store_box: GtkBox = builder
+        .object("new_password_store_box")
+        .expect("Failed to get new_password_store_box");
+    let new_password_store_dropdown: DropDown = builder
+        .object("new_password_store_dropdown")
+        .expect("Failed to get new_password_store_dropdown");
     let path_entry: EntryRow = builder
         .object("path_entry")
         .expect("Failed to get path_entry");
@@ -270,7 +273,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let new_password_popover_state = NewPasswordPopoverState {
         popover: add_button_popover.clone(),
         path_entry: path_entry.clone(),
-        store_row: new_password_store_row.clone(),
+        store_box: new_password_store_box.clone(),
+        store_dropdown: new_password_store_dropdown.clone(),
     };
     let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
     let show_hidden_fields = Rc::new(Cell::new(false));
@@ -455,12 +459,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let popover_add = add_button_popover.clone();
         let popover_git = git_popover.clone();
         let page_state = password_list_state.clone();
-        let store_row = new_password_store_row.clone();
+        let store_dropdown = new_password_store_dropdown.clone();
         path_entry.connect_apply(move |row| {
             begin_new_password_entry(
                 &page_state,
                 &row.text(),
-                selected_new_password_store(&store_row),
+                selected_new_password_store(&store_dropdown),
                 &popover_add,
                 &popover_git,
             );

@@ -67,6 +67,21 @@ pub(crate) fn register_back_action(
             show_password_list_page(&state.password_page, state.show_hidden.get());
             return;
         }
+
+        let visible_page = state.navigation.nav.visible_page();
+        let showing_password_page = visible_page
+            .as_ref()
+            .is_some_and(|page| page == &state.password_page.page);
+        let showing_raw_page = visible_page
+            .as_ref()
+            .is_some_and(|page| page == &state.password_page.raw_page);
+        if showing_password_page || showing_raw_page {
+            set_password_page_hidden_fields_visible(
+                &state.password_page,
+                state.password_page.show_hidden_fields.get(),
+            );
+        }
+
         let _ = retry_open_password_entry_if_needed(&state.password_page);
     });
     window.add_action(&action);

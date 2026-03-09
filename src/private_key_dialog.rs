@@ -31,7 +31,6 @@ pub fn build_private_key_progress_dialog(
     description: &str,
 ) -> Dialog {
     let status = StatusPage::builder()
-        .title(title)
         .description(description)
         .build();
     status.set_child(Some(&Spinner::builder().spinning(true).build()));

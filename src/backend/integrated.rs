@@ -924,8 +924,8 @@ mod tests {
         clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
         import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
         parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ripasso_keys_dir,
-        recipients_file_for_label, ripasso_private_key_requires_passphrase,
-        secret_entry_relative_path,
+        read_password_entry, recipients_file_for_label, ripasso_private_key_requires_passphrase,
+        save_password_entry, secret_entry_relative_path,
         unlock_ripasso_private_key_for_session,
     };
     use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
@@ -1150,6 +1150,50 @@ mod tests {
             recipients_file_for_label(secondary_store.to_string_lossy().as_ref(), "team/chat")
                 .expect("resolve recipients file"),
             secondary_store.join(".gpg-id")
+        );
+    }
+
+    #[test]
+    fn new_entries_can_be_saved_in_a_secondary_store() {
+        let _guard = test_lock().lock().expect("test lock poisoned");
+        let home = TestHome::new();
+        let password: Password = "hunter2".into();
+        let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
+            .set_password(Some(password.clone()))
+            .generate()
+            .expect("failed to generate password-protected certificate");
+        let mut bytes = Vec::new();
+        cert.as_tsk()
+            .serialize(&mut bytes)
+            .expect("failed to serialize protected test certificate");
+        let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
+            .expect("expected private key import to succeed");
+
+        let primary_store = home.path.join("primary-store");
+        let secondary_store = home.path.join("secondary-store");
+        fs::create_dir_all(&primary_store).expect("create primary store");
+        fs::create_dir_all(&secondary_store).expect("create secondary store");
+        fs::write(primary_store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
+            .expect("write primary recipients");
+        fs::write(
+            secondary_store.join(".gpg-id"),
+            format!("{}\n", imported.fingerprint),
+        )
+        .expect("write secondary recipients");
+
+        save_password_entry(
+            secondary_store.to_string_lossy().as_ref(),
+            "team/service",
+            "supersecret\nusername: alice",
+            true,
+        )
+        .expect("save entry in secondary store");
+
+        assert!(secondary_store.join("team/service.gpg").is_file());
+        assert_eq!(
+            read_password_entry(secondary_store.to_string_lossy().as_ref(), "team/service")
+                .expect("read saved entry"),
+            "supersecret\nusername: alice".to_string()
         );
     }
 }

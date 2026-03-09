@@ -3,7 +3,7 @@ use crate::pass_file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine
 use adw::glib::{self, ControlFlow};
 use adw::prelude::*;
 use adw::{PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Align, DrawingArea};
+use adw::gtk::{Align, DrawingArea, GestureClick};
 use std::cell::{Cell, RefCell};
 use std::f64::consts::{FRAC_PI_2, TAU};
 use std::rc::Rc;
@@ -172,10 +172,14 @@ impl PasswordOtpState {
     }
 
     fn connect_row_signals(&self) {
-        let state = self.clone();
-        self.row.connect_activate(move |_| {
-            state.enter_edit_mode();
-        });
+        if let Some(delegate) = self.row.delegate() {
+            let state = self.clone();
+            let click = GestureClick::new();
+            click.connect_pressed(move |_, _, _, _| {
+                state.enter_edit_mode();
+            });
+            delegate.add_controller(click);
+        }
 
         let state = self.clone();
         self.row.connect_apply(move |_| {
@@ -222,7 +226,14 @@ impl PasswordOtpState {
 
         self.mode.set(OtpMode::Editing);
         self.render(false);
-        self.row.grab_focus_without_selecting();
+        if let Some(delegate) = self.row.delegate() {
+            glib::idle_add_local_once(move || {
+                delegate.grab_focus();
+                delegate.select_region(0, -1);
+            });
+        } else {
+            self.row.grab_focus_without_selecting();
+        }
     }
 
     fn exit_edit_mode(&self, show_errors: bool) {

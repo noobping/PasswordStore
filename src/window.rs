@@ -58,7 +58,7 @@ use adw::{
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, SearchEntry, TextView,
+    Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -136,9 +136,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let new_password_store_box: GtkBox = builder
         .object("new_password_store_box")
         .expect("Failed to get new_password_store_box");
-    let new_password_store_dropdown: DropDown = builder
-        .object("new_password_store_dropdown")
-        .expect("Failed to get new_password_store_dropdown");
+    let new_password_store_list: GtkBox = builder
+        .object("new_password_store_list")
+        .expect("Failed to get new_password_store_list");
     let path_entry: EntryRow = builder
         .object("path_entry")
         .expect("Failed to get path_entry");
@@ -274,8 +274,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         popover: add_button_popover.clone(),
         path_entry: path_entry.clone(),
         store_box: new_password_store_box.clone(),
-        store_dropdown: new_password_store_dropdown.clone(),
+        store_list: new_password_store_list.clone(),
         store_roots: Rc::new(RefCell::new(Vec::new())),
+        selected_store: Rc::new(RefCell::new(None)),
     };
     let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
     let password_list_state = PasswordPageState {

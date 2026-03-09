@@ -2,9 +2,9 @@ use crate::preferences::Preferences;
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow};
-use adw::gtk::{Box as GtkBox, DropDown, Popover, StringList};
-use std::path::Path;
+use adw::gtk::{Box as GtkBox, CheckButton, Popover};
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -12,8 +12,9 @@ pub(crate) struct NewPasswordPopoverState {
     pub(crate) popover: Popover,
     pub(crate) path_entry: EntryRow,
     pub(crate) store_box: GtkBox,
-    pub(crate) store_dropdown: DropDown,
+    pub(crate) store_list: GtkBox,
     pub(crate) store_roots: Rc<RefCell<Vec<String>>>,
+    pub(crate) selected_store: Rc<RefCell<Option<String>>>,
 }
 
 fn available_store_roots() -> Vec<String> {
@@ -68,35 +69,59 @@ fn shortened_store_labels(stores: &[String]) -> Vec<String> {
     stores.to_vec()
 }
 
-fn resolve_selected_store(stores: &[String], selected: u32) -> Option<String> {
-    if stores.len() <= 1 {
-        return stores.first().cloned();
+fn clear_store_buttons(list: &GtkBox) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
     }
+}
 
-    stores
-        .get(selected as usize)
+fn resolve_selected_store(stores: &[String], selected: Option<&str>) -> Option<String> {
+    selected
+        .and_then(|selected| stores.iter().find(|store| store.as_str() == selected))
         .cloned()
         .or_else(|| stores.first().cloned())
 }
 
-pub(crate) fn sync_new_password_store_dropdown(state: &NewPasswordPopoverState) {
+pub(crate) fn sync_new_password_store_selector(state: &NewPasswordPopoverState) {
     let stores = available_store_roots();
     let labels = shortened_store_labels(&stores);
-    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    let selected = resolve_selected_store(&stores, state.selected_store.borrow().as_deref());
     *state.store_roots.borrow_mut() = stores.clone();
-    state
-        .store_dropdown
-        .set_model(Some(&StringList::new(&label_refs)));
+    *state.selected_store.borrow_mut() = selected.clone();
     state.store_box.set_visible(stores.len() > 1);
-    if !stores.is_empty() {
-        state
-            .store_dropdown
-            .set_selected(state.store_dropdown.selected().min(stores.len() as u32 - 1));
+
+    clear_store_buttons(&state.store_list);
+
+    let mut group: Option<CheckButton> = None;
+    for (store, label) in stores.iter().zip(labels) {
+        let button = CheckButton::with_label(&label);
+        button.set_halign(adw::gtk::Align::Start);
+        if let Some(first) = group.as_ref() {
+            button.set_group(Some(first));
+        } else {
+            group = Some(button.clone());
+        }
+
+        let is_selected = selected.as_deref() == Some(store.as_str());
+        button.set_active(is_selected);
+
+        let store = store.clone();
+        let selected_store = state.selected_store.clone();
+        button.connect_toggled(move |button| {
+            if button.is_active() {
+                *selected_store.borrow_mut() = Some(store.clone());
+            }
+        });
+
+        state.store_list.append(&button);
     }
 }
 
 pub(crate) fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
-    resolve_selected_store(&state.store_roots.borrow(), state.store_dropdown.selected())
+    resolve_selected_store(
+        &state.store_roots.borrow(),
+        state.selected_store.borrow().as_deref(),
+    )
 }
 
 pub(crate) fn register_open_new_password_action(
@@ -109,7 +134,7 @@ pub(crate) fn register_open_new_password_action(
         if state.popover.is_visible() {
             state.popover.popdown();
         } else {
-            sync_new_password_store_dropdown(&state);
+            sync_new_password_store_selector(&state);
             state.popover.popup();
             state.path_entry.grab_focus();
         }
@@ -152,7 +177,7 @@ mod tests {
         ];
 
         assert_eq!(
-            resolve_selected_store(&stores, 1),
+            resolve_selected_store(&stores, Some("/home/nick/work/.password-store")),
             Some("/home/nick/work/.password-store".to_string())
         );
     }

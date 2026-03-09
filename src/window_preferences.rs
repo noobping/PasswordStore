@@ -1,8 +1,6 @@
 #[cfg(feature = "setup")]
 use crate::setup::*;
 use crate::preferences::Preferences;
-#[cfg(feature = "flatpak")]
-use crate::ripasso_keys::{rebuild_ripasso_private_keys_list, RipassoPrivateKeysState};
 use crate::store_management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::window_navigation::set_save_button_for_password;
 use crate::logging::log_error;
@@ -43,8 +41,6 @@ pub(crate) struct PreferencesActionState {
     pub(crate) pass_row: EntryRow,
     #[cfg(not(feature = "flatpak"))]
     pub(crate) backend_row: ComboRow,
-    #[cfg(feature = "flatpak")]
-    pub(crate) ripasso_keys_state: RipassoPrivateKeysState,
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -178,8 +174,6 @@ pub(crate) fn register_open_preferences_action(
             .template_view
             .buffer()
             .set_text(&settings.new_pass_file_template());
-        #[cfg(feature = "flatpak")]
-        rebuild_ripasso_private_keys_list(&state.ripasso_keys_state);
         rebuild_store_list(
             &state.stores_list,
             &settings,

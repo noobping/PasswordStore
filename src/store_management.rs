@@ -194,6 +194,14 @@ fn open_store_picker(
                         &overlay_for_selection,
                         &recipients_page,
                     );
+                    show_store_recipients_page(
+                        &recipients_page,
+                        StoreRecipientsRequest {
+                            store: store.clone(),
+                            mode: StoreRecipientsMode::Edit,
+                        },
+                        read_store_gpg_recipients(&store),
+                    );
                 }
             }
         },

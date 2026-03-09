@@ -18,8 +18,6 @@ mod password_page;
 mod private_key_dialog;
 mod preferences;
 #[cfg(feature = "flatpak")]
-mod ripasso_keys;
-#[cfg(feature = "flatpak")]
 mod ripasso_unlock;
 mod stores;
 mod store_management;

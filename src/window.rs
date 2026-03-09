@@ -21,8 +21,6 @@ use crate::password_page::{
 };
 #[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
-#[cfg(feature = "flatpak")]
-use crate::ripasso_keys::RipassoPrivateKeysState;
 use crate::store_management::{
     connect_store_recipients_entry, register_store_recipients_save_action,
     StoreRecipientsPageState, StoreRecipientsRequest,
@@ -103,22 +101,12 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let backend_preferences: adw::PreferencesGroup = builder
         .object("backend_preferences")
         .expect("Failed to get backend_preferences");
-    #[cfg(feature = "flatpak")]
-    let ripasso_private_keys_preferences: adw::PreferencesGroup = builder
-        .object("ripasso_private_keys_preferences")
-        .expect("Failed to get ripasso_private_keys_preferences");
-    #[cfg(feature = "flatpak")]
-    let ripasso_private_keys_list: ListBox = builder
-        .object("ripasso_private_keys_list")
-        .expect("Failed to get ripasso_private_keys_list");
     #[cfg(not(feature = "flatpak"))]
     let backend_row: ComboRow = builder
         .object("backend_row")
         .expect("Failed to get backend_row");
     #[cfg(not(feature = "flatpak"))]
     backend_preferences.set_visible(true);
-    #[cfg(feature = "flatpak")]
-    ripasso_private_keys_preferences.set_visible(true);
 
     // Headerbar + top controls
     let back_button: Button = builder
@@ -267,8 +255,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get log_view");
     let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
     let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
+    #[cfg(not(feature = "flatpak"))]
     let store_recipients_entry = EntryRow::new();
+    #[cfg(not(feature = "flatpak"))]
     store_recipients_entry.set_title("Add recipient");
+    #[cfg(not(feature = "flatpak"))]
     store_recipients_entry.set_show_apply_button(true);
     let new_password_popover_state = NewPasswordPopoverState {
         popover: add_button_popover.clone(),
@@ -312,6 +303,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         nav: navigation_view.clone(),
         page: store_recipients_page.clone(),
         list: store_recipients_list.clone(),
+        #[cfg(feature = "flatpak")]
+        overlay: toast_overlay.clone(),
+        #[cfg(not(feature = "flatpak"))]
         entry: store_recipients_entry.clone(),
         back: back_button.clone(),
         add: add_button.clone(),
@@ -324,12 +318,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         saved_recipients: store_recipients_saved.clone(),
         save_in_flight: store_recipients_save_in_flight.clone(),
         save_queued: store_recipients_save_queued.clone(),
-    };
-    #[cfg(feature = "flatpak")]
-    let ripasso_private_keys_state = RipassoPrivateKeysState {
-        window: window.clone(),
-        list: ripasso_private_keys_list.clone(),
-        overlay: toast_overlay.clone(),
     };
     let window_navigation_state = WindowNavigationState {
         nav: navigation_view.clone(),
@@ -363,8 +351,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         pass_row: pass_row.clone(),
         #[cfg(not(feature = "flatpak"))]
         backend_row: backend_row.clone(),
-        #[cfg(feature = "flatpak")]
-        ripasso_keys_state: ripasso_private_keys_state.clone(),
     };
     #[cfg(not(feature = "flatpak"))]
     let git_action_state = GitActionState {

@@ -1,13 +1,33 @@
-use adw::gtk::Spinner;
+use adw::gtk::{Box as GtkBox, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{
     ApplicationWindow, Dialog, HeaderBar, PasswordEntryRow, PreferencesGroup, PreferencesPage,
-    StatusPage, Toast, ToastOverlay, ToolbarView,
+    StatusPage, Toast, ToastOverlay, WindowTitle,
 };
+
+fn dialog_content_shell(
+    title: &str,
+    subtitle: Option<&str>,
+    child: &impl IsA<adw::gtk::Widget>,
+) -> GtkBox {
+    let window_title = WindowTitle::builder().title(title).build();
+    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
+        window_title.set_subtitle(subtitle);
+    }
+
+    let header = HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+
+    let shell = GtkBox::new(Orientation::Vertical, 0);
+    shell.append(&header);
+    shell.append(child);
+    shell
+}
 
 pub fn build_private_key_progress_dialog(
     window: &ApplicationWindow,
     title: &str,
+    subtitle: Option<&str>,
     description: &str,
 ) -> Dialog {
     let status = StatusPage::builder()
@@ -16,15 +36,10 @@ pub fn build_private_key_progress_dialog(
         .build();
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
-    let header = HeaderBar::new();
-    let toolbar_view = ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&status));
-
     let dialog = Dialog::builder()
         .title(title)
         .content_width(460)
-        .child(&toolbar_view)
+        .child(&dialog_content_shell(title, subtitle, &status))
         .build();
     dialog.set_can_close(false);
     dialog.present(Some(window));
@@ -35,6 +50,7 @@ pub fn present_private_key_password_dialog<F>(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     title: &str,
+    subtitle: Option<&str>,
     on_submit: F,
 ) where
     F: Fn(String) + 'static,
@@ -49,15 +65,10 @@ pub fn present_private_key_password_dialog<F>(
     let page = PreferencesPage::new();
     page.add(&password_group);
 
-    let header = HeaderBar::new();
-    let toolbar_view = ToolbarView::new();
-    toolbar_view.add_top_bar(&header);
-    toolbar_view.set_content(Some(&page));
-
     let dialog = Dialog::builder()
         .title(title)
         .content_width(460)
-        .child(&toolbar_view)
+        .child(&dialog_content_shell(title, subtitle, &page))
         .build();
     dialog.set_focus(Some(&password_row));
 

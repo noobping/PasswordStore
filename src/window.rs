@@ -5,7 +5,7 @@ use crate::clipboard::connect_copy_button;
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 use adw::ComboRow;
 
 use crate::item::OpenPassFile;
@@ -26,7 +26,8 @@ use crate::store_management::{
 };
 use crate::window_controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
-    register_open_new_password_action, register_toggle_find_action, BackActionState,
+    register_open_new_password_action, register_toggle_find_action,
+    register_toggle_hidden_action, BackActionState, HiddenEntriesActionState,
 };
 #[cfg(not(feature = "flatpak"))]
 use crate::window_logs::{register_open_log_action, start_log_poller};
@@ -36,7 +37,7 @@ use crate::window_preferences::{
 };
 #[cfg(not(feature = "flatpak"))]
 use crate::window_preferences::connect_pass_command_row;
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 use crate::window_preferences::{connect_backend_row, initialize_backend_row};
 #[cfg(feature = "setup")]
 use crate::window_preferences::register_install_locally_action;
@@ -108,7 +109,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let ripasso_private_keys_list: ListBox = builder
         .object("ripasso_private_keys_list")
         .expect("Failed to get ripasso_private_keys_list");
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     let backend_row: ComboRow = builder
         .object("backend_row")
         .expect("Failed to get backend_row");
@@ -187,7 +188,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let pass_row: EntryRow = builder
         .object("pass_command_row")
         .expect("Failed to get pass row");
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     initialize_backend_row(&backend_row, &pass_row, &settings);
     let new_pass_file_template_view: TextView = builder
         .object("new_pass_file_template_view")
@@ -212,6 +213,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         save_button.clone(),
         toast_overlay.clone(),
         true,
+        false,
     );
 
     // Text editor page
@@ -287,6 +289,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let store_recipients_saved = Rc::new(RefCell::new(Vec::<String>::new()));
     let store_recipients_save_in_flight = Rc::new(Cell::new(false));
     let store_recipients_save_queued = Rc::new(Cell::new(false));
+    let show_hidden_files = Rc::new(Cell::new(false));
     let store_recipients_page_state = StoreRecipientsPageState {
         window: window.clone(),
         nav: navigation_view.clone(),
@@ -341,7 +344,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         recipients_page: store_recipients_page_state.clone(),
         #[cfg(not(feature = "flatpak"))]
         pass_row: pass_row.clone(),
-        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+        #[cfg(not(feature = "flatpak"))]
         backend_row: backend_row.clone(),
         #[cfg(feature = "flatpak")]
         ripasso_keys_state: ripasso_private_keys_state.clone(),
@@ -355,6 +358,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         recipients_page: store_recipients_page_state.clone(),
         busy_page: git_busy_page.clone(),
         busy_status: git_busy_status.clone(),
+        show_hidden: show_hidden_files.clone(),
     };
     let back_action_state = BackActionState {
         overlay: toast_overlay.clone(),
@@ -362,10 +366,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         password_page: password_list_state.clone(),
         recipients_page: store_recipients_page_state.clone(),
         navigation: window_navigation_state.clone(),
+        show_hidden: show_hidden_files.clone(),
         #[cfg(not(feature = "flatpak"))]
         git_actions: git_action_state.clone(),
-        #[cfg(not(feature = "flatpak"))]
-        git_operation: git_operation.clone(),
+    };
+    let hidden_entries_action_state = HiddenEntriesActionState {
+        overlay: toast_overlay.clone(),
+        list: list.clone(),
+        navigation: window_navigation_state.clone(),
+        show_hidden: show_hidden_files.clone(),
     };
 
     // Selecting an item from the list
@@ -396,7 +405,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         connect_pass_command_row(&pass_row, &toast_overlay, &settings);
     }
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     {
         connect_backend_row(&backend_row, &pass_row, &toast_overlay, &settings);
     }
@@ -507,6 +516,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     {
         register_toggle_find_action(&window, &search_entry);
+    }
+
+    {
+        register_toggle_hidden_action(&window, &hidden_entries_action_state);
     }
 
     {

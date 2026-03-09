@@ -153,6 +153,7 @@ fn start_ripasso_private_key_import(
     let progress_dialog = build_private_key_progress_dialog(
         &state.window,
         "Importing key",
+        None,
         "Please wait.",
     );
     let state = state.clone();
@@ -193,6 +194,7 @@ fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes:
         &window,
         &overlay,
         "Unlock key",
+        None,
         move |passphrase| {
             start_ripasso_private_key_import(&state, bytes.as_slice().to_vec(), Some(passphrase));
         },

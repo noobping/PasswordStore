@@ -1,5 +1,5 @@
 use crate::backend::{
-    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
+    ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
 use crate::background::spawn_result_task;
 use crate::logging::log_error;
@@ -31,12 +31,14 @@ fn start_private_key_unlock_for_action(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     fingerprint: String,
+    key_title: Option<String>,
     passphrase: String,
     after_unlock: Rc<dyn Fn()>,
 ) {
     let progress_dialog = build_private_key_progress_dialog(
         window,
         "Unlocking key",
+        key_title.as_deref(),
         "Please wait.",
     );
     let overlay = overlay.clone();
@@ -75,18 +77,30 @@ pub(crate) fn prompt_private_key_unlock_for_action(
         overlay.add_toast(Toast::new("Couldn't unlock the key."));
         return;
     };
+    let key_title = match ripasso_private_key_title(&fingerprint) {
+        Ok(title) => Some(title),
+        Err(err) => {
+            log_error(format!(
+                "Failed to read private key title for '{fingerprint}': {err}"
+            ));
+            None
+        }
+    };
 
     let window_for_submit = window.clone();
     let overlay_for_submit = overlay.clone();
+    let title_for_submit = key_title.clone();
     present_private_key_password_dialog(
         &window,
         overlay,
         "Unlock key",
+        key_title.as_deref(),
         move |passphrase| {
             start_private_key_unlock_for_action(
                 &window_for_submit,
                 &overlay_for_submit,
                 fingerprint.clone(),
+                title_for_submit.clone(),
                 passphrase,
                 after_unlock.clone(),
             );

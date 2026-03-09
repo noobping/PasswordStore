@@ -24,7 +24,7 @@ pub enum BackendKind {
 
 #[cfg_attr(feature = "flatpak", allow(dead_code))]
 impl BackendKind {
-    #[cfg(feature = "setup")]
+    #[cfg(not(feature = "flatpak"))]
     pub fn stored_value(self) -> &'static str {
         match self {
             Self::Integrated => "ripasso",
@@ -32,7 +32,7 @@ impl BackendKind {
         }
     }
 
-    #[cfg(feature = "setup")]
+    #[cfg(not(feature = "flatpak"))]
     fn from_stored(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
             "ripasso" => Self::Integrated,
@@ -41,7 +41,7 @@ impl BackendKind {
         }
     }
 
-    #[cfg(feature = "setup")]
+    #[cfg(not(feature = "flatpak"))]
     pub fn label(self) -> &'static str {
         match self {
             Self::Integrated => "Integrated",
@@ -49,7 +49,7 @@ impl BackendKind {
         }
     }
 
-    #[cfg(feature = "setup")]
+    #[cfg(not(feature = "flatpak"))]
     pub fn combo_position(self) -> u32 {
         match self {
             Self::Integrated => 0,
@@ -57,7 +57,7 @@ impl BackendKind {
         }
     }
 
-    #[cfg(feature = "setup")]
+    #[cfg(not(feature = "flatpak"))]
     pub fn from_combo_position(position: u32) -> Self {
         match position {
             1 => Self::HostCommand,
@@ -65,24 +65,15 @@ impl BackendKind {
         }
     }
 
-    #[cfg(feature = "setup")]
+    #[cfg(not(feature = "flatpak"))]
     pub fn uses_host_command(self) -> bool {
         matches!(self, Self::HostCommand)
     }
 }
 
-#[cfg(any(feature = "setup", feature = "flatpak", test))]
 #[cfg_attr(feature = "flatpak", allow(dead_code))]
 fn default_backend_kind() -> BackendKind {
-    #[cfg(any(feature = "setup", feature = "flatpak"))]
-    {
-        BackendKind::Integrated
-    }
-
-    #[cfg(not(any(feature = "setup", feature = "flatpak")))]
-    {
-        BackendKind::HostCommand
-    }
+    BackendKind::Integrated
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -185,7 +176,7 @@ impl Preferences {
             BackendKind::Integrated
         }
 
-        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+        #[cfg(not(feature = "flatpak"))]
         {
             if let Some(s) = &self.settings {
                 BackendKind::from_stored(&s.string("backend"))
@@ -198,10 +189,6 @@ impl Preferences {
             }
         }
 
-        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-        {
-            BackendKind::HostCommand
-        }
     }
 
     #[cfg_attr(feature = "flatpak", allow(dead_code))]
@@ -250,7 +237,7 @@ impl Preferences {
         }
     }
 
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     pub fn set_backend_kind(&self, backend: BackendKind) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
             s.set_string("backend", backend.stored_value())
@@ -402,11 +389,7 @@ mod tests {
 
     #[test]
     fn default_backend_matches_build_mode() {
-        #[cfg(any(feature = "setup", feature = "flatpak"))]
         assert_eq!(default_backend_kind(), BackendKind::Integrated);
-
-        #[cfg(not(any(feature = "setup", feature = "flatpak")))]
-        assert_eq!(default_backend_kind(), BackendKind::HostCommand);
     }
 
     #[test]

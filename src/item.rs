@@ -1,11 +1,15 @@
 use crate::preferences::Preferences;
 
-use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::Path;
 
 const USERNAME_KEYS: [&str; 3] = ["login", "username", "user"];
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CollectItemsOptions {
+    pub show_hidden: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PassEntry {
@@ -100,7 +104,9 @@ fn extract_username_from_contents(output: &str) -> Option<String> {
     })
 }
 
-pub fn collect_all_password_items() -> io::Result<Vec<PassEntry>> {
+pub fn collect_all_password_items_with_options(
+    options: CollectItemsOptions,
+) -> io::Result<Vec<PassEntry>> {
     let settings = Preferences::new();
     let roots = settings.paths();
     let mut result: Vec<PassEntry> = Vec::new();
@@ -109,14 +115,37 @@ pub fn collect_all_password_items() -> io::Result<Vec<PassEntry>> {
     let len = roots.len();
     while i < len {
         let base = &roots[i];
-        let _ = collect_items_in_dir(base.as_path(), base.as_path(), &mut result);
+        let _ = collect_items_in_dir(base.as_path(), base.as_path(), &mut result, options);
         i += 1;
     }
 
+    result.sort_by(|left, right| {
+        left.store_path
+            .cmp(&right.store_path)
+            .then_with(|| left.relative_path.cmp(&right.relative_path))
+            .then_with(|| left.basename.cmp(&right.basename))
+    });
     Ok(result)
 }
 
-fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PassEntry>) -> io::Result<()> {
+fn is_hidden_name(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with('.'))
+}
+
+fn secret_label_from_path(base: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(base).ok()?;
+    let relative = relative.to_string_lossy();
+    relative.strip_suffix(".gpg").map(str::to_string)
+}
+
+fn collect_items_in_dir(
+    root: &Path,
+    base: &Path,
+    out: &mut Vec<PassEntry>,
+    options: CollectItemsOptions,
+) -> io::Result<()> {
     if !root.exists() {
         return Ok(());
     }
@@ -139,41 +168,25 @@ fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PassEntry>) -> i
         };
 
         if file_type.is_dir() {
-            let _ = collect_items_in_dir(path.as_path(), base, out);
-        } else if file_type.is_file() && path.extension() == Some(OsStr::new("gpg")) {
-            // Path relative to store root
-            let rel = match path.strip_prefix(base) {
-                Ok(r) => r,
-                Err(_) => path.as_path(),
-            };
-
-            // Get the file stem (filename without extension)
-            let basename = rel
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_string();
-
-            // Extract the directory path (may be empty)
-            let relative_path = rel
-                .parent()
-                .map(|p| {
-                    let mut s = p.to_string_lossy().to_string();
-                    if !s.is_empty() && !s.ends_with('/') {
-                        s.push('/');
-                    }
-                    s
-                })
-                .unwrap_or_else(|| "".to_string());
-
-            let store_path = base.to_string_lossy().to_string();
-
-            out.push(PassEntry {
-                basename,
-                relative_path,
-                store_path,
-            });
+            if !options.show_hidden && is_hidden_name(&path) {
+                continue;
+            }
+            let _ = collect_items_in_dir(path.as_path(), base, out, options);
+            continue;
         }
+
+        if !file_type.is_file() || (!options.show_hidden && is_hidden_name(&path)) {
+            continue;
+        }
+
+        let Some(label) = secret_label_from_path(base, &path) else {
+            continue;
+        };
+        if label.is_empty() {
+            continue;
+        }
+
+        out.push(PassEntry::from_label(base.to_string_lossy().to_string(), label));
     }
 
     Ok(())
@@ -181,7 +194,11 @@ fn collect_items_in_dir(root: &Path, base: &Path, out: &mut Vec<PassEntry>) -> i
 
 #[cfg(test)]
 mod tests {
-    use super::{OpenPassFile, PassEntry};
+    use super::{
+        collect_items_in_dir, CollectItemsOptions, OpenPassFile, PassEntry,
+    };
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn root_level_entries_do_not_invent_a_username() {
@@ -207,5 +224,67 @@ mod tests {
         let mut opened = OpenPassFile::from_label("/tmp/store", "work/alice/github");
         opened.refresh_from_contents("secret\nusername:\nurl: https://example.com");
         assert_eq!(opened.username.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn dotted_secret_names_keep_their_full_label() {
+        let entry = PassEntry::from_label("/tmp/store", "chat/matrix.org");
+        assert_eq!(entry.basename, "matrix.org");
+        assert_eq!(entry.label(), "chat/matrix.org");
+    }
+
+    #[test]
+    fn hidden_entries_are_filtered_by_default() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        let store = std::env::temp_dir().join(format!("passwordstore-hidden-{nanos}"));
+        fs::create_dir_all(store.join(".hidden")).expect("create hidden store dir");
+        fs::create_dir_all(store.join("visible")).expect("create visible store dir");
+        fs::write(store.join(".top-secret.gpg"), b"x").expect("write hidden secret");
+        fs::write(store.join(".hidden").join("inside.gpg"), b"x").expect("write nested hidden secret");
+        fs::write(store.join("visible").join("entry.gpg"), b"x").expect("write visible secret");
+        fs::write(store.join("notes.txt"), b"x").expect("write non-secret file");
+
+        let mut items = Vec::new();
+        collect_items_in_dir(&store, &store, &mut items, CollectItemsOptions { show_hidden: false })
+            .expect("collect visible secrets");
+        let labels = items
+            .into_iter()
+            .map(|item| item.label())
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, vec!["visible/entry".to_string()]);
+
+        fs::remove_dir_all(store).expect("remove test store");
+    }
+
+    #[test]
+    fn hidden_entries_can_be_included() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        let store = std::env::temp_dir().join(format!("passwordstore-hidden-show-{nanos}"));
+        fs::create_dir_all(store.join(".hidden")).expect("create hidden store dir");
+        fs::write(store.join(".top-secret.gpg"), b"x").expect("write hidden secret");
+        fs::write(store.join(".hidden").join("inside.gpg"), b"x").expect("write nested hidden secret");
+
+        let mut items = Vec::new();
+        collect_items_in_dir(&store, &store, &mut items, CollectItemsOptions { show_hidden: true })
+            .expect("collect all secrets");
+        let mut labels = items
+            .into_iter()
+            .map(|item| item.label())
+            .collect::<Vec<_>>();
+        labels.sort();
+
+        assert_eq!(
+            labels,
+            vec![".hidden/inside".to_string(), ".top-secret".to_string()]
+        );
+
+        fs::remove_dir_all(store).expect("remove test store");
     }
 }

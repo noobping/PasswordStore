@@ -1,12 +1,9 @@
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{delete_password_entry, rename_password_entry};
 use crate::background::spawn_result_task;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::config::APP_ID;
-use crate::item::{collect_all_password_items, PassEntry};
+use crate::item::{collect_all_password_items_with_options, CollectItemsOptions, PassEntry};
 use crate::logging::log_error;
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::{run_command_status, CommandLogOptions};
 use crate::methods::non_null_to_string_option;
 use crate::preferences::Preferences;
 use crate::ui_helpers::clear_list_box;
@@ -23,6 +20,7 @@ pub(crate) fn load_passwords_async(
     save: Button,
     overlay: ToastOverlay,
     show_list_actions: bool,
+    show_hidden: bool,
 ) {
     clear_list_box(list);
 
@@ -44,7 +42,7 @@ pub(crate) fn load_passwords_async(
     let find_for_disconnect = find_clone.clone();
     let save_for_disconnect = save_clone.clone();
     spawn_result_task(
-        move || match collect_all_password_items() {
+        move || match collect_all_password_items_with_options(CollectItemsOptions { show_hidden }) {
             Ok(items) => items,
             Err(err) => {
                 log_error(format!("Error scanning pass stores: {err}"));
@@ -184,26 +182,7 @@ fn connect_rename_action(
         }
 
         let root = entry.store_path.clone();
-        #[cfg(any(feature = "setup", feature = "flatpak"))]
         let rename_result = rename_password_entry(&root, &old_label, &new_label);
-        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-        let rename_result = {
-            let settings = Preferences::new();
-            let mut cmd = settings.command();
-            cmd.env("PASSWORD_STORE_DIR", &root)
-                .arg("mv")
-                .arg(&old_label)
-                .arg(&new_label);
-            match run_command_status(
-                &mut cmd,
-                "Rename password entry",
-                CommandLogOptions::DEFAULT,
-            ) {
-                Ok(status) if status.success() => Ok(()),
-                Ok(_) => Err(()),
-                Err(_) => Err(()),
-            }
-        };
 
         match rename_result {
             Ok(()) => {
@@ -231,56 +210,30 @@ fn connect_delete_action(
     let entry = item.clone();
     let row = row.clone();
     let list = list.clone();
-    #[cfg(any(feature = "setup", feature = "flatpak"))]
     let overlay = _overlay.clone();
     delete_btn.connect_clicked(move |_| {
-        #[cfg(any(feature = "setup", feature = "flatpak"))]
-        {
-            let overlay = overlay.clone();
-            let root = entry.store_path.clone();
-            let label = entry.label();
-            let list = list.clone();
-            let row = row.clone();
-            let overlay = overlay.clone();
-            let overlay_for_disconnect = overlay.clone();
-            spawn_result_task(
-                move || delete_password_entry(&root, &label),
-                move |result| match result {
-                    Ok(()) => {
-                        list.remove(&row);
-                    }
-                    Err(err) => {
-                        log_error(format!("Failed to delete password entry: {err}"));
-                        overlay.add_toast(Toast::new("Couldn't delete the item."));
-                    }
-                },
-                move || {
-                    overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the item."));
-                },
-            );
-        }
-
-        #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-        {
-            std::thread::spawn({
-                let root = entry.store_path.clone();
-                let label = entry.label();
-                move || {
-                    let settings = Preferences::new();
-                    let mut cmd = settings.command();
-                    cmd.env("PASSWORD_STORE_DIR", root)
-                        .arg("rm")
-                        .arg("-rf")
-                        .arg(&label);
-                    let _ = run_command_status(
-                        &mut cmd,
-                        "Delete password entry",
-                        CommandLogOptions::DEFAULT,
-                    );
+        let overlay = overlay.clone();
+        let root = entry.store_path.clone();
+        let label = entry.label();
+        let list = list.clone();
+        let row = row.clone();
+        let overlay = overlay.clone();
+        let overlay_for_disconnect = overlay.clone();
+        spawn_result_task(
+            move || delete_password_entry(&root, &label),
+            move |result| match result {
+                Ok(()) => {
+                    list.remove(&row);
                 }
-            });
-            list.remove(&row);
-        }
+                Err(err) => {
+                    log_error(format!("Failed to delete password entry: {err}"));
+                    overlay.add_toast(Toast::new("Couldn't delete the item."));
+                }
+            },
+            move || {
+                overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the item."));
+            },
+        );
     });
 }
 

@@ -98,50 +98,6 @@ pub struct CommandControl {
 }
 
 impl CommandControl {
-    pub fn cancel(&self) -> io::Result<bool> {
-        let result = match self.child.lock() {
-            Ok(mut child) => Self::cancel_locked(&mut child),
-            Err(poisoned) => {
-                let mut child = poisoned.into_inner();
-                Self::cancel_locked(&mut child)
-            }
-        };
-
-        match result {
-            Ok(done) => Ok(done),
-            Err(err) if matches!(err.kind(), io::ErrorKind::InvalidInput | io::ErrorKind::NotFound) => {
-                Ok(false)
-            }
-            Err(err) => Err(err),
-        }
-    }
-
-    fn cancel_locked(child: &mut Option<Child>) -> io::Result<bool> {
-        let Some(child) = child.as_mut() else {
-            return Ok(false);
-        };
-
-        #[cfg(unix)]
-        {
-            let pid = i32::try_from(child.id()).map_err(|_| {
-                io::Error::new(io::ErrorKind::InvalidInput, "process id does not fit in i32")
-            })?;
-
-            let status = unsafe { libc::killpg(pid, libc::SIGKILL) };
-            if status == 0 {
-                return Ok(true);
-            }
-
-            let err = io::Error::last_os_error();
-            if err.raw_os_error() == Some(libc::ESRCH) {
-                return Ok(false);
-            }
-        }
-
-        child.kill()?;
-        Ok(true)
-    }
-
     fn set_child(&self, child: Child) {
         match self.child.lock() {
             Ok(mut slot) => *slot = Some(child),
@@ -549,13 +505,7 @@ fn format_exit_status(status: &ExitStatus) -> String {
 #[cfg(test)]
 mod tests {
     use super::{log_error, log_info, log_snapshot, run_command_output, CommandLogOptions};
-    #[cfg(not(feature = "flatpak"))]
-    use super::{run_command_output_controlled, CommandControl};
     use std::process::Command;
-    #[cfg(not(feature = "flatpak"))]
-    use std::thread;
-    #[cfg(not(feature = "flatpak"))]
-    use std::time::{Duration, Instant};
 
     #[test]
     fn log_snapshot_tracks_revisions() {
@@ -591,35 +541,5 @@ mod tests {
         assert!(text.contains(&marker));
         assert!(text.contains(&format!("stdout:\n{marker} stdout")));
         assert!(text.contains(&format!("stderr:\n{marker} stderr")));
-    }
-
-    #[cfg(all(unix, not(feature = "flatpak")))]
-    #[test]
-    fn controlled_cancel_kills_process_group_quickly() {
-        let marker = format!("cancel-log-test-{}", std::process::id());
-        let control = CommandControl::default();
-        let worker_control = control.clone();
-        let started = Instant::now();
-        let handle = thread::spawn(move || {
-            let mut cmd = Command::new("sh");
-            cmd.args(["-lc", "sleep 30 & wait"]);
-            run_command_output_controlled(
-                &mut cmd,
-                &marker,
-                CommandLogOptions::DEFAULT,
-                &worker_control,
-            )
-        });
-
-        thread::sleep(Duration::from_millis(100));
-        assert!(control.cancel().expect("cancel should succeed"));
-
-        let output = handle
-            .join()
-            .expect("worker should join")
-            .expect("command should return output");
-
-        assert!(!output.status.success());
-        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }

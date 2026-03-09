@@ -7,45 +7,29 @@ use crate::preferences::Preferences;
 use crate::store_management::StoreRecipientsPageState;
 use crate::window_messages::with_logs_hint;
 use crate::window_navigation::{
-    finish_git_busy_page, show_git_busy_page, WindowNavigationState,
+    finish_git_busy_page, restore_window_for_current_page, show_git_busy_page, WindowNavigationState,
 };
 use adw::gio::{prelude::*, SimpleAction};
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow, NavigationPage, StatusPage, Toast, ToastOverlay};
 use adw::gtk::{ListBox, Popover};
-use std::io;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::cell::Cell;
+use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub(crate) struct GitOperationControl {
     command: CommandControl,
-    cancel_requested: Arc<AtomicBool>,
 }
 
 impl GitOperationControl {
-    pub(crate) fn begin(&self) {
-        self.cancel_requested.store(false, Ordering::Relaxed);
-    }
+    pub(crate) fn begin(&self) {}
 
-    fn finish(&self) {
-        self.cancel_requested.store(false, Ordering::Relaxed);
-    }
-
-    fn request_cancel(&self) -> io::Result<bool> {
-        self.cancel_requested.store(true, Ordering::Relaxed);
-        self.command.cancel()
-    }
-
-    fn is_cancel_requested(&self) -> bool {
-        self.cancel_requested.load(Ordering::Relaxed)
-    }
+    fn finish(&self) {}
 }
 
 enum GitOperationResult {
     Success,
     Failed(String),
-    Canceled,
 }
 
 #[derive(Clone)]
@@ -57,6 +41,7 @@ pub(crate) struct GitActionState {
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) busy_page: NavigationPage,
     pub(crate) busy_status: StatusPage,
+    pub(crate) show_hidden: Rc<Cell<bool>>,
 }
 
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
@@ -80,6 +65,7 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "save-store-recipients",
         "synchronize",
         "open-preferences",
+        "toggle-hidden",
     ] {
         set_window_action_enabled(window, action, enabled);
     }
@@ -105,14 +91,11 @@ fn reload_password_list(state: &GitActionState) {
         state.navigation.save.clone(),
         state.overlay.clone(),
         show_list_actions,
+        state.show_hidden.get(),
     );
 }
 
 fn run_clone_operation(url: &str, git_operation: &GitOperationControl) -> GitOperationResult {
-    if git_operation.is_cancel_requested() {
-        return GitOperationResult::Canceled;
-    }
-
     let settings = Preferences::new();
     let store_root = settings.store();
     if store_root.is_empty() {
@@ -130,9 +113,7 @@ fn run_clone_operation(url: &str, git_operation: &GitOperationControl) -> GitOpe
         &git_operation.command,
     ) {
         Ok(output) if output.status.success() => GitOperationResult::Success,
-        Ok(_output) if git_operation.is_cancel_requested() => GitOperationResult::Canceled,
         Ok(_) => GitOperationResult::Failed(with_logs_hint("Couldn't restore the store.")),
-        Err(_err) if git_operation.is_cancel_requested() => GitOperationResult::Canceled,
         Err(err) => {
             log_error(format!("Failed to start restore from Git: {err}"));
             GitOperationResult::Failed(with_logs_hint("Couldn't restore the store."))
@@ -143,15 +124,7 @@ fn run_clone_operation(url: &str, git_operation: &GitOperationControl) -> GitOpe
 fn run_sync_operation(git_operation: &GitOperationControl) -> GitOperationResult {
     let settings = Preferences::new();
     for root in settings.stores() {
-        if git_operation.is_cancel_requested() {
-            return GitOperationResult::Canceled;
-        }
-
         for args in [&["fetch", "--all"][..], &["pull"][..], &["push"][..]] {
-            if git_operation.is_cancel_requested() {
-                return GitOperationResult::Canceled;
-            }
-
             let mut cmd = settings.git_command();
             cmd.arg("-C").arg(&root).args(args);
             match run_command_output_controlled(
@@ -161,9 +134,6 @@ fn run_sync_operation(git_operation: &GitOperationControl) -> GitOperationResult
                 &git_operation.command,
             ) {
                 Ok(output) if output.status.success() => {}
-                Ok(output) if git_operation.is_cancel_requested() => {
-                    return GitOperationResult::Canceled;
-                }
                 Ok(output) => {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let fatal_line = stderr
@@ -175,9 +145,6 @@ fn run_sync_operation(git_operation: &GitOperationControl) -> GitOperationResult
                         "Password store sync failed for {root}: {fatal_line}"
                     ));
                     return GitOperationResult::Failed(with_logs_hint("Couldn't sync a store."));
-                }
-                Err(err) if git_operation.is_cancel_requested() => {
-                    return GitOperationResult::Canceled;
                 }
                 Err(err) => {
                     log_error(format!("Password store sync failed for {root}: {err}"));
@@ -266,10 +233,6 @@ pub(crate) fn register_git_clone_action(
                     restore_after_git_operation(&state, &git_operation);
                     state.overlay.add_toast(Toast::new(&message));
                 }
-                GitOperationResult::Canceled => {
-                    restore_after_git_operation(&state, &git_operation);
-                    state.overlay.add_toast(Toast::new("Restore canceled."));
-                }
             },
             move || {
                 restore_after_git_operation(&state_for_disconnect, &git_operation_for_disconnect);
@@ -318,10 +281,6 @@ pub(crate) fn register_synchronize_action(
                     state.overlay.add_toast(Toast::new(&message));
                     reload_password_list(&state);
                 }
-                GitOperationResult::Canceled => {
-                    restore_after_git_operation(&state, &git_operation);
-                    state.overlay.add_toast(Toast::new("Sync canceled."));
-                }
             },
             move || {
                 restore_after_git_operation(&state_for_disconnect, &git_operation_for_disconnect);
@@ -334,7 +293,6 @@ pub(crate) fn register_synchronize_action(
 
 pub(crate) fn handle_git_busy_back(
     state: &GitActionState,
-    git_operation: &GitOperationControl,
 ) -> bool {
     let busy_visible = state
         .navigation
@@ -347,24 +305,7 @@ pub(crate) fn handle_git_busy_back(
         return false;
     }
 
-    if git_operation.is_cancel_requested() {
-        return true;
-    }
-
-    match git_operation.request_cancel() {
-        Ok(true) => {
-            crate::logging::log_info("Git operation cancellation requested");
-            state.busy_status.set_title("Canceling");
-            state.busy_status.set_description(Some("Please wait."));
-        }
-        Ok(false) => {}
-        Err(err) => {
-            log_error(format!("Failed to cancel Git operation: {err}"));
-            state
-                .overlay
-                .add_toast(Toast::new("Couldn't cancel right now."));
-        }
-    }
-
+    state.navigation.nav.pop();
+    let _ = restore_window_for_current_page(&state.navigation, &state.recipients_page);
     true
 }

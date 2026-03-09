@@ -1,11 +1,8 @@
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::background::spawn_result_task;
 use crate::item::PassEntry;
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::logging::log_error;
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{run_command_status, CommandLogOptions};
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::read_password_line;
 #[cfg(feature = "flatpak")]
 use crate::backend::resolved_ripasso_own_fingerprint;
@@ -103,7 +100,6 @@ fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry, button: Op
     });
 }
 
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn copy_password_entry_to_clipboard_via_read(
     item: PassEntry,
     overlay: ToastOverlay,
@@ -164,13 +160,7 @@ pub(crate) fn copy_password_entry_to_clipboard(
     overlay: ToastOverlay,
     button: Option<Button>,
 ) {
-    #[cfg(feature = "flatpak")]
-    {
-        copy_password_entry_to_clipboard_via_read(item, overlay, button);
-        return;
-    }
-
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     {
         let settings = Preferences::new();
         if settings.uses_integrated_backend() {
@@ -181,9 +171,8 @@ pub(crate) fn copy_password_entry_to_clipboard(
         return;
     }
 
-    #[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
+    #[cfg(feature = "flatpak")]
     {
-        let _ = overlay;
-        copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());
+        copy_password_entry_to_clipboard_via_read(item, overlay, button);
     }
 }

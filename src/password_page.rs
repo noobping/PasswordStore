@@ -1,12 +1,9 @@
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::{read_otp_code, read_password_entry, save_password_entry};
 use crate::background::spawn_result_task;
 #[cfg(feature = "flatpak")]
 use crate::backend::resolved_ripasso_own_fingerprint;
 use crate::item::OpenPassFile;
 use crate::logging::log_error;
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::{run_command_output, run_command_with_input, CommandLogOptions};
 use crate::methods::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
@@ -56,6 +53,8 @@ pub(crate) struct PasswordPageState {
 fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
     if message.contains("cannot decrypt password store entries") {
         Some("This key can't open your items.")
+    } else if message.contains("Import a private key in Preferences") {
+        Some("Add a private key in Preferences.")
     } else {
         None
     }
@@ -159,34 +158,8 @@ fn sync_editor_contents(
     password
 }
 
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn read_otp_value(store_root: &str, label: &str) -> Result<String, String> {
     read_otp_code(store_root, label)
-}
-
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-fn read_otp_value(store_root: &str, label: &str) -> Result<String, String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root).args(["otp", label]);
-    match run_command_output(
-        &mut cmd,
-        "Read OTP code",
-        CommandLogOptions::SENSITIVE,
-    ) {
-        Ok(output) if output.status.success() => {
-            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            if stderr.is_empty() {
-                Err(format!("pass otp failed: {}", output.status))
-            } else {
-                Err(stderr)
-            }
-        }
-        Err(err) => Err(format!("Failed to run pass otp: {err}")),
-    }
 }
 
 fn sync_otp_entry_from_contents(
@@ -217,35 +190,8 @@ fn sync_otp_entry_from_contents(
     }
 }
 
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
     read_password_entry(store_root, label)
-}
-
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root).arg(label);
-    let output = run_command_output(
-        &mut cmd,
-        "Read password entry",
-        CommandLogOptions::SENSITIVE,
-    );
-    match output {
-        Ok(output) if output.status.success() => {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            if stderr.is_empty() {
-                Err(format!("pass failed: {}", output.status))
-            } else {
-                Err(stderr)
-            }
-        }
-        Err(err) => Err(format!("Failed to run pass: {err}")),
-    }
 }
 
 pub(crate) fn open_password_entry_page(
@@ -325,6 +271,14 @@ pub(crate) fn open_password_entry_page(
                                 ));
                             }
                         }
+                    }
+                    #[cfg(feature = "flatpak")]
+                    if msg.contains("Import a private key in Preferences") {
+                        let _ = adw::prelude::WidgetExt::activate_action(
+                            &state_for_result.nav,
+                            "win.open-preferences",
+                            None,
+                        );
                     }
 
                     show_password_open_error(&state_for_result);
@@ -452,7 +406,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
     }
 }
 
-pub(crate) fn show_password_list_page(state: &PasswordPageState) {
+pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bool) {
     while state.nav.navigation_stack().n_items() > 1 {
         state.nav.pop();
     }
@@ -486,45 +440,10 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState) {
         state.save.clone(),
         state.overlay.clone(),
         true,
+        show_hidden,
     );
 }
 
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-fn write_pass_entry(
-    store_root: &str,
-    label: &str,
-    contents: &str,
-    overwrite: bool,
-) -> Result<(), String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root)
-        .arg("insert")
-        .arg("-m");
-    if overwrite {
-        cmd.arg("-f");
-    }
-    cmd.arg(label);
-
-    let output = run_command_with_input(
-        &mut cmd,
-        "Save password entry",
-        contents,
-        CommandLogOptions::SENSITIVE,
-    )?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            Err(format!("pass insert failed: {}", output.status))
-        } else {
-            Err(stderr)
-        }
-    }
-}
-
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 fn write_pass_entry(
     store_root: &str,
     label: &str,

@@ -2,13 +2,15 @@ use crate::password_list::load_passwords_async;
 use crate::password_page::{show_password_list_page, PasswordPageState};
 use crate::store_management::StoreRecipientsPageState;
 #[cfg(not(feature = "flatpak"))]
-use crate::window_git::{handle_git_busy_back, GitActionState, GitOperationControl};
+use crate::window_git::{handle_git_busy_back, GitActionState};
 use crate::window_navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
 use adw::gtk::{ListBox, Popover, SearchEntry};
 use adw::ToastOverlay;
+use std::cell::Cell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) struct BackActionState {
@@ -17,10 +19,17 @@ pub(crate) struct BackActionState {
     pub(crate) password_page: PasswordPageState,
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
+    pub(crate) show_hidden: Rc<Cell<bool>>,
     #[cfg(not(feature = "flatpak"))]
     pub(crate) git_actions: GitActionState,
-    #[cfg(not(feature = "flatpak"))]
-    pub(crate) git_operation: GitOperationControl,
+}
+
+#[derive(Clone)]
+pub(crate) struct HiddenEntriesActionState {
+    pub(crate) overlay: ToastOverlay,
+    pub(crate) list: ListBox,
+    pub(crate) navigation: WindowNavigationState,
+    pub(crate) show_hidden: Rc<Cell<bool>>,
 }
 
 pub(crate) fn register_open_new_password_action(
@@ -63,13 +72,13 @@ pub(crate) fn register_back_action(
     let action = SimpleAction::new("back", None);
     action.connect_activate(move |_, _| {
         #[cfg(not(feature = "flatpak"))]
-        if handle_git_busy_back(&state.git_actions, &state.git_operation) {
+        if handle_git_busy_back(&state.git_actions) {
             return;
         }
 
         state.navigation.nav.pop();
         if restore_window_for_current_page(&state.navigation, &state.recipients_page) {
-            show_password_list_page(&state.password_page);
+            show_password_list_page(&state.password_page, state.show_hidden.get());
             return;
         }
         load_passwords_async(
@@ -79,6 +88,7 @@ pub(crate) fn register_back_action(
             state.navigation.save.clone(),
             state.overlay.clone(),
             state.navigation.nav.navigation_stack().n_items() <= 1,
+            state.show_hidden.get(),
         );
     });
     window.add_action(&action);
@@ -87,6 +97,7 @@ pub(crate) fn register_back_action(
 pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
+    app.set_accels_for_action("win.toggle-hidden", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     #[cfg(not(feature = "flatpak"))]
     app.set_accels_for_action("win.open-log", &["F12"]);
@@ -95,6 +106,32 @@ pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.synchronize", &["<primary>s"]);
     #[cfg(not(feature = "flatpak"))]
     app.set_accels_for_action("win.open-git", &["<primary>i"]);
+}
+
+pub(crate) fn register_toggle_hidden_action(
+    window: &adw::ApplicationWindow,
+    state: &HiddenEntriesActionState,
+) {
+    let state = state.clone();
+    let action = SimpleAction::new("toggle-hidden", None);
+    action.connect_activate(move |_, _| {
+        let show_hidden = !state.show_hidden.get();
+        state.show_hidden.set(show_hidden);
+        let show_list_actions = state.navigation.nav.navigation_stack().n_items() <= 1;
+        if !show_list_actions {
+            return;
+        }
+        load_passwords_async(
+            &state.list,
+            state.navigation.git.clone(),
+            state.navigation.find.clone(),
+            state.navigation.save.clone(),
+            state.overlay.clone(),
+            show_list_actions,
+            show_hidden,
+        );
+    });
+    window.add_action(&action);
 }
 
 pub(crate) fn apply_startup_query(

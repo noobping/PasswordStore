@@ -1,14 +1,7 @@
 #[cfg(feature = "flatpak")]
 use crate::backend::resolved_ripasso_own_fingerprint;
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 use crate::backend::save_store_recipients;
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::log_error;
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-use crate::window_messages::with_logs_hint;
 use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
@@ -103,32 +96,6 @@ pub(crate) fn stores_with_preferred_first(stores: &[String], preferred: &str) ->
     ordered
 }
 
-#[cfg(all(not(feature = "setup"), not(feature = "flatpak")))]
-pub(crate) fn apply_password_store_recipients(
-    store_root: &str,
-    recipients: &[String],
-) -> Result<(), String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root)
-        .arg("init")
-        .args(recipients);
-
-    match run_command_output(
-        &mut cmd,
-        "Save password store recipients",
-        CommandLogOptions::DEFAULT,
-    ) {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(_) => Err(with_logs_hint("Couldn't save recipients.")),
-        Err(err) => {
-            log_error(format!("Failed to start password store recipient update: {err}"));
-            Err(with_logs_hint("Couldn't save recipients."))
-        }
-    }
-}
-
-#[cfg(any(feature = "setup", feature = "flatpak"))]
 pub(crate) fn apply_password_store_recipients(
     store_root: &str,
     recipients: &[String],

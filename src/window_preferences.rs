@@ -6,7 +6,7 @@ use crate::ripasso_keys::{rebuild_ripasso_private_keys_list, RipassoPrivateKeysS
 use crate::store_management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::window_navigation::set_save_button_for_password;
 use crate::logging::log_error;
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 use adw::ComboRow;
 use adw::gio::SimpleAction;
 #[cfg(feature = "setup")]
@@ -16,7 +16,7 @@ use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay
 #[cfg(not(feature = "flatpak"))]
 use adw::EntryRow;
 use adw::gtk::{Button, ListBox, TextView};
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 use crate::preferences::BackendKind;
 
 fn toast_preferences_save_error(overlay: &ToastOverlay, context: &str, err: &adw::glib::BoolError) {
@@ -41,13 +41,13 @@ pub(crate) struct PreferencesActionState {
     pub(crate) recipients_page: StoreRecipientsPageState,
     #[cfg(not(feature = "flatpak"))]
     pub(crate) pass_row: EntryRow,
-    #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     pub(crate) backend_row: ComboRow,
     #[cfg(feature = "flatpak")]
     pub(crate) ripasso_keys_state: RipassoPrivateKeysState,
 }
 
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 fn sync_backend_preferences_rows(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
@@ -60,7 +60,7 @@ fn sync_backend_preferences_rows(
     pass_row.set_visible(backend.uses_host_command());
 }
 
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 pub(crate) fn initialize_backend_row(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
@@ -95,7 +95,7 @@ pub(crate) fn connect_pass_command_row(
     });
 }
 
-#[cfg(all(feature = "setup", not(feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 pub(crate) fn connect_backend_row(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
@@ -172,7 +172,7 @@ pub(crate) fn register_open_preferences_action(
         let settings = Preferences::new();
         #[cfg(not(feature = "flatpak"))]
         state.pass_row.set_text(&settings.command_value());
-        #[cfg(all(feature = "setup", not(feature = "flatpak")))]
+        #[cfg(not(feature = "flatpak"))]
         sync_backend_preferences_rows(&state.backend_row, &state.pass_row, &settings);
         state
             .template_view

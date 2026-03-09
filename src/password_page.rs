@@ -1,4 +1,4 @@
-use crate::backend::{read_otp_code, read_password_entry, save_password_entry};
+use crate::backend::{read_password_entry, save_password_entry};
 use crate::background::spawn_result_task;
 #[cfg(feature = "flatpak")]
 use crate::backend::resolved_ripasso_own_fingerprint;
@@ -13,6 +13,7 @@ use crate::pass_file::{
     rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row,
     sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
 };
+use crate::password_otp::PasswordOtpState;
 use crate::password_list::load_passwords_async;
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
@@ -40,7 +41,7 @@ pub(crate) struct PasswordPageState {
     pub(crate) status: StatusPage,
     pub(crate) entry: PasswordEntryRow,
     pub(crate) username: EntryRow,
-    pub(crate) otp: PasswordEntryRow,
+    pub(crate) otp: PasswordOtpState,
     pub(crate) dynamic_box: GtkBox,
     pub(crate) raw_button: Button,
     pub(crate) structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
@@ -81,7 +82,7 @@ fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle:
     state.entry.set_visible(false);
     state.username.set_text("");
     state.username.set_visible(false);
-    state.otp.set_visible(false);
+    state.otp.clear();
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
     state.status.set_visible(true);
@@ -98,11 +99,11 @@ fn show_password_editor_fields(state: &PasswordPageState) {
 fn show_password_open_error(state: &PasswordPageState) {
     state.entry.set_visible(false);
     state.username.set_visible(false);
-    state.otp.set_visible(false);
+    state.otp.clear();
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
     state.status.set_visible(true);
-    state.status.set_title("Couldn't open item");
+    state.status.set_title("Item unavailable");
     state.status.set_description(Some("Try again."));
 }
 
@@ -118,6 +119,7 @@ fn structured_editor_contents(state: &PasswordPageState) -> String {
     structured_pass_contents(
         &state.entry.text(),
         &state.username.text(),
+        state.otp.current_url().as_deref(),
         &state.structured_templates.borrow(),
         &state.dynamic_rows.borrow(),
     )
@@ -143,7 +145,7 @@ fn sync_editor_contents(
     state: &PasswordPageState,
     contents: &str,
     pass_file: Option<&OpenPassFile>,
-) -> String {
+) {
     let (password, structured_lines) = parse_structured_pass_lines(contents);
     state.entry.set_text(&password);
     state.text.buffer().set_text(contents);
@@ -155,39 +157,7 @@ fn sync_editor_contents(
         &structured_lines,
     );
     sync_username_row_from_parsed_lines(&state.username, pass_file, &structured_lines);
-    password
-}
-
-fn read_otp_value(store_root: &str, label: &str) -> Result<String, String> {
-    read_otp_code(store_root, label)
-}
-
-fn sync_otp_entry_from_contents(
-    state: &PasswordPageState,
-    contents: &str,
-    store_root: &str,
-    label: &str,
-    show_errors: bool,
-) {
-    let otp_visible = contents.lines().skip(1).any(|line| line.contains("otpauth://"));
-    state.otp.set_visible(otp_visible);
-    if !otp_visible {
-        state.otp.set_text("");
-        return;
-    }
-
-    match read_otp_value(store_root, label) {
-        Ok(code) => state.otp.set_text(&code),
-        Err(err) => {
-            if show_errors {
-                log_error(format!("Failed to read OTP code: {err}"));
-                state.overlay.add_toast(Toast::new(&with_logs_hint(
-                    "Couldn't load the code.",
-                )));
-            }
-            state.otp.set_text("");
-        }
-    }
+    state.otp.sync_from_parsed_lines(&structured_lines, true);
 }
 
 fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
@@ -213,8 +183,6 @@ pub(crate) fn open_password_entry_page(
     let opened_pass_file_for_result = opened_pass_file.clone();
     let state_for_disconnect = state.clone();
     let opened_pass_file_for_disconnect = opened_pass_file.clone();
-    let label_for_otp = pass_label.clone();
-    let store_for_otp = opened_pass_file.store_path().to_string();
     #[cfg(feature = "flatpak")]
     let retry_state = state.clone();
     spawn_result_task(
@@ -232,13 +200,6 @@ pub(crate) fn open_password_entry_page(
                     );
                     show_password_editor_fields(&state_for_result);
                     sync_editor_contents(&state_for_result, &output, updated_pass_file.as_ref());
-                    sync_otp_entry_from_contents(
-                        &state_for_result,
-                        &output,
-                        &store_for_otp,
-                        &label_for_otp,
-                        true,
-                    );
                 }
                 Err(msg) => {
                     log_error(format!("Failed to open password entry: {msg}"));
@@ -337,8 +298,7 @@ pub(crate) fn begin_new_password_entry(
 
     show_password_editor_chrome(state, "New item", path);
     show_password_editor_fields(state);
-    state.otp.set_visible(false);
-    state.otp.set_text("");
+    state.otp.clear();
     let already_visible = state
         .nav
         .visible_page()
@@ -387,6 +347,30 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
         return;
     }
 
+    let otp_url = match state.otp.current_url_for_save() {
+        Ok(otp_url) => otp_url,
+        Err(message) => {
+            state.overlay.add_toast(Toast::new(message));
+            return;
+        }
+    };
+    let contents = if state
+        .nav
+        .visible_page()
+        .as_ref()
+        .map(|page| page == &state.raw_page)
+        .unwrap_or(false)
+    {
+        contents
+    } else {
+        structured_pass_contents(
+            &state.entry.text(),
+            &state.username.text(),
+            otp_url.as_deref(),
+            &state.structured_templates.borrow(),
+            &state.dynamic_rows.borrow(),
+        )
+    };
     let label = pass_file.label();
     match write_pass_entry(pass_file.store_path(), &label, &contents, true) {
         Ok(()) => {
@@ -394,7 +378,6 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
                 refresh_opened_pass_file_from_contents(&pass_file, &contents);
             show_password_editor_fields(state);
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
-            sync_otp_entry_from_contents(state, &contents, pass_file.store_path(), &label, false);
             state.overlay.add_toast(Toast::new("Saved."));
         }
         Err(message) => {
@@ -424,8 +407,7 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
 
     state.entry.set_text("");
     sync_username_row(&state.username, None);
-    state.otp.set_visible(false);
-    state.otp.set_text("");
+    state.otp.clear();
     clear_box_children(&state.dynamic_box);
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
@@ -451,4 +433,22 @@ fn write_pass_entry(
     overwrite: bool,
 ) -> Result<(), String> {
     save_password_entry(store_root, label, contents, overwrite)
+}
+
+pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
+    let visible_text_page = state
+        .nav
+        .visible_page()
+        .as_ref()
+        .map(|page| page == &state.page)
+        .unwrap_or(false);
+    if !visible_text_page || !state.status.is_visible() || state.entry.is_visible() {
+        return false;
+    }
+
+    let Some(pass_file) = get_opened_pass_file() else {
+        return false;
+    };
+    open_password_entry_page(state, pass_file, false);
+    true
 }

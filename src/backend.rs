@@ -50,7 +50,6 @@ macro_rules! dispatch_backend_call {
 dispatch_backend_call! {
     fn read_password_entry(store_root: &str, label: &str) -> Result<String, String>;
     fn read_password_line(store_root: &str, label: &str) -> Result<String, String>;
-    fn read_otp_code(store_root: &str, label: &str) -> Result<String, String>;
     fn save_password_entry(
         store_root: &str,
         label: &str,

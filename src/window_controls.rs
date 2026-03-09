@@ -1,5 +1,7 @@
 use crate::password_list::load_passwords_async;
-use crate::password_page::{show_password_list_page, PasswordPageState};
+use crate::password_page::{
+    retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
+};
 use crate::store_management::StoreRecipientsPageState;
 #[cfg(not(feature = "flatpak"))]
 use crate::window_git::{handle_git_busy_back, GitActionState};
@@ -14,8 +16,6 @@ use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) struct BackActionState {
-    pub(crate) overlay: ToastOverlay,
-    pub(crate) list: ListBox,
     pub(crate) password_page: PasswordPageState,
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
@@ -81,15 +81,7 @@ pub(crate) fn register_back_action(
             show_password_list_page(&state.password_page, state.show_hidden.get());
             return;
         }
-        load_passwords_async(
-            &state.list,
-            state.navigation.git.clone(),
-            state.navigation.find.clone(),
-            state.navigation.save.clone(),
-            state.overlay.clone(),
-            state.navigation.nav.navigation_stack().n_items() <= 1,
-            state.show_hidden.get(),
-        );
+        let _ = retry_open_password_entry_if_needed(&state.password_page);
     });
     window.add_action(&action);
 }

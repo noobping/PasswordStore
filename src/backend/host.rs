@@ -80,19 +80,6 @@ pub(super) fn read_password_line(store_root: &str, label: &str) -> Result<String
         .to_string())
 }
 
-pub(super) fn read_otp_code(store_root: &str, label: &str) -> Result<String, String> {
-    let output = run_store_command_output(
-        store_root,
-        "Read OTP code",
-        CommandLogOptions::SENSITIVE,
-        |cmd| {
-            cmd.args(["otp", label]);
-        },
-    )?;
-    let output = ensure_success(output, "pass otp failed")?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 pub(super) fn save_password_entry(
     store_root: &str,
     label: &str,

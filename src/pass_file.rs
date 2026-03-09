@@ -33,9 +33,31 @@ pub(crate) struct UsernameFieldTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum OtpFieldTemplate {
+    BareUrl,
+    Field {
+        raw_key: String,
+        separator_spacing: String,
+    },
+}
+
+impl OtpFieldTemplate {
+    fn line(&self, url: &str) -> String {
+        match self {
+            Self::BareUrl => url.to_string(),
+            Self::Field {
+                raw_key,
+                separator_spacing,
+            } => format!("{raw_key}:{separator_spacing}{url}"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StructuredPassLine {
     Field(DynamicFieldTemplate),
     Username(UsernameFieldTemplate),
+    Otp(OtpFieldTemplate),
     Preserved(String),
 }
 
@@ -87,6 +109,17 @@ pub(crate) fn structured_username_value(
 ) -> Option<String> {
     lines.iter().find_map(|(line, value)| match line {
         StructuredPassLine::Username(_) => value.clone(),
+        _ => None,
+    })
+}
+
+pub(crate) fn structured_otp_line(
+    lines: &[(StructuredPassLine, Option<String>)],
+) -> Option<(OtpFieldTemplate, String)> {
+    lines.iter().find_map(|(line, value)| match line {
+        StructuredPassLine::Otp(template) => {
+            value.clone().map(|url| (template.clone(), url))
+        }
         _ => None,
     })
 }
@@ -186,6 +219,13 @@ pub(crate) fn parse_structured_pass_lines(
     let password = lines.next().unwrap_or_default().to_string();
     let structured = lines
         .map(|line| {
+            if line.trim_start().starts_with("otpauth://") {
+                return (
+                    StructuredPassLine::Otp(OtpFieldTemplate::BareUrl),
+                    Some(line.trim().to_string()),
+                );
+            }
+
             let Some((raw_key, raw_value)) = line.split_once(':') else {
                 return (StructuredPassLine::Preserved(line.to_string()), None);
             };
@@ -210,7 +250,18 @@ pub(crate) fn parse_structured_pass_lines(
             }
 
             if is_otpauth_line(&title, raw_value, line) {
-                return (StructuredPassLine::Preserved(line.to_string()), None);
+                let separator_spacing = raw_value
+                    .chars()
+                    .take_while(|c| c.is_ascii_whitespace())
+                    .collect::<String>();
+                let value = raw_value
+                    .trim_start_matches(|c: char| c.is_ascii_whitespace())
+                    .to_string();
+                let template = OtpFieldTemplate::Field {
+                    raw_key: raw_key.to_string(),
+                    separator_spacing,
+                };
+                return (StructuredPassLine::Otp(template), Some(value));
             }
 
             let separator_spacing = raw_value
@@ -260,6 +311,9 @@ pub(crate) fn rebuild_dynamic_fields_from_lines(
             StructuredPassLine::Username(template) => {
                 templates.push(StructuredPassLine::Username(template));
             }
+            StructuredPassLine::Otp(template) => {
+                templates.push(StructuredPassLine::Otp(template));
+            }
             StructuredPassLine::Preserved(line) => {
                 templates.push(StructuredPassLine::Preserved(line));
             }
@@ -274,16 +328,18 @@ pub(crate) fn rebuild_dynamic_fields_from_lines(
 pub(crate) fn structured_pass_contents(
     password: &str,
     username_value: &str,
+    otp_url: Option<&str>,
     templates: &[StructuredPassLine],
     rows: &[DynamicFieldRow],
 ) -> String {
     let values = rows.iter().map(DynamicFieldRow::text).collect::<Vec<_>>();
-    structured_pass_contents_from_values(password, username_value, templates, &values)
+    structured_pass_contents_from_values(password, username_value, otp_url, templates, &values)
 }
 
 pub(crate) fn structured_pass_contents_from_values(
     password: &str,
     username_value: &str,
+    otp_url: Option<&str>,
     templates: &[StructuredPassLine],
     values: &[String],
 ) -> String {
@@ -307,6 +363,11 @@ pub(crate) fn structured_pass_contents_from_values(
                 output.push(':');
                 output.push_str(&template.separator_spacing);
                 output.push_str(username_value);
+            }
+            StructuredPassLine::Otp(template) => {
+                if let Some(otp_url) = otp_url {
+                    output.push_str(&template.line(otp_url));
+                }
             }
             StructuredPassLine::Preserved(line) => output.push_str(line),
         }

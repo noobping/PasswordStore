@@ -11,6 +11,7 @@ mod logging;
 mod methods;
 mod pass_file;
 mod password_list;
+mod password_otp;
 mod password_page;
 #[cfg(feature = "flatpak")]
 mod private_key_dialog;

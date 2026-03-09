@@ -12,6 +12,7 @@ use crate::item::OpenPassFile;
 use crate::methods::non_null_to_string_option;
 use crate::pass_file::{DynamicFieldRow, StructuredPassLine};
 use crate::password_list::{load_passwords_async, setup_search_filter};
+use crate::password_otp::PasswordOtpState;
 use crate::password_page::{
     begin_new_password_entry, open_password_entry_page, save_current_password_entry,
     show_raw_pass_file_page, PasswordPageState,
@@ -262,6 +263,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let store_recipients_entry = EntryRow::new();
     store_recipients_entry.set_title("Add recipient");
     store_recipients_entry.set_show_apply_button(true);
+    let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
     let password_list_state = PasswordPageState {
         nav: navigation_view.clone(),
         page: text_page.clone(),
@@ -276,7 +278,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         status: password_status.clone(),
         entry: password_entry.clone(),
         username: username_entry.clone(),
-        otp: otp_entry.clone(),
+        otp: password_otp_state.clone(),
         dynamic_box: dynamic_fields_box.clone(),
         raw_button: open_raw_button.clone(),
         structured_templates: structured_templates.clone(),
@@ -361,8 +363,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         show_hidden: show_hidden_files.clone(),
     };
     let back_action_state = BackActionState {
-        overlay: toast_overlay.clone(),
-        list: list.clone(),
         password_page: password_list_state.clone(),
         recipients_page: store_recipients_page_state.clone(),
         navigation: window_navigation_state.clone(),
@@ -550,8 +550,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 mod tests {
     use crate::pass_file::{
         new_pass_file_contents_from_template, parse_structured_pass_lines,
-        structured_pass_contents_from_values, structured_username_value, uri_to_open,
-        StructuredPassLine, UsernameFieldTemplate,
+        structured_otp_line, structured_pass_contents_from_values, structured_username_value,
+        uri_to_open, OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
     };
 
     #[test]
@@ -569,13 +569,14 @@ mod tests {
             .filter_map(|(line, value)| match line {
                 StructuredPassLine::Field(_) => value.clone(),
                 StructuredPassLine::Username(_) => None,
+                StructuredPassLine::Otp(_) => None,
                 StructuredPassLine::Preserved(_) => None,
             })
             .collect::<Vec<_>>();
 
         assert_eq!(values, vec!["hello@example.com".to_string(), "hello".to_string()]);
         assert_eq!(
-            structured_pass_contents_from_values(&password, "", &templates, &values),
+            structured_pass_contents_from_values(&password, "", None, &templates, &values),
             contents
         );
     }
@@ -592,8 +593,9 @@ mod tests {
         assert_eq!(parsed[0].1.as_deref(), Some("alice"));
         assert!(matches!(
             parsed[1].0,
-            StructuredPassLine::Preserved(ref line) if line == "otpauth://totp/example"
+            StructuredPassLine::Otp(OtpFieldTemplate::BareUrl)
         ));
+        assert_eq!(structured_otp_line(&parsed).map(|(_, url)| url), Some("otpauth://totp/example".to_string()));
         assert!(matches!(parsed[2].0, StructuredPassLine::Field(_)));
         assert_eq!(parsed[2].1.as_deref(), Some("https://example.com"));
     }
@@ -648,7 +650,13 @@ mod tests {
         let values = Vec::<String>::new();
 
         assert_eq!(
-            structured_pass_contents_from_values("secret", "alice@example.com", &templates, &values),
+            structured_pass_contents_from_values(
+                "secret",
+                "alice@example.com",
+                None,
+                &templates,
+                &values,
+            ),
             "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
         );
     }

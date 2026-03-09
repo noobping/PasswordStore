@@ -28,8 +28,6 @@ use std::path::PathBuf;
 #[cfg(feature = "flatpak")]
 use std::sync::{Arc, OnceLock, RwLock};
 #[cfg(feature = "flatpak")]
-use totp_rs::TOTP;
-#[cfg(feature = "flatpak")]
 use walkdir::WalkDir;
 
 #[cfg(feature = "flatpak")]
@@ -522,16 +520,6 @@ fn collect_password_entry_files(store_root: &Path) -> Result<Vec<PathBuf>, Strin
     Ok(entries)
 }
 
-#[cfg(feature = "flatpak")]
-fn otpauth_url_from_secret(secret: &str) -> Option<&str> {
-    let start = secret.find("otpauth://")?;
-    let end = secret[start..]
-        .find(char::is_whitespace)
-        .map(|offset| start + offset)
-        .unwrap_or(secret.len());
-    Some(&secret[start..end])
-}
-
 #[cfg(not(feature = "flatpak"))]
 pub(super) fn read_password_entry(store_root: &str, label: &str) -> Result<String, String> {
     let (store, entry) = load_store_entry(store_root, label)?;
@@ -557,21 +545,6 @@ pub(super) fn read_password_line(store_root: &str, label: &str) -> Result<String
 pub(super) fn read_password_line(store_root: &str, label: &str) -> Result<String, String> {
     let secret = read_password_entry(store_root, label)?;
     Ok(secret.lines().next().unwrap_or_default().to_string())
-}
-
-#[cfg(not(feature = "flatpak"))]
-pub(super) fn read_otp_code(store_root: &str, label: &str) -> Result<String, String> {
-    let (store, entry) = load_store_entry(store_root, label)?;
-    entry.mfa(&store).map_err(|err| err.to_string())
-}
-
-#[cfg(feature = "flatpak")]
-pub(super) fn read_otp_code(store_root: &str, label: &str) -> Result<String, String> {
-    let secret = read_password_entry(store_root, label)?;
-    let otpauth =
-        otpauth_url_from_secret(&secret).ok_or_else(|| "No otpauth:// url in secret".to_string())?;
-    let totp = TOTP::from_url_unchecked(otpauth).map_err(|err| err.to_string())?;
-    totp.generate_current().map_err(|err| err.to_string())
 }
 
 #[cfg(not(feature = "flatpak"))]

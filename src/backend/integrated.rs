@@ -230,6 +230,16 @@ fn parse_managed_private_key_bytes(
     Ok((cert, key))
 }
 
+#[cfg(all(feature = "flatpak", debug_assertions))]
+fn debug_flatpak_save(message: impl AsRef<str>) {
+    let message = message.as_ref();
+    eprintln!("[flatpak-save] {message}");
+    log_error(format!("Flatpak save: {message}"));
+}
+
+#[cfg(all(feature = "flatpak", not(debug_assertions)))]
+fn debug_flatpak_save(_message: impl AsRef<str>) {}
+
 #[cfg(feature = "flatpak")]
 fn cert_requires_passphrase(cert: &Cert) -> bool {
     cert.keys()
@@ -391,6 +401,70 @@ fn load_ripasso_key_ring(fingerprint: &str) -> Result<HashMap<[u8; 20], Arc<Cert
 }
 
 #[cfg(feature = "flatpak")]
+fn available_unlocked_private_key_fingerprints(preferred: &str) -> Vec<String> {
+    let mut fingerprints = vec![preferred.to_string()];
+    with_unlocked_ripasso_keys_read(|keys| {
+        for fingerprint in keys.keys() {
+            if !fingerprints
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(fingerprint))
+            {
+                fingerprints.push(fingerprint.clone());
+            }
+        }
+    });
+    fingerprints
+}
+
+#[cfg(feature = "flatpak")]
+fn describe_key_ring(key_ring: &HashMap<[u8; 20], Arc<Cert>>) -> String {
+    let mut entries = key_ring
+        .iter()
+        .map(|(fingerprint, cert)| {
+            let user_ids = cert
+                .userids()
+                .map(|user_id| user_id.userid().to_string())
+                .filter(|value| !value.trim().is_empty())
+                .collect::<Vec<_>>();
+            format!(
+                "{} [{}]",
+                uppercase_fingerprint_hex(fingerprint),
+                if user_ids.is_empty() {
+                    "?".to_string()
+                } else {
+                    user_ids.join(" | ")
+                }
+            )
+        })
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries.join(", ")
+}
+
+#[cfg(feature = "flatpak")]
+fn describe_recipients(recipients: &[Recipient]) -> String {
+    recipients
+        .iter()
+        .map(|recipient| {
+            let fingerprint = recipient
+                .fingerprint
+                .map(|fingerprint| uppercase_fingerprint_hex(&fingerprint))
+                .unwrap_or_else(|| "?".to_string());
+            format!("{} => {}", recipient.key_id, fingerprint)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(feature = "flatpak")]
+fn uppercase_fingerprint_hex(fingerprint: &[u8; 20]) -> String {
+    fingerprint
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<String>()
+}
+
+#[cfg(feature = "flatpak")]
 fn validated_entry_label_path(label: &str) -> Result<PathBuf, String> {
     let mut relative = PathBuf::new();
     for component in Path::new(label).components() {
@@ -476,6 +550,39 @@ fn decrypt_password_entry_with_crypto(
 }
 
 #[cfg(feature = "flatpak")]
+fn decrypt_password_entry_with_any_available_key(
+    preferred_fingerprint: &str,
+    entry_path: &Path,
+) -> Result<String, String> {
+    let mut last_error = None;
+    for fingerprint in available_unlocked_private_key_fingerprints(preferred_fingerprint) {
+        let key_ring = load_ripasso_key_ring(&fingerprint)?;
+        let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring)?;
+        match decrypt_password_entry_with_crypto(&crypto, entry_path) {
+            Ok(secret) => {
+                debug_flatpak_save(format!(
+                    "decrypted {} using {}",
+                    entry_path.display(),
+                    fingerprint
+                ));
+                return Ok(secret);
+            }
+            Err(err) => {
+                debug_flatpak_save(format!(
+                    "failed to decrypt {} using {}: {}",
+                    entry_path.display(),
+                    fingerprint,
+                    err
+                ));
+                last_error = Some(err);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| LOCKED_PRIVATE_KEY_ERROR.to_string()))
+}
+
+#[cfg(feature = "flatpak")]
 fn encrypt_password_entry_with_crypto(
     crypto: &Sequoia,
     recipients: &[Recipient],
@@ -492,6 +599,11 @@ fn recipients_for_encryption(
     key_ring: &HashMap<[u8; 20], Arc<Cert>>,
 ) -> Result<Vec<Recipient>, String> {
     let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
+    debug_flatpak_save(format!(
+        "recipients file {} contains: {:?}",
+        recipients_file.display(),
+        contents
+    ));
     let mut recipients = Vec::new();
     let mut seen = HashSet::new();
 
@@ -506,6 +618,10 @@ fn recipients_for_encryption(
         }
 
         let Some((fingerprint, cert)) = resolve_recipient_cert(line, key_ring) else {
+            debug_flatpak_save(format!(
+                "recipient '{line}' could not be resolved; available keys: {}",
+                describe_key_ring(key_ring)
+            ));
             return Err(format!("Recipient '{line}' is not available in the app."));
         };
         if !seen.insert(fingerprint) {
@@ -530,6 +646,10 @@ fn recipients_for_encryption(
             trust_level: OwnerTrustLevel::Ultimate,
             not_usable: false,
         });
+        debug_flatpak_save(format!(
+            "resolved recipient '{line}' to {}",
+            uppercase_fingerprint_hex(&fingerprint)
+        ));
     }
 
     Ok(recipients)
@@ -679,6 +799,10 @@ pub(super) fn save_password_entry(
     contents: &str,
     overwrite: bool,
 ) -> Result<(), String> {
+    debug_flatpak_save(format!(
+        "save start store_root='{}' label='{}' overwrite={overwrite}",
+        store_root, label
+    ));
     let entry_path = entry_file_path(store_root, label)?;
     if entry_path.exists() && !overwrite {
         return Err("That password entry already exists.".to_string());
@@ -686,13 +810,24 @@ pub(super) fn save_password_entry(
 
     let fingerprint = resolved_ripasso_own_fingerprint()?;
     let key_ring = load_ripasso_key_ring(&fingerprint)?;
+    debug_flatpak_save(format!(
+        "selected private key: {}; available keys: {}",
+        fingerprint,
+        describe_key_ring(&key_ring)
+    ));
     let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring.clone())?;
     let recipients_file = recipients_file_for_label(store_root, label)?;
     let recipients = recipients_for_encryption(&recipients_file, &key_ring)?;
+    debug_flatpak_save(format!(
+        "resolved recipients for {}: {}",
+        label,
+        describe_recipients(&recipients)
+    ));
     let ciphertext = encrypt_password_entry_with_crypto(&crypto, &recipients, contents)?;
     if let Some(parent) = entry_path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
+    debug_flatpak_save(format!("writing encrypted entry to {}", entry_path.display()));
     fs::write(entry_path, ciphertext).map_err(|err| err.to_string())
 }
 
@@ -797,7 +932,6 @@ pub(super) fn save_store_recipients(
     recipients: &[String],
 ) -> Result<(), String> {
     let fingerprint = resolved_ripasso_own_fingerprint()?;
-    ensure_ripasso_private_key_is_ready(&fingerprint)?;
 
     let store_dir = PathBuf::from(store_root);
     if store_dir.exists() {
@@ -817,8 +951,9 @@ pub(super) fn save_store_recipients(
     fs::write(&recipients_path, contents).map_err(|err| err.to_string())?;
 
     let result = (|| {
+        let key_ring = load_ripasso_key_ring(&fingerprint)?;
         for entry_path in collect_password_entry_files(&store_dir)? {
-            let secret = decrypt_password_entry_with_crypto(&crypto, &entry_path)?;
+            let secret = decrypt_password_entry_with_any_available_key(&fingerprint, &entry_path)?;
             let label = label_from_entry_path(&store_dir, &entry_path)?;
             let recipients_file = recipients_file_for_label(store_root, &label)?;
             let recipients = recipients_for_encryption(&recipients_file, &key_ring)?;
@@ -1028,9 +1163,10 @@ mod tests {
         import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
         parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ripasso_keys_dir,
         read_password_entry, recipients_file_for_label, ripasso_private_key_requires_passphrase,
-        save_password_entry, secret_entry_relative_path,
+        save_password_entry, save_store_recipients, secret_entry_relative_path,
         unlock_ripasso_private_key_for_session,
     };
+    use crate::preferences::Preferences;
     use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
     use std::env;
     use std::ffi::OsString;
@@ -1339,5 +1475,62 @@ mod tests {
             "supersecret\nusername: alice".to_string()
         );
         assert_eq!(imported.fingerprint.len(), 40);
+    }
+
+    #[test]
+    fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
+        let _guard = test_lock().lock().expect("test lock poisoned");
+        let home = TestHome::new();
+        let password: Password = "hunter2".into();
+
+        let (cert_a, _) = CertBuilder::general_purpose(Some("Key A <a@example.com>"))
+            .set_password(Some(password.clone()))
+            .generate()
+            .expect("generate first certificate");
+        let mut bytes_a = Vec::new();
+        cert_a
+            .as_tsk()
+            .serialize(&mut bytes_a)
+            .expect("serialize first certificate");
+        let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+            .expect("import first private key");
+
+        let (cert_b, _) = CertBuilder::general_purpose(Some("Key B <b@example.com>"))
+            .set_password(Some(password.clone()))
+            .generate()
+            .expect("generate second certificate");
+        let mut bytes_b = Vec::new();
+        cert_b
+            .as_tsk()
+            .serialize(&mut bytes_b)
+            .expect("serialize second certificate");
+        let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+            .expect("import second private key");
+
+        let store = home.path.join("secondary-store");
+        fs::create_dir_all(&store).expect("create store");
+        fs::write(store.join(".gpg-id"), format!("{}\n", key_a.fingerprint))
+            .expect("write initial recipients");
+
+        save_password_entry(
+            store.to_string_lossy().as_ref(),
+            "team/service",
+            "supersecret\nusername: alice",
+            true,
+        )
+        .expect("save initial entry");
+
+        Preferences::new()
+            .set_ripasso_own_fingerprint(Some(&key_b.fingerprint))
+            .expect("select second key");
+
+        save_store_recipients(store.to_string_lossy().as_ref(), std::slice::from_ref(&key_b.fingerprint))
+            .expect("re-encrypt store with second key");
+
+        assert_eq!(
+            read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+                .expect("read re-encrypted entry"),
+            "supersecret\nusername: alice".to_string()
+        );
     }
 }

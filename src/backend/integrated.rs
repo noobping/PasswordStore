@@ -924,7 +924,8 @@ mod tests {
         clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
         import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
         parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ripasso_keys_dir,
-        ripasso_private_key_requires_passphrase, secret_entry_relative_path,
+        recipients_file_for_label, ripasso_private_key_requires_passphrase,
+        secret_entry_relative_path,
         unlock_ripasso_private_key_for_session,
     };
     use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
@@ -1128,6 +1129,27 @@ mod tests {
         assert_eq!(
             secret_entry_relative_path("chat/matrix.org").unwrap(),
             PathBuf::from("chat/matrix.org.gpg")
+        );
+    }
+
+    #[test]
+    fn recipients_file_lookup_stays_inside_the_selected_store() {
+        let _guard = test_lock().lock().expect("test lock poisoned");
+        let _home = TestHome::new();
+        let primary_store = PathBuf::from("/tmp/primary-store");
+        let secondary_store = PathBuf::from("/tmp/secondary-store");
+
+        fs::create_dir_all(primary_store.join("team")).expect("create primary store");
+        fs::create_dir_all(secondary_store.join("team")).expect("create secondary store");
+        fs::write(primary_store.join(".gpg-id"), "primary@example.com\n")
+            .expect("write primary recipients");
+        fs::write(secondary_store.join(".gpg-id"), "secondary@example.com\n")
+            .expect("write secondary recipients");
+
+        assert_eq!(
+            recipients_file_for_label(secondary_store.to_string_lossy().as_ref(), "team/chat")
+                .expect("resolve recipients file"),
+            secondary_store.join(".gpg-id")
         );
     }
 }

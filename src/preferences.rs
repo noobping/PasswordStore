@@ -165,8 +165,15 @@ impl Preferences {
             .unwrap_or_else(|_| s.to_string())
     }
 
+    pub fn store_roots(&self) -> Vec<String> {
+        self.stores()
+            .into_iter()
+            .map(|store| Self::expand_path(&store))
+            .collect()
+    }
+
     pub fn store(&self) -> String {
-        Self::expand_path(&self.stores().into_iter().next().unwrap_or_default())
+        self.store_roots().into_iter().next().unwrap_or_default()
     }
 
     #[cfg_attr(feature = "flatpak", allow(dead_code))]
@@ -223,7 +230,7 @@ impl Preferences {
     }
 
     pub fn paths(&self) -> Vec<PathBuf> {
-        self.stores().into_iter().map(PathBuf::from).collect()
+        self.store_roots().into_iter().map(PathBuf::from).collect()
     }
 
     #[cfg(not(feature = "flatpak"))]

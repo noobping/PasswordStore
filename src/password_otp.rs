@@ -12,6 +12,12 @@ use totp_rs::TOTP;
 
 const DEFAULT_OTP_PERIOD: u64 = 30;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OtpMode {
+    Live,
+    Editing,
+}
+
 #[derive(Clone)]
 struct OtpCountdownCircle {
     area: DrawingArea,
@@ -87,7 +93,7 @@ pub(crate) struct PasswordOtpState {
     overlay: ToastOverlay,
     template: Rc<RefCell<Option<OtpFieldTemplate>>>,
     url: Rc<RefCell<Option<String>>>,
-    edit_mode: Rc<Cell<bool>>,
+    mode: Rc<Cell<OtpMode>>,
     refresh_generation: Rc<Cell<u64>>,
     countdown: OtpCountdownCircle,
 }
@@ -96,6 +102,7 @@ impl PasswordOtpState {
     pub(crate) fn new(row: &PasswordEntryRow, overlay: &ToastOverlay) -> Self {
         let countdown = OtpCountdownCircle::new();
 
+        row.set_activatable(true);
         row.add_suffix(countdown.widget());
 
         let state = Self {
@@ -103,7 +110,7 @@ impl PasswordOtpState {
             overlay: overlay.clone(),
             template: Rc::new(RefCell::new(None)),
             url: Rc::new(RefCell::new(None)),
-            edit_mode: Rc::new(Cell::new(false)),
+            mode: Rc::new(Cell::new(OtpMode::Live)),
             refresh_generation: Rc::new(Cell::new(0)),
             countdown,
         };
@@ -115,7 +122,7 @@ impl PasswordOtpState {
         self.bump_refresh_generation();
         self.template.borrow_mut().take();
         self.url.borrow_mut().take();
-        self.edit_mode.set(false);
+        self.mode.set(OtpMode::Live);
         self.row.set_title("OTP");
         self.row.set_text("");
         self.row.set_editable(false);
@@ -145,7 +152,7 @@ impl PasswordOtpState {
     }
 
     pub(crate) fn current_url(&self) -> Option<String> {
-        if self.edit_mode.get() {
+        if self.is_editing() {
             self.url_for_current_secret()
         } else {
             self.url.borrow().clone()
@@ -166,17 +173,13 @@ impl PasswordOtpState {
 
     fn connect_row_signals(&self) {
         let state = self.clone();
-        self.row.connect_notify_local(Some("has-focus"), move |row, _| {
-            if row.has_focus() && !state.edit_mode.get() && state.has_otp() {
-                state.edit_mode.set(true);
-                state.render(false);
-                row.grab_focus_without_selecting();
-            }
+        self.row.connect_activate(move |_| {
+            state.enter_edit_mode();
         });
 
         let state = self.clone();
         self.row.connect_apply(move |_| {
-            if !state.edit_mode.get() {
+            if !state.is_editing() {
                 return;
             }
 
@@ -195,8 +198,7 @@ impl PasswordOtpState {
             }
 
             *state.url.borrow_mut() = Some(url);
-            state.edit_mode.set(false);
-            state.render(true);
+            state.exit_edit_mode(true);
         });
     }
 
@@ -209,6 +211,25 @@ impl PasswordOtpState {
         Some(replace_otp_secret(&current_url, &self.row.text()))
     }
 
+    fn is_editing(&self) -> bool {
+        self.mode.get() == OtpMode::Editing
+    }
+
+    fn enter_edit_mode(&self) {
+        if !self.has_otp() || self.is_editing() {
+            return;
+        }
+
+        self.mode.set(OtpMode::Editing);
+        self.render(false);
+        self.row.grab_focus_without_selecting();
+    }
+
+    fn exit_edit_mode(&self, show_errors: bool) {
+        self.mode.set(OtpMode::Live);
+        self.render(show_errors);
+    }
+
     fn bump_refresh_generation(&self) -> u64 {
         let next = self.refresh_generation.get().wrapping_add(1);
         self.refresh_generation.set(next);
@@ -216,7 +237,7 @@ impl PasswordOtpState {
     }
 
     fn render(&self, show_errors: bool) {
-        if self.edit_mode.get() {
+        if self.is_editing() {
             self.render_edit_mode();
         } else {
             self.render_live_mode(show_errors);
@@ -270,7 +291,7 @@ impl PasswordOtpState {
             if state.refresh_generation.get() != generation {
                 return ControlFlow::Break;
             }
-            if state.edit_mode.get() || !state.row.is_visible() {
+            if state.is_editing() || !state.row.is_visible() {
                 return ControlFlow::Break;
             }
 

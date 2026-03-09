@@ -4,6 +4,8 @@ use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow};
 use adw::gtk::{Box as GtkBox, DropDown, Popover, StringList};
 use std::path::Path;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) struct NewPasswordPopoverState {
@@ -11,10 +13,11 @@ pub(crate) struct NewPasswordPopoverState {
     pub(crate) path_entry: EntryRow,
     pub(crate) store_box: GtkBox,
     pub(crate) store_dropdown: DropDown,
+    pub(crate) store_roots: Rc<RefCell<Vec<String>>>,
 }
 
 fn available_store_roots() -> Vec<String> {
-    Preferences::new().stores()
+    Preferences::new().store_roots()
 }
 
 fn shortened_store_labels(stores: &[String]) -> Vec<String> {
@@ -65,27 +68,35 @@ fn shortened_store_labels(stores: &[String]) -> Vec<String> {
     stores.to_vec()
 }
 
-pub(crate) fn sync_new_password_store_dropdown(box_widget: &GtkBox, dropdown: &DropDown) {
-    let stores = available_store_roots();
-    let labels = shortened_store_labels(&stores);
-    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
-    dropdown.set_model(Some(&StringList::new(&label_refs)));
-    box_widget.set_visible(stores.len() > 1);
-    if !stores.is_empty() {
-        dropdown.set_selected(dropdown.selected().min(stores.len() as u32 - 1));
-    }
-}
-
-pub(crate) fn selected_new_password_store(dropdown: &DropDown) -> Option<String> {
-    let stores = available_store_roots();
+fn resolve_selected_store(stores: &[String], selected: u32) -> Option<String> {
     if stores.len() <= 1 {
-        return stores.into_iter().next();
+        return stores.first().cloned();
     }
 
     stores
-        .get(dropdown.selected() as usize)
+        .get(selected as usize)
         .cloned()
-        .or_else(|| stores.into_iter().next())
+        .or_else(|| stores.first().cloned())
+}
+
+pub(crate) fn sync_new_password_store_dropdown(state: &NewPasswordPopoverState) {
+    let stores = available_store_roots();
+    let labels = shortened_store_labels(&stores);
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    *state.store_roots.borrow_mut() = stores.clone();
+    state
+        .store_dropdown
+        .set_model(Some(&StringList::new(&label_refs)));
+    state.store_box.set_visible(stores.len() > 1);
+    if !stores.is_empty() {
+        state
+            .store_dropdown
+            .set_selected(state.store_dropdown.selected().min(stores.len() as u32 - 1));
+    }
+}
+
+pub(crate) fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
+    resolve_selected_store(&state.store_roots.borrow(), state.store_dropdown.selected())
 }
 
 pub(crate) fn register_open_new_password_action(
@@ -98,7 +109,7 @@ pub(crate) fn register_open_new_password_action(
         if state.popover.is_visible() {
             state.popover.popdown();
         } else {
-            sync_new_password_store_dropdown(&state.store_box, &state.store_dropdown);
+            sync_new_password_store_dropdown(&state);
             state.popover.popup();
             state.path_entry.grab_focus();
         }
@@ -108,7 +119,7 @@ pub(crate) fn register_open_new_password_action(
 
 #[cfg(test)]
 mod tests {
-    use super::shortened_store_labels;
+    use super::{resolve_selected_store, shortened_store_labels};
 
     #[test]
     fn store_labels_use_short_unique_suffixes() {
@@ -131,5 +142,18 @@ mod tests {
         let stores = vec!["/same".to_string(), "/same".to_string()];
 
         assert_eq!(shortened_store_labels(&stores), stores);
+    }
+
+    #[test]
+    fn selected_store_uses_current_dropdown_index() {
+        let stores = vec![
+            "/home/nick/.password-store".to_string(),
+            "/home/nick/work/.password-store".to_string(),
+        ];
+
+        assert_eq!(
+            resolve_selected_store(&stores, 1),
+            Some("/home/nick/work/.password-store".to_string())
+        );
     }
 }

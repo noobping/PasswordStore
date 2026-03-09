@@ -275,6 +275,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         path_entry: path_entry.clone(),
         store_box: new_password_store_box.clone(),
         store_dropdown: new_password_store_dropdown.clone(),
+        store_roots: Rc::new(RefCell::new(Vec::new())),
     };
     let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
     let password_list_state = PasswordPageState {
@@ -428,40 +429,31 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     {
         let entry = password_entry.clone();
         let btn = copy_password_button.clone();
-        connect_copy_button(&btn, &toast_overlay, move || {
-            entry.grab_focus_without_selecting();
-            entry.text().to_string()
-        });
+        connect_copy_button(&btn, &toast_overlay, move || entry.text().to_string());
     }
     // Copy username button on password page
     {
         let entry = username_entry.clone();
         let btn = copy_username_button.clone();
-        connect_copy_button(&btn, &toast_overlay, move || {
-            entry.grab_focus_without_selecting();
-            entry.text().to_string()
-        });
+        connect_copy_button(&btn, &toast_overlay, move || entry.text().to_string());
     }
     // Copy OTP button on password page
     {
         let entry = otp_entry.clone();
         let btn = copy_otp_button.clone();
-        connect_copy_button(&btn, &toast_overlay, move || {
-            entry.grab_focus_without_selecting();
-            entry.text().to_string()
-        });
+        connect_copy_button(&btn, &toast_overlay, move || entry.text().to_string());
     }
     // new password
     {
         let popover_add = add_button_popover.clone();
         let popover_git = git_popover.clone();
         let page_state = password_list_state.clone();
-        let store_dropdown = new_password_store_dropdown.clone();
+        let popover_state = new_password_popover_state.clone();
         path_entry.connect_apply(move |row| {
             begin_new_password_entry(
                 &page_state,
                 &row.text(),
-                selected_new_password_store(&store_dropdown),
+                selected_new_password_store(&popover_state),
                 &popover_add,
                 &popover_git,
             );

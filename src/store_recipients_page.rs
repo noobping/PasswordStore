@@ -1,9 +1,12 @@
 use crate::background::spawn_result_task;
+#[cfg(feature = "flatpak")]
+use crate::backend::{list_ripasso_private_keys, ManagedRipassoPrivateKey};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+#[cfg(not(feature = "flatpak"))]
+use crate::stores::append_gpg_recipients;
 use crate::stores::{
-    append_gpg_recipients, apply_password_store_recipients, read_store_gpg_recipients,
-    stores_with_preferred_first,
+    apply_password_store_recipients, read_store_gpg_recipients, stores_with_preferred_first,
 };
 use crate::store_management::rebuild_store_list;
 use crate::ui_helpers::{clear_list_box, navigation_stack_contains_page};
@@ -16,6 +19,8 @@ use adw::{
     WindowTitle,
 };
 use adw::gtk::{Button, Image, ListBox};
+#[cfg(feature = "flatpak")]
+use adw::gtk::CheckButton;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -33,6 +38,7 @@ impl StoreRecipientsMode {
         }
     }
 
+    #[cfg_attr(feature = "flatpak", allow(dead_code))]
     fn empty_state_subtitle(&self) -> &'static str {
         match self {
             Self::Create => "Add at least one recipient to create this store.",
@@ -185,8 +191,104 @@ fn save_store_recipients_async(
     );
 }
 
+#[cfg(feature = "flatpak")]
+fn recipient_matches_private_key(recipient: &str, key: &ManagedRipassoPrivateKey) -> bool {
+    let recipient = recipient.trim();
+    recipient.eq_ignore_ascii_case(&key.fingerprint)
+        || key
+            .user_ids
+            .iter()
+            .any(|user_id| user_id.eq_ignore_ascii_case(recipient))
+}
+
+#[cfg(feature = "flatpak")]
+fn set_private_key_recipient_enabled(
+    state: &StoreRecipientsPageState,
+    key: &ManagedRipassoPrivateKey,
+    enabled: bool,
+) -> bool {
+    let mut recipients = state.recipients.borrow_mut();
+    let before = recipients.clone();
+    recipients.retain(|value| !recipient_matches_private_key(value, key));
+    if enabled {
+        recipients.push(key.fingerprint.clone());
+    }
+    *recipients != before
+}
+
+#[cfg(feature = "flatpak")]
+fn append_flatpak_private_key_rows(state: &StoreRecipientsPageState) {
+    let keys = match list_ripasso_private_keys() {
+        Ok(keys) => keys,
+        Err(err) => {
+            log_error(format!("Failed to load private keys for recipients: {err}"));
+            let row = ActionRow::builder()
+                .title("Couldn't load private keys")
+                .subtitle("Try again from Preferences.")
+                .build();
+            row.set_activatable(false);
+            state.list.append(&row);
+            return;
+        }
+    };
+
+    if keys.is_empty() {
+        let row = ActionRow::builder()
+            .title("No private keys yet")
+            .subtitle("Import a private key first.")
+            .build();
+        row.set_activatable(false);
+        state.list.append(&row);
+        return;
+    }
+
+    for key in keys {
+        let active = state
+            .recipients
+            .borrow()
+            .iter()
+            .any(|recipient| recipient_matches_private_key(recipient, &key));
+        let title = adw::glib::markup_escape_text(&key.title());
+        let row = ActionRow::builder()
+            .title(title.as_str())
+            .subtitle(&key.fingerprint)
+            .build();
+        row.set_activatable(true);
+
+        let key_icon = Image::from_icon_name("dialog-password-symbolic");
+        key_icon.add_css_class("dim-label");
+        row.add_prefix(&key_icon);
+
+        let toggle = CheckButton::new();
+        toggle.set_active(active);
+        row.add_suffix(&toggle);
+        state.list.append(&row);
+
+        let toggle_for_row = toggle.clone();
+        row.connect_activated(move |_| {
+            toggle_for_row.set_active(!toggle_for_row.is_active());
+        });
+
+        let page_state = state.clone();
+        let key_for_toggle = key.clone();
+        toggle.connect_toggled(move |button| {
+            if set_private_key_recipient_enabled(&page_state, &key_for_toggle, button.is_active()) {
+                queue_store_recipients_autosave(&page_state);
+            }
+        });
+    }
+}
+
 pub(crate) fn connect_store_recipients_entry(state: &StoreRecipientsPageState) {
+    #[cfg(feature = "flatpak")]
+    {
+        let _ = state;
+        return;
+    }
+
+    #[cfg(not(feature = "flatpak"))]
     let page_state = state.clone();
+    #[cfg(not(feature = "flatpak"))]
     state.entry.connect_apply(move |entry| {
         if append_gpg_recipients(&page_state.recipients, entry.text().as_str()) {
             entry.set_text("");
@@ -209,9 +311,9 @@ pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) 
         adw::prelude::WidgetExt::activate_action(&state.window, "win.save-store-recipients", None);
 }
 
+#[cfg(not(feature = "flatpak"))]
 pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
-
     state.list.append(&state.entry);
 
     let empty_subtitle = current_store_recipients_request(state)
@@ -250,6 +352,12 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             queue_store_recipients_autosave(&page_state);
         });
     }
+}
+
+#[cfg(feature = "flatpak")]
+pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
+    clear_list_box(&state.list);
+    append_flatpak_private_key_rows(state);
 }
 
 pub(crate) fn register_store_recipients_save_action(
@@ -330,6 +438,10 @@ pub(crate) fn show_store_recipients_page(
 #[cfg(test)]
 mod tests {
     use super::StoreRecipientsMode;
+    #[cfg(feature = "flatpak")]
+    use super::recipient_matches_private_key;
+    #[cfg(feature = "flatpak")]
+    use crate::backend::ManagedRipassoPrivateKey;
 
     #[test]
     fn create_mode_has_create_title() {
@@ -342,5 +454,21 @@ mod tests {
             StoreRecipientsMode::Edit.empty_state_subtitle(),
             "Add at least one recipient to keep saving changes."
         );
+    }
+
+    #[cfg(feature = "flatpak")]
+    #[test]
+    fn imported_private_keys_match_existing_user_id_recipients() {
+        let key = ManagedRipassoPrivateKey {
+            fingerprint: "10F4487A3768155709168A8E3D00743E10EA9232".to_string(),
+            user_ids: vec!["pass@store.local".to_string()],
+        };
+
+        assert!(recipient_matches_private_key("pass@store.local", &key));
+        assert!(recipient_matches_private_key(
+            "10F4487A3768155709168A8E3D00743E10EA9232",
+            &key
+        ));
+        assert!(!recipient_matches_private_key("other@example.com", &key));
     }
 }

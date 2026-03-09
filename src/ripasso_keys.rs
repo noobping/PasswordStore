@@ -109,15 +109,9 @@ fn finish_ripasso_private_key_import(
     result: Result<ManagedRipassoPrivateKey, String>,
 ) {
     match result {
-        Ok(key) => {
-            if store_selected_private_key_fingerprint(Some(&key.fingerprint), "import").is_err() {
-                state.overlay.add_toast(Toast::new(
-                    "Key imported, but it wasn't selected.",
-                ));
-            } else {
-                rebuild_ripasso_private_keys_list(state);
-                state.overlay.add_toast(Toast::new("Key imported."));
-            }
+        Ok(_) => {
+            rebuild_ripasso_private_keys_list(state);
+            state.overlay.add_toast(Toast::new("Key imported."));
         }
         Err(err) => {
             log_error(format!("Failed to import ripasso private key: {err}"));
@@ -170,16 +164,6 @@ fn start_ripasso_private_key_import(
                 .add_toast(Toast::new("Couldn't import the key."));
         },
     );
-}
-
-fn select_ripasso_private_key(state: &RipassoPrivateKeysState, fingerprint: &str) {
-    if store_selected_private_key_fingerprint(Some(fingerprint), "select").is_err() {
-        state
-            .overlay
-            .add_toast(Toast::new("Couldn't select that key."));
-    } else {
-        rebuild_ripasso_private_keys_list(state);
-    }
 }
 
 fn prompt_ripasso_private_key_passphrase(state: &RipassoPrivateKeysState, bytes: Vec<u8>) {
@@ -240,9 +224,6 @@ fn inspect_private_key_lock_state(fingerprint: &str) -> (bool, bool) {
 }
 
 fn activate_private_key_row(state: &RipassoPrivateKeysState, key: &ManagedRipassoPrivateKey) {
-    let settings = Preferences::new();
-    let is_selected =
-        settings.ripasso_own_fingerprint().as_deref() == Some(key.fingerprint.as_str());
     let requires_unlock = match ripasso_private_key_requires_session_unlock(&key.fingerprint) {
         Ok(requires_unlock) => requires_unlock,
         Err(err) => {
@@ -258,19 +239,12 @@ fn activate_private_key_row(state: &RipassoPrivateKeysState, key: &ManagedRipass
     };
 
     if requires_unlock {
-        let select_state = state.clone();
-        let fingerprint = key.fingerprint.clone();
-        let after_unlock: Rc<dyn Fn()> = if is_selected {
-            Rc::new(move || rebuild_ripasso_private_keys_list(&select_state))
-        } else {
-            Rc::new(move || select_ripasso_private_key(&select_state, &fingerprint))
-        };
-        prompt_private_key_unlock_for_action(&state.overlay, key.fingerprint.clone(), after_unlock);
-        return;
-    }
-
-    if !is_selected {
-        select_ripasso_private_key(state, &key.fingerprint);
+        let refresh_state = state.clone();
+        prompt_private_key_unlock_for_action(
+            &state.overlay,
+            key.fingerprint.clone(),
+            Rc::new(move || rebuild_ripasso_private_keys_list(&refresh_state)),
+        );
     }
 }
 
@@ -288,7 +262,7 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
             return;
         }
     };
-    let selected = sync_ripasso_private_key_selection(&keys);
+    let _ = sync_ripasso_private_key_selection(&keys);
 
     if keys.is_empty() {
         let empty_row = ActionRow::builder()
@@ -305,7 +279,7 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
                 .title(title.as_str())
                 .subtitle(&key.fingerprint)
                 .build();
-            row.set_activatable(true);
+            row.set_activatable(requires_unlock);
 
             let key_icon = Image::from_icon_name("dialog-password-symbolic");
             key_icon.add_css_class("dim-label");
@@ -321,22 +295,18 @@ pub(crate) fn rebuild_ripasso_private_keys_list(state: &RipassoPrivateKeysState)
                 row.add_suffix(&unlocked_icon);
             }
 
-            if selected.as_deref() == Some(key.fingerprint.as_str()) {
-                let selected_icon = Image::from_icon_name("object-select-symbolic");
-                selected_icon.add_css_class("accent");
-                row.add_suffix(&selected_icon);
-            }
-
             let delete_button = Button::from_icon_name("user-trash-symbolic");
             delete_button.add_css_class("flat");
             row.add_suffix(&delete_button);
             state.list.append(&row);
 
-            let select_state = state.clone();
-            let key_for_select = key.clone();
-            row.connect_activated(move |_| {
-                activate_private_key_row(&select_state, &key_for_select);
-            });
+            if requires_unlock {
+                let select_state = state.clone();
+                let key_for_select = key.clone();
+                row.connect_activated(move |_| {
+                    activate_private_key_row(&select_state, &key_for_select);
+                });
+            }
 
             let delete_state = state.clone();
             let key_for_delete = key.clone();

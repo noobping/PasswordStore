@@ -1246,6 +1246,7 @@ pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {
 }
 
 #[cfg(feature = "flatpak")]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
     selected_ripasso_own_fingerprint()?.ok_or_else(missing_private_key_error)
 }

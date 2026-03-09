@@ -1,5 +1,3 @@
-#[cfg(feature = "flatpak")]
-use crate::backend::resolved_ripasso_own_fingerprint;
 use crate::backend::save_store_recipients;
 use crate::preferences::Preferences;
 use std::cell::RefCell;
@@ -32,14 +30,10 @@ pub(crate) fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
         }
     }
 
-    #[cfg(feature = "flatpak")]
-    if let Ok(fingerprint) = resolved_ripasso_own_fingerprint() {
-        return vec![fingerprint];
-    }
-
     Vec::new()
 }
 
+#[cfg_attr(feature = "flatpak", allow(dead_code))]
 pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
     let parsed = parse_gpg_recipients(input);
     if parsed.is_empty() {

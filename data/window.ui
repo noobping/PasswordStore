@@ -366,7 +366,7 @@
                               <object class="AdwPreferencesGroup" id="ripasso_private_keys_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Private Keys</property>
-                                <property name="description" translatable="yes">Import private keys for the integrated backend. The checkmark marks the default key for new stores.</property>
+                                <property name="description" translatable="yes">Import private keys for the integrated backend.</property>
                                 <child>
                                   <object class="GtkListBox" id="ripasso_private_keys_list">
                                     <property name="hexpand">true</property>
@@ -421,7 +421,7 @@
                             <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Recipients</property>
-                                <property name="description" translatable="yes">Add one recipient per row. You can also paste several at once with commas or semicolons.</property>
+                                <property name="description" translatable="yes">Choose who can open this store.</property>
                                 <child>
                                   <object class="GtkScrolledWindow">
                                     <property name="hscrollbar-policy">never</property>

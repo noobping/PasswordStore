@@ -1,11 +1,11 @@
 use crate::background::spawn_result_task;
+#[cfg(feature = "flatpak")]
+use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
 use crate::item::PassEntry;
 use crate::logging::log_error;
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{run_command_status, CommandLogOptions};
 use crate::backend::read_password_line;
-#[cfg(feature = "flatpak")]
-use crate::backend::resolved_ripasso_own_fingerprint;
 #[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
@@ -121,7 +121,10 @@ fn copy_password_entry_to_clipboard_via_read(
                 log_error(format!("Failed to copy password entry: {err}"));
                 #[cfg(feature = "flatpak")]
                 if is_locked_private_key_error(&err) {
-                    match resolved_ripasso_own_fingerprint() {
+                    match preferred_ripasso_private_key_fingerprint_for_entry(
+                        &retry_item.store_path,
+                        &retry_item.label(),
+                    ) {
                         Ok(fingerprint) => {
                             let retry_overlay = overlay.clone();
                             let retry_item_for_unlock = retry_item.clone();
@@ -141,7 +144,7 @@ fn copy_password_entry_to_clipboard_via_read(
                         }
                         Err(resolve_err) => {
                             log_error(format!(
-                                "Failed to resolve the selected ripasso private key for copy retry: {resolve_err}"
+                                "Failed to resolve the private key for copy retry: {resolve_err}"
                             ));
                         }
                     }

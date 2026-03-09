@@ -366,7 +366,7 @@
                               <object class="AdwPreferencesGroup" id="ripasso_private_keys_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Private Keys</property>
-                                <property name="description" translatable="yes">Import and choose the private key used by the integrated backend.</property>
+                                <property name="description" translatable="yes">Import private keys for the integrated backend. The checkmark marks the default key for new stores.</property>
                                 <child>
                                   <object class="GtkListBox" id="ripasso_private_keys_list">
                                     <property name="hexpand">true</property>

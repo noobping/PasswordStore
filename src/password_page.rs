@@ -1,7 +1,7 @@
 use crate::backend::{read_password_entry, save_password_entry};
 use crate::background::spawn_result_task;
 #[cfg(feature = "flatpak")]
-use crate::backend::resolved_ripasso_own_fingerprint;
+use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
 use crate::item::OpenPassFile;
 use crate::logging::log_error;
 use crate::methods::{
@@ -54,7 +54,9 @@ pub(crate) struct PasswordPageState {
 
 #[cfg(feature = "flatpak")]
 fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
-    if message.contains("cannot decrypt password store entries") {
+    if message.contains("cannot decrypt password store entries")
+        || message.contains("available private keys cannot decrypt")
+    {
         Some("This key can't open your items.")
     } else if message.contains("Import a private key in Preferences") {
         Some("Add a private key in Preferences.")
@@ -256,7 +258,10 @@ pub(crate) fn open_password_entry_page(
                         state_for_result
                             .status
                             .set_description(Some("Enter your key password to continue."));
-                        match resolved_ripasso_own_fingerprint() {
+                        match preferred_ripasso_private_key_fingerprint_for_entry(
+                            opened_pass_file_for_result.store_path(),
+                            &opened_pass_file_for_result.label(),
+                        ) {
                             Ok(fingerprint) => {
                                 let retry_pass_file = opened_pass_file_for_result.clone();
                                 let retry_page_state = retry_state.clone();
@@ -275,7 +280,7 @@ pub(crate) fn open_password_entry_page(
                             }
                             Err(err) => {
                                 log_error(format!(
-                                    "Failed to resolve the selected ripasso private key: {err}"
+                                    "Failed to resolve the private key for this item: {err}"
                                 ));
                             }
                         }

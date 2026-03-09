@@ -40,17 +40,14 @@ fn store_selected_private_key_fingerprint(
 
 fn sync_ripasso_private_key_selection(keys: &[ManagedRipassoPrivateKey]) -> Option<String> {
     let configured = Preferences::new().ripasso_own_fingerprint();
-    let resolved = configured
-        .as_deref()
-        .and_then(|fingerprint| {
-            keys.iter()
-                .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
-                .map(|key| key.fingerprint.clone())
-        })
-        .or_else(|| keys.first().map(|key| key.fingerprint.clone()));
+    let resolved = configured.as_deref().and_then(|fingerprint| {
+        keys.iter()
+            .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+            .map(|key| key.fingerprint.clone())
+    });
 
-    if configured.as_deref() != resolved.as_deref() {
-        let _ = store_selected_private_key_fingerprint(resolved.as_deref(), "sync");
+    if configured.is_some() && resolved.is_none() {
+        let _ = store_selected_private_key_fingerprint(None, "sync");
     }
 
     resolved

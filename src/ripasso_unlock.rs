@@ -10,7 +10,7 @@ use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
 
 pub(crate) fn is_locked_private_key_error(message: &str) -> bool {
-    message.contains("The selected private key is locked.")
+    message.contains("A private key for this item is locked.")
 }
 
 fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn locked_private_key_errors_are_detected() {
         assert!(is_locked_private_key_error(
-            "The selected private key is locked. Unlock it in Preferences and enter its password."
+            "A private key for this item is locked. Unlock it in Preferences and enter its password."
         ));
     }
 }

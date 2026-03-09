@@ -37,10 +37,10 @@ const MISSING_PRIVATE_KEY_ERROR: &str =
     "Import a private key in Preferences before using the password store.";
 #[cfg(feature = "flatpak")]
 const LOCKED_PRIVATE_KEY_ERROR: &str =
-    "The selected private key is locked. Unlock it in Preferences and enter its password.";
+    "A private key for this item is locked. Unlock it in Preferences and enter its password.";
 #[cfg(feature = "flatpak")]
 const INCOMPATIBLE_PRIVATE_KEY_ERROR: &str =
-    "The selected private key cannot decrypt password store entries.";
+    "The available private keys cannot decrypt this item.";
 
 #[cfg(feature = "flatpak")]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -345,13 +345,6 @@ fn find_ripasso_private_key_cert(
 }
 
 #[cfg(feature = "flatpak")]
-fn build_ripasso_crypto() -> Result<Sequoia, String> {
-    let fingerprint = resolved_ripasso_own_fingerprint()?;
-    let key_ring = load_ripasso_key_ring(&fingerprint)?;
-    build_ripasso_crypto_from_key_ring(&fingerprint, key_ring)
-}
-
-#[cfg(feature = "flatpak")]
 struct FlatpakCryptoContext {
     key_ring: HashMap<[u8; 20], Arc<Cert>>,
     crypto: Sequoia,
@@ -365,9 +358,21 @@ impl FlatpakCryptoContext {
         Ok(Self { key_ring, crypto })
     }
 
-    fn load_selected() -> Result<Self, String> {
-        let fingerprint = resolved_ripasso_own_fingerprint()?;
-        Self::load_for_fingerprint(&fingerprint)
+    fn load_for_label(store_root: &str, label: &str) -> Result<Self, String> {
+        let recipients_file = recipients_file_for_label(store_root, label)?;
+        Self::load_for_recipients_file(&recipients_file)
+    }
+
+    fn load_for_recipients_file(recipients_file: &Path) -> Result<Self, String> {
+        let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
+        Self::load_for_recipient_contents(&contents)
+    }
+
+    fn load_for_recipient_contents(contents: &str) -> Result<Self, String> {
+        let key_ring = load_stored_ripasso_key_ring()?;
+        let fingerprint = preferred_context_fingerprint_from_contents(contents, &key_ring)?;
+        let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring.clone())?;
+        Ok(Self { key_ring, crypto })
     }
 
     fn decrypt_entry(&self, entry_path: &Path) -> Result<String, String> {
@@ -397,8 +402,7 @@ fn build_ripasso_crypto_from_key_ring(
 }
 
 #[cfg(feature = "flatpak")]
-fn load_ripasso_key_ring(fingerprint: &str) -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
-    let user_key_id = fingerprint_from_string(fingerprint)?;
+fn load_stored_ripasso_key_ring() -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
     let keys_dir = ripasso_keys_dir()?;
     let mut key_ring = HashMap::new();
 
@@ -417,6 +421,14 @@ fn load_ripasso_key_ring(fingerprint: &str) -> Result<HashMap<[u8; 20], Arc<Cert
             key_ring.insert(entry_fingerprint, Arc::new(cert));
         }
     }
+
+    Ok(key_ring)
+}
+
+#[cfg(feature = "flatpak")]
+fn load_ripasso_key_ring(fingerprint: &str) -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
+    let user_key_id = fingerprint_from_string(fingerprint)?;
+    let mut key_ring = load_stored_ripasso_key_ring()?;
 
     if let Some(cert) = cached_unlocked_ripasso_private_key(&fingerprint)? {
         key_ring.insert(user_key_id, cert);
@@ -439,6 +451,33 @@ fn available_unlocked_private_key_fingerprints(preferred: &str) -> Vec<String> {
         }
     });
     fingerprints
+}
+
+#[cfg(feature = "flatpak")]
+fn imported_private_key_fingerprints() -> Result<Vec<String>, String> {
+    Ok(list_ripasso_private_keys()?
+        .into_iter()
+        .map(|key| key.fingerprint)
+        .collect())
+}
+
+#[cfg(feature = "flatpak")]
+fn selected_ripasso_own_fingerprint() -> Result<Option<String>, String> {
+    let settings = Preferences::new();
+    let Some(configured) = settings.ripasso_own_fingerprint() else {
+        return Ok(None);
+    };
+
+    let selected = list_ripasso_private_keys()?
+        .into_iter()
+        .find(|key| key.fingerprint.eq_ignore_ascii_case(&configured))
+        .map(|key| key.fingerprint);
+
+    if selected.is_none() {
+        let _ = settings.set_ripasso_own_fingerprint(None);
+    }
+
+    Ok(selected)
 }
 
 #[cfg(feature = "flatpak")]
@@ -563,6 +602,52 @@ fn recipients_for_encryption(
 ) -> Result<Vec<Recipient>, String> {
     let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
     let mut recipients = Vec::new();
+
+    for recipient in resolved_recipients_from_contents(&contents, key_ring)? {
+        let name = recipient
+            .cert
+            .userids()
+            .map(|user_id| user_id.userid().to_string())
+            .find(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| recipient.requested_id.clone());
+
+        recipients.push(Recipient {
+            name,
+            comment: Comment {
+                pre_comment: None,
+                post_comment: None,
+            },
+            key_id: recipient.cert.fingerprint().to_hex(),
+            fingerprint: Some(recipient.fingerprint),
+            key_ring_status: KeyRingStatus::InKeyRing,
+            trust_level: OwnerTrustLevel::Ultimate,
+            not_usable: false,
+        });
+    }
+
+    Ok(recipients)
+}
+
+#[cfg(feature = "flatpak")]
+struct ResolvedRecipient<'a> {
+    fingerprint: [u8; 20],
+    cert: &'a Arc<Cert>,
+    requested_id: String,
+}
+
+#[cfg(feature = "flatpak")]
+impl ResolvedRecipient<'_> {
+    fn fingerprint_hex(&self) -> String {
+        self.cert.fingerprint().to_hex()
+    }
+}
+
+#[cfg(feature = "flatpak")]
+fn resolved_recipients_from_contents<'a>(
+    contents: &str,
+    key_ring: &'a HashMap<[u8; 20], Arc<Cert>>,
+) -> Result<Vec<ResolvedRecipient<'a>>, String> {
+    let mut recipients = Vec::new();
     let mut seen = HashSet::new();
 
     for raw_line in contents.lines() {
@@ -582,27 +667,26 @@ fn recipients_for_encryption(
             continue;
         }
 
-        let name = cert
-            .userids()
-            .map(|user_id| user_id.userid().to_string())
-            .find(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| line.to_string());
-
-        recipients.push(Recipient {
-            name,
-            comment: Comment {
-                pre_comment: None,
-                post_comment: None,
-            },
-            key_id: cert.fingerprint().to_hex(),
-            fingerprint: Some(fingerprint),
-            key_ring_status: KeyRingStatus::InKeyRing,
-            trust_level: OwnerTrustLevel::Ultimate,
-            not_usable: false,
+        recipients.push(ResolvedRecipient {
+            fingerprint,
+            cert,
+            requested_id: line.to_string(),
         });
     }
 
     Ok(recipients)
+}
+
+#[cfg(feature = "flatpak")]
+fn preferred_context_fingerprint_from_contents(
+    contents: &str,
+    key_ring: &HashMap<[u8; 20], Arc<Cert>>,
+) -> Result<String, String> {
+    resolved_recipients_from_contents(contents, key_ring)?
+        .into_iter()
+        .next()
+        .map(|recipient| recipient.fingerprint_hex())
+        .ok_or_else(|| "No recipients were found for this password entry.".to_string())
 }
 
 #[cfg(feature = "flatpak")]
@@ -728,6 +812,65 @@ fn collect_password_entry_files(store_root: &Path) -> Result<Vec<PathBuf>, Strin
     Ok(entries)
 }
 
+#[cfg(feature = "flatpak")]
+fn push_unique_fingerprint(fingerprints: &mut Vec<String>, candidate: String) {
+    if fingerprints
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(&candidate))
+    {
+        return;
+    }
+
+    fingerprints.push(candidate);
+}
+
+#[cfg(feature = "flatpak")]
+fn recipient_fingerprints_for_label(store_root: &str, label: &str) -> Result<Vec<String>, String> {
+    let recipients_file = recipients_file_for_label(store_root, label)?;
+    let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
+    let key_ring = load_stored_ripasso_key_ring()?;
+
+    Ok(resolved_recipients_from_contents(&contents, &key_ring)?
+        .into_iter()
+        .map(|recipient| recipient.fingerprint_hex())
+        .collect())
+}
+
+#[cfg(feature = "flatpak")]
+fn decryption_candidate_fingerprints_for_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    let mut candidates = Vec::new();
+
+    if let Ok(fingerprints) = recipient_fingerprints_for_label(store_root, label) {
+        for fingerprint in fingerprints {
+            push_unique_fingerprint(&mut candidates, fingerprint);
+        }
+    }
+
+    if let Some(fingerprint) = selected_ripasso_own_fingerprint()? {
+        push_unique_fingerprint(&mut candidates, fingerprint);
+    }
+
+    for fingerprint in imported_private_key_fingerprints()? {
+        push_unique_fingerprint(&mut candidates, fingerprint);
+    }
+
+    Ok(candidates)
+}
+
+#[cfg(feature = "flatpak")]
+pub fn preferred_ripasso_private_key_fingerprint_for_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<String, String> {
+    decryption_candidate_fingerprints_for_entry(store_root, label)?
+        .into_iter()
+        .next()
+        .ok_or_else(missing_private_key_error)
+}
+
 #[cfg(not(feature = "flatpak"))]
 pub(super) fn read_password_entry(store_root: &str, label: &str) -> Result<String, String> {
     let (store, entry) = load_store_entry(store_root, label)?;
@@ -736,11 +879,45 @@ pub(super) fn read_password_entry(store_root: &str, label: &str) -> Result<Strin
 
 #[cfg(feature = "flatpak")]
 pub(super) fn read_password_entry(store_root: &str, label: &str) -> Result<String, String> {
-    let fingerprint = resolved_ripasso_own_fingerprint()?;
-    ensure_ripasso_private_key_is_ready(&fingerprint)?;
-    let crypto = build_ripasso_crypto()?;
     let entry_path = entry_file_path(store_root, label)?;
-    decrypt_password_entry_with_crypto(&crypto, &entry_path)
+    let mut saw_locked_key = false;
+    let mut saw_incompatible_key = false;
+    let mut last_error = None;
+
+    for fingerprint in decryption_candidate_fingerprints_for_entry(store_root, label)? {
+        match ensure_ripasso_private_key_is_ready(&fingerprint) {
+            Ok(()) => {}
+            Err(err) if err.contains(LOCKED_PRIVATE_KEY_ERROR) => {
+                saw_locked_key = true;
+                continue;
+            }
+            Err(err) if err.contains(INCOMPATIBLE_PRIVATE_KEY_ERROR) => {
+                saw_incompatible_key = true;
+                last_error = Some(err);
+                continue;
+            }
+            Err(err) => {
+                last_error = Some(err);
+                continue;
+            }
+        }
+
+        match FlatpakCryptoContext::load_for_fingerprint(&fingerprint)
+            .and_then(|context| context.decrypt_entry(&entry_path))
+        {
+            Ok(secret) => return Ok(secret),
+            Err(err) => last_error = Some(err),
+        }
+    }
+
+    if saw_locked_key {
+        return Err(locked_private_key_error());
+    }
+    if saw_incompatible_key {
+        return Err(incompatible_private_key_error());
+    }
+
+    Err(last_error.unwrap_or_else(missing_private_key_error))
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -793,7 +970,7 @@ pub(super) fn save_password_entry(
         return Err("That password entry already exists.".to_string());
     }
 
-    let context = FlatpakCryptoContext::load_selected()?;
+    let context = FlatpakCryptoContext::load_for_label(store_root, label)?;
     let ciphertext = context.encrypt_contents_for_label(store_root, label, contents)?;
     if let Some(parent) = entry_path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
@@ -901,15 +1078,17 @@ pub(super) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
 ) -> Result<(), String> {
-    let fingerprint = resolved_ripasso_own_fingerprint()?;
     let store_dir = ensure_store_directory(store_root)?;
-    let context = FlatpakCryptoContext::load_selected()?;
+    let recipients_contents = format!("{}\n", recipients.join("\n"));
+    let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)?;
     let recipients_path = store_dir.join(".gpg-id");
 
     with_updated_recipients_file(&recipients_path, recipients, || {
         for entry_path in collect_password_entry_files(&store_dir)? {
-            let secret = decrypt_password_entry_with_any_available_key(&fingerprint, &entry_path)?;
             let label = label_from_entry_path(&store_dir, &entry_path)?;
+            let preferred =
+                preferred_ripasso_private_key_fingerprint_for_entry(store_root, &label)?;
+            let secret = decrypt_password_entry_with_any_available_key(&preferred, &entry_path)?;
             let ciphertext = context.encrypt_contents_for_label(store_root, &label, &secret)?;
             fs::write(&entry_path, ciphertext).map_err(|err| err.to_string())?;
         }
@@ -1068,25 +1247,7 @@ pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {
 
 #[cfg(feature = "flatpak")]
 pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
-    let settings = Preferences::new();
-    let configured = settings.ripasso_own_fingerprint();
-    let keys = list_ripasso_private_keys()?;
-
-    let resolved = configured
-        .as_deref()
-        .and_then(|fingerprint| {
-            keys.iter()
-                .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
-                .map(|key| key.fingerprint.clone())
-        })
-        .or_else(|| keys.first().map(|key| key.fingerprint.clone()))
-        .ok_or_else(missing_private_key_error)?;
-
-    if configured.as_deref() != Some(resolved.as_str()) {
-        let _ = settings.set_ripasso_own_fingerprint(Some(&resolved));
-    }
-
-    Ok(resolved)
+    selected_ripasso_own_fingerprint()?.ok_or_else(missing_private_key_error)
 }
 
 #[cfg(feature = "flatpak")]
@@ -1101,8 +1262,9 @@ mod tests {
         clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
         import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
         parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ripasso_keys_dir,
-        read_password_entry, recipients_file_for_label, ripasso_private_key_requires_passphrase,
-        save_password_entry, save_store_recipients, secret_entry_relative_path,
+        read_password_entry, recipients_file_for_label, resolved_ripasso_own_fingerprint,
+        ripasso_private_key_requires_passphrase, save_password_entry, save_store_recipients,
+        secret_entry_relative_path,
         unlock_ripasso_private_key_for_session,
     };
     use crate::preferences::Preferences;
@@ -1414,6 +1576,47 @@ mod tests {
             "supersecret\nusername: alice".to_string()
         );
         assert_eq!(imported.fingerprint.len(), 40);
+    }
+
+    #[test]
+    fn store_recipients_work_without_a_selected_default_key() {
+        let _guard = test_lock().lock().expect("test lock poisoned");
+        let home = TestHome::new();
+        let password: Password = "hunter2".into();
+        let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
+            .set_password(Some(password.clone()))
+            .generate()
+            .expect("failed to generate password-protected certificate");
+        let mut bytes = Vec::new();
+        cert.as_tsk()
+            .serialize(&mut bytes)
+            .expect("failed to serialize protected test certificate");
+        let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
+            .expect("expected private key import to succeed");
+
+        let store = home.path.join("secondary-store");
+        fs::create_dir_all(&store).expect("create store");
+        fs::write(store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
+            .expect("write recipients");
+
+        Preferences::new()
+            .set_ripasso_own_fingerprint(None)
+            .expect("clear selected fingerprint");
+        assert!(resolved_ripasso_own_fingerprint().is_err());
+
+        save_password_entry(
+            store.to_string_lossy().as_ref(),
+            "team/service",
+            "supersecret\nusername: alice",
+            true,
+        )
+        .expect("save entry with store recipients only");
+
+        assert_eq!(
+            read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+                .expect("read saved entry"),
+            "supersecret\nusername: alice".to_string()
+        );
     }
 
     #[test]

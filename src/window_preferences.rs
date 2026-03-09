@@ -202,7 +202,7 @@ pub(crate) fn register_install_locally_action(
     let action = SimpleAction::new("install-locally", None);
     action.connect_activate(move |_, _| {
         if !can_install_locally() {
-            overlay.add_toast(Toast::new("This app can't be installed here."));
+            overlay.add_toast(Toast::new("This app can't be added to the app menu here."));
             return;
         }
         let items = menu.n_items();
@@ -212,11 +212,10 @@ pub(crate) fn register_install_locally_action(
         let installed = is_installed_locally();
         let ok = !installed && install_locally().is_ok();
         let uninstalled = installed && uninstall_locally().is_ok();
-        let item = if ok || !uninstalled {
-            MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
-        } else {
-            MenuItem::new(Some("Install this App"), Some("win.install-locally"))
-        };
+        let item = MenuItem::new(
+            Some(local_menu_action_label(ok || !uninstalled)),
+            Some("win.install-locally"),
+        );
         menu.append_item(&item);
     });
     window.add_action(&action);

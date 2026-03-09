@@ -2,9 +2,10 @@ use crate::logging::log_error;
 use crate::pass_file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
 use adw::glib::{self, ControlFlow};
 use adw::prelude::*;
-use adw::{PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Align, Button, ProgressBar};
+use adw::{EntryRow, Toast, ToastOverlay};
+use adw::gtk::{Align, Button, DrawingArea};
 use std::cell::{Cell, RefCell};
+use std::f64::consts::{FRAC_PI_2, TAU};
 use std::rc::Rc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use totp_rs::TOTP;
@@ -12,31 +13,87 @@ use totp_rs::TOTP;
 const DEFAULT_OTP_PERIOD: u64 = 30;
 
 #[derive(Clone)]
+struct OtpCountdownCircle {
+    area: DrawingArea,
+    fraction: Rc<Cell<f64>>,
+}
+
+impl OtpCountdownCircle {
+    fn new() -> Self {
+        let area = DrawingArea::new();
+        area.set_content_width(16);
+        area.set_content_height(16);
+        area.set_valign(Align::Center);
+        area.set_visible(false);
+
+        let fraction = Rc::new(Cell::new(0.0_f64));
+        let fraction_for_draw = fraction.clone();
+        area.set_draw_func(move |_area, cr, width, height| {
+            let fraction: f64 = fraction_for_draw.get();
+            let fraction = fraction.clamp(0.0, 1.0);
+            let radius = (width.min(height) as f64 / 2.0) - 2.0;
+            let center_x = width as f64 / 2.0;
+            let center_y = height as f64 / 2.0;
+
+            cr.set_line_width(2.0);
+            cr.set_source_rgba(0.5, 0.5, 0.5, 0.18);
+            cr.arc(center_x, center_y, radius, 0.0, TAU);
+            let _ = cr.stroke();
+
+            cr.set_source_rgba(0.18, 0.55, 0.92, 1.0);
+            cr.arc(
+                center_x,
+                center_y,
+                radius,
+                -FRAC_PI_2,
+                -FRAC_PI_2 + (TAU * fraction),
+            );
+            let _ = cr.stroke();
+        });
+
+        Self { area, fraction }
+    }
+
+    fn widget(&self) -> &DrawingArea {
+        &self.area
+    }
+
+    fn set_visible(&self, visible: bool) {
+        self.area.set_visible(visible);
+    }
+
+    fn set_fraction(&self, fraction: f64) {
+        self.fraction.set(fraction.clamp(0.0, 1.0));
+        self.area.queue_draw();
+    }
+
+    fn set_tooltip_text(&self, tooltip: Option<&str>) {
+        self.area.set_tooltip_text(tooltip);
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct PasswordOtpState {
-    pub(crate) row: PasswordEntryRow,
+    pub(crate) row: EntryRow,
     overlay: ToastOverlay,
     template: Rc<RefCell<Option<OtpFieldTemplate>>>,
     url: Rc<RefCell<Option<String>>>,
     edit_mode: Rc<Cell<bool>>,
     refresh_generation: Rc<Cell<u64>>,
     toggle_button: Button,
-    progress: ProgressBar,
+    countdown: OtpCountdownCircle,
 }
 
 impl PasswordOtpState {
-    pub(crate) fn new(row: &PasswordEntryRow, overlay: &ToastOverlay) -> Self {
+    pub(crate) fn new(row: &EntryRow, overlay: &ToastOverlay) -> Self {
         let toggle_button = Button::from_icon_name("document-edit-symbolic");
         toggle_button.add_css_class("flat");
+        toggle_button.set_valign(Align::Center);
         toggle_button.set_tooltip_text(Some("Edit OTP secret"));
 
-        let progress = ProgressBar::new();
-        progress.set_valign(Align::Center);
-        progress.set_halign(Align::Center);
-        progress.set_show_text(false);
-        progress.set_width_request(54);
-        progress.set_visible(false);
+        let countdown = OtpCountdownCircle::new();
 
-        row.add_suffix(&progress);
+        row.add_suffix(countdown.widget());
         row.add_suffix(&toggle_button);
 
         let state = Self {
@@ -47,7 +104,7 @@ impl PasswordOtpState {
             edit_mode: Rc::new(Cell::new(false)),
             refresh_generation: Rc::new(Cell::new(0)),
             toggle_button,
-            progress,
+            countdown,
         };
         state.connect_toggle_button();
         state
@@ -67,9 +124,9 @@ impl PasswordOtpState {
             .set_icon_name("document-edit-symbolic");
         self.toggle_button
             .set_tooltip_text(Some("Edit OTP secret"));
-        self.progress.set_visible(false);
-        self.progress.set_fraction(0.0);
-        self.progress.set_tooltip_text(None);
+        self.countdown.set_visible(false);
+        self.countdown.set_fraction(0.0);
+        self.countdown.set_tooltip_text(None);
     }
 
     pub(crate) fn sync_from_parsed_lines(
@@ -172,7 +229,7 @@ impl PasswordOtpState {
         self.row.set_title("OTP secret");
         self.row.set_editable(true);
         self.row.set_text(&secret);
-        self.progress.set_visible(false);
+        self.countdown.set_visible(false);
         self.toggle_button
             .set_icon_name("object-select-symbolic");
         self.toggle_button.set_tooltip_text(Some("Show live code"));
@@ -190,22 +247,16 @@ impl PasswordOtpState {
             .set_icon_name("document-edit-symbolic");
         self.toggle_button
             .set_tooltip_text(Some("Edit OTP secret"));
-        self.progress.set_visible(true);
+        self.countdown.set_visible(true);
 
         match otp_display(&url) {
             Ok((code, remaining, period)) => {
-                self.row.set_text(&code);
-                self.progress
-                    .set_fraction(remaining as f64 / period as f64);
-                self.progress
-                    .set_tooltip_text(Some(&format!("{remaining}s remaining")));
+                self.set_live_code(&code, remaining, period);
                 self.start_live_refresh();
             }
             Err(err) => {
                 log_error(format!("Failed to render OTP code: {err}"));
-                self.row.set_text("");
-                self.progress.set_fraction(0.0);
-                self.progress.set_tooltip_text(None);
+                self.clear_live_code();
                 if show_errors {
                     self.overlay.add_toast(Toast::new("Couldn't load the code."));
                 }
@@ -230,24 +281,30 @@ impl PasswordOtpState {
 
             match otp_display(&url) {
                 Ok((code, remaining, period)) => {
-                    state.row.set_text(&code);
-                    state
-                        .progress
-                        .set_fraction(remaining as f64 / period as f64);
-                    state
-                        .progress
-                        .set_tooltip_text(Some(&format!("{remaining}s remaining")));
+                    state.set_live_code(&code, remaining, period);
                     ControlFlow::Continue
                 }
                 Err(err) => {
                     log_error(format!("Failed to refresh OTP code: {err}"));
-                    state.row.set_text("");
-                    state.progress.set_fraction(0.0);
-                    state.progress.set_tooltip_text(None);
+                    state.clear_live_code();
                     ControlFlow::Break
                 }
             }
         });
+    }
+
+    fn set_live_code(&self, code: &str, remaining: u64, period: u64) {
+        self.row.set_text(code);
+        self.countdown
+            .set_fraction(remaining as f64 / period as f64);
+        self.countdown
+            .set_tooltip_text(Some(&format!("{remaining}s remaining")));
+    }
+
+    fn clear_live_code(&self) {
+        self.row.set_text("");
+        self.countdown.set_fraction(0.0);
+        self.countdown.set_tooltip_text(None);
     }
 }
 

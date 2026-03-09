@@ -2,7 +2,7 @@ use crate::clipboard::add_copy_suffix;
 use crate::item::OpenPassFile;
 use crate::logging::log_error;
 use adw::{prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Box as GtkBox, Widget, gdk::Display};
+use adw::gtk::{Box as GtkBox, Text, Widget, gdk::Display};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -79,6 +79,12 @@ impl DynamicFieldRow {
         match self {
             Self::Plain(row) => row.clone().upcast(),
             Self::Secret(row) => row.clone().upcast(),
+        }
+    }
+
+    fn apply_sensitive_visibility(&self, visible: bool) {
+        if let Self::Secret(row) = self {
+            set_internal_text_visibility(row, visible);
         }
     }
 }
@@ -209,6 +215,37 @@ fn build_dynamic_field_row(
             add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);
         }
         DynamicFieldRow::Plain(row)
+    }
+}
+
+fn visit_widget_tree(widget: &Widget, visit: &impl Fn(&Widget)) {
+    visit(widget);
+
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        visit_widget_tree(&current, visit);
+        child = current.next_sibling();
+    }
+}
+
+fn set_internal_text_visibility(widget: &impl IsA<Widget>, visible: bool) {
+    visit_widget_tree(&widget.clone().upcast(), &|child| {
+        if let Ok(text) = child.clone().downcast::<Text>() {
+            text.set_visibility(visible);
+        }
+    });
+}
+
+pub(crate) fn apply_sensitive_field_visibility(
+    password_row: &PasswordEntryRow,
+    otp_row: &EntryRow,
+    rows: &[DynamicFieldRow],
+    visible: bool,
+) {
+    set_internal_text_visibility(password_row, visible);
+    set_internal_text_visibility(otp_row, visible);
+    for row in rows {
+        row.apply_sensitive_visibility(visible);
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::password_list::load_passwords_async;
 use crate::password_page::{
-    retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
+    retry_open_password_entry_if_needed, set_password_page_hidden_fields_visible,
+    show_password_list_page, PasswordPageState,
 };
 use crate::store_management::StoreRecipientsPageState;
 #[cfg(not(feature = "flatpak"))]
@@ -9,7 +10,7 @@ use crate::window_navigation::{restore_window_for_current_page, WindowNavigation
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
-use adw::gtk::{ListBox, Popover, SearchEntry};
+use adw::gtk::{ListBox, SearchEntry};
 use adw::ToastOverlay;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -29,23 +30,8 @@ pub(crate) struct HiddenEntriesActionState {
     pub(crate) overlay: ToastOverlay,
     pub(crate) list: ListBox,
     pub(crate) navigation: WindowNavigationState,
+    pub(crate) password_page: PasswordPageState,
     pub(crate) show_hidden: Rc<Cell<bool>>,
-}
-
-pub(crate) fn register_open_new_password_action(
-    window: &adw::ApplicationWindow,
-    popover: &Popover,
-) {
-    let popover = popover.clone();
-    let action = SimpleAction::new("open-new-password", None);
-    action.connect_activate(move |_, _| {
-        if popover.is_visible() {
-            popover.popdown();
-        } else {
-            popover.popup();
-        }
-    });
-    window.add_action(&action);
 }
 
 pub(crate) fn register_toggle_find_action(
@@ -107,6 +93,20 @@ pub(crate) fn register_toggle_hidden_action(
     let state = state.clone();
     let action = SimpleAction::new("toggle-hidden", None);
     action.connect_activate(move |_, _| {
+        let visible_page = state.navigation.nav.visible_page();
+        let showing_password_page = visible_page
+            .as_ref()
+            .is_some_and(|page| page == &state.password_page.page);
+        let showing_raw_page = visible_page
+            .as_ref()
+            .is_some_and(|page| page == &state.password_page.raw_page);
+
+        if showing_password_page || showing_raw_page {
+            let show_hidden_fields = !state.password_page.show_hidden_fields.get();
+            set_password_page_hidden_fields_visible(&state.password_page, show_hidden_fields);
+            return;
+        }
+
         let show_hidden = !state.show_hidden.get();
         state.show_hidden.set(show_hidden);
         let show_list_actions = state.navigation.nav.navigation_stack().n_items() <= 1;

@@ -9,6 +9,7 @@ mod clipboard;
 mod item;
 mod logging;
 mod methods;
+mod new_password_popover;
 mod pass_file;
 mod password_list;
 mod password_otp;

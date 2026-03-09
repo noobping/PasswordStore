@@ -5,11 +5,13 @@ use crate::clipboard::connect_copy_button;
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
-#[cfg(not(feature = "flatpak"))]
 use adw::ComboRow;
 
 use crate::item::OpenPassFile;
 use crate::methods::non_null_to_string_option;
+use crate::new_password_popover::{
+    register_open_new_password_action, selected_new_password_store, NewPasswordPopoverState,
+};
 use crate::pass_file::{DynamicFieldRow, StructuredPassLine};
 use crate::password_list::{load_passwords_async, setup_search_filter};
 use crate::password_otp::PasswordOtpState;
@@ -27,8 +29,8 @@ use crate::store_management::{
 };
 use crate::window_controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
-    register_open_new_password_action, register_toggle_find_action,
-    register_toggle_hidden_action, BackActionState, HiddenEntriesActionState,
+    register_toggle_find_action, register_toggle_hidden_action, BackActionState,
+    HiddenEntriesActionState,
 };
 #[cfg(not(feature = "flatpak"))]
 use crate::window_logs::{register_open_log_action, start_log_poller};
@@ -80,11 +82,10 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get primary menu");
     #[cfg(feature = "setup")]
     if can_install_locally() {
-        let item = if is_installed_locally() {
-            MenuItem::new(Some("Uninstall this App"), Some("win.install-locally"))
-        } else {
-            MenuItem::new(Some("Install this App"), Some("win.install-locally"))
-        };
+        let item = MenuItem::new(
+            Some(local_menu_action_label(is_installed_locally())),
+            Some("win.install-locally"),
+        );
         primary_menu.append_item(&item);
     }
     #[cfg(feature = "flatpak")]
@@ -132,6 +133,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let add_button_popover: Popover = builder
         .object("add_button_popover")
         .expect("Failed to get add_button_popover");
+    let new_password_store_row: ComboRow = builder
+        .object("new_password_store_row")
+        .expect("Failed to get new_password_store_row");
     let path_entry: EntryRow = builder
         .object("path_entry")
         .expect("Failed to get path_entry");
@@ -233,7 +237,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let username_entry: EntryRow = builder
         .object("username_entry")
         .expect("Failed to get username_entry");
-    let otp_entry: PasswordEntryRow = builder
+    let otp_entry: EntryRow = builder
         .object("otp_entry")
         .expect("Failed to get otp_entry");
     let copy_password_button: Button = builder
@@ -263,7 +267,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let store_recipients_entry = EntryRow::new();
     store_recipients_entry.set_title("Add recipient");
     store_recipients_entry.set_show_apply_button(true);
+    let new_password_popover_state = NewPasswordPopoverState {
+        popover: add_button_popover.clone(),
+        path_entry: path_entry.clone(),
+        store_row: new_password_store_row.clone(),
+    };
     let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
+    let show_hidden_fields = Rc::new(Cell::new(false));
     let password_list_state = PasswordPageState {
         nav: navigation_view.clone(),
         page: text_page.clone(),
@@ -285,6 +295,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         dynamic_rows: dynamic_field_rows.clone(),
         text: text_view.clone(),
         overlay: toast_overlay.clone(),
+        show_hidden_fields: show_hidden_fields.clone(),
     };
     let store_recipients_request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let store_recipients_values = Rc::new(RefCell::new(Vec::<String>::new()));
@@ -374,6 +385,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         overlay: toast_overlay.clone(),
         list: list.clone(),
         navigation: window_navigation_state.clone(),
+        password_page: password_list_state.clone(),
         show_hidden: show_hidden_files.clone(),
     };
 
@@ -443,8 +455,15 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         let popover_add = add_button_popover.clone();
         let popover_git = git_popover.clone();
         let page_state = password_list_state.clone();
+        let store_row = new_password_store_row.clone();
         path_entry.connect_apply(move |row| {
-            begin_new_password_entry(&page_state, &row.text(), &popover_add, &popover_git);
+            begin_new_password_entry(
+                &page_state,
+                &row.text(),
+                selected_new_password_store(&store_row),
+                &popover_add,
+                &popover_git,
+            );
         });
     }
 
@@ -491,7 +510,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     }
 
     {
-        register_open_new_password_action(&window, &add_button_popover);
+        register_open_new_password_action(&window, &new_password_popover_state);
     }
 
     #[cfg(not(feature = "flatpak"))]

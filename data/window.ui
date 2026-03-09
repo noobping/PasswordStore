@@ -32,9 +32,20 @@
                     <property name="position">bottom</property>
                     <property name="autohide">false</property>
                     <child>
-                      <object class="AdwEntryRow" id="path_entry">
-                        <property name="title" translatable="yes">Path or name</property>
-                        <property name="show-apply-button">True</property>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="AdwComboRow" id="new_password_store_row">
+                            <property name="visible">false</property>
+                            <property name="title" translatable="yes">Store</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwEntryRow" id="path_entry">
+                            <property name="title" translatable="yes">Path or name</property>
+                            <property name="show-apply-button">True</property>
+                          </object>
+                        </child>
                       </object>
                     </child>
                   </object>
@@ -205,7 +216,7 @@
                             </child>
 
                             <child>
-                              <object class="AdwPasswordEntryRow" id="otp_entry">
+                              <object class="AdwEntryRow" id="otp_entry">
                                 <property name="title" translatable="yes">OTP</property>
                                 <property name="visible">false</property>
                                 <property name="editable">false</property>

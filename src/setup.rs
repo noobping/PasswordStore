@@ -6,6 +6,14 @@ use std::{env, fs};
 
 use crate::config::{APP_ID, RESOURCE_ID};
 
+pub fn local_menu_action_label(installed: bool) -> &'static str {
+    if installed {
+        "Remove from app menu"
+    } else {
+        "Add to app menu"
+    }
+}
+
 pub fn can_install_locally() -> bool {
     let Some(bin) = dirs_next::executable_dir() else {
         return false;

@@ -1,7 +1,9 @@
 use crate::password::file::sync_username_row;
 use crate::password::opened::get_opened_pass_file;
+use crate::password::page::PasswordPageState;
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
+use crate::window::preferences::PreferencesActionState;
 use adw::gtk::Button;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, NavigationView, WindowTitle};
@@ -57,6 +59,36 @@ pub(crate) fn window_chrome<'a>(
     }
 }
 
+pub(crate) trait HasWindowChrome {
+    fn window_chrome(&self) -> WindowChrome<'_>;
+}
+
+macro_rules! impl_has_window_chrome {
+    ($($state:ty),+ $(,)?) => {
+        $(
+            impl HasWindowChrome for $state {
+                fn window_chrome(&self) -> WindowChrome<'_> {
+                    window_chrome(
+                        &self.back,
+                        &self.add,
+                        &self.find,
+                        &self.git,
+                        &self.save,
+                        &self.win,
+                    )
+                }
+            }
+        )+
+    };
+}
+
+impl_has_window_chrome!(
+    WindowNavigationState,
+    PasswordPageState,
+    StoreRecipientsPageState,
+    PreferencesActionState,
+);
+
 pub(crate) fn set_save_button_for_password(save: &Button) {
     save.set_action_name(Some("win.save-password"));
     save.set_tooltip_text(Some("Save changes"));
@@ -93,14 +125,7 @@ pub(crate) fn restore_window_for_current_page(
     state: &WindowNavigationState,
     recipients_page: &StoreRecipientsPageState,
 ) -> bool {
-    let chrome = window_chrome(
-        &state.back,
-        &state.add,
-        &state.find,
-        &state.git,
-        &state.save,
-        &state.win,
-    );
+    let chrome = state.window_chrome();
     if navigation_stack_is_root(&state.nav) {
         show_primary_page_chrome(&chrome);
         return true;

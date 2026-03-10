@@ -1,5 +1,5 @@
 use super::{
-    restore_window_for_current_page, show_secondary_page_chrome, window_chrome,
+    restore_window_for_current_page, show_secondary_page_chrome, HasWindowChrome,
     WindowNavigationState,
 };
 use crate::store::management::StoreRecipientsPageState;
@@ -9,14 +9,7 @@ use crate::support::ui::{
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
 pub(crate) fn show_log_page(state: &WindowNavigationState) {
-    let chrome = window_chrome(
-        &state.back,
-        &state.add,
-        &state.find,
-        &state.git,
-        &state.save,
-        &state.win,
-    );
+    let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Logs", "Details", false);
 
     push_navigation_page_if_needed(&state.nav, &state.log_page);
@@ -29,14 +22,7 @@ pub(crate) fn show_git_busy_page(
     title: &str,
     description: Option<&str>,
 ) {
-    let chrome = window_chrome(
-        &state.back,
-        &state.add,
-        &state.find,
-        &state.git,
-        &state.save,
-        &state.win,
-    );
+    let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Working", title, false);
     status.set_title(title);
     status.set_description(description);

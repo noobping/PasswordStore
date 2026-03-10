@@ -2,7 +2,7 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::ui::push_navigation_page_if_needed;
-use crate::window::navigation::{show_secondary_page_chrome, window_chrome, APP_WINDOW_TITLE};
+use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::SimpleAction;
 use adw::gtk::{Button, ListBox, TextView};
 use adw::prelude::*;
@@ -81,14 +81,7 @@ pub(crate) fn register_open_preferences_action(
     let state = state.clone();
     let action = SimpleAction::new("open-preferences", None);
     action.connect_activate(move |_, _| {
-        let chrome = window_chrome(
-            &state.back,
-            &state.add,
-            &state.find,
-            &state.git,
-            &state.save,
-            &state.win,
-        );
+        let chrome = state.window_chrome();
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
 
         push_navigation_page_if_needed(&state.nav, &state.page);

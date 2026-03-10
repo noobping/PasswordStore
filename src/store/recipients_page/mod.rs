@@ -1,7 +1,7 @@
 use super::recipients::read_store_gpg_recipients;
 use crate::support::ui::reveal_navigation_page;
 use crate::window::navigation::{
-    set_save_button_for_password, show_secondary_page_chrome, window_chrome, APP_WINDOW_TITLE,
+    set_save_button_for_password, show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE,
 };
 use adw::gtk::{Button, ListBox};
 use adw::prelude::*;
@@ -128,14 +128,7 @@ pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState
         return;
     };
 
-    let chrome = window_chrome(
-        &state.back,
-        &state.add,
-        &state.find,
-        &state.git,
-        &state.save,
-        &state.win,
-    );
+    let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, request.mode.page_title(), &request.store, false);
     state.page.set_title(request.mode.page_title());
 }

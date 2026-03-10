@@ -174,3 +174,22 @@ pub(crate) fn save_store_recipients(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{save_password_entry, save_store_recipients};
+    use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
+
+    #[test]
+    fn integrated_standard_backend_encrypts_entries_for_all_store_recipients() {
+        assert_entry_is_encrypted_for_each_recipient(
+            |store_root, recipients| {
+                save_store_recipients(store_root, recipients).map_err(|err| err.to_string())
+            },
+            |store_root, label, contents| {
+                save_password_entry(store_root, label, contents, true)
+                    .map_err(|err| err.to_string())
+            },
+        );
+    }
+}

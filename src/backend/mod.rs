@@ -2,6 +2,8 @@ mod errors;
 #[cfg(not(feature = "flatpak"))]
 mod host;
 mod integrated;
+#[cfg(all(test, not(feature = "flatpak")))]
+mod test_support;
 
 pub(crate) use self::errors::PasswordEntryError;
 #[cfg(feature = "flatpak")]

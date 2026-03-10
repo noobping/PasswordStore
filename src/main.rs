@@ -8,10 +8,8 @@ mod clipboard;
 mod logging;
 mod password;
 #[cfg(feature = "flatpak")]
-mod private_key_dialog;
+mod private_key;
 mod preferences;
-#[cfg(feature = "flatpak")]
-mod ripasso_unlock;
 mod store;
 mod support;
 mod window;

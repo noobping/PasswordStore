@@ -11,7 +11,7 @@ use self::flatpak as imp;
 use self::standard as imp;
 
 #[cfg(feature = "flatpak")]
-pub use self::imp::{
+pub(crate) use self::imp::{
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,

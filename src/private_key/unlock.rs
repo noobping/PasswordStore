@@ -3,7 +3,7 @@ use crate::backend::{
 };
 use crate::support::background::spawn_result_task;
 use crate::logging::log_error;
-use crate::private_key_dialog::{
+use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,
 };
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};

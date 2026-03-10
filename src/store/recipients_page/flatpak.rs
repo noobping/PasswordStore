@@ -7,10 +7,10 @@ use crate::backend::{
 use crate::support::background::spawn_result_task;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-use crate::private_key_dialog::{
+use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,
 };
-use crate::ripasso_unlock::prompt_private_key_unlock_for_action;
+use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::ui::clear_list_box;
 use adw::gio;
 use adw::prelude::*;

@@ -3,7 +3,7 @@ mod integrated;
 mod host;
 
 #[cfg(feature = "flatpak")]
-pub use integrated::{
+pub(crate) use integrated::{
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,

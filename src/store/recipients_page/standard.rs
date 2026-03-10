@@ -1,4 +1,4 @@
-use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
+use super::{queue_store_recipients_autosave, StoreRecipientsPageState, StoreRecipientsRequest};
 use crate::store::recipients::append_gpg_recipients;
 use crate::support::ui::{append_info_row, clear_list_box, dim_label_icon, flat_icon_button};
 use adw::prelude::*;
@@ -7,6 +7,12 @@ use adw::{ActionRow, EntryRow};
 #[derive(Clone)]
 pub(crate) struct StoreRecipientsPlatformState {
     pub(crate) entry: EntryRow,
+}
+
+fn empty_recipients_subtitle(request: Option<&StoreRecipientsRequest>) -> &'static str {
+    request.map_or("Add at least one recipient before saving.", |request| {
+        request.mode.empty_state_subtitle()
+    })
 }
 
 pub(crate) fn connect_store_recipients_entry(state: &StoreRecipientsPageState) {
@@ -28,12 +34,7 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         append_info_row(
             &state.list,
             "No recipients yet",
-            state
-                .current_request()
-                .as_ref()
-                .map_or("Add at least one recipient before saving.", |request| {
-                    request.mode.empty_state_subtitle()
-                }),
+            empty_recipients_subtitle(state.current_request().as_ref()),
         );
         return;
     }
@@ -62,4 +63,30 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
 pub(crate) fn prepare_store_recipients_page(state: &StoreRecipientsPageState) {
     state.platform.entry.set_text("");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::empty_recipients_subtitle;
+    use crate::store::recipients_page::StoreRecipientsRequest;
+
+    #[test]
+    fn empty_recipients_subtitle_uses_the_generic_message_without_a_request() {
+        assert_eq!(
+            empty_recipients_subtitle(None),
+            "Add at least one recipient before saving."
+        );
+    }
+
+    #[test]
+    fn empty_recipients_subtitle_matches_the_store_mode() {
+        assert_eq!(
+            empty_recipients_subtitle(Some(&StoreRecipientsRequest::create("/tmp/store"))),
+            "Add at least one recipient to create this store."
+        );
+        assert_eq!(
+            empty_recipients_subtitle(Some(&StoreRecipientsRequest::edit("/tmp/store"))),
+            "Add at least one recipient to keep saving changes."
+        );
+    }
 }

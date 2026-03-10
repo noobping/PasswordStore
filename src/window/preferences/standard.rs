@@ -3,6 +3,10 @@ use crate::preferences::{BackendKind, Preferences};
 use adw::prelude::*;
 use adw::{ComboRow, EntryRow, Toast, ToastOverlay};
 
+fn backend_pass_row_visible(backend: BackendKind) -> bool {
+    backend.uses_host_command()
+}
+
 fn sync_backend_preferences_rows(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
@@ -12,7 +16,7 @@ fn sync_backend_preferences_rows(
     if backend_row.selected() != backend.combo_position() {
         backend_row.set_selected(backend.combo_position());
     }
-    pass_row.set_visible(backend.uses_host_command());
+    pass_row.set_visible(backend_pass_row_visible(backend));
 }
 
 pub(crate) fn initialize_backend_row(
@@ -61,18 +65,18 @@ pub(crate) fn connect_backend_row(
         let selected_backend = BackendKind::from_combo_position(row.selected());
         let current_backend = preferences.backend_kind();
         if selected_backend == current_backend {
-            pass_row.set_visible(selected_backend.uses_host_command());
+            pass_row.set_visible(backend_pass_row_visible(selected_backend));
             return;
         }
 
         if let Err(err) = preferences.set_backend_kind(selected_backend) {
-            pass_row.set_visible(current_backend.uses_host_command());
+            pass_row.set_visible(backend_pass_row_visible(current_backend));
             row.set_selected(current_backend.combo_position());
             toast_preferences_save_error(&overlay, "backend", &err);
             return;
         }
 
-        pass_row.set_visible(selected_backend.uses_host_command());
+        pass_row.set_visible(backend_pass_row_visible(selected_backend));
     });
 }
 
@@ -82,4 +86,20 @@ pub(super) fn refresh_open_preferences_state(
 ) {
     state.pass_row.set_text(&settings.command_value());
     sync_backend_preferences_rows(&state.backend_row, &state.pass_row, settings);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::backend_pass_row_visible;
+    use crate::preferences::BackendKind;
+
+    #[test]
+    fn host_command_backend_shows_the_pass_command_row() {
+        assert!(backend_pass_row_visible(BackendKind::HostCommand));
+    }
+
+    #[test]
+    fn integrated_backend_hides_the_pass_command_row() {
+        assert!(!backend_pass_row_visible(BackendKind::Integrated));
+    }
 }

@@ -15,6 +15,33 @@ use adw::ToastOverlay;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ListActionVisibility {
+    find_visible: bool,
+    git_visible: bool,
+    save_visible: bool,
+}
+
+fn list_action_visibility(
+    show_list_actions: bool,
+    has_store_dirs: bool,
+    empty: bool,
+) -> ListActionVisibility {
+    if !show_list_actions {
+        return ListActionVisibility {
+            find_visible: false,
+            git_visible: false,
+            save_visible: false,
+        };
+    }
+
+    ListActionVisibility {
+        find_visible: !empty,
+        git_visible: should_show_restore_button(show_list_actions, has_store_dirs, empty),
+        save_visible: false,
+    }
+}
+
 pub(crate) fn load_passwords_async(
     list: &ListBox,
     git: &Button,
@@ -113,23 +140,74 @@ fn update_list_actions(
     has_store_dirs: bool,
     empty: bool,
 ) {
-    save.set_visible(false);
-    if !show_list_actions {
-        find.set_visible(false);
-        git.set_visible(false);
-        return;
-    }
-
-    find.set_visible(!empty);
-    git.set_visible(should_show_restore_button(
-        show_list_actions,
-        has_store_dirs,
-        empty,
-    ));
+    let visibility = list_action_visibility(show_list_actions, has_store_dirs, empty);
+    save.set_visible(visibility.save_visible);
+    find.set_visible(visibility.find_visible);
+    git.set_visible(visibility.git_visible);
 }
 
 fn prune_missing_store_dirs(settings: &Preferences) {
     if let Err(err) = settings.prune_missing_stores() {
         log_error(format!("Failed to remove missing password stores: {err}"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{list_action_visibility, ListActionVisibility};
+
+    #[test]
+    fn list_actions_hide_everything_when_list_actions_are_disabled() {
+        assert_eq!(
+            list_action_visibility(false, true, false),
+            ListActionVisibility {
+                find_visible: false,
+                git_visible: false,
+                save_visible: false,
+            }
+        );
+    }
+
+    #[test]
+    fn list_actions_show_find_only_when_items_exist() {
+        assert_eq!(
+            list_action_visibility(true, true, false),
+            ListActionVisibility {
+                find_visible: true,
+                git_visible: false,
+                save_visible: false,
+            }
+        );
+        assert_eq!(
+            list_action_visibility(true, true, true),
+            ListActionVisibility {
+                find_visible: false,
+                git_visible: false,
+                save_visible: false,
+            }
+        );
+    }
+
+    #[test]
+    fn list_actions_show_restore_only_for_empty_missing_store_setup() {
+        #[cfg(not(feature = "flatpak"))]
+        assert_eq!(
+            list_action_visibility(true, false, true),
+            ListActionVisibility {
+                find_visible: false,
+                git_visible: true,
+                save_visible: false,
+            }
+        );
+
+        #[cfg(feature = "flatpak")]
+        assert_eq!(
+            list_action_visibility(true, false, true),
+            ListActionVisibility {
+                find_visible: false,
+                git_visible: false,
+                save_visible: false,
+            }
+        );
     }
 }

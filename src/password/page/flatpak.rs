@@ -7,12 +7,31 @@ use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::actions::activate_widget_action;
 use std::rc::Rc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenPasswordErrorAction {
+    PromptUnlock,
+    OpenPreferences,
+    None,
+}
+
+fn open_password_error_action(error: &PasswordEntryError) -> OpenPasswordErrorAction {
+    if matches!(error, PasswordEntryError::LockedPrivateKey(_)) {
+        return OpenPasswordErrorAction::PromptUnlock;
+    }
+
+    if matches!(error, PasswordEntryError::MissingPrivateKey(_)) {
+        return OpenPasswordErrorAction::OpenPreferences;
+    }
+
+    OpenPasswordErrorAction::None
+}
+
 pub(super) fn handle_open_password_entry_error(
     state: &PasswordPageState,
     pass_file: &OpenPassFile,
     error: &PasswordEntryError,
 ) -> bool {
-    if matches!(error, PasswordEntryError::LockedPrivateKey(_)) {
+    if open_password_error_action(error) == OpenPasswordErrorAction::PromptUnlock {
         show_password_status_message(state, "Unlock key", "Enter your key password to continue.");
         match preferred_ripasso_private_key_fingerprint_for_entry(
             pass_file.store_path(),
@@ -38,9 +57,41 @@ pub(super) fn handle_open_password_entry_error(
         }
     }
 
-    if matches!(error, PasswordEntryError::MissingPrivateKey(_)) {
+    if open_password_error_action(error) == OpenPasswordErrorAction::OpenPreferences {
         activate_widget_action(&state.nav, "win.open-preferences");
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{open_password_error_action, OpenPasswordErrorAction};
+    use crate::backend::PasswordEntryError;
+
+    #[test]
+    fn open_password_error_action_matches_supported_private_key_flows() {
+        assert_eq!(
+            open_password_error_action(&PasswordEntryError::locked_private_key("locked")),
+            OpenPasswordErrorAction::PromptUnlock
+        );
+        assert_eq!(
+            open_password_error_action(&PasswordEntryError::missing_private_key("missing")),
+            OpenPasswordErrorAction::OpenPreferences
+        );
+    }
+
+    #[test]
+    fn open_password_error_action_ignores_other_failures() {
+        assert_eq!(
+            open_password_error_action(&PasswordEntryError::incompatible_private_key(
+                "incompatible"
+            )),
+            OpenPasswordErrorAction::None
+        );
+        assert_eq!(
+            open_password_error_action(&PasswordEntryError::other("other")),
+            OpenPasswordErrorAction::None
+        );
+    }
 }

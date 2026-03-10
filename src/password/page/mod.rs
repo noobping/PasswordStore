@@ -55,6 +55,15 @@ fn show_password_open_failure(state: &PasswordPageState, error: Option<&Password
         .add_toast(Toast::new(password_open_failure_message(error)));
 }
 
+fn should_retry_open_password_entry(
+    page_visible: bool,
+    status_visible: bool,
+    entry_visible: bool,
+    has_opened_pass_file: bool,
+) -> bool {
+    page_visible && status_visible && !entry_visible && has_opened_pass_file
+}
+
 pub(crate) fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
@@ -234,16 +243,89 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
 }
 
 pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
-    if !visible_navigation_page_is(&state.nav, &state.page)
-        || !state.status.is_visible()
-        || state.entry.is_visible()
-    {
+    let has_opened_pass_file = get_opened_pass_file().is_some();
+    if !should_retry_open_password_entry(
+        visible_navigation_page_is(&state.nav, &state.page),
+        state.status.is_visible(),
+        state.entry.is_visible(),
+        has_opened_pass_file,
+    ) {
         return false;
     }
 
-    let Some(pass_file) = get_opened_pass_file() else {
-        return false;
-    };
+    let pass_file =
+        get_opened_pass_file().expect("opened pass file should exist when retry is needed");
     open_password_entry_page(state, pass_file, false);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        password_open_failure_message, password_save_failure_message,
+        should_retry_open_password_entry,
+    };
+    use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+
+    #[test]
+    fn retry_open_requires_a_hidden_editor_on_the_password_page_with_an_open_item() {
+        assert!(should_retry_open_password_entry(true, true, false, true));
+        assert!(!should_retry_open_password_entry(false, true, false, true));
+        assert!(!should_retry_open_password_entry(true, false, false, true));
+        assert!(!should_retry_open_password_entry(true, true, true, true));
+        assert!(!should_retry_open_password_entry(true, true, false, false));
+    }
+
+    #[test]
+    fn password_open_failure_message_falls_back_without_a_specific_error() {
+        assert_eq!(
+            password_open_failure_message(None),
+            "Couldn't open the item."
+        );
+        assert_eq!(
+            password_open_failure_message(Some(&PasswordEntryError::other("boom"))),
+            "Couldn't open the item."
+        );
+    }
+
+    #[test]
+    fn password_open_failure_message_uses_specific_private_key_toasts_when_available() {
+        #[cfg(feature = "flatpak")]
+        {
+            assert_eq!(
+                password_open_failure_message(Some(&PasswordEntryError::missing_private_key(
+                    "missing"
+                ))),
+                "Add a private key in Preferences."
+            );
+            assert_eq!(
+                password_open_failure_message(Some(&PasswordEntryError::incompatible_private_key(
+                    "incompatible"
+                ))),
+                "This key can't open your items."
+            );
+        }
+
+        #[cfg(not(feature = "flatpak"))]
+        {
+            assert_eq!(
+                password_open_failure_message(Some(&PasswordEntryError::other("missing"))),
+                "Couldn't open the item."
+            );
+        }
+    }
+
+    #[test]
+    fn password_save_failure_message_uses_typed_write_error_mapping() {
+        assert_eq!(
+            password_save_failure_message(&PasswordEntryWriteError::already_exists("duplicate")),
+            "An item with that name already exists."
+        );
+        assert_eq!(
+            password_save_failure_message(&PasswordEntryWriteError::LockedPrivateKey(
+                "locked".to_string(),
+            )),
+            "Unlock the key in Preferences."
+        );
+    }
 }

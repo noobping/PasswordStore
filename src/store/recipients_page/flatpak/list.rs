@@ -55,7 +55,14 @@ fn set_private_key_recipient_enabled(
     key: &ManagedRipassoPrivateKey,
     enabled: bool,
 ) -> bool {
-    let mut recipients = state.recipients.borrow_mut();
+    set_private_key_recipient_values(&mut state.recipients.borrow_mut(), key, enabled)
+}
+
+fn set_private_key_recipient_values(
+    recipients: &mut Vec<String>,
+    key: &ManagedRipassoPrivateKey,
+    enabled: bool,
+) -> bool {
     let before = recipients.clone();
     recipients.retain(|value| !recipient_matches_private_key(value, key));
     if enabled {
@@ -184,7 +191,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
 #[cfg(test)]
 mod tests {
-    use super::recipient_matches_private_key;
+    use super::{recipient_matches_private_key, set_private_key_recipient_values};
     use crate::backend::ManagedRipassoPrivateKey;
 
     #[test]
@@ -200,5 +207,53 @@ mod tests {
             &key
         ));
         assert!(!recipient_matches_private_key("other@example.com", &key));
+    }
+
+    #[test]
+    fn enabling_a_private_key_replaces_matching_user_ids_with_the_fingerprint() {
+        let mut recipients = vec![
+            "pass@store.local".to_string(),
+            "other@example.com".to_string(),
+        ];
+        let key = ManagedRipassoPrivateKey {
+            fingerprint: "10F4487A3768155709168A8E3D00743E10EA9232".to_string(),
+            user_ids: vec!["pass@store.local".to_string()],
+        };
+
+        assert!(set_private_key_recipient_values(
+            &mut recipients,
+            &key,
+            true
+        ));
+        assert_eq!(
+            recipients,
+            vec![
+                "other@example.com".to_string(),
+                "10F4487A3768155709168A8E3D00743E10EA9232".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn disabling_a_private_key_removes_all_matching_recipients() {
+        let mut recipients = vec![
+            "pass@store.local",
+            "10F4487A3768155709168A8E3D00743E10EA9232",
+            "other@example.com",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+        let key = ManagedRipassoPrivateKey {
+            fingerprint: "10F4487A3768155709168A8E3D00743E10EA9232".to_string(),
+            user_ids: vec!["pass@store.local".to_string()],
+        };
+
+        assert!(set_private_key_recipient_values(
+            &mut recipients,
+            &key,
+            false
+        ));
+        assert_eq!(recipients, vec!["other@example.com".to_string()]);
     }
 }

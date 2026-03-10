@@ -231,4 +231,12 @@ mod tests {
             ContextSaveTarget::None
         );
     }
+
+    #[test]
+    fn context_save_is_disabled_on_other_secondary_pages() {
+        assert_eq!(
+            context_save_target_from_flags(false, false, false, false),
+            ContextSaveTarget::None
+        );
+    }
 }

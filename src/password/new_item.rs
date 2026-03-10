@@ -3,7 +3,7 @@ use crate::support::actions::register_window_action;
 use crate::support::ui::toggle_popover;
 use adw::gtk::{DropDown, Popover, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::{ActionRow, ApplicationWindow};
+use adw::ApplicationWindow;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -11,7 +11,6 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub(crate) struct NewPasswordPopoverState {
     pub(crate) popover: Popover,
-    pub(crate) store_row: ActionRow,
     pub(crate) store_dropdown: DropDown,
     pub(crate) store_roots: Rc<RefCell<Vec<String>>>,
 }
@@ -83,7 +82,7 @@ pub(crate) fn sync_new_password_store_selector(state: &NewPasswordPopoverState) 
     let labels = shortened_store_labels(&stores);
     let selected = selected_new_password_store(state);
     *state.store_roots.borrow_mut() = stores.clone();
-    state.store_row.set_visible(stores.len() > 1);
+    state.store_dropdown.set_visible(stores.len() > 1);
 
     let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
     state

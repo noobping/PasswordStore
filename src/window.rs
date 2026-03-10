@@ -24,6 +24,7 @@ use crate::store_management::{
 use crate::window_controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
     register_toggle_find_action, register_toggle_hidden_action, BackActionState,
+    DesktopBackActionState,
     HiddenEntriesActionState,
 };
 #[cfg(not(feature = "flatpak"))]
@@ -305,7 +306,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         navigation: window_navigation_state.clone(),
         show_hidden: show_hidden_files.clone(),
         #[cfg(not(feature = "flatpak"))]
-        git_actions: git_action_state.clone(),
+        desktop: DesktopBackActionState {
+            git_actions: git_action_state.clone(),
+        },
+        #[cfg(feature = "flatpak")]
+        desktop: DesktopBackActionState,
     };
     let hidden_entries_action_state = HiddenEntriesActionState {
         overlay: toast_overlay.clone(),

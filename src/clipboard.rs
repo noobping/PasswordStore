@@ -1,24 +1,17 @@
 use crate::background::spawn_result_task;
-#[cfg(feature = "flatpak")]
-use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
 use crate::item::PassEntry;
 use crate::logging::log_error;
-#[cfg(not(feature = "flatpak"))]
-use crate::logging::{run_command_status, CommandLogOptions};
 use crate::backend::read_password_line;
-#[cfg(not(feature = "flatpak"))]
-use crate::preferences::Preferences;
-#[cfg(feature = "flatpak")]
-use crate::ripasso_unlock::{
-    is_locked_private_key_error, prompt_private_key_unlock_for_action,
-};
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use adw::gtk::{Button, Widget, gdk::Display};
-#[cfg(feature = "flatpak")]
-use std::rc::Rc;
-#[cfg(not(feature = "flatpak"))]
-use std::thread;
 use std::time::Duration;
+
+#[cfg(feature = "flatpak")]
+#[path = "clipboard_flatpak.rs"]
+mod platform;
+#[cfg(not(feature = "flatpak"))]
+#[path = "clipboard_desktop.rs"]
+mod platform;
 
 const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";
 const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";
@@ -28,7 +21,7 @@ fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     overlay.add_toast(Toast::new("Clipboard unavailable."));
 }
 
-fn show_copy_feedback(button: &Button) {
+pub(super) fn show_copy_feedback(button: &Button) {
     button.set_icon_name(COPIED_BUTTON_ICON_NAME);
 
     let button = button.clone();
@@ -80,38 +73,17 @@ pub(crate) fn add_copy_suffix<W>(
     }
 }
 
-#[cfg(not(feature = "flatpak"))]
-fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry, button: Option<&Button>) {
-    if let Some(button) = button {
-        show_copy_feedback(button);
-    }
-
-    thread::spawn(move || {
-        let settings = Preferences::new();
-        let mut cmd = settings.command();
-        cmd.env("PASSWORD_STORE_DIR", &item.store_path)
-            .arg("-c")
-            .arg(item.label());
-        let _ = run_command_status(
-            &mut cmd,
-            "Copy password to clipboard",
-            CommandLogOptions::SENSITIVE,
-        );
-    });
-}
-
-fn copy_password_entry_to_clipboard_via_read(
+pub(super) fn copy_password_entry_to_clipboard_via_read(
     item: PassEntry,
     overlay: ToastOverlay,
     button: Option<Button>,
 ) {
-    #[cfg(feature = "flatpak")]
-    let retry_item = item.clone();
     let overlay_for_disconnect = overlay.clone();
+    let task_item = item.clone();
     spawn_result_task(
         move || {
-            let label = item.label();
-            read_password_line(&item.store_path, &label)
+            let label = task_item.label();
+            read_password_line(&task_item.store_path, &label)
         },
         move |result| match result {
             Ok(password) => {
@@ -119,35 +91,8 @@ fn copy_password_entry_to_clipboard_via_read(
             }
             Err(err) => {
                 log_error(format!("Failed to copy password entry: {err}"));
-                #[cfg(feature = "flatpak")]
-                if is_locked_private_key_error(&err) {
-                    match preferred_ripasso_private_key_fingerprint_for_entry(
-                        &retry_item.store_path,
-                        &retry_item.label(),
-                    ) {
-                        Ok(fingerprint) => {
-                            let retry_overlay = overlay.clone();
-                            let retry_item_for_unlock = retry_item.clone();
-                            let retry_button = button.clone();
-                            prompt_private_key_unlock_for_action(
-                                &overlay,
-                                fingerprint,
-                                Rc::new(move || {
-                                    copy_password_entry_to_clipboard_via_read(
-                                        retry_item_for_unlock.clone(),
-                                        retry_overlay.clone(),
-                                        retry_button.clone(),
-                                    );
-                                }),
-                            );
-                            return;
-                        }
-                        Err(resolve_err) => {
-                            log_error(format!(
-                                "Failed to resolve the private key for copy retry: {resolve_err}"
-                            ));
-                        }
-                    }
+                if platform::handle_copy_password_error(&item, &overlay, &button, &err) {
+                    return;
                 }
                 overlay.add_toast(Toast::new("Couldn't copy the password."));
             }
@@ -163,19 +108,5 @@ pub(crate) fn copy_password_entry_to_clipboard(
     overlay: ToastOverlay,
     button: Option<Button>,
 ) {
-    #[cfg(not(feature = "flatpak"))]
-    {
-        let settings = Preferences::new();
-        if settings.uses_integrated_backend() {
-            copy_password_entry_to_clipboard_via_read(item, overlay, button);
-        } else {
-            copy_password_entry_to_clipboard_via_pass_command(item, button.as_ref());
-        }
-        return;
-    }
-
-    #[cfg(feature = "flatpak")]
-    {
-        copy_password_entry_to_clipboard_via_read(item, overlay, button);
-    }
+    platform::copy_password_entry_to_clipboard(item, overlay, button);
 }

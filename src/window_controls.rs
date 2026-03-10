@@ -3,8 +3,6 @@ use crate::password_page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
 use crate::store_management::StoreRecipientsPageState;
-#[cfg(not(feature = "flatpak"))]
-use crate::window_git::{handle_git_busy_back, GitActionState};
 use crate::window_navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gio::SimpleAction;
 use adw::prelude::*;
@@ -14,14 +12,23 @@ use adw::ToastOverlay;
 use std::cell::Cell;
 use std::rc::Rc;
 
+#[cfg(feature = "flatpak")]
+#[path = "window_controls_flatpak.rs"]
+mod platform;
+#[cfg(not(feature = "flatpak"))]
+#[path = "window_controls_desktop.rs"]
+mod platform;
+
+pub(crate) use self::platform::DesktopBackActionState;
+use self::platform::{before_back_action, configure_shortcuts};
+
 #[derive(Clone)]
 pub(crate) struct BackActionState {
     pub(crate) password_page: PasswordPageState,
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
     pub(crate) show_hidden: Rc<Cell<bool>>,
-    #[cfg(not(feature = "flatpak"))]
-    pub(crate) git_actions: GitActionState,
+    pub(crate) desktop: DesktopBackActionState,
 }
 
 #[derive(Clone)]
@@ -55,8 +62,7 @@ pub(crate) fn register_back_action(
     let state = state.clone();
     let action = SimpleAction::new("back", None);
     action.connect_activate(move |_, _| {
-        #[cfg(not(feature = "flatpak"))]
-        if handle_git_busy_back(&state.git_actions) {
+        if before_back_action(&state.desktop) {
             return;
         }
 
@@ -76,13 +82,8 @@ pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.toggle-hidden", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
-    #[cfg(not(feature = "flatpak"))]
-    app.set_accels_for_action("win.open-log", &["F12"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
-    #[cfg(not(feature = "flatpak"))]
-    app.set_accels_for_action("win.synchronize", &["<primary>s"]);
-    #[cfg(not(feature = "flatpak"))]
-    app.set_accels_for_action("win.open-git", &["<primary>i"]);
+    configure_shortcuts(app);
 }
 
 pub(crate) fn register_toggle_hidden_action(

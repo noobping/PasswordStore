@@ -9,10 +9,11 @@ use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,
 };
 use crate::support::background::spawn_result_task;
+use crate::support::ui::append_action_row_with_button;
 use adw::gio;
-use adw::gtk::{Button, FileChooserAction, FileChooserNative, ResponseType};
+use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
 use adw::prelude::*;
-use adw::{ActionRow, Toast};
+use adw::Toast;
 use std::rc::Rc;
 
 fn finish_private_key_import(
@@ -140,20 +141,13 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
 }
 
 pub(super) fn append_private_key_import_row(state: &StoreRecipientsPageState) {
-    let row = ActionRow::builder()
-        .title("Import private key")
-        .subtitle("Choose a private key file.")
-        .build();
-    row.set_activatable(true);
-
-    let button = Button::from_icon_name("document-open-symbolic");
-    button.add_css_class("flat");
-    row.add_suffix(&button);
-    state.list.append(&row);
-
-    let row_state = state.clone();
-    row.connect_activated(move |_| open_private_key_picker(&row_state));
-
-    let button_state = state.clone();
-    button.connect_clicked(move |_| open_private_key_picker(&button_state));
+    let list = state.list.clone();
+    let state = state.clone();
+    append_action_row_with_button(
+        &list,
+        "Import private key",
+        "Choose a private key file.",
+        "document-open-symbolic",
+        move || open_private_key_picker(&state),
+    );
 }

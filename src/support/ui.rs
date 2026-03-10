@@ -23,6 +23,29 @@ pub(crate) fn connect_row_and_button_action(
     button.connect_clicked(move |_| button_action());
 }
 
+pub(crate) fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
+    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    row.set_activatable(false);
+    list.append(&row);
+}
+
+pub(crate) fn append_action_row_with_button(
+    list: &ListBox,
+    title: &str,
+    subtitle: &str,
+    button_icon_name: &str,
+    action: impl Fn() + 'static,
+) {
+    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    row.set_activatable(true);
+
+    let button = Button::from_icon_name(button_icon_name);
+    button.add_css_class("flat");
+    row.add_suffix(&button);
+    list.append(&row);
+    connect_row_and_button_action(&row, &button, action);
+}
+
 pub(crate) fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {
     let stack = nav.navigation_stack();
     let mut index = 0;

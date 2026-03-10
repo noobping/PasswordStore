@@ -8,7 +8,7 @@ pub(crate) use super::recipients_page::{
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-use crate::support::ui::{clear_list_box, connect_row_and_button_action};
+use crate::support::ui::{append_action_row_with_button, clear_list_box};
 use adw::gtk::{Button, FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
@@ -142,7 +142,7 @@ fn append_store_picker_row(
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
     let list_for_action = list.clone();
-    append_store_action_row(
+    append_action_row_with_button(
         list,
         "Add store folder",
         "Choose an existing folder.",
@@ -219,30 +219,13 @@ fn append_store_creator_row(
     let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
-    append_store_action_row(
+    append_action_row_with_button(
         list,
         "Create store",
         "Choose a folder and add recipients.",
         "folder-new-symbolic",
         move || open_store_creator_picker(&window, &settings, &overlay, &recipients_page),
     );
-}
-
-fn append_store_action_row(
-    list: &ListBox,
-    title: &str,
-    subtitle: &str,
-    icon_name: &str,
-    action: impl Fn() + 'static,
-) {
-    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
-    row.set_activatable(true);
-
-    let button = Button::from_icon_name(icon_name);
-    button.add_css_class("flat");
-    row.add_suffix(&button);
-    list.append(&row);
-    connect_row_and_button_action(&row, &button, action);
 }
 
 fn open_store_creator_picker(

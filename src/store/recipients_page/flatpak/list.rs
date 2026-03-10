@@ -7,7 +7,7 @@ use crate::backend::{
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
-use crate::support::ui::clear_list_box;
+use crate::support::ui::{append_info_row, clear_list_box};
 use adw::gtk::{Button, CheckButton, Image};
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
@@ -69,24 +69,22 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         Ok(keys) => keys,
         Err(err) => {
             log_error(format!("Failed to load private keys for recipients: {err}"));
-            let row = ActionRow::builder()
-                .title("Couldn't load private keys")
-                .subtitle("Try again from Preferences.")
-                .build();
-            row.set_activatable(false);
-            state.list.append(&row);
+            append_info_row(
+                &state.list,
+                "Couldn't load private keys",
+                "Try again from Preferences.",
+            );
             append_private_key_import_row(state);
             return;
         }
     };
 
     if keys.is_empty() {
-        let row = ActionRow::builder()
-            .title("No private keys yet")
-            .subtitle("Import a private key first.")
-            .build();
-        row.set_activatable(false);
-        state.list.append(&row);
+        append_info_row(
+            &state.list,
+            "No private keys yet",
+            "Import a private key first.",
+        );
         append_private_key_import_row(state);
         return;
     }

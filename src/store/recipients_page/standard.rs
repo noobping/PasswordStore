@@ -1,4 +1,4 @@
-use super::{queue_store_recipients_autosave, StoreRecipientsMode, StoreRecipientsPageState};
+use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::store::recipients::append_gpg_recipients;
 use crate::support::ui::{append_info_row, clear_list_box};
 use adw::gtk::{Button, Image};
@@ -29,7 +29,12 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         append_info_row(
             &state.list,
             "No recipients yet",
-            empty_state_subtitle(state.current_request().as_ref()),
+            state
+                .current_request()
+                .as_ref()
+                .map_or("Add at least one recipient before saving.", |request| {
+                    request.mode.empty_state_subtitle()
+                }),
         );
         return;
     }
@@ -60,12 +65,4 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
 pub(crate) fn prepare_store_recipients_page(state: &StoreRecipientsPageState) {
     state.platform.entry.set_text("");
-}
-
-fn empty_state_subtitle(request: Option<&super::StoreRecipientsRequest>) -> &'static str {
-    match request.map(|request| &request.mode) {
-        Some(StoreRecipientsMode::Create) => "Add at least one recipient to create this store.",
-        Some(StoreRecipientsMode::Edit) => "Add at least one recipient to keep saving changes.",
-        None => "Add at least one recipient before saving.",
-    }
 }

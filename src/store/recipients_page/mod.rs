@@ -25,7 +25,7 @@ pub(crate) use self::save::{
     queue_store_recipients_autosave, register_store_recipients_save_action,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StoreRecipientsMode {
     Create,
     Edit,
@@ -38,12 +38,47 @@ impl StoreRecipientsMode {
             Self::Edit => "Recipients",
         }
     }
+
+    #[cfg(not(feature = "flatpak"))]
+    pub(crate) fn empty_state_subtitle(&self) -> &'static str {
+        match self {
+            Self::Create => "Add at least one recipient to create this store.",
+            Self::Edit => "Add at least one recipient to keep saving changes.",
+        }
+    }
+
+    pub(crate) fn save_failure_message(&self) -> &'static str {
+        match self {
+            Self::Create => "Couldn't create the store.",
+            Self::Edit => "Couldn't save recipients.",
+        }
+    }
+
+    pub(crate) fn creates_store(&self) -> bool {
+        matches!(self, Self::Create)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StoreRecipientsRequest {
     pub(crate) store: String,
     pub(crate) mode: StoreRecipientsMode,
+}
+
+impl StoreRecipientsRequest {
+    pub(crate) fn create(store: impl Into<String>) -> Self {
+        Self {
+            store: store.into(),
+            mode: StoreRecipientsMode::Create,
+        }
+    }
+
+    pub(crate) fn edit(store: impl Into<String>) -> Self {
+        Self {
+            store: store.into(),
+            mode: StoreRecipientsMode::Edit,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -105,12 +140,13 @@ pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState
     state.page.set_title(request.mode.page_title());
 }
 
-pub(crate) fn show_store_recipients_page(
+fn show_store_recipients_page(
     state: &StoreRecipientsPageState,
     request: StoreRecipientsRequest,
     initial_recipients: Vec<String>,
 ) {
     let saved_recipients = read_store_gpg_recipients(&request.store);
+    let mode = request.mode;
     *state.request.borrow_mut() = Some(request);
     *state.recipients.borrow_mut() = initial_recipients;
     *state.saved_recipients.borrow_mut() = saved_recipients;
@@ -124,13 +160,33 @@ pub(crate) fn show_store_recipients_page(
         return;
     }
 
-    if state
-        .current_request()
-        .map(|request| request.mode == StoreRecipientsMode::Create)
-        .unwrap_or(false)
-    {
+    if mode.creates_store() {
         queue_store_recipients_autosave(state);
     }
+}
+
+pub(crate) fn show_store_recipients_create_page(
+    state: &StoreRecipientsPageState,
+    store: impl Into<String>,
+    initial_recipients: Vec<String>,
+) {
+    show_store_recipients_page(
+        state,
+        StoreRecipientsRequest::create(store),
+        initial_recipients,
+    );
+}
+
+pub(crate) fn show_store_recipients_edit_page(
+    state: &StoreRecipientsPageState,
+    store: impl Into<String>,
+) {
+    let store = store.into();
+    show_store_recipients_page(
+        state,
+        StoreRecipientsRequest::edit(store.clone()),
+        read_store_gpg_recipients(&store),
+    );
 }
 
 #[cfg(test)]
@@ -140,5 +196,18 @@ mod tests {
     #[test]
     fn create_mode_has_create_title() {
         assert_eq!(StoreRecipientsMode::Create.page_title(), "New Store");
+    }
+
+    #[test]
+    fn mode_messages_match_their_behavior() {
+        #[cfg(not(feature = "flatpak"))]
+        assert_eq!(
+            StoreRecipientsMode::Create.empty_state_subtitle(),
+            "Add at least one recipient to create this store."
+        );
+        assert_eq!(
+            StoreRecipientsMode::Edit.save_failure_message(),
+            "Couldn't save recipients."
+        );
     }
 }

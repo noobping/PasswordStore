@@ -1,6 +1,7 @@
 use crate::password::file::sync_username_row;
 use crate::password::opened::get_opened_pass_file;
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
+use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use adw::gtk::Button;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, NavigationView, WindowTitle};
@@ -100,33 +101,16 @@ pub(crate) fn restore_window_for_current_page(
         &state.save,
         &state.win,
     );
-    let stack = state.nav.navigation_stack();
-    if stack.n_items() <= 1 {
+    if navigation_stack_is_root(&state.nav) {
         show_primary_page_chrome(&chrome);
         return true;
     }
 
-    let visible_page = state.nav.visible_page();
-    let is_text_page = visible_page
-        .as_ref()
-        .map(|page| page == &state.text_page)
-        .unwrap_or(false);
-    let is_raw_page = visible_page
-        .as_ref()
-        .map(|page| page == &state.raw_text_page)
-        .unwrap_or(false);
-    let is_settings_page = visible_page
-        .as_ref()
-        .map(|page| page == &state.settings_page)
-        .unwrap_or(false);
-    let is_recipients_page = visible_page
-        .as_ref()
-        .map(|page| page == &recipients_page.page)
-        .unwrap_or(false);
-    let is_log_page = visible_page
-        .as_ref()
-        .map(|page| page == &state.log_page)
-        .unwrap_or(false);
+    let is_text_page = visible_navigation_page_is(&state.nav, &state.text_page);
+    let is_raw_page = visible_navigation_page_is(&state.nav, &state.raw_text_page);
+    let is_settings_page = visible_navigation_page_is(&state.nav, &state.settings_page);
+    let is_recipients_page = visible_navigation_page_is(&state.nav, &recipients_page.page);
+    let is_log_page = visible_navigation_page_is(&state.nav, &state.log_page);
 
     state.save.set_visible(is_text_page || is_raw_page);
     if is_text_page {

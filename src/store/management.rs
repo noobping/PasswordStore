@@ -3,8 +3,9 @@ use super::recipients::{
 };
 pub(crate) use super::recipients_page::{
     connect_store_recipients_entry, register_store_recipients_save_action,
-    show_store_recipients_page, sync_store_recipients_page_header, StoreRecipientsMode,
-    StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
+    show_store_recipients_create_page, show_store_recipients_edit_page,
+    sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsPlatformState,
+    StoreRecipientsRequest,
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
@@ -107,14 +108,7 @@ fn append_store_row(
     let store_for_edit = store.clone();
 
     row.connect_activated(move |_| {
-        show_store_recipients_page(
-            &recipients_page,
-            StoreRecipientsRequest {
-                store: store_for_edit.clone(),
-                mode: StoreRecipientsMode::Edit,
-            },
-            read_store_gpg_recipients(&store_for_edit),
-        );
+        show_store_recipients_edit_page(&recipients_page, &store_for_edit)
     });
 
     delete_button.connect_clicked(move |_| {
@@ -194,14 +188,7 @@ fn open_store_picker(
                         &overlay_for_selection,
                         &recipients_page,
                     );
-                    show_store_recipients_page(
-                        &recipients_page,
-                        StoreRecipientsRequest {
-                            store: store.clone(),
-                            mode: StoreRecipientsMode::Edit,
-                        },
-                        read_store_gpg_recipients(&store),
-                    );
+                    show_store_recipients_edit_page(&recipients_page, &store);
                 }
             }
         },
@@ -248,14 +235,7 @@ fn open_store_creator_picker(
             if recipients.is_empty() {
                 recipients = suggested_gpg_recipients(&settings);
             }
-            show_store_recipients_page(
-                &recipients_page,
-                StoreRecipientsRequest {
-                    store,
-                    mode: StoreRecipientsMode::Create,
-                },
-                recipients,
-            );
+            show_store_recipients_create_page(&recipients_page, store, recipients);
         },
     );
 }

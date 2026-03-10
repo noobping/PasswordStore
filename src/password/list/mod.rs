@@ -17,10 +17,10 @@ use std::rc::Rc;
 
 pub(crate) fn load_passwords_async(
     list: &ListBox,
-    git: Button,
-    find: Button,
-    save: Button,
-    overlay: ToastOverlay,
+    git: &Button,
+    find: &Button,
+    save: &Button,
+    overlay: &ToastOverlay,
     show_list_actions: bool,
     show_hidden: bool,
 ) {

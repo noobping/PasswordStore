@@ -96,10 +96,10 @@ pub(crate) fn register_toggle_hidden_action(
         state.show_hidden.set(show_hidden);
         load_passwords_async(
             &state.list,
-            state.navigation.git.clone(),
-            state.navigation.find.clone(),
-            state.navigation.save.clone(),
-            state.overlay.clone(),
+            &state.navigation.git,
+            &state.navigation.find,
+            &state.navigation.save,
+            &state.overlay,
             show_list_actions,
             show_hidden,
         );

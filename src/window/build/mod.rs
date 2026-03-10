@@ -73,10 +73,10 @@ pub(crate) fn create_main_window(
 
     load_passwords_async(
         &widgets.list,
-        widgets.git_button.clone(),
-        widgets.find_button.clone(),
-        widgets.save_button.clone(),
-        widgets.toast_overlay.clone(),
+        &widgets.git_button,
+        &widgets.find_button,
+        &widgets.save_button,
+        &widgets.toast_overlay,
         true,
         false,
     );

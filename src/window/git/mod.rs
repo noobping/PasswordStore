@@ -69,14 +69,30 @@ fn restore_after_git_operation(state: &GitActionState) {
     );
 }
 
+fn restore_after_git_operation_and_reload(state: &GitActionState) {
+    restore_after_git_operation(state);
+    reload_password_list(state);
+}
+
+fn begin_git_operation(state: &GitActionState, title: &str) {
+    set_git_busy_actions_enabled(&state.window, false);
+    show_git_busy_page(
+        &state.navigation,
+        &state.busy_page,
+        &state.busy_status,
+        title,
+        Some("Please wait."),
+    );
+}
+
 fn reload_password_list(state: &GitActionState) {
     let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
     load_passwords_async(
         &state.list,
-        state.navigation.git.clone(),
-        state.navigation.find.clone(),
-        state.navigation.save.clone(),
-        state.overlay.clone(),
+        &state.navigation.git,
+        &state.navigation.find,
+        &state.navigation.save,
+        &state.overlay,
         show_list_actions,
         state.show_hidden.get(),
     );
@@ -120,14 +136,7 @@ pub(crate) fn register_git_clone_action(
         }
 
         popover.popdown();
-        set_git_busy_actions_enabled(&state.window, false);
-        show_git_busy_page(
-            &state.navigation,
-            &state.busy_page,
-            &state.busy_status,
-            "Restoring store",
-            Some("Please wait."),
-        );
+        begin_git_operation(&state, "Restoring store");
 
         let url_for_thread = url.clone();
         let state = state.clone();
@@ -138,9 +147,8 @@ pub(crate) fn register_git_clone_action(
             move |result| match result {
                 GitOperationResult::Success => {
                     entry.set_text("");
-                    restore_after_git_operation(&state);
+                    restore_after_git_operation_and_reload(&state);
                     state.overlay.add_toast(Toast::new("Store restored."));
-                    reload_password_list(&state);
                 }
                 GitOperationResult::Failed(message) => {
                     restore_after_git_operation(&state);
@@ -161,14 +169,7 @@ pub(crate) fn register_synchronize_action(state: &GitActionState) {
     let window = state.window.clone();
     let state = state.clone();
     register_window_action(&window, "synchronize", move || {
-        set_git_busy_actions_enabled(&state.window, false);
-        show_git_busy_page(
-            &state.navigation,
-            &state.busy_page,
-            &state.busy_status,
-            "Syncing stores",
-            Some("Please wait."),
-        );
+        begin_git_operation(&state, "Syncing stores");
 
         let state = state.clone();
         let state_for_disconnect = state.clone();
@@ -176,18 +177,15 @@ pub(crate) fn register_synchronize_action(state: &GitActionState) {
             move || run_sync_operation(),
             move |result| match result {
                 GitOperationResult::Success => {
-                    restore_after_git_operation(&state);
-                    reload_password_list(&state);
+                    restore_after_git_operation_and_reload(&state);
                 }
                 GitOperationResult::Failed(message) => {
-                    restore_after_git_operation(&state);
+                    restore_after_git_operation_and_reload(&state);
                     state.overlay.add_toast(Toast::new(&message));
-                    reload_password_list(&state);
                 }
             },
             move || {
-                restore_after_git_operation(&state_for_disconnect);
-                reload_password_list(&state_for_disconnect);
+                restore_after_git_operation_and_reload(&state_for_disconnect);
             },
         );
     });

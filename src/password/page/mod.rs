@@ -27,6 +27,7 @@ use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_W
 use adw::gtk::Popover;
 use adw::prelude::*;
 use adw::Toast;
+use std::borrow::Cow;
 
 use self::editor::{current_editor_contents, structured_editor_contents, sync_editor_contents};
 #[cfg(feature = "flatpak")]
@@ -46,6 +47,20 @@ fn save_error_toast(message: &str) -> &'static str {
     } else {
         "Couldn't save changes."
     }
+}
+
+fn password_open_failure_message(message: Option<&str>) -> Cow<'static, str> {
+    if let Some(message) = message.and_then(friendly_password_entry_error_message) {
+        Cow::Borrowed(message)
+    } else {
+        Cow::Owned(with_logs_hint("Couldn't open the item."))
+    }
+}
+
+fn show_password_open_failure(state: &PasswordPageState, message: Option<&str>) {
+    show_password_open_error(state);
+    let message = password_open_failure_message(message);
+    state.overlay.add_toast(Toast::new(&message));
 }
 
 pub(crate) fn open_password_entry_page(
@@ -93,13 +108,7 @@ pub(crate) fn open_password_entry_page(
                         return;
                     }
 
-                    show_password_open_error(&state_for_result);
-                    let toast = if let Some(message) = friendly_password_entry_error_message(&msg) {
-                        Toast::new(message)
-                    } else {
-                        Toast::new(&with_logs_hint("Couldn't open the item."))
-                    };
-                    state_for_result.overlay.add_toast(toast);
+                    show_password_open_failure(&state_for_result, Some(&msg));
                 }
             }
         },
@@ -108,10 +117,7 @@ pub(crate) fn open_password_entry_page(
                 return;
             }
 
-            show_password_open_error(&state_for_disconnect);
-            state_for_disconnect
-                .overlay
-                .add_toast(Toast::new(&with_logs_hint("Couldn't open the item.")));
+            show_password_open_failure(&state_for_disconnect, None);
         },
     );
 }
@@ -235,10 +241,10 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
 
     load_passwords_async(
         &state.list,
-        state.git.clone(),
-        state.find.clone(),
-        state.save.clone(),
-        state.overlay.clone(),
+        &state.git,
+        &state.find,
+        &state.save,
+        &state.overlay,
         true,
         show_hidden,
     );

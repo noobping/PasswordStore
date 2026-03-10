@@ -56,6 +56,20 @@ pub(crate) fn push_navigation_page_if_needed(nav: &NavigationView, page: &Naviga
     true
 }
 
+pub(crate) fn reveal_navigation_page(nav: &NavigationView, page: &NavigationPage) -> bool {
+    if visible_navigation_page_is(nav, page) {
+        return false;
+    }
+
+    if navigation_stack_contains_page(nav, page) {
+        let _ = nav.pop_to_page(page);
+    } else {
+        nav.push(page);
+    }
+
+    true
+}
+
 pub(crate) fn navigation_stack_is_root(nav: &NavigationView) -> bool {
     nav.navigation_stack().n_items() <= 1
 }

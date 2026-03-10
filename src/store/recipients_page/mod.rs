@@ -1,5 +1,5 @@
 use super::recipients::read_store_gpg_recipients;
-use crate::support::ui::{navigation_stack_contains_page, visible_navigation_page_is};
+use crate::support::ui::reveal_navigation_page;
 use crate::window::navigation::set_save_button_for_password;
 use adw::gtk::{Button, ListBox};
 use adw::prelude::*;
@@ -117,14 +117,8 @@ pub(crate) fn show_store_recipients_page(
     rebuild_store_recipients_list(state);
     sync_store_recipients_page_header(state);
 
-    if visible_navigation_page_is(&state.nav, &state.page) {
+    if !reveal_navigation_page(&state.nav, &state.page) {
         return;
-    }
-
-    if navigation_stack_contains_page(&state.nav, &state.page) {
-        let _ = state.nav.pop_to_page(&state.page);
-    } else {
-        state.nav.push(&state.page);
     }
 
     if state

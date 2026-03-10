@@ -59,7 +59,7 @@ pub(crate) fn open_password_entry_page(
 
     show_password_loading_state(state, opened_pass_file.title(), &pass_label);
     if push_page {
-        state.nav.push(&state.page);
+        push_navigation_page_if_needed(&state.nav, &state.page);
     }
 
     let label_for_thread = pass_label.clone();

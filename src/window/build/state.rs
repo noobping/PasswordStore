@@ -15,7 +15,7 @@ use std::rc::Rc;
 #[cfg(not(feature = "flatpak"))]
 use crate::window::git::GitActionState;
 #[cfg(not(feature = "flatpak"))]
-use crate::window::standard::StandardWindowParts;
+use adw::EntryRow;
 #[cfg(feature = "flatpak")]
 use adw::ToastOverlay;
 
@@ -67,16 +67,16 @@ fn build_store_recipients_platform_state(overlay: &ToastOverlay) -> StoreRecipie
 
 #[cfg(not(feature = "flatpak"))]
 fn build_store_recipients_platform_state(
-    standard_parts: &StandardWindowParts,
+    store_recipients_entry: &EntryRow,
 ) -> StoreRecipientsPlatformState {
     StoreRecipientsPlatformState {
-        entry: standard_parts.store_recipients_entry.clone(),
+        entry: store_recipients_entry.clone(),
     }
 }
 
 pub(super) fn store_recipients_page_state(
     widgets: &WindowWidgets,
-    #[cfg(not(feature = "flatpak"))] standard_parts: &StandardWindowParts,
+    #[cfg(not(feature = "flatpak"))] store_recipients_entry: &EntryRow,
 ) -> StoreRecipientsPageState {
     let request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let recipients = Rc::new(RefCell::new(Vec::<String>::new()));
@@ -86,7 +86,7 @@ pub(super) fn store_recipients_page_state(
     #[cfg(feature = "flatpak")]
     let platform = build_store_recipients_platform_state(&widgets.toast_overlay);
     #[cfg(not(feature = "flatpak"))]
-    let platform = build_store_recipients_platform_state(standard_parts);
+    let platform = build_store_recipients_platform_state(store_recipients_entry);
 
     StoreRecipientsPageState {
         window: widgets.window.clone(),
@@ -128,7 +128,6 @@ pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigati
 pub(super) fn preferences_action_state(
     widgets: &WindowWidgets,
     recipients_page: &StoreRecipientsPageState,
-    #[cfg(not(feature = "flatpak"))] standard_parts: &StandardWindowParts,
 ) -> PreferencesActionState {
     PreferencesActionState {
         window: widgets.window.clone(),
@@ -145,9 +144,9 @@ pub(super) fn preferences_action_state(
         overlay: widgets.toast_overlay.clone(),
         recipients_page: recipients_page.clone(),
         #[cfg(not(feature = "flatpak"))]
-        pass_row: standard_parts.pass_row.clone(),
+        pass_row: widgets.pass_command_row.clone(),
         #[cfg(not(feature = "flatpak"))]
-        backend_row: standard_parts.backend_row.clone(),
+        backend_row: widgets.backend_row.clone(),
     }
 }
 

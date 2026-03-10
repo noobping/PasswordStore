@@ -1,57 +1,79 @@
 #[cfg(feature = "setup")]
 use adw::gio::Menu;
 use adw::glib::{object::IsA, Object};
+#[cfg(feature = "flatpak")]
+use adw::gtk::MenuButton;
 use adw::gtk::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView};
 use adw::{
     ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
     ToastOverlay, WindowTitle,
 };
+#[cfg(not(feature = "flatpak"))]
+use adw::{ComboRow, PreferencesGroup};
 
-pub(super) struct WindowWidgets {
-    pub(super) window: ApplicationWindow,
+pub(in crate::window) struct WindowWidgets {
+    pub(in crate::window) window: ApplicationWindow,
     #[cfg(feature = "setup")]
-    pub(super) primary_menu: Menu,
-    pub(super) back_button: Button,
-    pub(super) add_button: Button,
-    pub(super) find_button: Button,
-    pub(super) add_button_popover: Popover,
-    pub(super) new_password_store_box: GtkBox,
-    pub(super) new_password_store_list: GtkBox,
-    pub(super) path_entry: EntryRow,
-    pub(super) git_button: Button,
-    pub(super) git_popover: Popover,
-    pub(super) window_title: WindowTitle,
-    pub(super) save_button: Button,
-    pub(super) toast_overlay: ToastOverlay,
-    pub(super) settings_page: NavigationPage,
-    pub(super) store_recipients_page: NavigationPage,
-    pub(super) store_recipients_list: ListBox,
-    pub(super) log_page: NavigationPage,
-    pub(super) new_pass_file_template_view: TextView,
-    pub(super) password_stores: ListBox,
-    pub(super) navigation_view: NavigationView,
-    pub(super) search_entry: SearchEntry,
-    pub(super) list: ListBox,
-    pub(super) text_page: NavigationPage,
-    pub(super) raw_text_page: NavigationPage,
-    pub(super) password_status: StatusPage,
-    pub(super) password_entry: PasswordEntryRow,
-    pub(super) username_entry: EntryRow,
-    pub(super) otp_entry: PasswordEntryRow,
-    pub(super) copy_password_button: Button,
-    pub(super) copy_username_button: Button,
-    pub(super) copy_otp_button: Button,
-    pub(super) text_view: TextView,
-    pub(super) dynamic_fields_box: GtkBox,
-    pub(super) open_raw_button: Button,
+    pub(in crate::window) primary_menu: Menu,
+    #[cfg(feature = "flatpak")]
+    pub(in crate::window) primary_menu_button: MenuButton,
+    pub(in crate::window) back_button: Button,
+    pub(in crate::window) add_button: Button,
+    pub(in crate::window) find_button: Button,
+    pub(in crate::window) add_button_popover: Popover,
+    pub(in crate::window) new_password_store_box: GtkBox,
+    pub(in crate::window) new_password_store_list: GtkBox,
+    pub(in crate::window) path_entry: EntryRow,
+    pub(in crate::window) git_button: Button,
+    pub(in crate::window) git_popover: Popover,
+    pub(in crate::window) window_title: WindowTitle,
+    pub(in crate::window) save_button: Button,
+    pub(in crate::window) toast_overlay: ToastOverlay,
+    pub(in crate::window) settings_page: NavigationPage,
+    pub(in crate::window) store_recipients_page: NavigationPage,
+    pub(in crate::window) store_recipients_list: ListBox,
+    pub(in crate::window) log_page: NavigationPage,
+    pub(in crate::window) new_pass_file_template_view: TextView,
+    pub(in crate::window) password_stores: ListBox,
+    pub(in crate::window) navigation_view: NavigationView,
+    pub(in crate::window) search_entry: SearchEntry,
+    pub(in crate::window) list: ListBox,
+    pub(in crate::window) text_page: NavigationPage,
+    pub(in crate::window) raw_text_page: NavigationPage,
+    pub(in crate::window) password_status: StatusPage,
+    pub(in crate::window) password_entry: PasswordEntryRow,
+    pub(in crate::window) username_entry: EntryRow,
+    pub(in crate::window) otp_entry: PasswordEntryRow,
+    pub(in crate::window) copy_password_button: Button,
+    pub(in crate::window) copy_username_button: Button,
+    pub(in crate::window) copy_otp_button: Button,
+    pub(in crate::window) text_view: TextView,
+    pub(in crate::window) dynamic_fields_box: GtkBox,
+    pub(in crate::window) open_raw_button: Button,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) backend_preferences: PreferencesGroup,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) backend_row: ComboRow,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) pass_command_row: EntryRow,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) git_url_entry: EntryRow,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) git_busy_page: NavigationPage,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) git_busy_status: StatusPage,
+    #[cfg(not(feature = "flatpak"))]
+    pub(in crate::window) log_view: TextView,
 }
 
 impl WindowWidgets {
-    pub(super) fn load(builder: &Builder) -> Self {
+    pub(in crate::window) fn load(builder: &Builder) -> Self {
         Self {
             window: required_object(builder, "main_window"),
             #[cfg(feature = "setup")]
             primary_menu: required_object(builder, "primary_menu"),
+            #[cfg(feature = "flatpak")]
+            primary_menu_button: required_object(builder, "primary_menu_button"),
             back_button: required_object(builder, "back_button"),
             add_button: required_object(builder, "add_button"),
             find_button: required_object(builder, "find_button"),
@@ -85,11 +107,25 @@ impl WindowWidgets {
             text_view: required_object(builder, "text_view"),
             dynamic_fields_box: required_object(builder, "dynamic_fields_box"),
             open_raw_button: required_object(builder, "open_raw_button"),
+            #[cfg(not(feature = "flatpak"))]
+            backend_preferences: required_object(builder, "backend_preferences"),
+            #[cfg(not(feature = "flatpak"))]
+            backend_row: required_object(builder, "backend_row"),
+            #[cfg(not(feature = "flatpak"))]
+            pass_command_row: required_object(builder, "pass_command_row"),
+            #[cfg(not(feature = "flatpak"))]
+            git_url_entry: required_object(builder, "git_url_entry"),
+            #[cfg(not(feature = "flatpak"))]
+            git_busy_page: required_object(builder, "git_busy_page"),
+            #[cfg(not(feature = "flatpak"))]
+            git_busy_status: required_object(builder, "git_busy_status"),
+            #[cfg(not(feature = "flatpak"))]
+            log_view: required_object(builder, "log_view"),
         }
     }
 }
 
-fn required_object<T: IsA<Object> + Clone + 'static>(builder: &Builder, id: &str) -> T {
+pub(super) fn required_object<T: IsA<Object> + Clone + 'static>(builder: &Builder, id: &str) -> T {
     builder
         .object(id)
         .unwrap_or_else(|| panic!("Failed to get {id}"))

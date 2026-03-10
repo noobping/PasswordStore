@@ -1,6 +1,6 @@
 mod actions;
 mod state;
-mod widgets;
+pub(super) mod widgets;
 
 use crate::password::list::{load_passwords_async, setup_search_filter};
 use crate::password::new_item::register_open_new_password_action;
@@ -41,7 +41,7 @@ use super::preferences::{
 };
 #[cfg(not(feature = "flatpak"))]
 use super::standard::{
-    create_git_action_state, load_standard_window_parts, register_standard_window_actions,
+    configure_standard_window, create_git_action_state, register_standard_window_actions,
 };
 
 const UI_SRC: &str = include_str!("../../../data/window.ui");
@@ -63,13 +63,13 @@ pub(crate) fn create_main_window(
         widgets.primary_menu.append_item(&item);
     }
     #[cfg(feature = "flatpak")]
-    configure_flatpak_window(&builder);
+    configure_flatpak_window(&widgets);
     #[cfg(feature = "flatpak")]
     widgets.git_button.set_visible(false);
     set_save_button_for_password(&widgets.save_button);
 
     #[cfg(not(feature = "flatpak"))]
-    let standard_parts = load_standard_window_parts(&builder);
+    let standard_window = configure_standard_window(&widgets);
 
     load_passwords_async(
         &widgets.list,
@@ -87,18 +87,13 @@ pub(crate) fn create_main_window(
     let store_recipients_page_state = store_recipients_page_state(
         &widgets,
         #[cfg(not(feature = "flatpak"))]
-        &standard_parts,
+        &standard_window.store_recipients_entry,
     );
     let window_navigation_state = window_navigation_state(&widgets);
-    let preferences_action_state = preferences_action_state(
-        &widgets,
-        &store_recipients_page_state,
-        #[cfg(not(feature = "flatpak"))]
-        &standard_parts,
-    );
+    let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);
     #[cfg(not(feature = "flatpak"))]
     let git_action_state = create_git_action_state(
-        &standard_parts,
+        &widgets,
         &widgets.window,
         &widgets.toast_overlay,
         &widgets.list,
@@ -151,7 +146,8 @@ pub(crate) fn create_main_window(
 
     #[cfg(not(feature = "flatpak"))]
     register_standard_window_actions(
-        &standard_parts,
+        &standard_window,
+        &widgets,
         &widgets.window,
         &widgets.toast_overlay,
         &window_navigation_state,

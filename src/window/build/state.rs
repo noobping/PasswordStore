@@ -7,7 +7,9 @@ use crate::password::page::PasswordPageState;
 use crate::store::management::{
     StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
-use crate::window::controls::{BackActionState, HiddenEntriesActionState, PlatformBackActionState};
+use crate::window::controls::{
+    BackActionState, ListVisibilityActionState, ListVisibilityState, PlatformBackActionState,
+};
 use crate::window::navigation::WindowNavigationState;
 use crate::window::preferences::PreferencesActionState;
 use std::cell::{Cell, RefCell};
@@ -181,7 +183,7 @@ pub(super) fn back_action_state(
     password_page: &PasswordPageState,
     recipients_page: &StoreRecipientsPageState,
     navigation: &WindowNavigationState,
-    show_hidden: &Rc<Cell<bool>>,
+    visibility: &ListVisibilityState,
     #[cfg(not(feature = "flatpak"))] git_action_state: &GitActionState,
 ) -> BackActionState {
     #[cfg(feature = "flatpak")]
@@ -193,20 +195,20 @@ pub(super) fn back_action_state(
         password_page: password_page.clone(),
         recipients_page: recipients_page.clone(),
         navigation: navigation.clone(),
-        show_hidden: show_hidden.clone(),
+        visibility: visibility.clone(),
         platform,
     }
 }
 
-pub(super) fn hidden_entries_action_state(
+pub(super) fn list_visibility_action_state(
     widgets: &WindowWidgets,
     navigation: &WindowNavigationState,
-    show_hidden: &Rc<Cell<bool>>,
-) -> HiddenEntriesActionState {
-    HiddenEntriesActionState {
+    visibility: &ListVisibilityState,
+) -> ListVisibilityActionState {
+    ListVisibilityActionState {
         overlay: widgets.toast_overlay.clone(),
         list: widgets.list.clone(),
         navigation: navigation.clone(),
-        show_hidden: show_hidden.clone(),
+        visibility: visibility.clone(),
     }
 }

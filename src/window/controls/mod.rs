@@ -26,20 +26,56 @@ pub(crate) use self::platform::PlatformBackActionState;
 use self::platform::{before_back_action, configure_shortcuts};
 
 #[derive(Clone)]
+pub(crate) struct ListVisibilityState {
+    show_hidden: Rc<Cell<bool>>,
+    show_duplicates: Rc<Cell<bool>>,
+}
+
+impl ListVisibilityState {
+    pub(crate) fn new(show_hidden: bool, show_duplicates: bool) -> Self {
+        Self {
+            show_hidden: Rc::new(Cell::new(show_hidden)),
+            show_duplicates: Rc::new(Cell::new(show_duplicates)),
+        }
+    }
+
+    pub(crate) fn show_hidden(&self) -> bool {
+        self.show_hidden.get()
+    }
+
+    pub(crate) fn show_duplicates(&self) -> bool {
+        self.show_duplicates.get()
+    }
+
+    pub(crate) fn toggle_all(&self) -> (bool, bool) {
+        let (show_hidden, show_duplicates) =
+            toggled_list_visibility(self.show_hidden(), self.show_duplicates());
+        self.show_hidden.set(show_hidden);
+        self.show_duplicates.set(show_duplicates);
+        (show_hidden, show_duplicates)
+    }
+}
+
+fn toggled_list_visibility(show_hidden: bool, show_duplicates: bool) -> (bool, bool) {
+    let show_all = !(show_hidden && show_duplicates);
+    (show_all, show_all)
+}
+
+#[derive(Clone)]
 pub(crate) struct BackActionState {
     pub(crate) password_page: PasswordPageState,
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
-    pub(crate) show_hidden: Rc<Cell<bool>>,
+    pub(crate) visibility: ListVisibilityState,
     pub(crate) platform: PlatformBackActionState,
 }
 
 #[derive(Clone)]
-pub(crate) struct HiddenEntriesActionState {
+pub(crate) struct ListVisibilityActionState {
     pub(crate) overlay: ToastOverlay,
     pub(crate) list: ListBox,
     pub(crate) navigation: WindowNavigationState,
-    pub(crate) show_hidden: Rc<Cell<bool>>,
+    pub(crate) visibility: ListVisibilityState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,7 +174,11 @@ pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &Back
 
         state.navigation.nav.pop();
         if restore_window_for_current_page(&state.navigation, &state.recipients_page) {
-            show_password_list_page(&state.password_page, state.show_hidden.get());
+            show_password_list_page(
+                &state.password_page,
+                state.visibility.show_hidden(),
+                state.visibility.show_duplicates(),
+            );
             return;
         }
 
@@ -150,24 +190,23 @@ pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.context-save", &["<primary>s"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
-    app.set_accels_for_action("win.toggle-hidden", &["<primary>h"]);
+    app.set_accels_for_action("win.toggle-hidden-and-duplicates", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
     configure_shortcuts(app);
 }
 
-pub(crate) fn register_toggle_hidden_action(
+pub(crate) fn register_list_visibility_action(
     window: &adw::ApplicationWindow,
-    state: &HiddenEntriesActionState,
+    state: &ListVisibilityActionState,
 ) {
     let state = state.clone();
-    register_window_action(window, "toggle-hidden", move || {
-        let show_hidden = !state.show_hidden.get();
+    register_window_action(window, "toggle-hidden-and-duplicates", move || {
         let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
         if !show_list_actions {
             return;
         }
-        state.show_hidden.set(show_hidden);
+        let (show_hidden, show_duplicates) = state.visibility.toggle_all();
         let list_actions = PasswordListActions::new(
             &state.navigation.add,
             &state.navigation.git,
@@ -180,6 +219,7 @@ pub(crate) fn register_toggle_hidden_action(
             &state.overlay,
             show_list_actions,
             show_hidden,
+            show_duplicates,
         );
     });
 }
@@ -200,7 +240,7 @@ pub(crate) fn apply_startup_query(
 
 #[cfg(test)]
 mod tests {
-    use super::{context_save_target_from_flags, ContextSaveTarget};
+    use super::{context_save_target_from_flags, toggled_list_visibility, ContextSaveTarget};
 
     #[test]
     fn context_save_prefers_password_pages() {
@@ -242,5 +282,13 @@ mod tests {
             context_save_target_from_flags(false, false, false, false),
             ContextSaveTarget::None
         );
+    }
+
+    #[test]
+    fn combined_visibility_action_shows_everything_until_both_flags_are_enabled() {
+        assert_eq!(toggled_list_visibility(false, false), (true, true));
+        assert_eq!(toggled_list_visibility(true, false), (true, true));
+        assert_eq!(toggled_list_visibility(false, true), (true, true));
+        assert_eq!(toggled_list_visibility(true, true), (false, false));
     }
 }

@@ -8,6 +8,7 @@ use crate::store::management::{prompt_store_clone, StoreRecipientsPageState};
 use crate::support::actions::register_window_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
+use crate::window::controls::ListVisibilityState;
 use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
     WindowNavigationState,
@@ -15,8 +16,6 @@ use crate::window::navigation::{
 use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, NavigationPage, StatusPage, Toast, ToastOverlay};
-use std::cell::Cell;
-use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) struct GitActionState {
@@ -27,7 +26,7 @@ pub(crate) struct GitActionState {
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) busy_page: NavigationPage,
     pub(crate) busy_status: StatusPage,
-    pub(crate) show_hidden: Rc<Cell<bool>>,
+    pub(crate) visibility: ListVisibilityState,
 }
 
 pub(crate) fn clone_store_repository(url: &str, store_root: &str) -> Result<(), String> {
@@ -59,7 +58,7 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "save-store-recipients",
         "synchronize",
         "open-preferences",
-        "toggle-hidden",
+        "toggle-hidden-and-duplicates",
     ] {
         set_window_action_enabled(window, action, enabled);
     }
@@ -104,7 +103,8 @@ fn reload_password_list(state: &GitActionState) {
         &list_actions,
         &state.overlay,
         show_list_actions,
-        state.show_hidden.get(),
+        state.visibility.show_hidden(),
+        state.visibility.show_duplicates(),
     );
 }
 

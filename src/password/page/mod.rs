@@ -243,7 +243,11 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
     }
 }
 
-pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bool) {
+pub(crate) fn show_password_list_page(
+    state: &PasswordPageState,
+    show_hidden: bool,
+    show_duplicates: bool,
+) {
     pop_navigation_to_root(&state.nav);
 
     clear_opened_pass_file();
@@ -259,6 +263,7 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
         &state.overlay,
         true,
         show_hidden,
+        show_duplicates,
     );
 }
 

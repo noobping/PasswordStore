@@ -83,6 +83,7 @@ pub(crate) fn load_passwords_async(
     overlay: &ToastOverlay,
     show_list_actions: bool,
     show_hidden: bool,
+    show_duplicates: bool,
 ) {
     clear_list_box(list);
 
@@ -101,7 +102,10 @@ pub(crate) fn load_passwords_async(
     let list_for_disconnect = list_clone.clone();
     let actions_for_disconnect = actions_clone.clone();
     spawn_result_task(
-        move || match collect_all_password_items_with_options(CollectItemsOptions { show_hidden }) {
+        move || match collect_all_password_items_with_options(collect_items_options(
+            show_hidden,
+            show_duplicates,
+        )) {
             Ok(items) => items,
             Err(err) => {
                 log_error(format!("Error scanning pass stores: {err}"));
@@ -132,6 +136,13 @@ pub(crate) fn load_passwords_async(
             list_for_disconnect.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
         },
     );
+}
+
+fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
+    CollectItemsOptions {
+        show_hidden,
+        show_duplicates,
+    }
 }
 
 pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
@@ -180,7 +191,11 @@ fn prune_missing_store_dirs(settings: &Preferences) {
 
 #[cfg(test)]
 mod tests {
-    use super::{list_action_visibility, should_show_root_git_button, ListActionVisibility};
+    use super::{
+        collect_items_options, list_action_visibility, should_show_root_git_button,
+        ListActionVisibility,
+    };
+    use crate::password::model::CollectItemsOptions;
 
     #[test]
     fn root_git_button_is_hidden_for_existing_store_setup() {
@@ -253,6 +268,24 @@ mod tests {
                 find_visible: false,
                 git_visible: false,
                 save_visible: false,
+            }
+        );
+    }
+
+    #[test]
+    fn collect_items_options_keeps_hidden_and_duplicate_flags_separate() {
+        assert_eq!(
+            collect_items_options(false, true),
+            CollectItemsOptions {
+                show_hidden: false,
+                show_duplicates: true,
+            }
+        );
+        assert_eq!(
+            collect_items_options(true, false),
+            CollectItemsOptions {
+                show_hidden: true,
+                show_duplicates: false,
             }
         );
     }

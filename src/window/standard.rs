@@ -1,4 +1,5 @@
 use super::build::widgets::WindowWidgets;
+use super::controls::ListVisibilityState;
 use super::git::{register_open_git_action, register_synchronize_action, GitActionState};
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::WindowNavigationState;
@@ -8,9 +9,6 @@ use crate::store::management::StoreRecipientsPageState;
 use adw::gtk::ListBox;
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow, ToastOverlay};
-use std::cell::Cell;
-use std::rc::Rc;
-
 #[derive(Clone)]
 pub(crate) struct StandardWindowState {
     pub(crate) settings: Preferences,
@@ -39,7 +37,7 @@ pub(crate) fn create_git_action_state(
     list: &ListBox,
     navigation: &WindowNavigationState,
     recipients_page: &StoreRecipientsPageState,
-    show_hidden: &Rc<Cell<bool>>,
+    visibility: &ListVisibilityState,
 ) -> GitActionState {
     GitActionState {
         window: window.clone(),
@@ -49,7 +47,7 @@ pub(crate) fn create_git_action_state(
         recipients_page: recipients_page.clone(),
         busy_page: widgets.git_busy_page.clone(),
         busy_status: widgets.git_busy_status.clone(),
-        show_hidden: show_hidden.clone(),
+        visibility: visibility.clone(),
     }
 }
 

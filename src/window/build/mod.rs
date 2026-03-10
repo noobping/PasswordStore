@@ -14,22 +14,21 @@ use crate::store::management::{
 use adw::gio::MenuItem;
 use adw::gtk::Builder;
 use adw::{prelude::*, Application, ApplicationWindow};
-use std::cell::Cell;
-use std::rc::Rc;
 
 use self::actions::{
     connect_new_password_submit, connect_password_copy_buttons, connect_password_list_activation,
     register_password_page_actions,
 };
 use self::state::{
-    back_action_state, hidden_entries_action_state, new_password_popover_state,
+    back_action_state, list_visibility_action_state, new_password_popover_state,
     password_page_state, preferences_action_state, store_recipients_page_state,
     window_navigation_state,
 };
 use self::widgets::WindowWidgets;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
-    register_context_save_action, register_toggle_find_action, register_toggle_hidden_action,
+    register_context_save_action, register_list_visibility_action, register_toggle_find_action,
+    ListVisibilityState,
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
@@ -84,11 +83,12 @@ pub(crate) fn create_main_window(
         &widgets.toast_overlay,
         true,
         false,
+        false,
     );
     let new_password_popover_state = new_password_popover_state(&widgets);
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);
     let password_list_state = password_page_state(&widgets, &password_otp_state);
-    let show_hidden_files = Rc::new(Cell::new(false));
+    let list_visibility = ListVisibilityState::new(false, false);
     let store_recipients_page_state = store_recipients_page_state(
         &widgets,
         #[cfg(not(feature = "flatpak"))]
@@ -104,18 +104,18 @@ pub(crate) fn create_main_window(
         &widgets.list,
         &window_navigation_state,
         &store_recipients_page_state,
-        &show_hidden_files,
+        &list_visibility,
     );
     let back_action_state = back_action_state(
         &password_list_state,
         &store_recipients_page_state,
         &window_navigation_state,
-        &show_hidden_files,
+        &list_visibility,
         #[cfg(not(feature = "flatpak"))]
         &git_action_state,
     );
-    let hidden_entries_action_state =
-        hidden_entries_action_state(&widgets, &window_navigation_state, &show_hidden_files);
+    let list_visibility_action_state =
+        list_visibility_action_state(&widgets, &window_navigation_state, &list_visibility);
 
     connect_password_list_activation(&widgets.list, &widgets.toast_overlay, &password_list_state);
 
@@ -190,7 +190,7 @@ pub(crate) fn create_main_window(
         &store_recipients_page_state,
     );
     register_toggle_find_action(&widgets.window, &widgets.search_entry);
-    register_toggle_hidden_action(&widgets.window, &hidden_entries_action_state);
+    register_list_visibility_action(&widgets.window, &list_visibility_action_state);
     register_back_action(&widgets.window, &back_action_state);
 
     configure_window_shortcuts(app);

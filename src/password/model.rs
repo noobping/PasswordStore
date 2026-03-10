@@ -1,14 +1,16 @@
 use crate::preferences::Preferences;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const USERNAME_KEYS: [&str; 3] = ["login", "username", "user"];
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CollectItemsOptions {
     pub show_hidden: bool,
+    pub show_duplicates: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +121,8 @@ pub fn collect_all_password_items_with_options(
         i += 1;
     }
 
+    result = filter_duplicate_store_entries(result, options.show_duplicates);
+
     result.sort_by(|left, right| {
         left.store_path
             .cmp(&right.store_path)
@@ -126,6 +130,47 @@ pub fn collect_all_password_items_with_options(
             .then_with(|| left.basename.cmp(&right.basename))
     });
     Ok(result)
+}
+
+fn collapse_duplicate_store_entries(items: Vec<PassEntry>) -> Vec<PassEntry> {
+    let mut longest_path_items = BTreeMap::<PathBuf, PassEntry>::new();
+
+    for item in items {
+        let secret_path = absolute_secret_path(&item);
+        match longest_path_items.entry(secret_path) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(item);
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                if should_prefer_duplicate_entry(entry.get(), &item) {
+                    entry.insert(item);
+                }
+            }
+        }
+    }
+
+    longest_path_items.into_values().collect()
+}
+
+fn filter_duplicate_store_entries(items: Vec<PassEntry>, show_duplicates: bool) -> Vec<PassEntry> {
+    if show_duplicates {
+        items
+    } else {
+        collapse_duplicate_store_entries(items)
+    }
+}
+
+fn absolute_secret_path(item: &PassEntry) -> PathBuf {
+    Path::new(&item.store_path)
+        .join(&item.relative_path)
+        .join(format!("{}.gpg", item.basename))
+}
+
+fn should_prefer_duplicate_entry(current: &PassEntry, candidate: &PassEntry) -> bool {
+    let current_len = current.store_path.len();
+    let candidate_len = candidate.store_path.len();
+    candidate_len > current_len
+        || (candidate_len == current_len && candidate.store_path.cmp(&current.store_path).is_gt())
 }
 
 fn is_hidden_name(path: &Path) -> bool {
@@ -194,7 +239,10 @@ fn collect_items_in_dir(
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_items_in_dir, CollectItemsOptions, OpenPassFile, PassEntry};
+    use super::{
+        collapse_duplicate_store_entries, collect_items_in_dir, filter_duplicate_store_entries,
+        CollectItemsOptions, OpenPassFile, PassEntry,
+    };
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -251,7 +299,10 @@ mod tests {
             &store,
             &store,
             &mut items,
-            CollectItemsOptions { show_hidden: false },
+            CollectItemsOptions {
+                show_hidden: false,
+                show_duplicates: false,
+            },
         )
         .expect("collect visible secrets");
         let labels = items
@@ -281,7 +332,10 @@ mod tests {
             &store,
             &store,
             &mut items,
-            CollectItemsOptions { show_hidden: true },
+            CollectItemsOptions {
+                show_hidden: true,
+                show_duplicates: false,
+            },
         )
         .expect("collect all secrets");
         let mut labels = items
@@ -296,5 +350,30 @@ mod tests {
         );
 
         fs::remove_dir_all(store).expect("remove test store");
+    }
+
+    #[test]
+    fn duplicate_entries_keep_the_deepest_store_root() {
+        let items = vec![
+            PassEntry::from_label("/tmp/store", "nested/github"),
+            PassEntry::from_label("/tmp/store/nested", "github"),
+        ];
+
+        let collapsed = collapse_duplicate_store_entries(items);
+
+        assert_eq!(
+            collapsed,
+            vec![PassEntry::from_label("/tmp/store/nested", "github")]
+        );
+    }
+
+    #[test]
+    fn duplicate_entries_can_be_left_visible() {
+        let items = vec![
+            PassEntry::from_label("/tmp/store", "nested/github"),
+            PassEntry::from_label("/tmp/store/nested", "github"),
+        ];
+
+        assert_eq!(filter_duplicate_store_entries(items.clone(), true), items);
     }
 }

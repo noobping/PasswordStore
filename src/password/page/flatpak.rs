@@ -1,32 +1,18 @@
 use super::state::show_password_status_message;
 use super::{open_password_entry_page, PasswordPageState};
-use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
+use crate::backend::{preferred_ripasso_private_key_fingerprint_for_entry, PasswordEntryError};
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
-use crate::private_key::unlock::{
-    is_locked_private_key_error, prompt_private_key_unlock_for_action,
-};
+use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::actions::activate_widget_action;
 use std::rc::Rc;
-
-pub(super) fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
-    if message.contains("cannot decrypt password store entries")
-        || message.contains("available private keys cannot decrypt")
-    {
-        Some("This key can't open your items.")
-    } else if message.contains("Import a private key in Preferences") {
-        Some("Add a private key in Preferences.")
-    } else {
-        None
-    }
-}
 
 pub(super) fn handle_open_password_entry_error(
     state: &PasswordPageState,
     pass_file: &OpenPassFile,
-    message: &str,
+    error: &PasswordEntryError,
 ) -> bool {
-    if is_locked_private_key_error(message) {
+    if matches!(error, PasswordEntryError::LockedPrivateKey(_)) {
         show_password_status_message(state, "Unlock key", "Enter your key password to continue.");
         match preferred_ripasso_private_key_fingerprint_for_entry(
             pass_file.store_path(),
@@ -52,7 +38,7 @@ pub(super) fn handle_open_password_entry_error(
         }
     }
 
-    if message.contains("Import a private key in Preferences") {
+    if matches!(error, PasswordEntryError::MissingPrivateKey(_)) {
         activate_widget_action(&state.nav, "win.open-preferences");
     }
 

@@ -6,7 +6,6 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-use crate::window::messages::with_logs_hint;
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
 
@@ -88,15 +87,14 @@ fn save_store_recipients_async(
                     "Failed to save store recipients for '{}': {message}",
                     request.store
                 ));
-                let message = with_logs_hint(request.mode.save_failure_message());
                 finish_store_recipients_save(&state, false);
-                overlay.add_toast(Toast::new(&message));
+                overlay.add_toast(Toast::new(request.mode.save_failure_message()));
             }
         },
         move || {
-            let message = with_logs_hint(mode_for_disconnect.save_failure_message());
             finish_store_recipients_save(&state_for_disconnect, false);
-            overlay_for_disconnect.add_toast(Toast::new(&message));
+            overlay_for_disconnect
+                .add_toast(Toast::new(mode_for_disconnect.save_failure_message()));
         },
     );
 }

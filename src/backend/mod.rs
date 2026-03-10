@@ -1,6 +1,11 @@
+mod errors;
 #[cfg(not(feature = "flatpak"))]
 mod host;
 mod integrated;
+
+pub(crate) use self::errors::PasswordEntryError;
+#[cfg(feature = "flatpak")]
+pub(crate) use self::errors::PrivateKeyError;
 
 #[cfg(feature = "flatpak")]
 pub(crate) use integrated::{
@@ -14,10 +19,10 @@ pub(crate) use integrated::{
 use crate::preferences::Preferences;
 
 #[cfg(not(feature = "flatpak"))]
-fn dispatch_backend<T>(
-    integrated: impl FnOnce() -> Result<T, String>,
-    host: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
+fn dispatch_backend<T, E>(
+    integrated: impl FnOnce() -> Result<T, E>,
+    host: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
     if Preferences::new().uses_integrated_backend() {
         integrated()
     } else {
@@ -47,8 +52,8 @@ macro_rules! dispatch_backend_call {
 }
 
 dispatch_backend_call! {
-    fn read_password_entry(store_root: &str, label: &str) -> Result<String, String>;
-    fn read_password_line(store_root: &str, label: &str) -> Result<String, String>;
+    fn read_password_entry(store_root: &str, label: &str) -> Result<String, PasswordEntryError>;
+    fn read_password_line(store_root: &str, label: &str) -> Result<String, PasswordEntryError>;
     fn save_password_entry(
         store_root: &str,
         label: &str,

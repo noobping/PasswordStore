@@ -7,6 +7,7 @@ use super::cert::{
     normalized_fingerprint, parse_managed_private_key_bytes, prepare_managed_private_key_bytes,
     ManagedRipassoPrivateKey,
 };
+use crate::backend::{PasswordEntryError, PrivateKeyError};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
@@ -54,7 +55,7 @@ fn private_key_not_stored_error() -> String {
 
 fn read_ripasso_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let data = fs::read(path).map_err(|err| err.to_string())?;
-    let (cert, key) = parse_managed_private_key_bytes(&data)?;
+    let (cert, key) = parse_managed_private_key_bytes(&data).map_err(|err| err.to_string())?;
     Ok(StoredPrivateKeyEntry {
         path: path.to_path_buf(),
         cert,
@@ -165,20 +166,34 @@ pub(in crate::backend::integrated) fn selected_ripasso_own_fingerprint(
 
 pub(in crate::backend::integrated) fn ensure_ripasso_private_key_is_ready(
     fingerprint: &str,
-) -> Result<(), String> {
-    if let Some(cert) = cached_unlocked_ripasso_private_key(fingerprint)? {
+) -> Result<(), PasswordEntryError> {
+    if let Some(cert) =
+        cached_unlocked_ripasso_private_key(fingerprint).map_err(PasswordEntryError::other)?
+    {
         if !cert_can_decrypt_password_entries(&cert) {
-            return Err(incompatible_private_key_error());
+            return Err(PasswordEntryError::incompatible_private_key(
+                incompatible_private_key_error(),
+            ));
         }
         return Ok(());
     }
 
-    let entry = find_stored_private_key(fingerprint)?;
+    let entry = find_stored_private_key(fingerprint).map_err(|err| {
+        if err == PRIVATE_KEY_NOT_STORED_ERROR {
+            PasswordEntryError::missing_private_key(err)
+        } else {
+            PasswordEntryError::other(err)
+        }
+    })?;
     if cert_requires_passphrase(&entry.cert) {
-        return Err(locked_private_key_error());
+        return Err(PasswordEntryError::locked_private_key(
+            locked_private_key_error(),
+        ));
     }
     if !cert_can_decrypt_password_entries(&entry.cert) {
-        return Err(incompatible_private_key_error());
+        return Err(PasswordEntryError::incompatible_private_key(
+            incompatible_private_key_error(),
+        ));
     }
     Ok(())
 }
@@ -199,11 +214,17 @@ pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<
 pub fn unlock_ripasso_private_key_for_session(
     fingerprint: &str,
     passphrase: &str,
-) -> Result<ManagedRipassoPrivateKey, String> {
-    let entry = find_stored_private_key(fingerprint)?;
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    let entry = find_stored_private_key(fingerprint).map_err(|err| {
+        if err == PRIVATE_KEY_NOT_STORED_ERROR {
+            PrivateKeyError::not_stored(err)
+        } else {
+            PrivateKeyError::other(err)
+        }
+    })?;
     let unlocked = if cert_requires_passphrase(&entry.cert) {
         prepare_managed_private_key_bytes(
-            &fs::read(&entry.path).map_err(|err| err.to_string())?,
+            &fs::read(&entry.path).map_err(|err| PrivateKeyError::other(err.to_string()))?,
             Some(passphrase),
         )?
         .0
@@ -212,14 +233,16 @@ pub fn unlock_ripasso_private_key_for_session(
     };
 
     if !cert_can_decrypt_password_entries(&unlocked) {
-        return Err("That private key cannot decrypt password store entries.".to_string());
+        return Err(PrivateKeyError::incompatible(
+            "That private key cannot decrypt password store entries.",
+        ));
     }
 
     cache_unlocked_ripasso_private_key(unlocked);
     Ok(entry.key)
 }
 
-pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, String> {
+pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, PrivateKeyError> {
     let (cert, _) = parse_managed_private_key_bytes(bytes)?;
     Ok(cert_requires_passphrase(&cert))
 }
@@ -259,25 +282,25 @@ pub fn list_ripasso_private_keys() -> Result<Vec<ManagedRipassoPrivateKey>, Stri
 pub fn import_ripasso_private_key_bytes(
     bytes: &[u8],
     passphrase: Option<&str>,
-) -> Result<ManagedRipassoPrivateKey, String> {
-    let keys_dir = ripasso_keys_dir()?;
-    fs::create_dir_all(&keys_dir).map_err(|err| err.to_string())?;
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    let keys_dir = ripasso_keys_dir().map_err(PrivateKeyError::other)?;
+    fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     let (parsed_cert, key) = parse_managed_private_key_bytes(bytes)?;
     let stored_cert = if cert_requires_passphrase(&parsed_cert) {
         parsed_cert.clone()
     } else {
-        return Err(
-            "That private key must be password protected before you can import it.".to_string(),
-        );
+        return Err(PrivateKeyError::requires_password_protection(
+            "That private key must be password protected before you can import it.",
+        ));
     };
     let (unlocked_cert, _) = prepare_managed_private_key_bytes(bytes, passphrase)?;
     let mut file = File::create(keys_dir.join(key.fingerprint.to_ascii_lowercase()))
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     stored_cert
         .as_tsk()
         .serialize(&mut file)
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     cache_unlocked_ripasso_private_key(unlocked_cert);
 
     Ok(key)

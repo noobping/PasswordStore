@@ -1,31 +1,34 @@
-use super::super::keys::{
-    ensure_ripasso_private_key_is_ready, incompatible_private_key_error, locked_private_key_error,
-    missing_private_key_error,
-};
+use super::super::keys::ensure_ripasso_private_key_is_ready;
 use super::crypto::FlatpakCryptoContext;
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
 use super::recipients::decryption_candidate_fingerprints_for_entry;
+use crate::backend::PasswordEntryError;
 use std::fs;
 use std::path::Path;
 
-pub(crate) fn read_password_entry(store_root: &str, label: &str) -> Result<String, String> {
-    let entry_path = entry_file_path(store_root, label)?;
-    let locked_error = locked_private_key_error();
-    let incompatible_error = incompatible_private_key_error();
+pub(crate) fn read_password_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
+    let entry_path = entry_file_path(store_root, label).map_err(PasswordEntryError::other)?;
     let mut saw_locked_key = false;
     let mut saw_incompatible_key = false;
     let mut last_error = None;
 
-    for fingerprint in decryption_candidate_fingerprints_for_entry(store_root, label)? {
+    for fingerprint in decryption_candidate_fingerprints_for_entry(store_root, label)
+        .map_err(PasswordEntryError::other)?
+    {
         match ensure_ripasso_private_key_is_ready(&fingerprint) {
             Ok(()) => {}
-            Err(err) if err.contains(&locked_error) => {
+            Err(PasswordEntryError::LockedPrivateKey(_)) => {
                 saw_locked_key = true;
                 continue;
             }
-            Err(err) if err.contains(&incompatible_error) => {
+            Err(PasswordEntryError::IncompatiblePrivateKey(_)) => {
                 saw_incompatible_key = true;
-                last_error = Some(err);
+                last_error = Some(PasswordEntryError::incompatible_private_key(
+                    "The available private keys cannot decrypt this item.",
+                ));
                 continue;
             }
             Err(err) => {
@@ -38,21 +41,32 @@ pub(crate) fn read_password_entry(store_root: &str, label: &str) -> Result<Strin
             .and_then(|context| context.decrypt_entry(&entry_path))
         {
             Ok(secret) => return Ok(secret),
-            Err(err) => last_error = Some(err),
+            Err(err) => last_error = Some(PasswordEntryError::other(err)),
         }
     }
 
     if saw_locked_key {
-        return Err(locked_error);
+        return Err(PasswordEntryError::locked_private_key(
+            "A private key for this item is locked. Unlock it in Preferences and enter its password.",
+        ));
     }
     if saw_incompatible_key {
-        return Err(incompatible_error);
+        return Err(PasswordEntryError::incompatible_private_key(
+            "The available private keys cannot decrypt this item.",
+        ));
     }
 
-    Err(last_error.unwrap_or_else(missing_private_key_error))
+    Err(last_error.unwrap_or_else(|| {
+        PasswordEntryError::missing_private_key(
+            "Import a private key in Preferences before using the password store.",
+        )
+    }))
 }
 
-pub(crate) fn read_password_line(store_root: &str, label: &str) -> Result<String, String> {
+pub(crate) fn read_password_line(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
     let secret = read_password_entry(store_root, label)?;
     Ok(secret.lines().next().unwrap_or_default().to_string())
 }

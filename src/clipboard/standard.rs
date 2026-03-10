@@ -1,4 +1,5 @@
 use super::{copy_password_entry_to_clipboard_via_read, show_copy_feedback};
+use crate::backend::PasswordEntryError;
 use crate::logging::{run_command_status, CommandLogOptions};
 use crate::password::model::PassEntry;
 use crate::preferences::Preferences;
@@ -29,7 +30,7 @@ pub(super) fn handle_copy_password_error(
     _item: &PassEntry,
     _overlay: &ToastOverlay,
     _button: &Option<Button>,
-    _message: &str,
+    _error: &PasswordEntryError,
 ) -> bool {
     false
 }

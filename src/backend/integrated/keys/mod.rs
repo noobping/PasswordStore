@@ -17,9 +17,8 @@ pub use self::store::resolved_ripasso_own_fingerprint;
 pub(in crate::backend::integrated) use self::store::ripasso_keys_dir;
 pub(in crate::backend::integrated) use self::store::{
     build_ripasso_crypto_from_key_ring, ensure_ripasso_private_key_is_ready,
-    imported_private_key_fingerprints, incompatible_private_key_error, load_ripasso_key_ring,
-    load_stored_ripasso_key_ring, locked_private_key_error, missing_private_key_error,
-    selected_ripasso_own_fingerprint,
+    imported_private_key_fingerprints, load_ripasso_key_ring, load_stored_ripasso_key_ring,
+    locked_private_key_error, missing_private_key_error, selected_ripasso_own_fingerprint,
 };
 pub use self::store::{
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,

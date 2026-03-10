@@ -1,10 +1,8 @@
 use super::copy_password_entry_to_clipboard_via_read;
-use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
+use crate::backend::{preferred_ripasso_private_key_fingerprint_for_entry, PasswordEntryError};
 use crate::logging::log_error;
 use crate::password::model::PassEntry;
-use crate::private_key::unlock::{
-    is_locked_private_key_error, prompt_private_key_unlock_for_action,
-};
+use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use adw::gtk::Button;
 use adw::ToastOverlay;
 use std::rc::Rc;
@@ -13,9 +11,9 @@ pub(super) fn handle_copy_password_error(
     item: &PassEntry,
     overlay: &ToastOverlay,
     button: &Option<Button>,
-    message: &str,
+    error: &PasswordEntryError,
 ) -> bool {
-    if !is_locked_private_key_error(message) {
+    if !matches!(error, PasswordEntryError::LockedPrivateKey(_)) {
         return false;
     }
 

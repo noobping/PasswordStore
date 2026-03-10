@@ -1,3 +1,4 @@
+use crate::backend::PrivateKeyError;
 use sequoia_openpgp::{
     cert::amalgamation::key::PrimaryKey, crypto::Password, parse::Parse, Cert, Fingerprint, Packet,
 };
@@ -45,10 +46,12 @@ pub(in crate::backend::integrated) fn normalized_fingerprint(
 
 pub(in crate::backend::integrated) fn parse_managed_private_key_bytes(
     bytes: &[u8],
-) -> Result<(Cert, ManagedRipassoPrivateKey), String> {
-    let cert = Cert::from_bytes(bytes).map_err(|err| err.to_string())?;
+) -> Result<(Cert, ManagedRipassoPrivateKey), PrivateKeyError> {
+    let cert = Cert::from_bytes(bytes).map_err(|err| PrivateKeyError::other(err.to_string()))?;
     if !cert.is_tsk() {
-        return Err("That OpenPGP key file does not include a private key.".to_string());
+        return Err(PrivateKeyError::missing_private_key_material(
+            "That OpenPGP key file does not include a private key.",
+        ));
     }
 
     let key = ManagedRipassoPrivateKey {
@@ -82,10 +85,12 @@ pub(in crate::backend::integrated) fn cert_can_decrypt_password_entries(cert: &C
         .is_some()
 }
 
-fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert, String> {
+fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert, PrivateKeyError> {
     let trimmed = passphrase.trim();
     if trimmed.is_empty() {
-        return Err("Enter the private key password.".to_string());
+        return Err(PrivateKeyError::passphrase_required(
+            "Enter the private key password.",
+        ));
     }
 
     let password: Password = trimmed.into();
@@ -99,7 +104,9 @@ fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert
             .key()
             .clone()
             .decrypt_secret(&password)
-            .map_err(|_| "The private key password is incorrect.".to_string())?;
+            .map_err(|_| {
+                PrivateKeyError::incorrect_passphrase("The private key password is incorrect.")
+            })?;
         let packet: Packet = if key_amalgamation.primary() {
             key.role_into_primary().into()
         } else {
@@ -107,7 +114,7 @@ fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert
         };
         unlocked = unlocked
             .insert_packets(vec![packet])
-            .map_err(|err| err.to_string())?
+            .map_err(|err| PrivateKeyError::other(err.to_string()))?
             .0;
     }
 
@@ -117,18 +124,21 @@ fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert
 pub(in crate::backend::integrated) fn prepare_managed_private_key_bytes(
     bytes: &[u8],
     passphrase: Option<&str>,
-) -> Result<(Cert, ManagedRipassoPrivateKey), String> {
+) -> Result<(Cert, ManagedRipassoPrivateKey), PrivateKeyError> {
     let (parsed_cert, key) = parse_managed_private_key_bytes(bytes)?;
     let cert = if cert_requires_passphrase(&parsed_cert) {
-        let passphrase =
-            passphrase.ok_or_else(|| "This private key is password protected.".to_string())?;
+        let passphrase = passphrase.ok_or_else(|| {
+            PrivateKeyError::passphrase_required("This private key is password protected.")
+        })?;
         unlock_managed_private_key_cert(&parsed_cert, passphrase)?
     } else {
         parsed_cert
     };
 
     if !cert_can_decrypt_password_entries(&cert) {
-        return Err("That private key cannot decrypt password store entries.".to_string());
+        return Err(PrivateKeyError::incompatible(
+            "That private key cannot decrypt password store entries.",
+        ));
     }
 
     Ok((cert, key))

@@ -7,7 +7,7 @@ mod state;
 
 use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
 use super::list::load_passwords_async;
-use crate::backend::{read_password_entry, save_password_entry};
+use crate::backend::{read_password_entry, save_password_entry, PasswordEntryError};
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
 use crate::password::opened::{
@@ -19,17 +19,15 @@ use crate::support::background::spawn_result_task;
 use crate::support::ui::{
     pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
 };
-use crate::window::messages::with_logs_hint;
 use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gtk::Popover;
 use adw::prelude::*;
 use adw::Toast;
-use std::borrow::Cow;
 
 use self::editor::{current_editor_contents, structured_editor_contents, sync_editor_contents};
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform;
-use self::platform::{friendly_password_entry_error_message, handle_open_password_entry_error};
+use self::platform::handle_open_password_entry_error;
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform;
 pub(crate) use self::state::PasswordPageState;
@@ -46,18 +44,17 @@ fn save_error_toast(message: &str) -> &'static str {
     }
 }
 
-fn password_open_failure_message(message: Option<&str>) -> Cow<'static, str> {
-    if let Some(message) = message.and_then(friendly_password_entry_error_message) {
-        Cow::Borrowed(message)
-    } else {
-        Cow::Owned(with_logs_hint("Couldn't open the item."))
-    }
+fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static str {
+    error
+        .and_then(PasswordEntryError::toast_message)
+        .unwrap_or("Couldn't open the item.")
 }
 
-fn show_password_open_failure(state: &PasswordPageState, message: Option<&str>) {
+fn show_password_open_failure(state: &PasswordPageState, error: Option<&PasswordEntryError>) {
     show_password_open_error(state);
-    let message = password_open_failure_message(message);
-    state.overlay.add_toast(Toast::new(&message));
+    state
+        .overlay
+        .add_toast(Toast::new(password_open_failure_message(error)));
 }
 
 pub(crate) fn open_password_entry_page(
@@ -95,17 +92,17 @@ pub(crate) fn open_password_entry_page(
                     show_password_editor_fields(&state_for_result);
                     sync_editor_contents(&state_for_result, &output, updated_pass_file.as_ref());
                 }
-                Err(msg) => {
-                    log_error(format!("Failed to open password entry: {msg}"));
+                Err(err) => {
+                    log_error(format!("Failed to open password entry: {err}"));
                     if handle_open_password_entry_error(
                         &state_for_result,
                         &opened_pass_file_for_result,
-                        &msg,
+                        &err,
                     ) {
                         return;
                     }
 
-                    show_password_open_failure(&state_for_result, Some(&msg));
+                    show_password_open_failure(&state_for_result, Some(&err));
                 }
             }
         },
@@ -113,7 +110,6 @@ pub(crate) fn open_password_entry_page(
             if !is_opened_pass_file(&opened_pass_file_for_disconnect) {
                 return;
             }
-
             show_password_open_failure(&state_for_disconnect, None);
         },
     );

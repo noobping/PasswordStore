@@ -6,7 +6,6 @@ mod flatpak;
 mod git;
 #[cfg(not(feature = "flatpak"))]
 mod logs;
-pub(crate) mod messages;
 pub(crate) mod navigation;
 mod preferences;
 #[cfg(not(feature = "flatpak"))]

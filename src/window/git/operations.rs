@@ -1,6 +1,5 @@
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
-use crate::window::messages::with_logs_hint;
 
 pub(super) enum GitOperationResult {
     Success,
@@ -8,7 +7,7 @@ pub(super) enum GitOperationResult {
 }
 
 fn git_operation_failed(message: &str) -> GitOperationResult {
-    GitOperationResult::Failed(with_logs_hint(message))
+    GitOperationResult::Failed(message.to_string())
 }
 
 pub(super) fn run_clone_operation(url: &str) -> GitOperationResult {

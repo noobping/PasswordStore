@@ -8,6 +8,7 @@ use super::super::keys::{
 use super::entries::{read_password_entry, save_password_entry};
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients;
+use crate::backend::{PasswordEntryError, PrivateKeyError};
 use crate::preferences::Preferences;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
 use std::env;
@@ -95,7 +96,7 @@ fn ripasso_private_key_parser_rejects_public_only_keys() {
 
     let err = parse_managed_private_key_bytes(&bytes)
         .expect_err("public-only keys should not be accepted as managed private keys");
-    assert!(err.contains("does not include a private key"));
+    assert!(matches!(err, PrivateKeyError::MissingPrivateKeyMaterial(_)));
 }
 
 #[test]
@@ -185,9 +186,11 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
 
     clear_cached_unlocked_ripasso_private_keys();
     assert!(!is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
-    assert!(ensure_ripasso_private_key_is_ready(&imported.fingerprint)
-        .expect_err("locked key should not be ready")
-        .contains("locked"));
+    assert!(matches!(
+        ensure_ripasso_private_key_is_ready(&imported.fingerprint)
+            .expect_err("locked key should not be ready"),
+        PasswordEntryError::LockedPrivateKey(_)
+    ));
 
     unlock_ripasso_private_key_for_session(&imported.fingerprint, "hunter2")
         .expect("unlock private key for session");
@@ -204,7 +207,10 @@ fn unprotected_private_keys_are_rejected_for_secure_import() {
     let err = import_ripasso_private_key_bytes(&bytes, None)
         .expect_err("unprotected private keys should be rejected");
 
-    assert!(err.contains("must be password protected"));
+    assert!(matches!(
+        err,
+        PrivateKeyError::RequiresPasswordProtection(_)
+    ));
 }
 
 #[test]

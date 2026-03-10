@@ -1,3 +1,4 @@
+use crate::backend::PasswordEntryError;
 use ripasso::crypto::CryptoImpl;
 use ripasso::pass::PasswordStore;
 use std::fs;
@@ -40,14 +41,26 @@ fn load_store_entry(
     Ok((store, entry))
 }
 
-pub(crate) fn read_password_entry(store_root: &str, label: &str) -> Result<String, String> {
-    let (store, entry) = load_store_entry(store_root, label)?;
-    entry.secret(&store).map_err(|err| err.to_string())
+pub(crate) fn read_password_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
+    let (store, entry) =
+        load_store_entry(store_root, label).map_err(PasswordEntryError::from_store_message)?;
+    entry
+        .secret(&store)
+        .map_err(|err| PasswordEntryError::from_store_message(err.to_string()))
 }
 
-pub(crate) fn read_password_line(store_root: &str, label: &str) -> Result<String, String> {
-    let (store, entry) = load_store_entry(store_root, label)?;
-    entry.password(&store).map_err(|err| err.to_string())
+pub(crate) fn read_password_line(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
+    let (store, entry) =
+        load_store_entry(store_root, label).map_err(PasswordEntryError::from_store_message)?;
+    entry
+        .password(&store)
+        .map_err(|err| PasswordEntryError::from_store_message(err.to_string()))
 }
 
 pub(crate) fn save_password_entry(

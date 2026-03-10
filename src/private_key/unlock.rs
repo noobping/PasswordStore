@@ -1,5 +1,6 @@
 use crate::backend::{
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
+    PrivateKeyError,
 };
 use crate::logging::log_error;
 use crate::private_key::dialog::{
@@ -9,22 +10,10 @@ use crate::support::background::spawn_result_task;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
 
-pub(crate) fn is_locked_private_key_error(message: &str) -> bool {
-    message.contains("A private key for this item is locked.")
-}
-
 fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
     overlay
         .root()
         .and_then(|root| root.downcast::<ApplicationWindow>().ok())
-}
-
-fn unlock_private_key_error_message(message: &str) -> &'static str {
-    if message.contains("cannot decrypt password store entries") {
-        "This key can't open your items."
-    } else {
-        "Couldn't unlock the key."
-    }
 }
 
 fn show_unlock_failure_toast(overlay: &ToastOverlay) {
@@ -51,7 +40,7 @@ fn start_private_key_unlock_for_action(
     let after_unlock = after_unlock.clone();
     spawn_result_task(
         move || unlock_ripasso_private_key_for_session(&fingerprint, &passphrase),
-        move |result: Result<ManagedRipassoPrivateKey, String>| match result {
+        move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
                 progress_dialog.force_close();
                 after_unlock();
@@ -60,7 +49,7 @@ fn start_private_key_unlock_for_action(
             Err(err) => {
                 progress_dialog.force_close();
                 log_error(format!("Failed to unlock ripasso private key: {err}"));
-                overlay.add_toast(Toast::new(unlock_private_key_error_message(&err)));
+                overlay.add_toast(Toast::new(err.unlock_message()));
             }
         },
         move || {
@@ -112,16 +101,4 @@ pub(crate) fn prompt_private_key_unlock_for_action(
             );
         },
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_locked_private_key_error;
-
-    #[test]
-    fn locked_private_key_errors_are_detected() {
-        assert!(is_locked_private_key_error(
-            "A private key for this item is locked. Unlock it in Preferences and enter its password."
-        ));
-    }
 }

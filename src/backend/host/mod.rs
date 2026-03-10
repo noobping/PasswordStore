@@ -1,6 +1,7 @@
 mod command;
 
 use self::command::{ensure_success, run_store_command_output, run_store_command_with_input};
+use crate::backend::PasswordEntryError;
 use crate::logging::CommandLogOptions;
 use std::process::Output;
 
@@ -12,13 +13,21 @@ fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Outp
     ensure_success(output, "pass failed")
 }
 
-pub(super) fn read_password_entry(store_root: &str, label: &str) -> Result<String, String> {
-    let output = read_entry_output(store_root, label, "Read password entry")?;
+pub(super) fn read_password_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
+    let output = read_entry_output(store_root, label, "Read password entry")
+        .map_err(PasswordEntryError::from_store_message)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-pub(super) fn read_password_line(store_root: &str, label: &str) -> Result<String, String> {
-    let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")?;
+pub(super) fn read_password_line(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
+    let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
+        .map_err(PasswordEntryError::from_store_message)?;
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .next()

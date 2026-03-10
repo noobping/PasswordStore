@@ -2,7 +2,7 @@ use super::list::rebuild_store_recipients_list;
 use super::StoreRecipientsPageState;
 use crate::backend::{
     import_ripasso_private_key_bytes, ripasso_private_key_requires_passphrase,
-    ManagedRipassoPrivateKey,
+    ManagedRipassoPrivateKey, PrivateKeyError,
 };
 use crate::logging::log_error;
 use crate::private_key::dialog::{
@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 fn finish_private_key_import(
     state: &StoreRecipientsPageState,
-    result: Result<ManagedRipassoPrivateKey, String>,
+    result: Result<ManagedRipassoPrivateKey, PrivateKeyError>,
 ) {
     match result {
         Ok(_) => {
@@ -30,18 +30,10 @@ fn finish_private_key_import(
         }
         Err(err) => {
             log_error(format!("Failed to import private key: {err}"));
-            let message = if err.contains("does not include a private key") {
-                "That file does not contain a private key."
-            } else if err.contains("must be password protected") {
-                "Add a password to that key first."
-            } else if err.contains("cannot decrypt password store entries") {
-                "This key can't open your items."
-            } else if err.contains("password protected") || err.contains("incorrect") {
-                "Couldn't unlock the key."
-            } else {
-                "Couldn't import the key."
-            };
-            state.platform.overlay.add_toast(Toast::new(message));
+            state
+                .platform
+                .overlay
+                .add_toast(Toast::new(err.import_message()));
         }
     }
 }
@@ -111,15 +103,10 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
                     Ok(false) => start_private_key_import(&state_for_response, bytes, None),
                     Err(err) => {
                         log_error(format!("Failed to inspect private key: {err}"));
-                        let message = if err.contains("does not include a private key") {
-                            "That file does not contain a private key."
-                        } else {
-                            "Couldn't read that key."
-                        };
                         state_for_response
                             .platform
                             .overlay
-                            .add_toast(Toast::new(message));
+                            .add_toast(Toast::new(err.inspection_message()));
                     }
                 }
             }

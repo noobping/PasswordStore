@@ -8,7 +8,6 @@ use crate::support::background::spawn_result_task;
 use crate::support::ui::{
     navigation_stack_is_root, toggle_popover_with_focus, visible_navigation_page_is,
 };
-use crate::window::messages::with_logs_hint;
 use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
     WindowNavigationState,
@@ -159,7 +158,7 @@ pub(crate) fn register_git_clone_action(
                 restore_after_git_operation(&state_for_disconnect);
                 state_for_disconnect
                     .overlay
-                    .add_toast(Toast::new(&with_logs_hint("Restore stopped unexpectedly.")));
+                    .add_toast(Toast::new("Restore stopped unexpectedly."));
             },
         );
     });

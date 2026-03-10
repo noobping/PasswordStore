@@ -127,7 +127,6 @@ pub(crate) fn begin_new_password_entry(
     path: &str,
     store_root: Option<String>,
     add_popover: &Popover,
-    git_popover: &Popover,
 ) {
     let path = path.trim();
     if path.is_empty() {
@@ -158,7 +157,6 @@ pub(crate) fn begin_new_password_entry(
     push_navigation_page_if_needed(&state.nav, &state.page);
 
     add_popover.popdown();
-    git_popover.popdown();
     sync_editor_contents(state, &template_contents, template_pass_file.as_ref());
 }
 

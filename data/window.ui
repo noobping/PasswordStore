@@ -75,19 +75,6 @@
                     <property name="visible">true</property>
                   </object>
                 </child>
-                <child>
-                  <object class="GtkPopover" id="git_popover">
-                    <property name="position">bottom</property>
-                    <property name="autohide">false</property>
-                    <child>
-                      <object class="AdwEntryRow" id="git_url_entry">
-                        <property name="title" translatable="yes">Repository URL</property>
-                        <property name="show-apply-button">True</property>
-                        <property name="action-name">win.git-clone</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
               </object>
             </child>
             <child type="title">

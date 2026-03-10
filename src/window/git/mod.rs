@@ -1,19 +1,20 @@
 mod operations;
 
-use self::operations::{run_clone_operation, run_sync_operation, GitOperationResult};
+use self::operations::{run_sync_operation, GitOperationResult};
+use crate::logging::log_error;
 use crate::password::list::{load_passwords_async, PasswordListActions};
-use crate::store::management::StoreRecipientsPageState;
-use crate::support::actions::{activate_widget_action, register_window_action};
+use crate::preferences::Preferences;
+use crate::store::management::{prompt_store_clone, StoreRecipientsPageState};
+use crate::support::actions::register_window_action;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::{navigation_stack_is_root, toggle_popover, visible_navigation_page_is};
+use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
     WindowNavigationState,
 };
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::{ListBox, Popover};
-use adw::prelude::*;
-use adw::{ApplicationWindow, EntryRow, NavigationPage, StatusPage, Toast, ToastOverlay};
+use adw::gtk::ListBox;
+use adw::{ApplicationWindow, NavigationPage, StatusPage, Toast, ToastOverlay};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -107,65 +108,78 @@ fn reload_password_list(state: &GitActionState) {
     );
 }
 
-pub(crate) fn register_open_git_action(window: &ApplicationWindow, popover: &Popover) {
-    let popover = popover.clone();
-    register_window_action(window, "open-git", move || {
-        toggle_popover(&popover);
-    });
+fn register_cloned_store(
+    settings: &Preferences,
+    store: &str,
+) -> Result<bool, adw::glib::BoolError> {
+    let mut stores = settings.stores();
+    if stores.iter().any(|configured| configured == store) {
+        return Ok(false);
+    }
+
+    stores.push(store.to_string());
+    settings.set_stores(stores)?;
+    Ok(true)
 }
 
-pub(crate) fn connect_git_clone_apply(window: &ApplicationWindow, entry: &EntryRow) {
-    let window = window.clone();
-    entry.connect_apply(move |_| {
-        activate_widget_action(&window, "win.git-clone");
-    });
-}
+fn start_prompted_clone(state: &GitActionState, store: String, url: String) {
+    begin_git_operation(state, "Restoring store");
 
-pub(crate) fn register_git_clone_action(
-    state: &GitActionState,
-    popover: &Popover,
-    entry: &EntryRow,
-) {
-    let window = state.window.clone();
-    let state = state.clone();
-    let popover = popover.clone();
-    let entry = entry.clone();
-    register_window_action(&window, "git-clone", move || {
-        let url = entry.text().trim().to_string();
-        if url.is_empty() {
-            state
+    let state_for_result = state.clone();
+    let state_for_disconnect = state.clone();
+    let settings = Preferences::new();
+    let settings_for_result = settings.clone();
+    let store_for_thread = store.clone();
+    let store_for_result = store.clone();
+    spawn_result_task(
+        move || clone_store_repository(&url, &store_for_thread),
+        move |result| match result {
+            Ok(()) => match register_cloned_store(&settings_for_result, &store_for_result) {
+                Ok(_) => {
+                    restore_after_git_operation_and_reload(&state_for_result);
+                    state_for_result
+                        .overlay
+                        .add_toast(Toast::new("Store restored."));
+                }
+                Err(err) => {
+                    restore_after_git_operation(&state_for_result);
+                    log_error(format!("Failed to save stores: {err}"));
+                    state_for_result
+                        .overlay
+                        .add_toast(Toast::new("Couldn't add that folder."));
+                }
+            },
+            Err(message) => {
+                restore_after_git_operation(&state_for_result);
+                state_for_result.overlay.add_toast(Toast::new(&message));
+            }
+        },
+        move || {
+            restore_after_git_operation(&state_for_disconnect);
+            state_for_disconnect
                 .overlay
-                .add_toast(Toast::new("Enter a repository URL."));
-            return;
-        }
+                .add_toast(Toast::new("Restore stopped unexpectedly."));
+        },
+    );
+}
 
-        popover.popdown();
-        begin_git_operation(&state, "Restoring store");
+pub(crate) fn register_open_git_action(state: &GitActionState) {
+    let window = state.window.clone();
+    let clone_state = state.clone();
+    register_window_action(&window, "git-clone", move || {
+        prompt_store_clone(&clone_state.window, &clone_state.overlay, {
+            let state = clone_state.clone();
+            move |store, url| start_prompted_clone(&state, store, url)
+        });
+    });
 
-        let url_for_thread = url.clone();
-        let state = state.clone();
-        let entry = entry.clone();
-        let state_for_disconnect = state.clone();
-        spawn_result_task(
-            move || run_clone_operation(&url_for_thread),
-            move |result| match result {
-                GitOperationResult::Success => {
-                    entry.set_text("");
-                    restore_after_git_operation_and_reload(&state);
-                    state.overlay.add_toast(Toast::new("Store restored."));
-                }
-                GitOperationResult::Failed(message) => {
-                    restore_after_git_operation(&state);
-                    state.overlay.add_toast(Toast::new(&message));
-                }
-            },
-            move || {
-                restore_after_git_operation(&state_for_disconnect);
-                state_for_disconnect
-                    .overlay
-                    .add_toast(Toast::new("Restore stopped unexpectedly."));
-            },
-        );
+    let window = state.window.clone();
+    let open_state = state.clone();
+    register_window_action(&window, "open-git", move || {
+        prompt_store_clone(&open_state.window, &open_state.overlay, {
+            let state = open_state.clone();
+            move |store, url| start_prompted_clone(&state, store, url)
+        });
     });
 }
 

@@ -24,7 +24,6 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) new_password_store_dropdown: DropDown,
     pub(in crate::window) path_entry: EntryRow,
     pub(in crate::window) git_button: Button,
-    pub(in crate::window) git_popover: Popover,
     pub(in crate::window) window_title: WindowTitle,
     pub(in crate::window) save_button: Button,
     pub(in crate::window) toast_overlay: ToastOverlay,
@@ -56,8 +55,6 @@ pub(in crate::window) struct WindowWidgets {
     #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) pass_command_row: EntryRow,
     #[cfg(not(feature = "flatpak"))]
-    pub(in crate::window) git_url_entry: EntryRow,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) git_busy_page: NavigationPage,
     #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) git_busy_status: StatusPage,
@@ -80,7 +77,6 @@ impl WindowWidgets {
             new_password_store_dropdown: required_object(builder, "new_password_store_dropdown"),
             path_entry: required_object(builder, "path_entry"),
             git_button: required_object(builder, "git_button"),
-            git_popover: required_object(builder, "git_popover"),
             window_title: required_object(builder, "window_title"),
             save_button: required_object(builder, "save_button"),
             toast_overlay: required_object(builder, "toast_overlay"),
@@ -111,8 +107,6 @@ impl WindowWidgets {
             backend_row: required_object(builder, "backend_row"),
             #[cfg(not(feature = "flatpak"))]
             pass_command_row: required_object(builder, "pass_command_row"),
-            #[cfg(not(feature = "flatpak"))]
-            git_url_entry: required_object(builder, "git_url_entry"),
             #[cfg(not(feature = "flatpak"))]
             git_busy_page: required_object(builder, "git_busy_page"),
             #[cfg(not(feature = "flatpak"))]

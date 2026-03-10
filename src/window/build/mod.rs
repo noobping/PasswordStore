@@ -137,7 +137,6 @@ pub(crate) fn create_main_window(
         &password_list_state,
         &new_password_popover_state,
         &widgets.add_button_popover,
-        &widgets.git_popover,
     );
     register_password_page_actions(&widgets.window, &password_list_state);
     register_store_recipients_save_action(
@@ -156,7 +155,6 @@ pub(crate) fn create_main_window(
         &widgets.toast_overlay,
         &window_navigation_state,
         &git_action_state,
-        &widgets.git_popover,
     );
 
     #[cfg(feature = "setup")]

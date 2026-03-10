@@ -1,14 +1,11 @@
 use super::build::widgets::WindowWidgets;
-use super::git::{
-    connect_git_clone_apply, register_git_clone_action, register_open_git_action,
-    register_synchronize_action, GitActionState,
-};
+use super::git::{register_open_git_action, register_synchronize_action, GitActionState};
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::WindowNavigationState;
 use super::preferences::{connect_backend_row, connect_pass_command_row, initialize_backend_row};
 use crate::preferences::Preferences;
 use crate::store::management::StoreRecipientsPageState;
-use adw::gtk::{ListBox, Popover};
+use adw::gtk::ListBox;
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow, ToastOverlay};
 use std::cell::Cell;
@@ -63,7 +60,6 @@ pub(crate) fn register_standard_window_actions(
     overlay: &ToastOverlay,
     navigation_state: &WindowNavigationState,
     git_action_state: &GitActionState,
-    git_popover: &Popover,
 ) {
     connect_pass_command_row(&widgets.pass_command_row, overlay, &state.settings);
     connect_backend_row(
@@ -73,9 +69,7 @@ pub(crate) fn register_standard_window_actions(
         &state.settings,
     );
     register_open_log_action(window, navigation_state);
-    register_open_git_action(window, git_popover);
-    connect_git_clone_apply(window, &widgets.git_url_entry);
-    register_git_clone_action(git_action_state, git_popover, &widgets.git_url_entry);
+    register_open_git_action(git_action_state);
     register_synchronize_action(git_action_state);
     start_log_poller(&widgets.log_view, navigation_state);
 }

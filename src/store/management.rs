@@ -218,9 +218,13 @@ fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialo
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
     let dialog = Dialog::builder()
-        .title("Cloning store")
+        .title("Restoring password store")
         .content_width(460)
-        .child(&dialog_content_shell("Cloning store", Some(store), &status))
+        .child(&dialog_content_shell(
+            "Restoring password store",
+            Some(store),
+            &status,
+        ))
         .build();
     dialog.set_can_close(false);
     dialog.present(Some(window));
@@ -247,9 +251,13 @@ fn present_clone_url_dialog<F>(
     page.add(&group);
 
     let dialog = Dialog::builder()
-        .title("Clone store")
+        .title("Restore password store")
         .content_width(460)
-        .child(&dialog_content_shell("Clone store", Some(store), &page))
+        .child(&dialog_content_shell(
+            "Restore password store",
+            Some(store),
+            &page,
+        ))
         .build();
 
     let dialog_clone = dialog.clone();
@@ -269,6 +277,43 @@ fn present_clone_url_dialog<F>(
 }
 
 #[cfg(not(feature = "flatpak"))]
+pub(crate) fn prompt_store_clone<F>(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    on_submit: F,
+) where
+    F: Fn(String, String) + 'static,
+{
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let on_submit = Rc::new(on_submit);
+    let picker_window = window.clone();
+    let picker_overlay = overlay.clone();
+    open_store_folder_picker(
+        &picker_window,
+        "Choose password store folder to restore",
+        "Select",
+        true,
+        &picker_overlay,
+        move |store| {
+            let window_for_dialog = window.clone();
+            let overlay_for_dialog = overlay.clone();
+            let store_for_dialog = store.clone();
+            let on_submit = on_submit.clone();
+            present_clone_url_dialog(
+                &window_for_dialog,
+                &overlay_for_dialog,
+                &store_for_dialog,
+                {
+                    let store = store.clone();
+                    move |url| on_submit(store.clone(), url)
+                },
+            );
+        },
+    );
+}
+
+#[cfg(not(feature = "flatpak"))]
 fn append_store_clone_row(
     list: &ListBox,
     settings: &Preferences,
@@ -283,17 +328,26 @@ fn append_store_clone_row(
     let list_for_action = list.clone();
     append_action_row_with_button(
         list,
-        "Clone store",
-        "Choose a folder and clone a Git repository into it.",
+        "Restore password store",
+        "Choose a folder and restore it from a Git repository.",
         "git-symbolic",
         move || {
-            open_store_clone_picker(
-                &window,
-                &list_for_action,
-                &settings,
-                &overlay,
-                &recipients_page,
-            )
+            let list_for_clone = list_for_action.clone();
+            let settings_for_clone = settings.clone();
+            let window_for_clone = window.clone();
+            let overlay_for_clone = overlay.clone();
+            let recipients_page_for_clone = recipients_page.clone();
+            prompt_store_clone(&window, &overlay, move |store, url| {
+                start_store_clone(
+                    &window_for_clone,
+                    &list_for_clone,
+                    &settings_for_clone,
+                    &overlay_for_clone,
+                    &recipients_page_for_clone,
+                    store,
+                    url,
+                );
+            });
         },
     );
 }
@@ -334,54 +388,6 @@ fn open_store_picker(
                     show_store_recipients_edit_page(&recipients_page, &store);
                 }
             }
-        },
-    );
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn open_store_clone_picker(
-    window: &ApplicationWindow,
-    list: &ListBox,
-    settings: &Preferences,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-) {
-    let list = list.clone();
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let recipients_page = recipients_page.clone();
-    let window_for_selection = window.clone();
-    let overlay_for_selection = overlay.clone();
-    open_store_folder_picker(
-        &window,
-        "Choose password store folder for the clone",
-        "Select",
-        true,
-        &overlay,
-        move |store| {
-            let list_for_clone = list.clone();
-            let settings_for_clone = settings.clone();
-            let window_for_clone = window_for_selection.clone();
-            let overlay_for_clone = overlay_for_selection.clone();
-            let recipients_page_for_clone = recipients_page.clone();
-            let store_for_dialog = store.clone();
-            present_clone_url_dialog(
-                &window_for_selection,
-                &overlay_for_selection,
-                &store_for_dialog,
-                move |url| {
-                    start_store_clone(
-                        &window_for_clone,
-                        &list_for_clone,
-                        &settings_for_clone,
-                        &overlay_for_clone,
-                        &recipients_page_for_clone,
-                        store.clone(),
-                        url,
-                    );
-                },
-            );
         },
     );
 }

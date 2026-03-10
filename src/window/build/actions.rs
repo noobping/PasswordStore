@@ -66,10 +66,8 @@ pub(super) fn connect_new_password_submit(
     page_state: &PasswordPageState,
     popover_state: &NewPasswordPopoverState,
     add_popover: &Popover,
-    git_popover: &Popover,
 ) {
     let add_popover = add_popover.clone();
-    let git_popover = git_popover.clone();
     let page_state = page_state.clone();
     let popover_state = popover_state.clone();
     path_entry.connect_apply(move |row| {
@@ -78,7 +76,6 @@ pub(super) fn connect_new_password_submit(
             &row.text(),
             selected_new_password_store(&popover_state),
             &add_popover,
-            &git_popover,
         );
     });
 }

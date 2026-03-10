@@ -1,3 +1,10 @@
+mod editor;
+#[cfg(feature = "flatpak")]
+mod flatpak;
+#[cfg(not(feature = "flatpak"))]
+mod standard;
+mod state;
+
 use crate::backend::{read_password_entry, save_password_entry};
 use crate::support::background::spawn_result_task;
 use crate::password::model::OpenPassFile;
@@ -7,26 +14,18 @@ use crate::password::opened::{
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
 use super::file::{
-    clear_box_children, new_pass_file_contents_from_template, parse_structured_pass_lines,
-    rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row,
-    sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
+    clear_box_children, new_pass_file_contents_from_template, structured_pass_contents,
+    sync_username_row,
 };
 use super::list::load_passwords_async;
-use super::otp::PasswordOtpState;
 use crate::preferences::Preferences;
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::set_save_button_for_password;
 use adw::prelude::*;
-use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle};
-use adw::gtk::{Box as GtkBox, Button, ListBox, Popover, TextView};
-use std::cell::RefCell;
-use std::rc::Rc;
+use adw::{Toast};
+use adw::gtk::Popover;
 
-#[cfg(feature = "flatpak")]
-mod flatpak;
-#[cfg(not(feature = "flatpak"))]
-mod standard;
-
+use self::editor::{current_editor_contents, structured_editor_contents, sync_editor_contents};
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform;
 #[cfg(not(feature = "flatpak"))]
@@ -34,71 +33,11 @@ use self::standard as platform;
 use self::platform::{
     friendly_password_entry_error_message, handle_open_password_entry_error,
 };
-
-#[derive(Clone)]
-pub(crate) struct PasswordPageState {
-    pub(crate) nav: adw::NavigationView,
-    pub(crate) page: NavigationPage,
-    pub(crate) raw_page: NavigationPage,
-    pub(crate) list: ListBox,
-    pub(crate) back: Button,
-    pub(crate) add: Button,
-    pub(crate) find: Button,
-    pub(crate) git: Button,
-    pub(crate) save: Button,
-    pub(crate) win: WindowTitle,
-    pub(crate) status: StatusPage,
-    pub(crate) entry: PasswordEntryRow,
-    pub(crate) username: EntryRow,
-    pub(crate) otp: PasswordOtpState,
-    pub(crate) dynamic_box: GtkBox,
-    pub(crate) raw_button: Button,
-    pub(crate) structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
-    pub(crate) dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
-    pub(crate) text: TextView,
-    pub(crate) overlay: ToastOverlay,
-}
-
-fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle: &str) {
-    state.add.set_visible(false);
-    state.find.set_visible(false);
-    state.git.set_visible(false);
-    state.back.set_visible(true);
-    state.save.set_visible(true);
-    set_save_button_for_password(&state.save);
-    state.win.set_title(title);
-    state.win.set_subtitle(subtitle);
-}
-
-fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
-    show_password_editor_chrome(state, title, subtitle);
-    state.entry.set_visible(false);
-    state.username.set_text("");
-    state.username.set_visible(false);
-    state.otp.clear();
-    state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
-    state.status.set_visible(true);
-    state.status.set_title("Opening item");
-    state.status.set_description(Some("Please wait."));
-}
-
-fn show_password_editor_fields(state: &PasswordPageState) {
-    state.status.set_visible(false);
-    state.entry.set_visible(true);
-    state.raw_button.set_visible(true);
-}
-
-fn show_password_open_error(state: &PasswordPageState) {
-    state.entry.set_visible(false);
-    state.username.set_visible(false);
-    state.otp.clear();
-    state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
-    state.status.set_visible(true);
-    state.status.set_title("Item unavailable");
-    state.status.set_description(Some("Try again."));
-}
+pub(crate) use self::state::PasswordPageState;
+use self::state::{
+    show_password_editor_chrome, show_password_editor_fields, show_password_loading_state,
+    show_password_open_error,
+};
 
 fn save_error_toast(message: &str) -> &'static str {
     if message.contains("already exists") {
@@ -106,51 +45,6 @@ fn save_error_toast(message: &str) -> &'static str {
     } else {
         "Couldn't save changes."
     }
-}
-
-fn structured_editor_contents(state: &PasswordPageState) -> String {
-    structured_pass_contents(
-        &state.entry.text(),
-        &state.username.text(),
-        state.otp.current_url().as_deref(),
-        &state.structured_templates.borrow(),
-        &state.dynamic_rows.borrow(),
-    )
-}
-
-fn current_editor_contents(state: &PasswordPageState) -> String {
-    let raw_visible = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|page| page == &state.raw_page)
-        .unwrap_or(false);
-    if raw_visible {
-        let buffer = state.text.buffer();
-        let (start, end) = buffer.bounds();
-        buffer.text(&start, &end, false).to_string()
-    } else {
-        structured_editor_contents(state)
-    }
-}
-
-fn sync_editor_contents(
-    state: &PasswordPageState,
-    contents: &str,
-    pass_file: Option<&OpenPassFile>,
-) {
-    let (password, structured_lines) = parse_structured_pass_lines(contents);
-    state.entry.set_text(&password);
-    state.text.buffer().set_text(contents);
-    rebuild_dynamic_fields_from_lines(
-        &state.dynamic_box,
-        &state.overlay,
-        &state.structured_templates,
-        &state.dynamic_rows,
-        &structured_lines,
-    );
-    sync_username_row_from_parsed_lines(&state.username, pass_file, &structured_lines);
-    state.otp.sync_from_parsed_lines(&structured_lines, true);
 }
 
 fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {

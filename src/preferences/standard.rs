@@ -9,15 +9,17 @@ const DEFAULT_CMD: &str = "pass";
 impl BackendKind {
     pub fn stored_value(self) -> &'static str {
         match self {
-            Self::Integrated => "ripasso",
-            Self::HostCommand => "pass",
+            Self::Integrated => "integrated",
+            Self::HostCommand => "host-command",
         }
     }
 
     pub fn from_stored(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
-            "ripasso" => Self::Integrated,
-            "pass" | "pass-command" | "pass command" => Self::HostCommand,
+            "integrated" | "ripasso" => Self::Integrated,
+            "host-command" | "host command" | "pass" | "pass-command" | "pass command" => {
+                Self::HostCommand
+            }
             _ => default_backend_kind(),
         }
     }

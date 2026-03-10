@@ -2,7 +2,7 @@ use crate::preferences::Preferences;
 use crate::store::management::StoreRecipientsPageState;
 use super::git::{
     connect_git_clone_apply, register_git_clone_action, register_open_git_action,
-    register_synchronize_action, GitActionState, GitOperationControl,
+    register_synchronize_action, GitActionState,
 };
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::WindowNavigationState;
@@ -24,7 +24,6 @@ pub(crate) struct StandardWindowParts {
     pub(crate) git_busy_page: NavigationPage,
     pub(crate) git_busy_status: StatusPage,
     pub(crate) log_view: TextView,
-    pub(crate) git_operation: GitOperationControl,
     pub(crate) store_recipients_entry: EntryRow,
 }
 
@@ -63,7 +62,6 @@ pub(crate) fn load_standard_window_parts(builder: &Builder) -> StandardWindowPar
         log_view: builder
             .object("log_view")
             .expect("Failed to get log_view"),
-        git_operation: GitOperationControl::default(),
         store_recipients_entry,
     }
 }
@@ -111,8 +109,7 @@ pub(crate) fn register_standard_window_actions(
         git_action_state,
         git_popover,
         &parts.git_url_entry,
-        &parts.git_operation,
     );
-    register_synchronize_action(git_action_state, &parts.git_operation);
+    register_synchronize_action(git_action_state);
     start_log_poller(&parts.log_view, navigation_state);
 }

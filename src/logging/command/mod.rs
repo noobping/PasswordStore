@@ -1,14 +1,10 @@
-mod control;
 mod run;
 mod streams;
 
-pub(crate) use self::control::CommandControl;
 #[cfg(not(feature = "flatpak"))]
 pub(crate) use self::run::{run_command_output, run_command_status, run_command_with_input};
 #[cfg(all(feature = "flatpak", test))]
 pub(crate) use self::run::run_command_output;
-#[cfg(not(feature = "flatpak"))]
-pub(crate) use self::run::run_command_output_controlled;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CommandLogOptions {

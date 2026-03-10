@@ -1,10 +1,10 @@
 use super::super::store::{log_error, log_info};
 use super::streams::{join_stream_logger, spawn_stream_logger};
-use super::{CommandControl, CommandLogOptions};
+use super::CommandLogOptions;
 use std::ffi::OsStr;
 use std::io::{self, Write};
 #[cfg(unix)]
-use std::os::unix::process::{CommandExt, ExitStatusExt};
+use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, ExitStatus, Output, Stdio};
 
 fn shell_quote(value: &OsStr) -> String {
@@ -79,16 +79,10 @@ fn run_command_output_inner(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
-    control: Option<&CommandControl>,
 ) -> io::Result<Output> {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     let command = describe_command(cmd);
-
-    #[cfg(unix)]
-    if control.is_some() {
-        cmd.process_group(0);
-    }
 
     match cmd.spawn() {
         Ok(mut child) => {
@@ -113,16 +107,11 @@ fn run_command_output_inner(
                 )
             });
 
-            let status = if let Some(control) = control {
-                control.set_child(child);
-                control.wait(context, &command)?
-            } else {
-                match child.wait() {
-                    Ok(status) => status,
-                    Err(err) => {
-                        log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
-                        return Err(err);
-                    }
+            let status = match child.wait() {
+                Ok(status) => status,
+                Err(err) => {
+                    log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
+                    return Err(err);
                 }
             };
 
@@ -156,17 +145,7 @@ pub(crate) fn run_command_output(
     context: &str,
     options: CommandLogOptions,
 ) -> io::Result<Output> {
-    run_command_output_inner(cmd, context, options, None)
-}
-
-#[cfg(not(feature = "flatpak"))]
-pub(crate) fn run_command_output_controlled(
-    cmd: &mut Command,
-    context: &str,
-    options: CommandLogOptions,
-    control: &CommandControl,
-) -> io::Result<Output> {
-    run_command_output_inner(cmd, context, options, Some(control))
+    run_command_output_inner(cmd, context, options)
 }
 
 pub(crate) fn run_command_status(

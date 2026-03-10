@@ -207,6 +207,16 @@ mod tests {
         assert_eq!(default_backend_kind(), BackendKind::Integrated);
     }
 
+    #[cfg(not(feature = "flatpak"))]
+    #[test]
+    fn backend_storage_accepts_current_and_legacy_names() {
+        assert_eq!(BackendKind::Integrated.stored_value(), "integrated");
+        assert_eq!(BackendKind::from_stored("integrated"), BackendKind::Integrated);
+        assert_eq!(BackendKind::from_stored("ripasso"), BackendKind::Integrated);
+        assert_eq!(BackendKind::from_stored("host-command"), BackendKind::HostCommand);
+        assert_eq!(BackendKind::from_stored("pass"), BackendKind::HostCommand);
+    }
+
     #[test]
     fn missing_store_paths_are_filtered_out() {
         let nanos = SystemTime::now()

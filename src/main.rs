@@ -2,7 +2,6 @@
 #[cfg(feature = "setup")]
 mod setup;
 
-mod config;
 mod backend;
 mod clipboard;
 mod logging;
@@ -14,7 +13,6 @@ mod store;
 mod support;
 mod window;
 
-use crate::config::{APP_ID, RESOURCE_ID};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::support::object_data::non_null_to_string_option;
@@ -32,6 +30,9 @@ use adw::gtk::{
 };
 use std::ffi::OsString;
 use std::result::Result::Ok;
+
+const APP_ID: &str = env!("APP_ID");
+const RESOURCE_ID: &str = env!("RESOURCE_ID");
 
 fn main() -> ExitCode {
     resources_register_include!("compiled.gresource").expect("Failed to register resources");

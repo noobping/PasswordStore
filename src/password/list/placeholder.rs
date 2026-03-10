@@ -1,6 +1,7 @@
-use crate::config::APP_ID;
 use adw::StatusPage;
 use adw::gtk::Spinner;
+
+const APP_ID: &str = env!("APP_ID");
 
 pub(super) fn loading_placeholder() -> StatusPage {
     let spinner = Spinner::new();

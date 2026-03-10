@@ -1,10 +1,8 @@
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::fs;
-
-use crate::config::APP_ID;
+use std::path::PathBuf;
 
 #[cfg(feature = "flatpak")]
 mod flatpak;
@@ -18,6 +16,7 @@ use self::standard as platform_defaults;
 use self::platform_defaults::default_store_dirs;
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
+const APP_ID: &str = env!("APP_ID");
 
 #[cfg(not(feature = "flatpak"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

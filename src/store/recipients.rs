@@ -1,4 +1,3 @@
-use crate::backend::save_store_recipients;
 use crate::preferences::Preferences;
 use std::fs;
 #[cfg(any(test, not(feature = "flatpak")))]
@@ -88,13 +87,6 @@ pub(crate) fn stores_with_preferred_first(stores: &[String], preferred: &str) ->
         }
     }
     ordered
-}
-
-pub(crate) fn apply_password_store_recipients(
-    store_root: &str,
-    recipients: &[String],
-) -> Result<(), String> {
-    save_store_recipients(store_root, recipients)
 }
 
 #[cfg(test)]

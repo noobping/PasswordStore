@@ -1,9 +1,10 @@
 use super::super::management::rebuild_store_list;
-use super::super::recipients::{apply_password_store_recipients, stores_with_preferred_first};
+use super::super::recipients::stores_with_preferred_first;
 use super::{
     sync_store_recipients_page_header, StoreRecipientsMode, StoreRecipientsPageState,
     StoreRecipientsRequest,
 };
+use crate::backend::save_store_recipients;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
@@ -60,7 +61,7 @@ fn save_store_recipients_async(
     let state_for_disconnect = state.clone();
     let request_for_disconnect = request.clone();
     spawn_result_task(
-        move || apply_password_store_recipients(&store_for_thread, &recipients_for_save),
+        move || save_store_recipients(&store_for_thread, &recipients_for_save),
         move |result| match result {
             Ok(()) => {
                 let settings = Preferences::new();

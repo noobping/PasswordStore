@@ -1,6 +1,9 @@
 use std::{fs, path::Path};
 
 fn main() {
+    println!("cargo:rustc-env=APP_ID={}", app_id());
+    println!("cargo:rustc-env=RESOURCE_ID={}", resource_id());
+
     // Directories
     let data_dir = Path::new("data");
 
@@ -75,12 +78,12 @@ Categories=Utility;
         .expect("Can not build desktop file")
 }
 
-#[cfg(all(not(feature = "setup"), debug_assertions))]
+#[cfg(debug_assertions)]
 fn app_id() -> &'static str {
     concat!("io.github.noobping.", env!("CARGO_PKG_NAME"), ".develop")
 }
 
-#[cfg(all(not(feature = "setup"), not(debug_assertions)))]
+#[cfg(not(debug_assertions))]
 fn app_id() -> &'static str {
     concat!("io.github.noobping.", env!("CARGO_PKG_NAME"))
 }

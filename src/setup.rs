@@ -4,7 +4,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{env, fs};
 
-use crate::config::{APP_ID, RESOURCE_ID};
+const APP_ID: &str = env!("APP_ID");
+const RESOURCE_ID: &str = env!("RESOURCE_ID");
 
 pub fn local_menu_action_label(installed: bool) -> &'static str {
     if installed {

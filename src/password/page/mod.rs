@@ -5,10 +5,7 @@ mod flatpak;
 mod standard;
 mod state;
 
-use super::file::{
-    clear_box_children, new_pass_file_contents_from_template, structured_pass_contents,
-    sync_username_row,
-};
+use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
 use super::list::load_passwords_async;
 use crate::backend::{read_password_entry, save_password_entry};
 use crate::logging::log_error;
@@ -37,8 +34,8 @@ use self::platform::{friendly_password_entry_error_message, handle_open_password
 use self::standard as platform;
 pub(crate) use self::state::PasswordPageState;
 use self::state::{
-    show_password_editor_chrome, show_password_editor_fields, show_password_loading_state,
-    show_password_open_error,
+    reset_password_editor, show_password_editor_chrome, show_password_editor_fields,
+    show_password_loading_state, show_password_open_error,
 };
 
 fn save_error_toast(message: &str) -> &'static str {
@@ -229,15 +226,7 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
     let chrome = state.window_chrome();
     show_primary_page_chrome(&chrome);
 
-    state.entry.set_text("");
-    sync_username_row(&state.username, None);
-    state.otp.clear();
-    clear_box_children(&state.dynamic_box);
-    state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
-    state.structured_templates.borrow_mut().clear();
-    state.dynamic_rows.borrow_mut().clear();
-    state.text.buffer().set_text("");
+    reset_password_editor(state);
 
     load_passwords_async(
         &state.list,

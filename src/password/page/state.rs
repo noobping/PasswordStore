@@ -1,4 +1,6 @@
-use super::super::file::{DynamicFieldRow, StructuredPassLine};
+use super::super::file::{
+    clear_box_children, sync_username_row, DynamicFieldRow, StructuredPassLine,
+};
 use super::super::otp::PasswordOtpState;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::gtk::{Box as GtkBox, Button, ListBox, TextView};
@@ -65,6 +67,18 @@ pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
     state.status.set_visible(false);
     state.entry.set_visible(true);
     state.raw_button.set_visible(true);
+}
+
+pub(super) fn reset_password_editor(state: &PasswordPageState) {
+    state.entry.set_text("");
+    sync_username_row(&state.username, None);
+    state.otp.clear();
+    clear_box_children(&state.dynamic_box);
+    state.dynamic_box.set_visible(false);
+    state.raw_button.set_visible(false);
+    state.structured_templates.borrow_mut().clear();
+    state.dynamic_rows.borrow_mut().clear();
+    state.text.buffer().set_text("");
 }
 
 pub(super) fn show_password_open_error(state: &PasswordPageState) {

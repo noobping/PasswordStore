@@ -27,6 +27,10 @@ fn unlock_private_key_error_message(message: &str) -> &'static str {
     }
 }
 
+fn show_unlock_failure_toast(overlay: &ToastOverlay) {
+    overlay.add_toast(Toast::new("Couldn't unlock the key."));
+}
+
 fn start_private_key_unlock_for_action(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -62,7 +66,7 @@ fn start_private_key_unlock_for_action(
         move || {
             progress_dialog_for_disconnect.force_close();
             log_error("Private key unlock worker disconnected unexpectedly.".to_string());
-            overlay_for_disconnect.add_toast(Toast::new("Couldn't unlock the key."));
+            show_unlock_failure_toast(&overlay_for_disconnect);
         },
     );
 }
@@ -76,7 +80,7 @@ pub(crate) fn prompt_private_key_unlock_for_action(
         log_error(
             "Couldn't find the application window for the private key unlock dialog.".to_string(),
         );
-        overlay.add_toast(Toast::new("Couldn't unlock the key."));
+        show_unlock_failure_toast(overlay);
         return;
     };
     let key_title = match ripasso_private_key_title(&fingerprint) {

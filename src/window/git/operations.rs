@@ -7,6 +7,10 @@ pub(super) enum GitOperationResult {
     Failed(String),
 }
 
+fn git_operation_failed(message: &str) -> GitOperationResult {
+    GitOperationResult::Failed(with_logs_hint(message))
+}
+
 pub(super) fn run_clone_operation(url: &str) -> GitOperationResult {
     let settings = Preferences::new();
     let store_root = settings.store();
@@ -18,10 +22,10 @@ pub(super) fn run_clone_operation(url: &str) -> GitOperationResult {
     cmd.arg("clone").arg(url).arg(&store_root);
     match run_command_output(&mut cmd, "Clone password store", CommandLogOptions::DEFAULT) {
         Ok(output) if output.status.success() => GitOperationResult::Success,
-        Ok(_) => GitOperationResult::Failed(with_logs_hint("Couldn't restore the store.")),
+        Ok(_) => git_operation_failed("Couldn't restore the store."),
         Err(err) => {
             log_error(format!("Failed to start restore from Git: {err}"));
-            GitOperationResult::Failed(with_logs_hint("Couldn't restore the store."))
+            git_operation_failed("Couldn't restore the store.")
         }
     }
 }
@@ -48,11 +52,11 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
                     log_error(format!(
                         "Password store sync failed for {root}: {fatal_line}"
                     ));
-                    return GitOperationResult::Failed(with_logs_hint("Couldn't sync a store."));
+                    return git_operation_failed("Couldn't sync a store.");
                 }
                 Err(err) => {
                     log_error(format!("Password store sync failed for {root}: {err}"));
-                    return GitOperationResult::Failed(with_logs_hint("Couldn't sync a store."));
+                    return git_operation_failed("Couldn't sync a store.");
                 }
             }
         }

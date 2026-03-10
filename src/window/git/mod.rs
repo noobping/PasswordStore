@@ -3,6 +3,7 @@ mod operations;
 use self::operations::{run_clone_operation, run_sync_operation, GitOperationResult};
 use crate::password::list::load_passwords_async;
 use crate::store::management::StoreRecipientsPageState;
+use crate::support::actions::register_window_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::messages::with_logs_hint;
@@ -86,8 +87,7 @@ pub(crate) fn register_open_git_action(
 ) {
     let popover = popover.clone();
     let entry = entry.clone();
-    let action = SimpleAction::new("open-git", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "open-git", move || {
         if popover.is_visible() {
             popover.popdown();
         } else {
@@ -95,7 +95,6 @@ pub(crate) fn register_open_git_action(
             entry.grab_focus();
         }
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn connect_git_clone_apply(window: &ApplicationWindow, entry: &EntryRow) {
@@ -114,8 +113,7 @@ pub(crate) fn register_git_clone_action(
     let state = state.clone();
     let popover = popover.clone();
     let entry = entry.clone();
-    let action = SimpleAction::new("git-clone", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(&window, "git-clone", move || {
         let url = entry.text().trim().to_string();
         if url.is_empty() {
             state
@@ -160,14 +158,12 @@ pub(crate) fn register_git_clone_action(
             },
         );
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn register_synchronize_action(state: &GitActionState) {
     let window = state.window.clone();
     let state = state.clone();
-    let action = SimpleAction::new("synchronize", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(&window, "synchronize", move || {
         set_git_busy_actions_enabled(&state.window, false);
         show_git_busy_page(
             &state.navigation,
@@ -198,7 +194,6 @@ pub(crate) fn register_synchronize_action(state: &GitActionState) {
             },
         );
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn handle_git_busy_back(state: &GitActionState) -> bool {

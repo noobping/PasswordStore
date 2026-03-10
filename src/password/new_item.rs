@@ -1,5 +1,5 @@
 use crate::preferences::Preferences;
-use adw::gio::SimpleAction;
+use crate::support::actions::register_window_action;
 use adw::gtk::{Box as GtkBox, CheckButton, Popover};
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow};
@@ -125,8 +125,7 @@ pub(crate) fn register_open_new_password_action(
     state: &NewPasswordPopoverState,
 ) {
     let state = state.clone();
-    let action = SimpleAction::new("open-new-password", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "open-new-password", move || {
         if state.popover.is_visible() {
             state.popover.popdown();
         } else {
@@ -135,7 +134,6 @@ pub(crate) fn register_open_new_password_action(
             state.path_entry.grab_focus();
         }
     });
-    window.add_action(&action);
 }
 
 #[cfg(test)]

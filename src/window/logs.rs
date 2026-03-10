@@ -1,6 +1,6 @@
 use crate::logging::log_snapshot;
+use crate::support::actions::register_window_action;
 use crate::window::navigation::{show_log_page, WindowNavigationState};
-use adw::gio::SimpleAction;
 use adw::gtk::TextView;
 use adw::prelude::*;
 use adw::{glib, ApplicationWindow};
@@ -13,11 +13,9 @@ pub(crate) fn register_open_log_action(
     navigation_state: &WindowNavigationState,
 ) {
     let navigation_state = navigation_state.clone();
-    let action = SimpleAction::new("open-log", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "open-log", move || {
         show_log_page(&navigation_state);
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn start_log_poller(view: &TextView, navigation_state: &WindowNavigationState) {

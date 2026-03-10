@@ -2,7 +2,8 @@ use crate::setup::{
     can_install_locally, install_locally, is_installed_locally, local_menu_action_label,
     uninstall_locally,
 };
-use adw::gio::{Menu, MenuItem, SimpleAction};
+use crate::support::actions::register_window_action;
+use adw::gio::{Menu, MenuItem};
 use adw::prelude::*;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
 
@@ -13,8 +14,7 @@ pub(crate) fn register_install_locally_action(
 ) {
     let menu = menu.clone();
     let overlay = overlay.clone();
-    let action = SimpleAction::new("install-locally", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "install-locally", move || {
         if !can_install_locally() {
             overlay.add_toast(Toast::new("This app can't be added to the app menu here."));
             return;
@@ -32,5 +32,4 @@ pub(crate) fn register_install_locally_action(
         );
         menu.append_item(&item);
     });
-    window.add_action(&action);
 }

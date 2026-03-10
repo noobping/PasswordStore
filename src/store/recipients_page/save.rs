@@ -4,11 +4,10 @@ use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRe
 use crate::backend::save_store_recipients;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+use crate::support::actions::register_window_action;
 use crate::support::background::spawn_result_task;
 use crate::window::messages::with_logs_hint;
-use adw::gio::SimpleAction;
 use adw::gtk::ListBox;
-use adw::prelude::*;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
 
 fn can_autosave_store_recipients(state: &StoreRecipientsPageState) -> bool {
@@ -124,9 +123,7 @@ pub(crate) fn register_store_recipients_save_action(
     let overlay = overlay.clone();
     let stores_list = stores_list.clone();
     let state = state.clone();
-    let action = SimpleAction::new("save-store-recipients", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "save-store-recipients", move || {
         save_store_recipients_async(&overlay, &stores_list, &state);
     });
-    window.add_action(&action);
 }

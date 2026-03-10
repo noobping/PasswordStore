@@ -5,8 +5,8 @@ use crate::password::page::{
     begin_new_password_entry, open_password_entry_page, save_current_password_entry,
     show_raw_pass_file_page, PasswordPageState,
 };
+use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
-use adw::gio::SimpleAction;
 use adw::gtk::{Button, ListBox, Popover};
 use adw::prelude::*;
 use adw::{EntryRow, PasswordEntryRow, Toast, ToastOverlay};
@@ -89,19 +89,15 @@ pub(super) fn register_password_page_actions(
 ) {
     {
         let page_state = page_state.clone();
-        let action = SimpleAction::new("save-password", None);
-        action.connect_activate(move |_, _| {
+        register_window_action(window, "save-password", move || {
             save_current_password_entry(&page_state);
         });
-        window.add_action(&action);
     }
 
     {
         let page_state = page_state.clone();
-        let action = SimpleAction::new("open-raw-pass-file", None);
-        action.connect_activate(move |_, _| {
+        register_window_action(window, "open-raw-pass-file", move || {
             show_raw_pass_file_page(&page_state);
         });
-        window.add_action(&action);
     }
 }

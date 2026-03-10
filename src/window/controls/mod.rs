@@ -3,9 +3,9 @@ use crate::password::page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
 use crate::store::management::StoreRecipientsPageState;
+use crate::support::actions::register_window_action;
 use crate::support::ui::navigation_stack_is_root;
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
-use adw::gio::SimpleAction;
 use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
 use adw::Application;
@@ -47,21 +47,18 @@ pub(crate) fn register_toggle_find_action(
     search_entry: &SearchEntry,
 ) {
     let search_entry = search_entry.clone();
-    let action = SimpleAction::new("toggle-find", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "toggle-find", move || {
         let visible = search_entry.is_visible();
         search_entry.set_visible(!visible);
         if !visible {
             search_entry.grab_focus();
         }
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionState) {
     let state = state.clone();
-    let action = SimpleAction::new("back", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "back", move || {
         if before_back_action(&state.platform) {
             return;
         }
@@ -74,7 +71,6 @@ pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &Back
 
         let _ = retry_open_password_entry_if_needed(&state.password_page);
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn configure_window_shortcuts(app: &Application) {
@@ -91,8 +87,7 @@ pub(crate) fn register_toggle_hidden_action(
     state: &HiddenEntriesActionState,
 ) {
     let state = state.clone();
-    let action = SimpleAction::new("toggle-hidden", None);
-    action.connect_activate(move |_, _| {
+    register_window_action(window, "toggle-hidden", move || {
         let show_hidden = !state.show_hidden.get();
         let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
         if !show_list_actions {
@@ -109,7 +104,6 @@ pub(crate) fn register_toggle_hidden_action(
             show_hidden,
         );
     });
-    window.add_action(&action);
 }
 
 pub(crate) fn apply_startup_query(

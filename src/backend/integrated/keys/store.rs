@@ -10,7 +10,7 @@ use super::cert::{
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
-use sequoia_openpgp::{parse::Parse, serialize::Serialize, Cert};
+use sequoia_openpgp::{serialize::Serialize, Cert};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -24,6 +24,12 @@ const LOCKED_PRIVATE_KEY_ERROR: &str =
     "A private key for this item is locked. Unlock it in Preferences and enter its password.";
 const INCOMPATIBLE_PRIVATE_KEY_ERROR: &str =
     "The available private keys cannot decrypt this item.";
+
+struct StoredPrivateKeyEntry {
+    path: PathBuf,
+    cert: Cert,
+    key: ManagedRipassoPrivateKey,
+}
 
 pub(in crate::backend::integrated) fn ripasso_keys_dir() -> Result<PathBuf, String> {
     let data_dir = dirs_next::data_local_dir()
@@ -47,38 +53,46 @@ fn private_key_not_stored_error() -> String {
     PRIVATE_KEY_NOT_STORED_ERROR.to_string()
 }
 
-fn read_ripasso_private_key_cert(path: &Path) -> Result<(Cert, ManagedRipassoPrivateKey), String> {
+fn read_ripasso_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let data = fs::read(path).map_err(|err| err.to_string())?;
-    parse_managed_private_key_bytes(&data)
+    let (cert, key) = parse_managed_private_key_bytes(&data)?;
+    Ok(StoredPrivateKeyEntry {
+        path: path.to_path_buf(),
+        cert,
+        key,
+    })
 }
 
-fn find_ripasso_private_key_cert(
-    fingerprint: &str,
-) -> Result<(PathBuf, Cert, ManagedRipassoPrivateKey), String> {
+fn stored_private_key_paths(keys_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    if !keys_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(keys_dir).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let path = entry.path();
+        if path.is_file() {
+            paths.push(path);
+        }
+    }
+    Ok(paths)
+}
+
+fn find_stored_private_key(fingerprint: &str) -> Result<StoredPrivateKeyEntry, String> {
     let requested = normalized_fingerprint(fingerprint)?;
     let keys_dir = ripasso_keys_dir()?;
     let direct_path = keys_dir.join(requested.to_ascii_lowercase());
     if direct_path.exists() {
-        let (cert, key) = read_ripasso_private_key_cert(&direct_path)?;
-        return Ok((direct_path, cert, key));
+        return read_ripasso_private_key_entry(&direct_path);
     }
 
-    if !keys_dir.exists() {
-        return Err(private_key_not_stored_error());
-    }
-
-    for entry in fs::read_dir(&keys_dir).map_err(|err| err.to_string())? {
-        let entry = entry.map_err(|err| err.to_string())?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let Ok((cert, key)) = read_ripasso_private_key_cert(&path) else {
+    for path in stored_private_key_paths(&keys_dir)? {
+        let Ok(entry) = read_ripasso_private_key_entry(&path) else {
             continue;
         };
-        if key.fingerprint.eq_ignore_ascii_case(&requested) {
-            return Ok((path, cert, key));
+        if entry.key.fingerprint.eq_ignore_ascii_case(&requested) {
+            return Ok(entry);
         }
     }
 
@@ -100,20 +114,11 @@ pub(in crate::backend::integrated) fn load_stored_ripasso_key_ring(
     let keys_dir = ripasso_keys_dir()?;
     let mut key_ring = HashMap::new();
 
-    if keys_dir.exists() {
-        for entry in fs::read_dir(&keys_dir).map_err(|err| err.to_string())? {
-            let entry = entry.map_err(|err| err.to_string())?;
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-
-            let data = fs::read(&path).map_err(|err| err.to_string())?;
-            let cert = Cert::from_bytes(&data).map_err(|err| err.to_string())?;
-            let entry_fingerprint =
-                slice_to_20_bytes(cert.fingerprint().as_bytes()).map_err(|err| err.to_string())?;
-            key_ring.insert(entry_fingerprint, Arc::new(cert));
-        }
+    for path in stored_private_key_paths(&keys_dir)? {
+        let entry = read_ripasso_private_key_entry(&path)?;
+        let fingerprint =
+            slice_to_20_bytes(entry.cert.fingerprint().as_bytes()).map_err(|err| err.to_string())?;
+        key_ring.insert(fingerprint, Arc::new(entry.cert));
     }
 
     Ok(key_ring)
@@ -167,11 +172,11 @@ pub(in crate::backend::integrated) fn ensure_ripasso_private_key_is_ready(
         return Ok(());
     }
 
-    let (_, cert, _) = find_ripasso_private_key_cert(fingerprint)?;
-    if cert_requires_passphrase(&cert) {
+    let entry = find_stored_private_key(fingerprint)?;
+    if cert_requires_passphrase(&entry.cert) {
         return Err(locked_private_key_error());
     }
-    if !cert_can_decrypt_password_entries(&cert) {
+    if !cert_can_decrypt_password_entries(&entry.cert) {
         return Err(incompatible_private_key_error());
     }
     Ok(())
@@ -186,24 +191,24 @@ pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<
         return Ok(false);
     }
 
-    let (_, cert, _) = find_ripasso_private_key_cert(fingerprint)?;
-    Ok(cert_requires_passphrase(&cert))
+    let entry = find_stored_private_key(fingerprint)?;
+    Ok(cert_requires_passphrase(&entry.cert))
 }
 
 pub fn unlock_ripasso_private_key_for_session(
     fingerprint: &str,
     passphrase: &str,
 ) -> Result<ManagedRipassoPrivateKey, String> {
-    let (_, cert, key) = find_ripasso_private_key_cert(fingerprint)?;
-    let unlocked = if cert_requires_passphrase(&cert) {
+    let entry = find_stored_private_key(fingerprint)?;
+    let unlocked = if cert_requires_passphrase(&entry.cert) {
         prepare_managed_private_key_bytes(
-            &fs::read(ripasso_keys_dir()?.join(key.fingerprint.to_ascii_lowercase()))
+            &fs::read(&entry.path)
                 .map_err(|err| err.to_string())?,
             Some(passphrase),
         )?
         .0
     } else {
-        cert
+        entry.cert
     };
 
     if !cert_can_decrypt_password_entries(&unlocked) {
@@ -211,7 +216,7 @@ pub fn unlock_ripasso_private_key_for_session(
     }
 
     cache_unlocked_ripasso_private_key(unlocked);
-    Ok(key)
+    Ok(entry.key)
 }
 
 pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, String> {
@@ -221,36 +226,17 @@ pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, Str
 
 pub fn list_ripasso_private_keys() -> Result<Vec<ManagedRipassoPrivateKey>, String> {
     let keys_dir = ripasso_keys_dir()?;
-    if !keys_dir.exists() {
-        return Ok(Vec::new());
-    }
-
     let mut keys: Vec<ManagedRipassoPrivateKey> = Vec::new();
-    for entry in fs::read_dir(&keys_dir).map_err(|err| err.to_string())? {
-        let entry = entry.map_err(|err| err.to_string())?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let data = match fs::read(&path) {
-            Ok(data) => data,
-            Err(err) => {
-                log_error(format!(
-                    "Failed to read managed private key '{}': {err}",
-                    path.display()
-                ));
-                continue;
-            }
-        };
-
-        match parse_managed_private_key_bytes(&data) {
-            Ok((_, key)) => {
+    for path in stored_private_key_paths(&keys_dir)? {
+        match read_ripasso_private_key_entry(&path) {
+            Ok(entry) => {
                 if !keys
                     .iter()
-                    .any(|existing: &ManagedRipassoPrivateKey| existing.fingerprint == key.fingerprint)
+                    .any(|existing: &ManagedRipassoPrivateKey| {
+                        existing.fingerprint == entry.key.fingerprint
+                    })
                 {
-                    keys.push(key);
+                    keys.push(entry.key);
                 }
             }
             Err(err) => {
@@ -299,8 +285,8 @@ pub fn import_ripasso_private_key_bytes(
 }
 
 pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {
-    let (path, _, _) = find_ripasso_private_key_cert(fingerprint)?;
-    fs::remove_file(path).map_err(|err| err.to_string())?;
+    let entry = find_stored_private_key(fingerprint)?;
+    fs::remove_file(entry.path).map_err(|err| err.to_string())?;
     remove_cached_unlocked_ripasso_private_key(fingerprint)?;
     Ok(())
 }
@@ -311,6 +297,5 @@ pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
 }
 
 pub fn ripasso_private_key_title(fingerprint: &str) -> Result<String, String> {
-    let (_, _, key) = find_ripasso_private_key_cert(fingerprint)?;
-    Ok(key.title())
+    Ok(find_stored_private_key(fingerprint)?.key.title())
 }

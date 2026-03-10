@@ -1,17 +1,6 @@
-mod config {
-    include!("src/config.rs");
-}
-
-#[cfg(feature = "setup")]
-use config::RESOURCE_ID;
-#[cfg(not(feature = "setup"))]
-use config::{APP_ID, RESOURCE_ID};
 use std::{fs, path::Path};
 
 fn main() {
-    #[cfg(feature = "setup")]
-    let _ = config::APP_ID;
-
     // Directories
     let data_dir = Path::new("data");
 
@@ -29,7 +18,7 @@ fn main() {
 
     // Generate resources.xml content
     let mut xml = String::from("<gresources>\n");
-    xml.push_str(&format!("\t<gresource prefix=\"{RESOURCE_ID}\">\n"));
+    xml.push_str(&format!("\t<gresource prefix=\"{}\">\n", resource_id()));
     for f in &icons {
         xml.push_str(&format!("\t\t<file>{}</file>\n", f));
     }
@@ -65,6 +54,7 @@ fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
 #[cfg(not(feature = "setup"))]
 fn desktop_file() {
     use std::{fs, path::Path};
+    let app_id = app_id();
     let project = env!("CARGO_PKG_NAME");
     let dir = Path::new(".");
     let version = env!("CARGO_PKG_VERSION");
@@ -76,11 +66,25 @@ Version={version}
 Name={project}
 Comment={comment}
 Exec={project} %u
-Icon={APP_ID}
+Icon={app_id}
 Terminal=false
 Categories=Utility;
 "
     );
     fs::write(&dir.join(format!("{project}.desktop")), contents)
         .expect("Can not build desktop file")
+}
+
+#[cfg(all(not(feature = "setup"), debug_assertions))]
+fn app_id() -> &'static str {
+    concat!("io.github.noobping.", env!("CARGO_PKG_NAME"), ".develop")
+}
+
+#[cfg(all(not(feature = "setup"), not(debug_assertions)))]
+fn app_id() -> &'static str {
+    concat!("io.github.noobping.", env!("CARGO_PKG_NAME"))
+}
+
+fn resource_id() -> &'static str {
+    concat!("/io/github/noobping/", env!("CARGO_PKG_NAME"))
 }

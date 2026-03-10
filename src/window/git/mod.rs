@@ -3,7 +3,7 @@ mod operations;
 use self::operations::{run_clone_operation, run_sync_operation, GitOperationResult};
 use crate::password::list::load_passwords_async;
 use crate::store::management::StoreRecipientsPageState;
-use crate::support::actions::register_window_action;
+use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{
     navigation_stack_is_root, toggle_popover_with_focus, visible_navigation_page_is,
@@ -97,7 +97,7 @@ pub(crate) fn register_open_git_action(
 pub(crate) fn connect_git_clone_apply(window: &ApplicationWindow, entry: &EntryRow) {
     let window = window.clone();
     entry.connect_apply(move |_| {
-        let _ = adw::prelude::WidgetExt::activate_action(&window, "win.git-clone", None);
+        activate_widget_action(&window, "win.git-clone");
     });
 }
 

@@ -4,7 +4,7 @@ use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRe
 use crate::backend::save_store_recipients;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-use crate::support::actions::register_window_action;
+use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use crate::window::messages::with_logs_hint;
 use adw::gtk::ListBox;
@@ -110,8 +110,7 @@ pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) 
         return;
     }
 
-    let _ =
-        adw::prelude::WidgetExt::activate_action(&state.window, "win.save-store-recipients", None);
+    activate_widget_action(&state.window, "win.save-store-recipients");
 }
 
 pub(crate) fn register_store_recipients_save_action(

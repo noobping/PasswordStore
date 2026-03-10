@@ -13,6 +13,5 @@ pub(crate) fn before_back_action(state: &PlatformBackActionState) -> bool {
 
 pub(crate) fn configure_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-log", &["F12"]);
-    app.set_accels_for_action("win.synchronize", &["<primary>s"]);
     app.set_accels_for_action("win.open-git", &["<primary>i"]);
 }

@@ -3,13 +3,13 @@ use crate::password::page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
 use crate::store::management::StoreRecipientsPageState;
-use crate::support::actions::register_window_action;
-use crate::support::ui::navigation_stack_is_root;
+use crate::support::actions::{activate_widget_action, register_window_action};
+use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
-use adw::Application;
 use adw::ToastOverlay;
+use adw::{Application, ApplicationWindow, NavigationPage};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -40,6 +40,79 @@ pub(crate) struct HiddenEntriesActionState {
     pub(crate) list: ListBox,
     pub(crate) navigation: WindowNavigationState,
     pub(crate) show_hidden: Rc<Cell<bool>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ContextSaveTarget {
+    Password,
+    StoreRecipients,
+    #[cfg(not(feature = "flatpak"))]
+    Synchronize,
+    None,
+}
+
+fn context_save_target_from_flags(
+    at_root: bool,
+    text_page_visible: bool,
+    raw_page_visible: bool,
+    recipients_page_visible: bool,
+) -> ContextSaveTarget {
+    if text_page_visible || raw_page_visible {
+        return ContextSaveTarget::Password;
+    }
+
+    if recipients_page_visible {
+        return ContextSaveTarget::StoreRecipients;
+    }
+
+    if at_root {
+        #[cfg(not(feature = "flatpak"))]
+        return ContextSaveTarget::Synchronize;
+        #[cfg(feature = "flatpak")]
+        return ContextSaveTarget::None;
+    }
+
+    ContextSaveTarget::None
+}
+
+fn context_save_target(
+    navigation: &WindowNavigationState,
+    recipients_page: &NavigationPage,
+) -> ContextSaveTarget {
+    context_save_target_from_flags(
+        navigation_stack_is_root(&navigation.nav),
+        visible_navigation_page_is(&navigation.nav, &navigation.text_page),
+        visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page),
+        visible_navigation_page_is(&navigation.nav, recipients_page),
+    )
+}
+
+pub(crate) fn register_context_save_action(
+    window: &ApplicationWindow,
+    navigation: &WindowNavigationState,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let action_window = window.clone();
+    let dispatch_window = action_window.clone();
+    let navigation = navigation.clone();
+    let recipients_page = recipients_page.page.clone();
+    register_window_action(
+        &action_window,
+        "context-save",
+        move || match context_save_target(&navigation, &recipients_page) {
+            ContextSaveTarget::Password => {
+                activate_widget_action(&dispatch_window, "win.save-password")
+            }
+            ContextSaveTarget::StoreRecipients => {
+                activate_widget_action(&dispatch_window, "win.save-store-recipients")
+            }
+            #[cfg(not(feature = "flatpak"))]
+            ContextSaveTarget::Synchronize => {
+                activate_widget_action(&dispatch_window, "win.synchronize")
+            }
+            ContextSaveTarget::None => {}
+        },
+    );
 }
 
 pub(crate) fn register_toggle_find_action(
@@ -75,6 +148,7 @@ pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &Back
 
 pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
+    app.set_accels_for_action("win.context-save", &["<primary>s"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.toggle-hidden", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
@@ -117,5 +191,44 @@ pub(crate) fn apply_startup_query(
             search_entry.set_text(&query);
             list.invalidate_filter();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{context_save_target_from_flags, ContextSaveTarget};
+
+    #[test]
+    fn context_save_prefers_password_pages() {
+        assert_eq!(
+            context_save_target_from_flags(false, true, false, false),
+            ContextSaveTarget::Password
+        );
+        assert_eq!(
+            context_save_target_from_flags(false, false, true, true),
+            ContextSaveTarget::Password
+        );
+    }
+
+    #[test]
+    fn context_save_uses_recipients_page_before_list_mode() {
+        assert_eq!(
+            context_save_target_from_flags(false, false, false, true),
+            ContextSaveTarget::StoreRecipients
+        );
+    }
+
+    #[test]
+    fn context_save_uses_sync_on_the_root_list_page() {
+        #[cfg(not(feature = "flatpak"))]
+        assert_eq!(
+            context_save_target_from_flags(true, false, false, false),
+            ContextSaveTarget::Synchronize
+        );
+        #[cfg(feature = "flatpak")]
+        assert_eq!(
+            context_save_target_from_flags(true, false, false, false),
+            ContextSaveTarget::None
+        );
     }
 }

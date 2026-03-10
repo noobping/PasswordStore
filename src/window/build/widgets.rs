@@ -7,8 +7,8 @@ use adw::gtk::{Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, Searc
 #[cfg(not(feature = "flatpak"))]
 use adw::PreferencesGroup;
 use adw::{
-    ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
-    StatusPage, ToastOverlay, WindowTitle,
+    ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
+    ToastOverlay, WindowTitle,
 };
 
 pub(in crate::window) struct WindowWidgets {

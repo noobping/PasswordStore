@@ -29,7 +29,7 @@ use self::state::{
 use self::widgets::WindowWidgets;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
-    register_toggle_find_action, register_toggle_hidden_action,
+    register_context_save_action, register_toggle_find_action, register_toggle_hidden_action,
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
@@ -163,6 +163,11 @@ pub(crate) fn create_main_window(
     );
 
     register_open_new_password_action(&widgets.window, &new_password_popover_state);
+    register_context_save_action(
+        &widgets.window,
+        &window_navigation_state,
+        &store_recipients_page_state,
+    );
     register_toggle_find_action(&widgets.window, &widgets.search_entry);
     register_toggle_hidden_action(&widgets.window, &hidden_entries_action_state);
     register_back_action(&widgets.window, &back_action_state);

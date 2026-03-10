@@ -33,6 +33,46 @@
       </description>
     </key>
 
+    <key name="password-generator-length" type="u">
+      <default>24</default>
+      <summary>Password generator length</summary>
+      <description>
+        Total length for generated passwords.
+      </description>
+    </key>
+
+    <key name="password-generator-min-lowercase" type="u">
+      <default>1</default>
+      <summary>Minimum lowercase letters</summary>
+      <description>
+        Minimum number of lowercase letters in generated passwords. Use 0 to disable lowercase letters.
+      </description>
+    </key>
+
+    <key name="password-generator-min-uppercase" type="u">
+      <default>1</default>
+      <summary>Minimum uppercase letters</summary>
+      <description>
+        Minimum number of uppercase letters in generated passwords. Use 0 to disable uppercase letters.
+      </description>
+    </key>
+
+    <key name="password-generator-min-numbers" type="u">
+      <default>1</default>
+      <summary>Minimum numbers</summary>
+      <description>
+        Minimum number of digits in generated passwords. Use 0 to disable numbers.
+      </description>
+    </key>
+
+    <key name="password-generator-min-symbols" type="u">
+      <default>1</default>
+      <summary>Minimum symbols</summary>
+      <description>
+        Minimum number of symbols in generated passwords. Use 0 to disable symbols.
+      </description>
+    </key>
+
     <key name="ripasso-own-fingerprint" type="s">
       <default>''</default>
       <summary>Selected private key</summary>

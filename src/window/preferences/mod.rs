@@ -1,4 +1,5 @@
 use crate::logging::log_error;
+use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
 use crate::preferences::Preferences;
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::register_window_action;
@@ -9,6 +10,8 @@ use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
 #[cfg(not(feature = "flatpak"))]
 use adw::{ComboRow, EntryRow};
+use std::cell::Cell;
+use std::rc::Rc;
 
 #[cfg(feature = "setup")]
 mod setup;
@@ -46,6 +49,7 @@ pub(crate) struct PreferencesActionState {
     pub(crate) save: Button,
     pub(crate) win: WindowTitle,
     pub(crate) template_view: TextView,
+    pub(crate) generator_controls: PasswordGenerationControls,
     pub(crate) stores_list: ListBox,
     pub(crate) overlay: ToastOverlay,
     pub(crate) recipients_page: StoreRecipientsPageState,
@@ -74,6 +78,67 @@ pub(crate) fn connect_new_password_template_autosave(
     });
 }
 
+pub(crate) fn connect_password_generation_autosave(
+    controls: &PasswordGenerationControls,
+    mirrors: &[PasswordGenerationControls],
+    overlay: &ToastOverlay,
+) {
+    sync_password_generation_controls(controls, &Preferences::new().password_generation_settings());
+    for mirror in mirrors {
+        sync_password_generation_controls(
+            mirror,
+            &Preferences::new().password_generation_settings(),
+        );
+    }
+
+    let controls = controls.clone();
+    let mirrors = mirrors.to_vec();
+    let overlay = overlay.clone();
+    let preferences = Preferences::new();
+    let syncing = Rc::new(Cell::new(false));
+    let changed: Rc<dyn Fn()> = Rc::new({
+        let controls = controls.clone();
+        let mirrors = mirrors.clone();
+        let overlay = overlay.clone();
+        let preferences = preferences.clone();
+        let syncing = syncing.clone();
+        move || {
+            if syncing.get() {
+                return;
+            }
+
+            syncing.set(true);
+            let stored = preferences.password_generation_settings();
+            let updated = controls.settings().normalized();
+            let save_result = preferences.set_password_generation_settings(&updated);
+            match save_result {
+                Ok(()) => {
+                    sync_password_generation_controls(&controls, &updated);
+                    for mirror in &mirrors {
+                        sync_password_generation_controls(mirror, &updated);
+                    }
+                }
+                Err(err) => {
+                    toast_preferences_save_error(&overlay, "password generation", &err);
+                    sync_password_generation_controls(&controls, &stored);
+                    for mirror in &mirrors {
+                        sync_password_generation_controls(mirror, &stored);
+                    }
+                }
+            }
+            syncing.set(false);
+        }
+    });
+    controls.connect_changed(changed);
+}
+
+pub(crate) fn sync_password_generation_controls(
+    controls: &PasswordGenerationControls,
+    settings: &PasswordGenerationSettings,
+) {
+    controls.set_settings(settings);
+}
+
 pub(crate) fn register_open_preferences_action(
     window: &ApplicationWindow,
     state: &PreferencesActionState,
@@ -88,6 +153,10 @@ pub(crate) fn register_open_preferences_action(
         let settings = Preferences::new();
         #[cfg(not(feature = "flatpak"))]
         self::standard::refresh_open_preferences_state(&state, &settings);
+        sync_password_generation_controls(
+            &state.generator_controls,
+            &settings.password_generation_settings(),
+        );
         state
             .template_view
             .buffer()

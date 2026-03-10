@@ -3,7 +3,10 @@ use adw::gio::Menu;
 use adw::glib::{object::IsA, Object};
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
-use adw::gtk::{Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, SearchEntry, TextView};
+use adw::gtk::{
+    Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, Revealer, SearchEntry, SpinButton,
+    TextView, ToggleButton,
+};
 #[cfg(not(feature = "flatpak"))]
 use adw::PreferencesGroup;
 use adw::{
@@ -40,6 +43,13 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) raw_text_page: NavigationPage,
     pub(in crate::window) password_status: StatusPage,
     pub(in crate::window) password_entry: PasswordEntryRow,
+    pub(in crate::window) password_generator_settings_button: ToggleButton,
+    pub(in crate::window) password_generator_settings_revealer: Revealer,
+    pub(in crate::window) password_generator_length_spin: SpinButton,
+    pub(in crate::window) password_generator_min_lowercase_spin: SpinButton,
+    pub(in crate::window) password_generator_min_uppercase_spin: SpinButton,
+    pub(in crate::window) password_generator_min_numbers_spin: SpinButton,
+    pub(in crate::window) password_generator_min_symbols_spin: SpinButton,
     pub(in crate::window) username_entry: EntryRow,
     pub(in crate::window) otp_entry: PasswordEntryRow,
     pub(in crate::window) add_otp_button: Button,
@@ -49,6 +59,11 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) text_view: TextView,
     pub(in crate::window) dynamic_fields_box: GtkBox,
     pub(in crate::window) open_raw_button: Button,
+    pub(in crate::window) preferences_password_generator_length_spin: SpinButton,
+    pub(in crate::window) preferences_password_generator_min_lowercase_spin: SpinButton,
+    pub(in crate::window) preferences_password_generator_min_uppercase_spin: SpinButton,
+    pub(in crate::window) preferences_password_generator_min_numbers_spin: SpinButton,
+    pub(in crate::window) preferences_password_generator_min_symbols_spin: SpinButton,
     #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) backend_preferences: PreferencesGroup,
     #[cfg(not(feature = "flatpak"))]
@@ -94,6 +109,34 @@ impl WindowWidgets {
             raw_text_page: required_object(builder, "raw_text_page"),
             password_status: required_object(builder, "password_status"),
             password_entry: required_object(builder, "password_entry"),
+            password_generator_settings_button: required_object(
+                builder,
+                "password_generator_settings_button",
+            ),
+            password_generator_settings_revealer: required_object(
+                builder,
+                "password_generator_settings_revealer",
+            ),
+            password_generator_length_spin: required_object(
+                builder,
+                "password_generator_length_spin",
+            ),
+            password_generator_min_lowercase_spin: required_object(
+                builder,
+                "password_generator_min_lowercase_spin",
+            ),
+            password_generator_min_uppercase_spin: required_object(
+                builder,
+                "password_generator_min_uppercase_spin",
+            ),
+            password_generator_min_numbers_spin: required_object(
+                builder,
+                "password_generator_min_numbers_spin",
+            ),
+            password_generator_min_symbols_spin: required_object(
+                builder,
+                "password_generator_min_symbols_spin",
+            ),
             username_entry: required_object(builder, "username_entry"),
             otp_entry: required_object(builder, "otp_entry"),
             add_otp_button: required_object(builder, "add_otp_button"),
@@ -103,6 +146,26 @@ impl WindowWidgets {
             text_view: required_object(builder, "text_view"),
             dynamic_fields_box: required_object(builder, "dynamic_fields_box"),
             open_raw_button: required_object(builder, "open_raw_button"),
+            preferences_password_generator_length_spin: required_object(
+                builder,
+                "preferences_password_generator_length_spin",
+            ),
+            preferences_password_generator_min_lowercase_spin: required_object(
+                builder,
+                "preferences_password_generator_min_lowercase_spin",
+            ),
+            preferences_password_generator_min_uppercase_spin: required_object(
+                builder,
+                "preferences_password_generator_min_uppercase_spin",
+            ),
+            preferences_password_generator_min_numbers_spin: required_object(
+                builder,
+                "preferences_password_generator_min_numbers_spin",
+            ),
+            preferences_password_generator_min_symbols_spin: required_object(
+                builder,
+                "preferences_password_generator_min_symbols_spin",
+            ),
             #[cfg(not(feature = "flatpak"))]
             backend_preferences: required_object(builder, "backend_preferences"),
             #[cfg(not(feature = "flatpak"))]

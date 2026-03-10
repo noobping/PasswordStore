@@ -37,7 +37,8 @@ use super::navigation::set_save_button_for_password;
 #[cfg(feature = "setup")]
 use super::preferences::register_install_locally_action;
 use super::preferences::{
-    connect_new_password_template_autosave, register_open_preferences_action,
+    connect_new_password_template_autosave, connect_password_generation_autosave,
+    register_open_preferences_action,
 };
 #[cfg(not(feature = "flatpak"))]
 use super::standard::{
@@ -122,6 +123,16 @@ pub(crate) fn create_main_window(
         &widgets.new_pass_file_template_view,
         &widgets.toast_overlay,
     );
+    connect_password_generation_autosave(
+        &password_list_state.generator_controls,
+        std::slice::from_ref(&preferences_action_state.generator_controls),
+        &widgets.toast_overlay,
+    );
+    connect_password_generation_autosave(
+        &preferences_action_state.generator_controls,
+        std::slice::from_ref(&password_list_state.generator_controls),
+        &widgets.toast_overlay,
+    );
     connect_store_recipients_entry(&store_recipients_page_state);
     connect_password_copy_buttons(
         &widgets.toast_overlay,
@@ -138,6 +149,14 @@ pub(crate) fn create_main_window(
         &new_password_popover_state,
         &widgets.add_button_popover,
     );
+    {
+        let revealer = widgets.password_generator_settings_revealer.clone();
+        widgets
+            .password_generator_settings_button
+            .connect_toggled(move |button| {
+                revealer.set_reveal_child(button.is_active());
+            });
+    }
     register_password_page_actions(&widgets.window, &password_list_state);
     register_store_recipients_save_action(
         &widgets.window,

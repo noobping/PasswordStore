@@ -4,6 +4,7 @@ use super::super::file::{
 };
 use super::PasswordPageState;
 use crate::password::model::OpenPassFile;
+use crate::preferences::Preferences;
 use crate::support::ui::visible_navigation_page_is;
 use adw::prelude::*;
 
@@ -44,6 +45,9 @@ pub(super) fn sync_editor_contents(
     );
     sync_username_row_from_parsed_lines(&state.username, pass_file, &structured_lines);
     state.otp.sync_from_parsed_lines(&structured_lines, true);
+    state
+        .generator_controls
+        .set_settings(&Preferences::new().password_generation_settings());
     sync_otp_add_button(state);
 }
 

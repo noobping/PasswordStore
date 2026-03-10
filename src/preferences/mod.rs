@@ -1,3 +1,4 @@
+use crate::password::generation::PasswordGenerationSettings;
 use adw::gio::{self, prelude::*, Settings};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
@@ -37,6 +38,7 @@ struct PreferenceFile {
     pass_command: Option<String>,
     password_store_dirs: Option<Vec<String>>,
     new_pass_file_template: Option<String>,
+    password_generation: Option<PasswordGenerationSettings>,
     ripasso_own_fingerprint: Option<String>,
 }
 
@@ -112,6 +114,27 @@ impl Preferences {
         )
     }
 
+    pub fn password_generation_settings(&self) -> PasswordGenerationSettings {
+        self.read_preference(
+            |settings| {
+                PasswordGenerationSettings {
+                    length: settings.uint("password-generator-length"),
+                    min_lowercase: settings.uint("password-generator-min-lowercase"),
+                    min_uppercase: settings.uint("password-generator-min-uppercase"),
+                    min_numbers: settings.uint("password-generator-min-numbers"),
+                    min_symbols: settings.uint("password-generator-min-symbols"),
+                }
+                .normalized()
+            },
+            |cfg| {
+                cfg.password_generation
+                    .clone()
+                    .unwrap_or_default()
+                    .normalized()
+            },
+        )
+    }
+
     pub fn stores(&self) -> Vec<String> {
         self.read_preference(
             |settings| {
@@ -145,6 +168,27 @@ impl Preferences {
         self.write_preference(
             |settings| settings.set_string("new-pass-file-template", template),
             |cfg| cfg.new_pass_file_template = Some(template.to_string()),
+        )
+    }
+
+    pub fn set_password_generation_settings(
+        &self,
+        settings: &PasswordGenerationSettings,
+    ) -> Result<(), BoolError> {
+        let settings = settings.normalized();
+        let file_settings = settings.clone();
+        self.write_preference(
+            |gio_settings| {
+                gio_settings.set_uint("password-generator-length", settings.length)?;
+                gio_settings
+                    .set_uint("password-generator-min-lowercase", settings.min_lowercase)?;
+                gio_settings
+                    .set_uint("password-generator-min-uppercase", settings.min_uppercase)?;
+                gio_settings.set_uint("password-generator-min-numbers", settings.min_numbers)?;
+                gio_settings.set_uint("password-generator-min-symbols", settings.min_symbols)?;
+                Ok(())
+            },
+            |cfg| cfg.password_generation = Some(file_settings),
         )
     }
 
@@ -207,6 +251,7 @@ mod tests {
     #[cfg(not(feature = "flatpak"))]
     use super::{default_backend_kind, BackendKind};
     use super::{default_store_dirs, Preferences};
+    use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -264,5 +309,27 @@ mod tests {
         ));
 
         std::fs::remove_dir_all(&existing).expect("remove temp store dir");
+    }
+
+    #[test]
+    fn password_generation_settings_default_to_a_usable_configuration() {
+        let settings = Preferences::new().password_generation_settings();
+
+        assert!(settings.length >= settings.minimum_length());
+        assert!(settings.minimum_length() > 0);
+    }
+
+    #[test]
+    fn password_generation_settings_normalize_disabled_classes_with_minimums() {
+        let settings = PasswordGenerationSettings {
+            length: 6,
+            min_lowercase: 2,
+            min_uppercase: 1,
+            min_numbers: 5,
+            min_symbols: 0,
+        }
+        .normalized();
+
+        assert_eq!(settings.length, 8);
     }
 }

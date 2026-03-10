@@ -6,6 +6,7 @@ mod standard;
 mod state;
 
 use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
+use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
     read_password_entry, save_password_entry, PasswordEntryError, PasswordEntryWriteError,
@@ -177,6 +178,21 @@ pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
 
 pub(crate) fn add_empty_otp_secret(state: &PasswordPageState) {
     add_empty_otp_secret_to_editor(state);
+}
+
+pub(crate) fn generate_password_entry(state: &PasswordPageState) {
+    if !state.entry.is_visible() {
+        return;
+    }
+
+    let password = generate_password(&state.generator_controls.settings());
+    state.entry.set_text(&password);
+    if !visible_navigation_page_is(&state.nav, &state.raw_page) {
+        state
+            .text
+            .buffer()
+            .set_text(&structured_editor_contents(state));
+    }
 }
 
 pub(crate) fn save_current_password_entry(state: &PasswordPageState) {

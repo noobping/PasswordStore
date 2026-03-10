@@ -1,5 +1,6 @@
 use super::widgets::WindowWidgets;
 use crate::password::file::{DynamicFieldRow, StructuredPassLine};
+use crate::password::generation::PasswordGenerationControls;
 use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
@@ -47,6 +48,15 @@ pub(super) fn password_page_state(
         username: widgets.username_entry.clone(),
         otp: otp.clone(),
         otp_add_button: widgets.add_otp_button.clone(),
+        generator_settings_button: widgets.password_generator_settings_button.clone(),
+        generator_settings_revealer: widgets.password_generator_settings_revealer.clone(),
+        generator_controls: PasswordGenerationControls::new(
+            &widgets.password_generator_length_spin,
+            &widgets.password_generator_min_lowercase_spin,
+            &widgets.password_generator_min_uppercase_spin,
+            &widgets.password_generator_min_numbers_spin,
+            &widgets.password_generator_min_symbols_spin,
+        ),
         dynamic_box: widgets.dynamic_fields_box.clone(),
         raw_button: widgets.open_raw_button.clone(),
         structured_templates: Rc::new(RefCell::new(Vec::<StructuredPassLine>::new())),
@@ -138,6 +148,13 @@ pub(super) fn preferences_action_state(
         save: widgets.save_button.clone(),
         win: widgets.window_title.clone(),
         template_view: widgets.new_pass_file_template_view.clone(),
+        generator_controls: PasswordGenerationControls::new(
+            &widgets.preferences_password_generator_length_spin,
+            &widgets.preferences_password_generator_min_lowercase_spin,
+            &widgets.preferences_password_generator_min_uppercase_spin,
+            &widgets.preferences_password_generator_min_numbers_spin,
+            &widgets.preferences_password_generator_min_symbols_spin,
+        ),
         stores_list: widgets.password_stores.clone(),
         overlay: widgets.toast_overlay.clone(),
         recipients_page: recipients_page.clone(),

@@ -2,8 +2,9 @@ use crate::clipboard::connect_copy_button;
 use crate::password::model::OpenPassFile;
 use crate::password::new_item::{selected_new_password_store, NewPasswordPopoverState};
 use crate::password::page::{
-    add_empty_otp_secret, begin_new_password_entry, open_password_entry_page,
-    save_current_password_entry, show_raw_pass_file_page, PasswordPageState,
+    add_empty_otp_secret, begin_new_password_entry, generate_password_entry,
+    open_password_entry_page, save_current_password_entry, show_raw_pass_file_page,
+    PasswordPageState,
 };
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
@@ -102,6 +103,13 @@ pub(super) fn register_password_page_actions(
         let page_state = page_state.clone();
         register_window_action(window, "add-otp-secret", move || {
             add_empty_otp_secret(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
+        register_window_action(window, "generate-password", move || {
+            generate_password_entry(&page_state);
         });
     }
 }

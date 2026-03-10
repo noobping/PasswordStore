@@ -1,9 +1,9 @@
-use crate::support::background::spawn_result_task;
-use crate::password::model::PassEntry;
-use crate::logging::log_error;
 use crate::backend::read_password_line;
+use crate::logging::log_error;
+use crate::password::model::PassEntry;
+use crate::support::background::spawn_result_task;
+use adw::gtk::{gdk::Display, Button, Widget};
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Button, Widget, gdk::Display};
 use std::time::Duration;
 
 #[cfg(feature = "flatpak")]

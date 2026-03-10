@@ -2,13 +2,7 @@ use super::super::store::{log_error, log_info};
 use std::io::{self, Read};
 use std::thread;
 
-fn log_command_stream(
-    context: &str,
-    command: &str,
-    label: &str,
-    bytes: &[u8],
-    redacted: bool,
-) {
+fn log_command_stream(context: &str, command: &str, label: &str, bytes: &[u8], redacted: bool) {
     if bytes.is_empty() {
         return;
     }
@@ -85,10 +79,7 @@ pub(super) fn join_stream_logger(
     match handle.join() {
         Ok(result) => result,
         Err(_) => {
-            let err = io::Error::new(
-                io::ErrorKind::Other,
-                format!("stream logger panicked while reading {label}"),
-            );
+            let err = io::Error::other(format!("stream logger panicked while reading {label}"));
             log_error(format!("{context}\n$ {command}\n{err}"));
             Err(err)
         }

@@ -10,9 +10,9 @@ use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::window::messages::with_logs_hint;
 use adw::gio::SimpleAction;
+use adw::gtk::ListBox;
 use adw::prelude::*;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
-use adw::gtk::ListBox;
 
 fn can_autosave_store_recipients(state: &StoreRecipientsPageState) -> bool {
     state.current_request().is_some()
@@ -89,7 +89,13 @@ fn save_store_recipients_async(
                         }
                     }
                     StoreRecipientsMode::Edit => {
-                        rebuild_store_list(&stores_list, &settings, &state.window, &overlay, &state);
+                        rebuild_store_list(
+                            &stores_list,
+                            &settings,
+                            &state.window,
+                            &overlay,
+                            &state,
+                        );
                     }
                 }
                 finish_store_recipients_save(&state, true);

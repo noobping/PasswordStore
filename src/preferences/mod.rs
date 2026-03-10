@@ -11,9 +11,9 @@ mod standard;
 
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform_defaults;
+use self::platform_defaults::default_store_dirs;
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform_defaults;
-use self::platform_defaults::default_store_dirs;
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 const APP_ID: &str = env!("APP_ID");
@@ -207,7 +207,6 @@ mod tests {
     #[cfg(not(feature = "flatpak"))]
     use super::{default_backend_kind, BackendKind};
     use super::{default_store_dirs, Preferences};
-    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -217,7 +216,10 @@ mod tests {
 
         #[cfg(not(feature = "flatpak"))]
         if let Ok(home) = std::env::var("HOME") {
-            assert_eq!(default_store_dirs(), vec![format!("{home}/.password-store")]);
+            assert_eq!(
+                default_store_dirs(),
+                vec![format!("{home}/.password-store")]
+            );
         } else {
             assert!(default_store_dirs().is_empty());
         }
@@ -233,9 +235,15 @@ mod tests {
     #[test]
     fn backend_storage_accepts_current_and_legacy_names() {
         assert_eq!(BackendKind::Integrated.stored_value(), "integrated");
-        assert_eq!(BackendKind::from_stored("integrated"), BackendKind::Integrated);
+        assert_eq!(
+            BackendKind::from_stored("integrated"),
+            BackendKind::Integrated
+        );
         assert_eq!(BackendKind::from_stored("ripasso"), BackendKind::Integrated);
-        assert_eq!(BackendKind::from_stored("host-command"), BackendKind::HostCommand);
+        assert_eq!(
+            BackendKind::from_stored("host-command"),
+            BackendKind::HostCommand
+        );
         assert_eq!(BackendKind::from_stored("pass"), BackendKind::HostCommand);
     }
 
@@ -248,9 +256,11 @@ mod tests {
         let existing = std::env::temp_dir().join(format!("passwordstore-test-{nanos}"));
         std::fs::create_dir_all(&existing).expect("create temp store dir");
 
-        assert!(Preferences::store_dir_exists(existing.to_string_lossy().as_ref()));
+        assert!(Preferences::store_dir_exists(
+            existing.to_string_lossy().as_ref()
+        ));
         assert!(!Preferences::store_dir_exists(
-            PathBuf::from(existing.join("missing")).to_string_lossy().as_ref()
+            existing.join("missing").to_string_lossy().as_ref()
         ));
 
         std::fs::remove_dir_all(&existing).expect("remove temp store dir");

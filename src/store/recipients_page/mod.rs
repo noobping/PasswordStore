@@ -1,15 +1,15 @@
 use super::recipients::read_store_gpg_recipients;
 use crate::support::ui::{navigation_stack_contains_page, visible_navigation_page_is};
 use crate::window::navigation::set_save_button_for_password;
+use adw::gtk::{Button, ListBox};
 use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, NavigationView, WindowTitle};
-use adw::gtk::{Button, ListBox};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-mod save;
 #[cfg(feature = "flatpak")]
 mod flatpak;
+mod save;
 #[cfg(not(feature = "flatpak"))]
 mod standard;
 

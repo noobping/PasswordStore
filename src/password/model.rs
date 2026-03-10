@@ -150,10 +150,7 @@ fn collect_items_in_dir(
         return Ok(());
     }
 
-    let entries = match fs::read_dir(root) {
-        Ok(e) => e,
-        Err(err) => return Err(err),
-    };
+    let entries = fs::read_dir(root)?;
 
     for entry_result in entries {
         let entry = match entry_result {
@@ -186,7 +183,10 @@ fn collect_items_in_dir(
             continue;
         }
 
-        out.push(PassEntry::from_label(base.to_string_lossy().to_string(), label));
+        out.push(PassEntry::from_label(
+            base.to_string_lossy().to_string(),
+            label,
+        ));
     }
 
     Ok(())
@@ -194,9 +194,7 @@ fn collect_items_in_dir(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        collect_items_in_dir, CollectItemsOptions, OpenPassFile, PassEntry,
-    };
+    use super::{collect_items_in_dir, CollectItemsOptions, OpenPassFile, PassEntry};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -243,13 +241,19 @@ mod tests {
         fs::create_dir_all(store.join(".hidden")).expect("create hidden store dir");
         fs::create_dir_all(store.join("visible")).expect("create visible store dir");
         fs::write(store.join(".top-secret.gpg"), b"x").expect("write hidden secret");
-        fs::write(store.join(".hidden").join("inside.gpg"), b"x").expect("write nested hidden secret");
+        fs::write(store.join(".hidden").join("inside.gpg"), b"x")
+            .expect("write nested hidden secret");
         fs::write(store.join("visible").join("entry.gpg"), b"x").expect("write visible secret");
         fs::write(store.join("notes.txt"), b"x").expect("write non-secret file");
 
         let mut items = Vec::new();
-        collect_items_in_dir(&store, &store, &mut items, CollectItemsOptions { show_hidden: false })
-            .expect("collect visible secrets");
+        collect_items_in_dir(
+            &store,
+            &store,
+            &mut items,
+            CollectItemsOptions { show_hidden: false },
+        )
+        .expect("collect visible secrets");
         let labels = items
             .into_iter()
             .map(|item| item.label())
@@ -269,11 +273,17 @@ mod tests {
         let store = std::env::temp_dir().join(format!("passwordstore-hidden-show-{nanos}"));
         fs::create_dir_all(store.join(".hidden")).expect("create hidden store dir");
         fs::write(store.join(".top-secret.gpg"), b"x").expect("write hidden secret");
-        fs::write(store.join(".hidden").join("inside.gpg"), b"x").expect("write nested hidden secret");
+        fs::write(store.join(".hidden").join("inside.gpg"), b"x")
+            .expect("write nested hidden secret");
 
         let mut items = Vec::new();
-        collect_items_in_dir(&store, &store, &mut items, CollectItemsOptions { show_hidden: true })
-            .expect("collect all secrets");
+        collect_items_in_dir(
+            &store,
+            &store,
+            &mut items,
+            CollectItemsOptions { show_hidden: true },
+        )
+        .expect("collect all secrets");
         let mut labels = items
             .into_iter()
             .map(|item| item.label())

@@ -1,6 +1,3 @@
-use super::entries::{read_password_entry, save_password_entry};
-use super::paths::{recipients_file_for_label, secret_entry_relative_path};
-use super::store::save_store_recipients;
 use super::super::keys::{
     clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
@@ -8,6 +5,9 @@ use super::super::keys::{
     resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
+use super::entries::{read_password_entry, save_password_entry};
+use super::paths::{recipients_file_for_label, secret_entry_relative_path};
+use super::store::save_store_recipients;
 use crate::preferences::Preferences;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
 use std::env;
@@ -110,10 +110,8 @@ fn encrypted_private_keys_report_that_a_passphrase_is_required() {
         .serialize(&mut bytes)
         .expect("failed to serialize protected test certificate");
 
-    assert!(
-        ripasso_private_key_requires_passphrase(&bytes)
-            .expect("expected password inspection to work")
-    );
+    assert!(ripasso_private_key_requires_passphrase(&bytes)
+        .expect("expected password inspection to work"));
 }
 
 #[test]
@@ -132,7 +130,9 @@ fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
         .expect("expected protected key to unlock successfully");
 
     assert_eq!(key.fingerprint.len(), 40);
-    assert!(unlocked.keys().all(|key| key.key().has_unencrypted_secret()));
+    assert!(unlocked
+        .keys()
+        .all(|key| key.key().has_unencrypted_secret()));
 }
 
 #[test]
@@ -159,7 +159,9 @@ fn imported_private_keys_stay_encrypted_on_disk() {
         parse_managed_private_key_bytes(&stored_bytes).expect("parse stored key");
 
     assert!(ripasso_private_key_requires_passphrase(&stored_bytes).unwrap());
-    assert!(stored_cert.keys().any(|key| !key.key().has_unencrypted_secret()));
+    assert!(stored_cert
+        .keys()
+        .any(|key| !key.key().has_unencrypted_secret()));
     assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
 }
 
@@ -254,8 +256,11 @@ fn new_entries_can_be_saved_in_a_secondary_store() {
     let secondary_store = home.path.join("secondary-store");
     fs::create_dir_all(&primary_store).expect("create primary store");
     fs::create_dir_all(&secondary_store).expect("create secondary store");
-    fs::write(primary_store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
-        .expect("write primary recipients");
+    fs::write(
+        primary_store.join(".gpg-id"),
+        format!("{}\n", imported.fingerprint),
+    )
+    .expect("write primary recipients");
     fs::write(
         secondary_store.join(".gpg-id"),
         format!("{}\n", imported.fingerprint),

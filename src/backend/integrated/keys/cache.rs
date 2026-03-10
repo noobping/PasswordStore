@@ -18,9 +18,7 @@ fn with_unlocked_ripasso_keys_read<T>(f: impl FnOnce(&HashMap<String, Arc<Cert>>
     }
 }
 
-fn with_unlocked_ripasso_keys_write<T>(
-    f: impl FnOnce(&mut HashMap<String, Arc<Cert>>) -> T,
-) -> T {
+fn with_unlocked_ripasso_keys_write<T>(f: impl FnOnce(&mut HashMap<String, Arc<Cert>>) -> T) -> T {
     match unlocked_ripasso_private_keys().write() {
         Ok(mut keys) => f(&mut keys),
         Err(poisoned) => {

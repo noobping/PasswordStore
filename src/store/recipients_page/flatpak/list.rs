@@ -8,9 +8,9 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::ui::clear_list_box;
+use adw::gtk::{Button, CheckButton, Image};
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
-use adw::gtk::{Button, CheckButton, Image};
 use std::rc::Rc;
 
 fn inspect_private_key_lock_state(fingerprint: &str) -> (bool, bool) {

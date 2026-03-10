@@ -52,7 +52,7 @@ pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input
 
 pub(crate) fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
-    for recipient in value.split(|c| c == ',' || c == ';' || c == '\n') {
+    for recipient in value.split([',', ';', '\n']) {
         let recipient = normalize_gpg_recipient(recipient);
         if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
             continue;
@@ -128,13 +128,10 @@ mod tests {
     fn gpg_recipient_input_appends_unique_values() {
         let recipients = Rc::new(RefCell::new(vec!["alice@example.com".to_string()]));
 
-        assert_eq!(
-            append_gpg_recipients(
-                &recipients,
-                "alice@example.com; bob@example.com, carol@example.com"
-            ),
-            true
-        );
+        assert!(append_gpg_recipients(
+            &recipients,
+            "alice@example.com; bob@example.com, carol@example.com"
+        ));
         assert_eq!(
             recipients.borrow().clone(),
             vec![

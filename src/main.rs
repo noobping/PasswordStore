@@ -6,28 +6,28 @@ mod backend;
 mod clipboard;
 mod logging;
 mod password;
+mod preferences;
 #[cfg(feature = "flatpak")]
 mod private_key;
-mod preferences;
 mod store;
 mod support;
 mod window;
 
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{run_command_output, CommandLogOptions};
-use crate::support::object_data::non_null_to_string_option;
 #[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
+use crate::support::object_data::non_null_to_string_option;
 
 use adw::gio::SimpleAction;
-use adw::prelude::*;
-use adw::Application;
 use adw::gtk::{
     gdk::Display,
     gio::{resources_register_include, ApplicationFlags},
     glib::ExitCode,
     IconTheme,
 };
+use adw::prelude::*;
+use adw::Application;
 use std::ffi::OsString;
 use std::result::Result::Ok;
 
@@ -137,7 +137,8 @@ fn main() -> ExitCode {
 fn get_pass_version(settings: &Preferences) -> Option<String> {
     let mut cmd = settings.command();
     cmd.arg("--version");
-    let output = run_command_output(&mut cmd, "Read pass version", CommandLogOptions::DEFAULT).ok()?;
+    let output =
+        run_command_output(&mut cmd, "Read pass version", CommandLogOptions::DEFAULT).ok()?;
     if !output.status.success() {
         return None;
     }

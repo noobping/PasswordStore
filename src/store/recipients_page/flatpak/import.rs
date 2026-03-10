@@ -10,9 +10,9 @@ use crate::private_key::dialog::{
 };
 use crate::support::background::spawn_result_task;
 use adw::gio;
+use adw::gtk::{Button, FileChooserAction, FileChooserNative, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
-use adw::gtk::{Button, FileChooserAction, FileChooserNative, ResponseType};
 use std::rc::Rc;
 
 fn finish_private_key_import(
@@ -22,7 +22,10 @@ fn finish_private_key_import(
     match result {
         Ok(_) => {
             rebuild_store_recipients_list(state);
-            state.platform.overlay.add_toast(Toast::new("Key imported."));
+            state
+                .platform
+                .overlay
+                .add_toast(Toast::new("Key imported."));
         }
         Err(err) => {
             log_error(format!("Failed to import private key: {err}"));
@@ -120,7 +123,9 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
                 }
             }
             Err(err) => {
-                log_error(format!("Failed to read the selected private key file: {err}"));
+                log_error(format!(
+                    "Failed to read the selected private key file: {err}"
+                ));
                 state_for_response
                     .platform
                     .overlay

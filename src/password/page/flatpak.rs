@@ -1,8 +1,10 @@
 use super::{open_password_entry_page, PasswordPageState};
 use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
-use crate::password::model::OpenPassFile;
 use crate::logging::log_error;
-use crate::private_key::unlock::{is_locked_private_key_error, prompt_private_key_unlock_for_action};
+use crate::password::model::OpenPassFile;
+use crate::private_key::unlock::{
+    is_locked_private_key_error, prompt_private_key_unlock_for_action,
+};
 use std::rc::Rc;
 
 pub(super) fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
@@ -52,8 +54,7 @@ pub(super) fn handle_open_password_entry_error(
     }
 
     if message.contains("Import a private key in Preferences") {
-        let _ =
-            adw::prelude::WidgetExt::activate_action(&state.nav, "win.open-preferences", None);
+        let _ = adw::prelude::WidgetExt::activate_action(&state.nav, "win.open-preferences", None);
     }
 
     false

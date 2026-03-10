@@ -1,5 +1,5 @@
-use adw::StatusPage;
 use adw::gtk::Spinner;
+use adw::StatusPage;
 
 const APP_ID: &str = env!("APP_ID");
 

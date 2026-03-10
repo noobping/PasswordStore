@@ -1,5 +1,5 @@
-mod controls;
 mod build;
+mod controls;
 #[cfg(feature = "flatpak")]
 mod flatpak;
 #[cfg(not(feature = "flatpak"))]
@@ -17,9 +17,9 @@ pub(crate) use self::build::create_main_window;
 #[cfg(test)]
 mod tests {
     use crate::password::file::{
-        new_pass_file_contents_from_template, parse_structured_pass_lines,
-        structured_otp_line, structured_pass_contents_from_values, structured_username_value,
-        uri_to_open, OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
+        new_pass_file_contents_from_template, parse_structured_pass_lines, structured_otp_line,
+        structured_pass_contents_from_values, structured_username_value, uri_to_open,
+        OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
     };
 
     #[test]
@@ -42,7 +42,10 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(values, vec!["hello@example.com".to_string(), "hello".to_string()]);
+        assert_eq!(
+            values,
+            vec!["hello@example.com".to_string(), "hello".to_string()]
+        );
         assert_eq!(
             structured_pass_contents_from_values(&password, "", None, &templates, &values),
             contents
@@ -54,16 +57,16 @@ mod tests {
         let contents = "secret\nusername:alice\notpauth://totp/example\nurl: https://example.com";
         let (_, parsed) = parse_structured_pass_lines(contents);
 
-        assert!(matches!(
-            parsed[0].0,
-            StructuredPassLine::Username(_)
-        ));
+        assert!(matches!(parsed[0].0, StructuredPassLine::Username(_)));
         assert_eq!(parsed[0].1.as_deref(), Some("alice"));
         assert!(matches!(
             parsed[1].0,
             StructuredPassLine::Otp(OtpFieldTemplate::BareUrl)
         ));
-        assert_eq!(structured_otp_line(&parsed).map(|(_, url)| url), Some("otpauth://totp/example".to_string()));
+        assert_eq!(
+            structured_otp_line(&parsed).map(|(_, url)| url),
+            Some("otpauth://totp/example".to_string())
+        );
         assert!(matches!(parsed[2].0, StructuredPassLine::Field(_)));
         assert_eq!(parsed[2].1.as_deref(), Some("https://example.com"));
     }

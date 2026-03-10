@@ -1,10 +1,10 @@
-use super::crypto::FlatpakCryptoContext;
-use super::paths::{cleanup_empty_store_dirs, entry_file_path};
-use super::recipients::decryption_candidate_fingerprints_for_entry;
 use super::super::keys::{
     ensure_ripasso_private_key_is_ready, incompatible_private_key_error, locked_private_key_error,
     missing_private_key_error,
 };
+use super::crypto::FlatpakCryptoContext;
+use super::paths::{cleanup_empty_store_dirs, entry_file_path};
+use super::recipients::decryption_candidate_fingerprints_for_entry;
 use std::fs;
 use std::path::Path;
 

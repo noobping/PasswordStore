@@ -1,9 +1,7 @@
 mod placeholder;
 mod row;
 
-use self::placeholder::{
-    loading_placeholder, resolved_placeholder, should_show_restore_button,
-};
+use self::placeholder::{loading_placeholder, resolved_placeholder, should_show_restore_button};
 use self::row::append_password_row;
 use crate::logging::log_error;
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
@@ -11,8 +9,8 @@ use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::non_null_to_string_option;
 use crate::support::ui::clear_list_box;
-use adw::prelude::*;
 use adw::gtk::{Button, ListBox, ListBoxRow, SearchEntry};
+use adw::prelude::*;
 use adw::ToastOverlay;
 use std::cell::RefCell;
 use std::rc::Rc;

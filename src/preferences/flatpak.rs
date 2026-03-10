@@ -17,10 +17,7 @@ impl Preferences {
         }
     }
 
-    pub fn set_ripasso_own_fingerprint(
-        &self,
-        fingerprint: Option<&str>,
-    ) -> Result<(), BoolError> {
+    pub fn set_ripasso_own_fingerprint(&self, fingerprint: Option<&str>) -> Result<(), BoolError> {
         let value = fingerprint.unwrap_or("").trim().to_string();
         let settings_value = value.clone();
         self.write_preference(

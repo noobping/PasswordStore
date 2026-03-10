@@ -179,7 +179,14 @@ pub(crate) fn run_command_with_input(
         }
     };
 
-    log_command_state(context, &command, "running", true, options.redact_stdin, false);
+    log_command_state(
+        context,
+        &command,
+        "running",
+        true,
+        options.redact_stdin,
+        false,
+    );
 
     let stdout_handle = child.stdout.take().map(|stdout| {
         spawn_stream_logger(
@@ -207,7 +214,9 @@ pub(crate) fn run_command_with_input(
     };
 
     if let Err(err) = stdin.write_all(input.as_bytes()) {
-        log_error(format!("{context}\n$ {command}\nfailed to write stdin: {err}"));
+        log_error(format!(
+            "{context}\n$ {command}\nfailed to write stdin: {err}"
+        ));
         return Err(format!("Failed to write command input: {err}"));
     }
     drop(stdin);

@@ -3,17 +3,17 @@ mod operations;
 use self::operations::{run_clone_operation, run_sync_operation, GitOperationResult};
 use crate::password::list::load_passwords_async;
 use crate::store::management::StoreRecipientsPageState;
+use crate::support::background::spawn_result_task;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
     WindowNavigationState,
 };
-use crate::support::background::spawn_result_task;
 use adw::gio::{prelude::*, SimpleAction};
+use adw::gtk::{ListBox, Popover};
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow, NavigationPage, StatusPage, Toast, ToastOverlay};
-use adw::gtk::{ListBox, Popover};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -118,7 +118,9 @@ pub(crate) fn register_git_clone_action(
     action.connect_activate(move |_, _| {
         let url = entry.text().trim().to_string();
         if url.is_empty() {
-            state.overlay.add_toast(Toast::new("Enter a repository URL."));
+            state
+                .overlay
+                .add_toast(Toast::new("Enter a repository URL."));
             return;
         }
 
@@ -161,9 +163,7 @@ pub(crate) fn register_git_clone_action(
     window.add_action(&action);
 }
 
-pub(crate) fn register_synchronize_action(
-    state: &GitActionState,
-) {
+pub(crate) fn register_synchronize_action(state: &GitActionState) {
     let window = state.window.clone();
     let state = state.clone();
     let action = SimpleAction::new("synchronize", None);
@@ -201,9 +201,7 @@ pub(crate) fn register_synchronize_action(
     window.add_action(&action);
 }
 
-pub(crate) fn handle_git_busy_back(
-    state: &GitActionState,
-) -> bool {
+pub(crate) fn handle_git_busy_back(state: &GitActionState) -> bool {
     if !visible_navigation_page_is(&state.navigation.nav, &state.busy_page) {
         return false;
     }

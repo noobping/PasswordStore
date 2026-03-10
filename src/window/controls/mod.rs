@@ -6,9 +6,9 @@ use crate::store::management::StoreRecipientsPageState;
 use crate::support::ui::navigation_stack_is_root;
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gio::SimpleAction;
+use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
 use adw::Application;
-use adw::gtk::{ListBox, SearchEntry};
 use adw::ToastOverlay;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -58,10 +58,7 @@ pub(crate) fn register_toggle_find_action(
     window.add_action(&action);
 }
 
-pub(crate) fn register_back_action(
-    window: &adw::ApplicationWindow,
-    state: &BackActionState,
-) {
+pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionState) {
     let state = state.clone();
     let action = SimpleAction::new("back", None);
     action.connect_activate(move |_, _| {

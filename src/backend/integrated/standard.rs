@@ -60,7 +60,12 @@ pub(crate) fn save_password_entry(
     store
         .reload_password_list()
         .map_err(|err| err.to_string())?;
-    if let Some(entry) = store.passwords.iter().find(|entry| entry.name == label).cloned() {
+    if let Some(entry) = store
+        .passwords
+        .iter()
+        .find(|entry| entry.name == label)
+        .cloned()
+    {
         if !overwrite {
             return Err("That password entry already exists.".to_string());
         }
@@ -95,10 +100,7 @@ pub(crate) fn delete_password_entry(store_root: &str, label: &str) -> Result<(),
     entry.delete_file(&store).map_err(|err| err.to_string())
 }
 
-pub(crate) fn save_store_recipients(
-    store_root: &str,
-    recipients: &[String],
-) -> Result<(), String> {
+pub(crate) fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     let store_dir = PathBuf::from(store_root);
     if store_dir.exists() {
         if !store_dir.is_dir() {
@@ -119,7 +121,9 @@ pub(crate) fn save_store_recipients(
         let entries = store.all_passwords().map_err(|err| err.to_string())?;
         for entry in entries {
             let secret = entry.secret(&store).map_err(|err| err.to_string())?;
-            entry.update(secret, &store).map_err(|err| err.to_string())?;
+            entry
+                .update(secret, &store)
+                .map_err(|err| err.to_string())?;
         }
         Ok(())
     })();

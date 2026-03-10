@@ -1,9 +1,9 @@
-use crate::password::opened::get_opened_pass_file;
 use crate::password::file::sync_username_row;
+use crate::password::opened::get_opened_pass_file;
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
+use adw::gtk::Button;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, NavigationView, WindowTitle};
-use adw::gtk::Button;
 
 #[cfg(not(feature = "flatpak"))]
 mod standard;

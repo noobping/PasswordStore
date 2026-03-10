@@ -1,9 +1,7 @@
 #[cfg(feature = "setup")]
 use adw::gio::Menu;
 use adw::glib::{object::IsA, Object};
-use adw::gtk::{
-    Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView,
-};
+use adw::gtk::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView};
 use adw::{
     ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
     ToastOverlay, WindowTitle,

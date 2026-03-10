@@ -3,9 +3,9 @@ use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::logging::log_error;
 use crate::password::model::PassEntry;
 use crate::support::background::spawn_result_task;
+use adw::gtk::{Button, ListBox, ListBoxRow, MenuButton, Popover};
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow, Toast, ToastOverlay};
-use adw::gtk::{Button, ListBox, ListBoxRow, MenuButton, Popover};
 
 pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &ToastOverlay) {
     let row = ListBoxRow::new();
@@ -49,7 +49,12 @@ pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &Toa
     list.append(&row);
 }
 
-fn connect_copy_action(item: &PassEntry, popover: &Popover, button: &Button, overlay: &ToastOverlay) {
+fn connect_copy_action(
+    item: &PassEntry,
+    popover: &Popover,
+    button: &Button,
+    overlay: &ToastOverlay,
+) {
     let entry = item.clone();
     let popover = popover.clone();
     let overlay = overlay.clone();

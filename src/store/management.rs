@@ -1,17 +1,17 @@
-use crate::logging::log_error;
-use crate::preferences::Preferences;
+use super::recipients::{
+    read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
+};
 pub(crate) use super::recipients_page::{
     connect_store_recipients_entry, register_store_recipients_save_action,
     show_store_recipients_page, sync_store_recipients_page_header, StoreRecipientsMode,
     StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
-use super::recipients::{
-    read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
-};
+use crate::logging::log_error;
+use crate::preferences::Preferences;
 use crate::support::ui::{clear_list_box, connect_row_and_button_action};
+use adw::gtk::{Button, FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
-use adw::gtk::{Button, FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use std::rc::Rc;
 
 fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
@@ -185,8 +185,7 @@ fn open_store_picker(
                 stores.push(store.clone());
                 if let Err(err) = settings.set_stores(stores) {
                     log_error(format!("Failed to save stores: {err}"));
-                    overlay_for_selection
-                        .add_toast(Toast::new("Couldn't add that folder."));
+                    overlay_for_selection.add_toast(Toast::new("Couldn't add that folder."));
                 } else {
                     rebuild_store_list(
                         &list,

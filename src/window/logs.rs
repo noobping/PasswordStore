@@ -1,9 +1,9 @@
 use crate::logging::log_snapshot;
 use crate::window::navigation::{show_log_page, WindowNavigationState};
 use adw::gio::SimpleAction;
+use adw::gtk::TextView;
 use adw::prelude::*;
 use adw::{glib, ApplicationWindow};
-use adw::gtk::TextView;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;

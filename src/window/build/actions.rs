@@ -7,9 +7,9 @@ use crate::password::page::{
 };
 use crate::support::object_data::non_null_to_string_option;
 use adw::gio::SimpleAction;
+use adw::gtk::{Button, ListBox, Popover};
 use adw::prelude::*;
 use adw::{EntryRow, PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Button, ListBox, Popover};
 
 pub(super) fn connect_password_list_activation(
     list: &ListBox,

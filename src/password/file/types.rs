@@ -1,6 +1,6 @@
+use adw::gtk::Widget;
 use adw::prelude::*;
 use adw::{EntryRow, PasswordEntryRow};
-use adw::gtk::Widget;
 
 const USERNAME_FIELD_KEYS: [&str; 3] = ["login", "username", "user"];
 const SENSITIVE_FIELD_HINTS: [&str; 8] = [
@@ -91,9 +91,7 @@ pub(super) fn is_otpauth_line(key: &str, value: &str, raw_line: &str) -> bool {
 
 pub(super) fn is_sensitive_field(key: &str) -> bool {
     let key = key.trim().to_ascii_lowercase();
-    SENSITIVE_FIELD_HINTS
-        .iter()
-        .any(|hint| key.contains(hint))
+    SENSITIVE_FIELD_HINTS.iter().any(|hint| key.contains(hint))
 }
 
 pub(super) fn is_url_field_key(key: &str) -> bool {

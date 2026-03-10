@@ -1,17 +1,15 @@
-use crate::preferences::Preferences;
-use crate::store::management::StoreRecipientsPageState;
 use super::git::{
     connect_git_clone_apply, register_git_clone_action, register_open_git_action,
     register_synchronize_action, GitActionState,
 };
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::WindowNavigationState;
-use super::preferences::{
-    connect_backend_row, connect_pass_command_row, initialize_backend_row,
-};
+use super::preferences::{connect_backend_row, connect_pass_command_row, initialize_backend_row};
+use crate::preferences::Preferences;
+use crate::store::management::StoreRecipientsPageState;
+use adw::gtk::{Builder, ListBox, Popover, TextView};
 use adw::prelude::*;
 use adw::{ApplicationWindow, ComboRow, EntryRow, NavigationPage, StatusPage, ToastOverlay};
-use adw::gtk::{Builder, ListBox, Popover, TextView};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -59,9 +57,7 @@ pub(crate) fn load_standard_window_parts(builder: &Builder) -> StandardWindowPar
         git_busy_status: builder
             .object("git_busy_status")
             .expect("Failed to get git busy status"),
-        log_view: builder
-            .object("log_view")
-            .expect("Failed to get log_view"),
+        log_view: builder.object("log_view").expect("Failed to get log_view"),
         store_recipients_entry,
     }
 }
@@ -105,11 +101,7 @@ pub(crate) fn register_standard_window_actions(
     register_open_log_action(window, navigation_state);
     register_open_git_action(window, git_popover, &parts.git_url_entry);
     connect_git_clone_apply(window, &parts.git_url_entry);
-    register_git_clone_action(
-        git_action_state,
-        git_popover,
-        &parts.git_url_entry,
-    );
+    register_git_clone_action(git_action_state, git_popover, &parts.git_url_entry);
     register_synchronize_action(git_action_state);
     start_log_poller(&parts.log_view, navigation_state);
 }

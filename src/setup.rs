@@ -116,6 +116,7 @@ fn is_writable(dir: &Path) -> bool {
     let test_path = dir.join(".perm_test");
     match std::fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&test_path)
     {

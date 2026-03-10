@@ -1,9 +1,9 @@
 use super::super::file::{DynamicFieldRow, StructuredPassLine};
 use super::super::otp::PasswordOtpState;
 use crate::window::navigation::set_save_button_for_password;
+use adw::gtk::{Box as GtkBox, Button, ListBox, TextView};
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle};
-use adw::gtk::{Box as GtkBox, Button, ListBox, TextView};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -42,11 +42,7 @@ pub(super) fn show_password_editor_chrome(state: &PasswordPageState, title: &str
     state.win.set_subtitle(subtitle);
 }
 
-pub(super) fn show_password_loading_state(
-    state: &PasswordPageState,
-    title: &str,
-    subtitle: &str,
-) {
+pub(super) fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
     show_password_editor_chrome(state, title, subtitle);
     state.entry.set_visible(false);
     state.username.set_text("");

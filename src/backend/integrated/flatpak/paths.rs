@@ -50,7 +50,10 @@ pub(super) fn recipients_file_for_label(store_root: &str, label: &str) -> Result
     Err("No recipients were found for this password entry.".to_string())
 }
 
-pub(super) fn label_from_entry_path(store_root: &Path, entry_path: &Path) -> Result<String, String> {
+pub(super) fn label_from_entry_path(
+    store_root: &Path,
+    entry_path: &Path,
+) -> Result<String, String> {
     let relative = entry_path
         .strip_prefix(store_root)
         .map_err(|_| "Invalid password entry path.".to_string())?;

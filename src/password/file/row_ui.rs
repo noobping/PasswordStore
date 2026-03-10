@@ -2,8 +2,8 @@ use super::types::{is_url_field_key, DynamicFieldRow, DynamicFieldTemplate, Stru
 #[cfg(target_os = "linux")]
 use super::url::add_open_url_suffix;
 use crate::clipboard::add_copy_suffix;
-use adw::{prelude::*, EntryRow, PasswordEntryRow, ToastOverlay};
 use adw::gtk::{Box as GtkBox, Widget};
+use adw::{prelude::*, EntryRow, PasswordEntryRow, ToastOverlay};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -30,8 +30,11 @@ pub(crate) fn rebuild_dynamic_fields_from_lines(
     for (line, value) in structured_lines.iter().cloned() {
         match line {
             StructuredPassLine::Field(template) => {
-                let row =
-                    build_dynamic_field_row(&template, value.as_deref().unwrap_or_default(), overlay);
+                let row = build_dynamic_field_row(
+                    &template,
+                    value.as_deref().unwrap_or_default(),
+                    overlay,
+                );
                 box_widget.append(&row.widget());
                 rows.push(row);
                 templates.push(StructuredPassLine::Field(template));

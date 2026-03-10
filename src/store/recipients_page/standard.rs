@@ -1,6 +1,6 @@
 use super::{queue_store_recipients_autosave, StoreRecipientsMode, StoreRecipientsPageState};
-use crate::support::ui::clear_list_box;
 use crate::store::recipients::append_gpg_recipients;
+use crate::support::ui::clear_list_box;
 use adw::gtk::{Button, Image};
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow};

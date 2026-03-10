@@ -1,24 +1,14 @@
 mod command;
 
-use self::command::{
-    ensure_success, run_store_command_output, run_store_command_with_input,
-};
+use self::command::{ensure_success, run_store_command_output, run_store_command_with_input};
 use crate::logging::CommandLogOptions;
 use std::process::Output;
 
-fn read_entry_output(
-    store_root: &str,
-    label: &str,
-    action: &str,
-) -> Result<Output, String> {
-    let output = run_store_command_output(
-        store_root,
-        action,
-        CommandLogOptions::SENSITIVE,
-        |cmd| {
+fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
+    let output =
+        run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
             cmd.arg(label);
-        },
-    )?;
+        })?;
     ensure_success(output, "pass failed")
 }
 
@@ -28,11 +18,7 @@ pub(super) fn read_password_entry(store_root: &str, label: &str) -> Result<Strin
 }
 
 pub(super) fn read_password_line(store_root: &str, label: &str) -> Result<String, String> {
-    let output = read_entry_output(
-        store_root,
-        label,
-        "Read password entry for clipboard copy",
-    )?;
+    let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")?;
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .next()
@@ -90,10 +76,7 @@ pub(super) fn delete_password_entry(store_root: &str, label: &str) -> Result<(),
     ensure_success(output, "pass rm failed").map(|_| ())
 }
 
-pub(super) fn save_store_recipients(
-    store_root: &str,
-    recipients: &[String],
-) -> Result<(), String> {
+pub(super) fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     let output = run_store_command_output(
         store_root,
         "Save password store recipients",

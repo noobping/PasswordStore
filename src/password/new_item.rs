@@ -1,8 +1,8 @@
 use crate::preferences::Preferences;
 use adw::gio::SimpleAction;
+use adw::gtk::{Box as GtkBox, CheckButton, Popover};
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow};
-use adw::gtk::{Box as GtkBox, CheckButton, Popover};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -34,11 +34,7 @@ fn shortened_store_labels(stores: &[String]) -> Vec<String> {
         })
         .collect::<Vec<_>>();
 
-    let max_depth = path_segments
-        .iter()
-        .map(Vec::len)
-        .max()
-        .unwrap_or_default();
+    let max_depth = path_segments.iter().map(Vec::len).max().unwrap_or_default();
     for depth in 1..=max_depth {
         let labels = path_segments
             .iter()

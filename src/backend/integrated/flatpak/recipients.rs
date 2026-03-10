@@ -1,8 +1,8 @@
-use super::paths::recipients_file_for_label;
 use super::super::keys::{
     fingerprint_from_string, imported_private_key_fingerprints, load_stored_ripasso_key_ring,
     missing_private_key_error, selected_ripasso_own_fingerprint,
 };
+use super::paths::recipients_file_for_label;
 use ripasso::pass::{Comment, KeyRingStatus, OwnerTrustLevel, Recipient};
 use sequoia_openpgp::{Cert, KeyHandle};
 use std::collections::{HashMap, HashSet};

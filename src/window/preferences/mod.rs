@@ -1,33 +1,36 @@
+use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::set_save_button_for_password;
-use crate::logging::log_error;
 use adw::gio::SimpleAction;
+use adw::gtk::{Button, ListBox, TextView};
 use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
-use adw::gtk::{Button, ListBox, TextView};
 #[cfg(not(feature = "flatpak"))]
 use adw::{ComboRow, EntryRow};
 
-#[cfg(not(feature = "flatpak"))]
-mod standard;
 #[cfg(feature = "setup")]
 mod setup;
+#[cfg(not(feature = "flatpak"))]
+mod standard;
 
+#[cfg(feature = "setup")]
+pub(crate) use self::setup::register_install_locally_action;
 #[cfg(not(feature = "flatpak"))]
 pub(crate) use self::standard::{
     connect_backend_row, connect_pass_command_row, initialize_backend_row,
 };
-#[cfg(feature = "setup")]
-pub(crate) use self::setup::register_install_locally_action;
 
 pub(super) fn toast_preferences_save_error(
     overlay: &ToastOverlay,
     context: &str,
     err: &adw::glib::BoolError,
 ) {
-    log_error(format!("Failed to save preference ({context}): {}", err.message));
+    log_error(format!(
+        "Failed to save preference ({context}): {}",
+        err.message
+    ));
     overlay.add_toast(Toast::new("Couldn't save that setting."));
 }
 

@@ -1,9 +1,9 @@
 mod countdown;
 mod url;
 
-use super::file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
 use self::countdown::OtpCountdownCircle;
 use self::url::{otp_display, otp_secret_from_url, replace_otp_secret};
+use super::file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
 use crate::logging::log_error;
 use adw::glib::{self, ControlFlow};
 use adw::gtk::GestureClick;
@@ -96,7 +96,12 @@ impl PasswordOtpState {
             return Ok(None);
         };
 
-        if self.has_otp() && otp_secret_from_url(&url).unwrap_or_default().trim().is_empty() {
+        if self.has_otp()
+            && otp_secret_from_url(&url)
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+        {
             return Err("Enter an OTP secret.");
         }
 
@@ -120,7 +125,9 @@ impl PasswordOtpState {
             }
 
             let Some(url) = state.url_for_current_secret() else {
-                state.overlay.add_toast(Toast::new("Couldn't update the code."));
+                state
+                    .overlay
+                    .add_toast(Toast::new("Couldn't update the code."));
                 return;
             };
 
@@ -221,7 +228,8 @@ impl PasswordOtpState {
                 log_error(format!("Failed to render OTP code: {err}"));
                 self.clear_live_code();
                 if show_errors {
-                    self.overlay.add_toast(Toast::new("Couldn't load the code."));
+                    self.overlay
+                        .add_toast(Toast::new("Couldn't load the code."));
                 }
             }
         }

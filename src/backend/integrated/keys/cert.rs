@@ -35,7 +35,9 @@ pub(in crate::backend::integrated) fn fingerprint_from_string(
     Ok(parsed)
 }
 
-pub(in crate::backend::integrated) fn normalized_fingerprint(value: &str) -> Result<String, String> {
+pub(in crate::backend::integrated) fn normalized_fingerprint(
+    value: &str,
+) -> Result<String, String> {
     Ok(Fingerprint::from_hex(value)
         .map_err(|err| format!("Invalid private key fingerprint '{value}': {err}"))?
         .to_hex())

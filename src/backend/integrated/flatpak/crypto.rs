@@ -1,9 +1,9 @@
-use super::paths::recipients_file_for_label;
-use super::recipients::{preferred_context_fingerprint_from_contents, recipients_for_encryption};
 use super::super::keys::{
     available_unlocked_private_key_fingerprints, build_ripasso_crypto_from_key_ring,
     load_ripasso_key_ring, load_stored_ripasso_key_ring, locked_private_key_error,
 };
+use super::paths::recipients_file_for_label;
+use super::recipients::{preferred_context_fingerprint_from_contents, recipients_for_encryption};
 use ripasso::crypto::{Crypto, Sequoia};
 use ripasso::pass::Recipient;
 use sequoia_openpgp::Cert;

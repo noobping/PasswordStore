@@ -6,10 +6,7 @@ use super::paths::{
 use super::recipients::preferred_ripasso_private_key_fingerprint_for_entry;
 use std::fs;
 
-pub(crate) fn save_store_recipients(
-    store_root: &str,
-    recipients: &[String],
-) -> Result<(), String> {
+pub(crate) fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
     let store_dir = ensure_store_directory(store_root)?;
     let recipients_contents = format!("{}\n", recipients.join("\n"));
     let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)?;

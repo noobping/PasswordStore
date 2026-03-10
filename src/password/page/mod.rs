@@ -5,37 +5,35 @@ mod flatpak;
 mod standard;
 mod state;
 
-use crate::backend::{read_password_entry, save_password_entry};
-use crate::support::background::spawn_result_task;
-use crate::support::ui::{
-    pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
-};
-use crate::password::model::OpenPassFile;
-use crate::logging::log_error;
-use crate::password::opened::{
-    clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
-    refresh_opened_pass_file_from_contents, set_opened_pass_file,
-};
 use super::file::{
     clear_box_children, new_pass_file_contents_from_template, structured_pass_contents,
     sync_username_row,
 };
 use super::list::load_passwords_async;
+use crate::backend::{read_password_entry, save_password_entry};
+use crate::logging::log_error;
+use crate::password::model::OpenPassFile;
+use crate::password::opened::{
+    clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
+    refresh_opened_pass_file_from_contents, set_opened_pass_file,
+};
 use crate::preferences::Preferences;
+use crate::support::background::spawn_result_task;
+use crate::support::ui::{
+    pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
+};
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::set_save_button_for_password;
-use adw::prelude::*;
-use adw::{Toast};
 use adw::gtk::Popover;
+use adw::prelude::*;
+use adw::Toast;
 
 use self::editor::{current_editor_contents, structured_editor_contents, sync_editor_contents};
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform;
+use self::platform::{friendly_password_entry_error_message, handle_open_password_entry_error};
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform;
-use self::platform::{
-    friendly_password_entry_error_message, handle_open_password_entry_error,
-};
 pub(crate) use self::state::PasswordPageState;
 use self::state::{
     show_password_editor_chrome, show_password_editor_fields, show_password_loading_state,
@@ -111,9 +109,9 @@ pub(crate) fn open_password_entry_page(
             }
 
             show_password_open_error(&state_for_disconnect);
-            state_for_disconnect.overlay.add_toast(Toast::new(&with_logs_hint(
-                "Couldn't open the item.",
-            )));
+            state_for_disconnect
+                .overlay
+                .add_toast(Toast::new(&with_logs_hint("Couldn't open the item.")));
         },
     );
 }
@@ -144,11 +142,9 @@ pub(crate) fn begin_new_password_entry(
         new_pass_file_contents_from_template(&settings.new_pass_file_template());
     let opened_pass_file = OpenPassFile::from_label(store_root, path);
     set_opened_pass_file(opened_pass_file.clone());
-    let template_pass_file = refresh_opened_pass_file_from_contents(
-        &opened_pass_file,
-        &template_contents,
-    )
-    .or_else(get_opened_pass_file);
+    let template_pass_file =
+        refresh_opened_pass_file_from_contents(&opened_pass_file, &template_contents)
+            .or_else(get_opened_pass_file);
 
     show_password_editor_chrome(state, "New item", path);
     show_password_editor_fields(state);
@@ -206,8 +202,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
     let label = pass_file.label();
     match save_password_entry(pass_file.store_path(), &label, &contents, true) {
         Ok(()) => {
-            let updated_pass_file =
-                refresh_opened_pass_file_from_contents(&pass_file, &contents);
+            let updated_pass_file = refresh_opened_pass_file_from_contents(&pass_file, &contents);
             show_password_editor_fields(state);
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
             state.overlay.add_toast(Toast::new("Saved."));

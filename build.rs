@@ -12,11 +12,11 @@ fn main() {
     println!("cargo:rerun-if-changed=data");
 
     // Ensure data/ exists
-    fs::create_dir_all(&data_dir).unwrap();
+    fs::create_dir_all(data_dir).unwrap();
 
     // Collect all .svg icon files in data/icons/
-    let mut icons: Vec<String> = Vec::new();
-    collect_svg_icons(&data_dir, &data_dir, &mut icons);
+    let mut icons = Vec::new();
+    collect_svg_icons(data_dir, data_dir, &mut icons);
     icons.sort();
 
     // Generate resources.xml content
@@ -74,8 +74,7 @@ Terminal=false
 Categories=Utility;
 "
     );
-    fs::write(&dir.join(format!("{project}.desktop")), contents)
-        .expect("Can not build desktop file")
+    fs::write(dir.join(format!("{project}.desktop")), contents).expect("Can not build desktop file")
 }
 
 #[cfg(debug_assertions)]

@@ -1,11 +1,11 @@
 use crate::backend::{
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
-use crate::support::background::spawn_result_task;
 use crate::logging::log_error;
 use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,
 };
+use crate::support::background::spawn_result_task;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
 
@@ -73,7 +73,9 @@ pub(crate) fn prompt_private_key_unlock_for_action(
     after_unlock: Rc<dyn Fn()>,
 ) {
     let Some(window) = toast_overlay_window(overlay) else {
-        log_error("Couldn't find the application window for the private key unlock dialog.".to_string());
+        log_error(
+            "Couldn't find the application window for the private key unlock dialog.".to_string(),
+        );
         overlay.add_toast(Toast::new("Couldn't unlock the key."));
         return;
     };

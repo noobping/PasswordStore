@@ -45,7 +45,9 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
                         .rev()
                         .find(|line| line.contains("fatal:"))
                         .unwrap_or(stderr.trim());
-                    log_error(format!("Password store sync failed for {root}: {fatal_line}"));
+                    log_error(format!(
+                        "Password store sync failed for {root}: {fatal_line}"
+                    ));
                     return GitOperationResult::Failed(with_logs_hint("Couldn't sync a store."));
                 }
                 Err(err) => {

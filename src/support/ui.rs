@@ -1,6 +1,6 @@
+use adw::gtk::{Button, ListBox};
 use adw::prelude::*;
 use adw::{ActionRow, NavigationPage, NavigationView};
-use adw::gtk::{Button, ListBox};
 use std::rc::Rc;
 
 pub(crate) fn clear_list_box(list: &ListBox) {
@@ -23,10 +23,7 @@ pub(crate) fn connect_row_and_button_action(
     button.connect_clicked(move |_| button_action());
 }
 
-pub(crate) fn navigation_stack_contains_page(
-    nav: &NavigationView,
-    page: &NavigationPage,
-) -> bool {
+pub(crate) fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {
     let stack = nav.navigation_stack();
     let mut index = 0;
     let len = stack.n_items();
@@ -45,13 +42,12 @@ pub(crate) fn navigation_stack_contains_page(
 }
 
 pub(crate) fn visible_navigation_page_is(nav: &NavigationView, page: &NavigationPage) -> bool {
-    nav.visible_page().as_ref().is_some_and(|visible| visible == page)
+    nav.visible_page()
+        .as_ref()
+        .is_some_and(|visible| visible == page)
 }
 
-pub(crate) fn push_navigation_page_if_needed(
-    nav: &NavigationView,
-    page: &NavigationPage,
-) -> bool {
+pub(crate) fn push_navigation_page_if_needed(nav: &NavigationView, page: &NavigationPage) -> bool {
     if visible_navigation_page_is(nav, page) {
         return false;
     }

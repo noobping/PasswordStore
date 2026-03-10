@@ -26,6 +26,10 @@ mod ui_helpers;
 mod window_controls;
 #[cfg(not(feature = "flatpak"))]
 mod window_logs;
+#[cfg(not(feature = "flatpak"))]
+mod window_desktop;
+#[cfg(feature = "flatpak")]
+mod window_flatpak;
 mod window_preferences;
 #[cfg(not(feature = "flatpak"))]
 mod window_git;

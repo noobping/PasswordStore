@@ -2,19 +2,22 @@ use adw::gio::{self, prelude::*, Settings};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-#[cfg(not(feature = "flatpak"))]
-use std::process::Command;
-#[cfg(not(feature = "flatpak"))]
-use std::env;
 use std::fs;
 
 use crate::config::APP_ID;
 
+#[cfg(feature = "flatpak")]
+#[path = "preferences_flatpak.rs"]
+mod feature;
 #[cfg(not(feature = "flatpak"))]
-const DEFAULT_CMD: &str = "pass";
+#[path = "preferences_desktop.rs"]
+mod feature;
+
+use self::feature::default_store_dirs;
+
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 
-#[cfg_attr(feature = "flatpak", allow(dead_code))]
+#[cfg(not(feature = "flatpak"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
@@ -22,56 +25,7 @@ pub enum BackendKind {
     HostCommand,
 }
 
-#[cfg_attr(feature = "flatpak", allow(dead_code))]
-impl BackendKind {
-    #[cfg(not(feature = "flatpak"))]
-    pub fn stored_value(self) -> &'static str {
-        match self {
-            Self::Integrated => "ripasso",
-            Self::HostCommand => "pass",
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    fn from_stored(value: &str) -> Self {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "ripasso" => Self::Integrated,
-            "pass" | "pass-command" | "pass command" => Self::HostCommand,
-            _ => default_backend_kind(),
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Integrated => "Integrated",
-            Self::HostCommand => "Host command",
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn combo_position(self) -> u32 {
-        match self {
-            Self::Integrated => 0,
-            Self::HostCommand => 1,
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn from_combo_position(position: u32) -> Self {
-        match position {
-            1 => Self::HostCommand,
-            _ => Self::Integrated,
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn uses_host_command(self) -> bool {
-        matches!(self, Self::HostCommand)
-    }
-}
-
-#[cfg_attr(feature = "flatpak", allow(dead_code))]
+#[cfg(not(feature = "flatpak"))]
 fn default_backend_kind() -> BackendKind {
     BackendKind::Integrated
 }
@@ -103,62 +57,6 @@ impl Preferences {
         Some(Settings::new(APP_ID))
     }
 
-    #[cfg(not(feature = "flatpak"))]
-    pub fn command_value(&self) -> String {
-        if let Some(s) = &self.settings {
-            s.string("pass-command").to_string()
-        } else {
-            let cfg = load_file_prefs();
-            cfg.pass_command.unwrap_or_else(|| DEFAULT_CMD.to_string())
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn command(&self) -> Command {
-        let (program, args) = self.command_parts();
-        let mut cmd = Command::new(program);
-        cmd.args(args);
-
-        if let Ok(appdir) = env::var("APPDIR") {
-            cmd.env(
-                "PATH",
-                format!("{appdir}/usr/bin:{}", env::var("PATH").unwrap_or_default()),
-            );
-            cmd.env(
-                "LD_LIBRARY_PATH",
-                format!("{appdir}/usr/lib/x86_64-linux-gnu:{appdir}/usr/lib"),
-            );
-            cmd.env("PASSWORD_STORE_ENABLE_EXTENSIONS", "true");
-            cmd.env(
-                "PASSWORD_STORE_EXTENSIONS_DIR",
-                format!("{appdir}/usr/lib/password-store/extensions"),
-            );
-        }
-
-        cmd
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn git_command(&self) -> Command {
-        Command::new("git")
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    fn command_parts(&self) -> (String, Vec<String>) {
-        let cmdline = self.command_value();
-        // Try to split like a shell would
-        if let Some(mut parts) = shlex::split(&cmdline) {
-            if parts.is_empty() {
-                return ("pass".to_string(), Vec::new()); // sane fallback
-            }
-            let program = parts.remove(0);
-            (program, parts)
-        } else {
-            // If shlex fails, fallback to using whole string as program
-            (cmdline, Vec::new())
-        }
-    }
-
     fn expand_path(s: &str) -> String {
         shellexpand::full(s)
             .map(|c| c.into_owned())
@@ -174,33 +72,6 @@ impl Preferences {
 
     pub fn store(&self) -> String {
         self.store_roots().into_iter().next().unwrap_or_default()
-    }
-
-    #[cfg_attr(feature = "flatpak", allow(dead_code))]
-    pub fn backend_kind(&self) -> BackendKind {
-        #[cfg(feature = "flatpak")]
-        {
-            BackendKind::Integrated
-        }
-
-        #[cfg(not(feature = "flatpak"))]
-        {
-            if let Some(s) = &self.settings {
-                BackendKind::from_stored(&s.string("backend"))
-            } else {
-                let cfg = load_file_prefs();
-                cfg.backend
-                    .as_deref()
-                    .map(BackendKind::from_stored)
-                    .unwrap_or_else(default_backend_kind)
-            }
-        }
-
-    }
-
-    #[cfg_attr(feature = "flatpak", allow(dead_code))]
-    pub fn uses_integrated_backend(&self) -> bool {
-        matches!(self.backend_kind(), BackendKind::Integrated)
     }
 
     pub fn new_pass_file_template(&self) -> String {
@@ -233,28 +104,6 @@ impl Preferences {
         self.store_roots().into_iter().map(PathBuf::from).collect()
     }
 
-    #[cfg(not(feature = "flatpak"))]
-    pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
-        if let Some(s) = &self.settings {
-            s.set_string("pass-command", cmd)
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.pass_command = Some(cmd.to_string());
-            save_file_prefs(&cfg)
-        }
-    }
-
-    #[cfg(not(feature = "flatpak"))]
-    pub fn set_backend_kind(&self, backend: BackendKind) -> Result<(), BoolError> {
-        if let Some(s) = &self.settings {
-            s.set_string("backend", backend.stored_value())
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.backend = Some(backend.stored_value().to_string());
-            save_file_prefs(&cfg)
-        }
-    }
-
     pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
         if let Some(s) = &self.settings {
             s.set_strv("password-store-dirs", stores.clone())
@@ -271,38 +120,6 @@ impl Preferences {
         } else {
             let mut cfg = load_file_prefs();
             cfg.new_pass_file_template = Some(template.to_string());
-            save_file_prefs(&cfg)
-        }
-    }
-
-    #[cfg(feature = "flatpak")]
-    pub fn ripasso_own_fingerprint(&self) -> Option<String> {
-        let value = if let Some(s) = &self.settings {
-            s.string("ripasso-own-fingerprint").to_string()
-        } else {
-            let cfg = load_file_prefs();
-            cfg.ripasso_own_fingerprint.unwrap_or_default()
-        };
-
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-
-    #[cfg(feature = "flatpak")]
-    pub fn set_ripasso_own_fingerprint(
-        &self,
-        fingerprint: Option<&str>,
-    ) -> Result<(), BoolError> {
-        let value = fingerprint.unwrap_or("").trim().to_string();
-        if let Some(s) = &self.settings {
-            s.set_string("ripasso-own-fingerprint", &value)
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.ripasso_own_fingerprint = if value.is_empty() { None } else { Some(value) };
             save_file_prefs(&cfg)
         }
     }
@@ -337,20 +154,6 @@ fn config_path() -> PathBuf {
     }
 }
 
-#[cfg(not(feature = "flatpak"))]
-fn default_store_dirs() -> Vec<String> {
-    if let Ok(home) = std::env::var("HOME") {
-        vec![format!("{home}/.password-store")]
-    } else {
-        Vec::new()
-    }
-}
-
-#[cfg(feature = "flatpak")]
-fn default_store_dirs() -> Vec<String> {
-    Vec::new()
-}
-
 fn load_file_prefs() -> PreferenceFile {
     let path = config_path();
     if let Ok(data) = fs::read_to_string(&path) {
@@ -377,7 +180,9 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_backend_kind, default_store_dirs, BackendKind, Preferences};
+    #[cfg(not(feature = "flatpak"))]
+    use super::{default_backend_kind, BackendKind};
+    use super::{default_store_dirs, Preferences};
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -394,6 +199,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "flatpak"))]
     #[test]
     fn default_backend_matches_build_mode() {
         assert_eq!(default_backend_kind(), BackendKind::Integrated);

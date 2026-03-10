@@ -1,90 +1,22 @@
-use crate::logging::log_error;
+mod countdown;
+mod url;
+
 use super::file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
+use self::countdown::OtpCountdownCircle;
+use self::url::{otp_display, otp_secret_from_url, replace_otp_secret};
+use crate::logging::log_error;
 use adw::glib::{self, ControlFlow};
+use adw::gtk::GestureClick;
 use adw::prelude::*;
 use adw::{PasswordEntryRow, Toast, ToastOverlay};
-use adw::gtk::{Align, DrawingArea, GestureClick};
 use std::cell::{Cell, RefCell};
-use std::f64::consts::{FRAC_PI_2, TAU};
 use std::rc::Rc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use totp_rs::TOTP;
-
-const DEFAULT_OTP_PERIOD: u64 = 30;
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OtpMode {
     Live,
     Editing,
-}
-
-#[derive(Clone)]
-struct OtpCountdownCircle {
-    area: DrawingArea,
-    fraction: Rc<Cell<f64>>,
-}
-
-impl OtpCountdownCircle {
-    fn new() -> Self {
-        let area = DrawingArea::new();
-        area.set_content_width(16);
-        area.set_content_height(16);
-        area.set_valign(Align::Center);
-        area.set_visible(false);
-
-        let fraction = Rc::new(Cell::new(0.0_f64));
-        let fraction_for_draw = fraction.clone();
-        area.set_draw_func(move |area, cr, width, height| {
-            let fraction: f64 = fraction_for_draw.get();
-            let fraction = fraction.clamp(0.0, 1.0);
-            let radius = (width.min(height) as f64 / 2.0) - 2.0;
-            let center_x = width as f64 / 2.0;
-            let center_y = height as f64 / 2.0;
-
-            cr.set_line_width(2.0);
-            cr.set_source_rgba(0.5, 0.5, 0.5, 0.18);
-            cr.arc(center_x, center_y, radius, 0.0, TAU);
-            let _ = cr.stroke();
-
-            let accent = area
-                .style_context()
-                .lookup_color("accent_color")
-                .unwrap_or_else(|| adw::gtk::gdk::RGBA::new(0.18, 0.55, 0.92, 1.0));
-            cr.set_source_rgba(
-                accent.red() as f64,
-                accent.green() as f64,
-                accent.blue() as f64,
-                accent.alpha() as f64,
-            );
-            cr.arc(
-                center_x,
-                center_y,
-                radius,
-                -FRAC_PI_2,
-                -FRAC_PI_2 + (TAU * fraction),
-            );
-            let _ = cr.stroke();
-        });
-
-        Self { area, fraction }
-    }
-
-    fn widget(&self) -> &DrawingArea {
-        &self.area
-    }
-
-    fn set_visible(&self, visible: bool) {
-        self.area.set_visible(visible);
-    }
-
-    fn set_fraction(&self, fraction: f64) {
-        self.fraction.set(fraction.clamp(0.0, 1.0));
-        self.area.queue_draw();
-    }
-
-    fn set_tooltip_text(&self, tooltip: Option<&str>) {
-        self.area.set_tooltip_text(tooltip);
-    }
 }
 
 #[derive(Clone)]
@@ -339,90 +271,9 @@ impl PasswordOtpState {
     }
 }
 
-fn otp_display(url: &str) -> Result<(String, u64, u64), String> {
-    let totp = TOTP::from_url_unchecked(url).map_err(|err| err.to_string())?;
-    let period = otp_period(url);
-    let remaining = otp_remaining_seconds(period);
-    let code = totp.generate_current().map_err(|err| err.to_string())?;
-    Ok((code, remaining, period))
-}
-
-fn otp_period(url: &str) -> u64 {
-    query_param(url, "period")
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|period| *period > 0)
-        .unwrap_or(DEFAULT_OTP_PERIOD)
-}
-
-fn otp_remaining_seconds(period: u64) -> u64 {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let remaining = period - (now % period);
-    if remaining == 0 { period } else { remaining }
-}
-
-fn otp_secret_from_url(url: &str) -> Option<String> {
-    query_param(url, "secret")
-}
-
-fn query_param(url: &str, key: &str) -> Option<String> {
-    let query = url.split_once('?')?.1.split('#').next().unwrap_or_default();
-    query.split('&').find_map(|pair| {
-        let (current_key, value) = pair.split_once('=')?;
-        if current_key.eq_ignore_ascii_case(key) {
-            Some(value.to_string())
-        } else {
-            None
-        }
-    })
-}
-
-fn replace_otp_secret(url: &str, secret: &str) -> String {
-    let (without_fragment, fragment) = match url.split_once('#') {
-        Some((prefix, fragment)) => (prefix, Some(fragment)),
-        None => (url, None),
-    };
-    let (base, query) = match without_fragment.split_once('?') {
-        Some((base, query)) => (base, query),
-        None => (without_fragment, ""),
-    };
-
-    let mut found_secret = false;
-    let mut parts = query
-        .split('&')
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            if let Some((key, _value)) = part.split_once('=') {
-                if key.eq_ignore_ascii_case("secret") {
-                    found_secret = true;
-                    return format!("{key}={secret}");
-                }
-            }
-            part.to_string()
-        })
-        .collect::<Vec<_>>();
-
-    if !found_secret {
-        parts.push(format!("secret={secret}"));
-    }
-
-    let mut rebuilt = if parts.is_empty() {
-        base.to_string()
-    } else {
-        format!("{base}?{}", parts.join("&"))
-    };
-    if let Some(fragment) = fragment {
-        rebuilt.push('#');
-        rebuilt.push_str(fragment);
-    }
-    rebuilt
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{otp_period, otp_secret_from_url, replace_otp_secret};
+    use super::url::{otp_period, otp_secret_from_url, replace_otp_secret};
 
     #[test]
     fn otp_secret_is_read_from_otpauth_url() {

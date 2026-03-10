@@ -20,6 +20,15 @@ use adw::gtk::{
 };
 use std::rc::Rc;
 
+#[derive(Clone)]
+pub(crate) struct StoreRecipientsPlatformState {
+    pub(crate) overlay: adw::ToastOverlay,
+}
+
+pub(crate) fn connect_store_recipients_entry(_state: &StoreRecipientsPageState) {}
+
+pub(crate) fn prepare_store_recipients_page(_state: &StoreRecipientsPageState) {}
+
 fn inspect_private_key_lock_state(fingerprint: &str) -> (bool, bool) {
     let unlocked = match is_ripasso_private_key_unlocked(fingerprint) {
         Ok(unlocked) => unlocked,
@@ -50,7 +59,7 @@ fn finish_private_key_import(
     match result {
         Ok(_) => {
             rebuild_store_recipients_list(state);
-            state.overlay.add_toast(Toast::new("Key imported."));
+            state.platform.overlay.add_toast(Toast::new("Key imported."));
         }
         Err(err) => {
             log_error(format!("Failed to import private key: {err}"));
@@ -65,7 +74,7 @@ fn finish_private_key_import(
             } else {
                 "Couldn't import the key."
             };
-            state.overlay.add_toast(Toast::new(message));
+            state.platform.overlay.add_toast(Toast::new(message));
         }
     }
 }
@@ -90,6 +99,7 @@ fn start_private_key_import(
             progress_dialog_for_disconnect.force_close();
             log_error("Private key import worker disconnected unexpectedly.".to_string());
             state_for_disconnect
+                .platform
                 .overlay
                 .add_toast(Toast::new("Couldn't import the key."));
         },
@@ -99,7 +109,7 @@ fn start_private_key_import(
 fn prompt_private_key_passphrase(state: &StoreRecipientsPageState, bytes: Vec<u8>) {
     let bytes = Rc::new(bytes);
     let window = state.window.clone();
-    let overlay = state.overlay.clone();
+    let overlay = state.platform.overlay.clone();
     let state = state.clone();
     present_private_key_password_dialog(&window, &overlay, "Unlock key", None, move |passphrase| {
         start_private_key_import(&state, bytes.as_slice().to_vec(), Some(passphrase));
@@ -139,13 +149,17 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
                         } else {
                             "Couldn't read that key."
                         };
-                        state_for_response.overlay.add_toast(Toast::new(message));
+                        state_for_response
+                            .platform
+                            .overlay
+                            .add_toast(Toast::new(message));
                     }
                 }
             }
             Err(err) => {
                 log_error(format!("Failed to read the selected private key file: {err}"));
                 state_for_response
+                    .platform
                     .overlay
                     .add_toast(Toast::new("Couldn't read that file."));
             }
@@ -264,7 +278,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             unlock_button.connect_clicked(move |_| {
                 let refresh_state = unlock_state.clone();
                 prompt_private_key_unlock_for_action(
-                    &unlock_state.overlay,
+                    &unlock_state.platform.overlay,
                     fingerprint.clone(),
                     Rc::new(move || super::rebuild_store_recipients_list(&refresh_state)),
                 );
@@ -303,6 +317,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
                     key_for_delete.fingerprint
                 ));
                 page_state
+                    .platform
                     .overlay
                     .add_toast(Toast::new("Couldn't remove that key."));
                 return;

@@ -3,7 +3,7 @@ use crate::preferences::Preferences;
 pub(crate) use super::recipients_page::{
     connect_store_recipients_entry, register_store_recipients_save_action,
     show_store_recipients_page, sync_store_recipients_page_header, StoreRecipientsMode,
-    StoreRecipientsPageState, StoreRecipientsRequest,
+    StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
 use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,

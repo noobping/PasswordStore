@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="dev.noobping.passwordstore" path="/dev/noobping/passwordstore/">
+  <schema id="io.github.noobping.passwordstore" path="/io/github/noobping/passwordstore/">
     <key name="password-store-dirs" type="as">
       <summary>Password store paths</summary>
       <description>

@@ -67,8 +67,8 @@ fn main() -> ExitCode {
         println!("has git-symbolic? {}", theme.has_icon("git-symbolic"));
         println!("has left-symbolic? {}", theme.has_icon("left-symbolic"));
         println!(
-            "has dev.noobping.passwordstore-symbolic? {}",
-            theme.has_icon("dev.noobping.passwordstore-symbolic")
+            "has io.github.noobping.passwordstore-symbolic? {}",
+            theme.has_icon("io.github.noobping.passwordstore-symbolic")
         );
     }
 

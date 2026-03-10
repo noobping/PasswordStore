@@ -15,6 +15,34 @@ use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
 
+fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
+    if stores.iter().any(|store| store == new_store) {
+        return None;
+    }
+
+    let mut updated = stores.to_vec();
+    updated.push(new_store.to_string());
+    Some(updated)
+}
+
+fn updated_stores_after_delete(stores: &[String], store_to_remove: &str) -> Option<Vec<String>> {
+    let position = stores.iter().position(|store| store == store_to_remove)?;
+    let mut updated = stores.to_vec();
+    updated.remove(position);
+    Some(updated)
+}
+
+fn initial_recipients_for_store_creation(
+    existing_recipients: Vec<String>,
+    suggested_recipients: Vec<String>,
+) -> Vec<String> {
+    if existing_recipients.is_empty() {
+        suggested_recipients
+    } else {
+        existing_recipients
+    }
+}
+
 fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
     let file = dialog.file()?;
     let path = file.path().or_else(|| {
@@ -111,9 +139,7 @@ fn append_store_row(
     });
 
     delete_button.connect_clicked(move |_| {
-        let mut stores = settings.stores();
-        if let Some(position) = stores.iter().position(|value| value == &store) {
-            stores.remove(position);
+        if let Some(stores) = updated_stores_after_delete(&settings.stores(), &store) {
             if let Err(err) = settings.set_stores(stores) {
                 log_error(format!("Failed to save stores: {err}"));
             } else {
@@ -173,9 +199,7 @@ fn open_store_picker(
         false,
         &overlay,
         move |store| {
-            let mut stores = settings.stores();
-            if !stores.contains(&store) {
-                stores.push(store.clone());
+            if let Some(stores) = updated_stores_after_add(&settings.stores(), &store) {
                 if let Err(err) = settings.set_stores(stores) {
                     log_error(format!("Failed to save stores: {err}"));
                     overlay_for_selection.add_toast(Toast::new("Couldn't add that folder."));
@@ -230,11 +254,63 @@ fn open_store_creator_picker(
         true,
         &overlay,
         move |store| {
-            let mut recipients = read_store_gpg_recipients(&store);
-            if recipients.is_empty() {
-                recipients = suggested_gpg_recipients(&settings);
-            }
+            let recipients = initial_recipients_for_store_creation(
+                read_store_gpg_recipients(&store),
+                suggested_gpg_recipients(&settings),
+            );
             show_store_recipients_create_page(&recipients_page, store, recipients);
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        initial_recipients_for_store_creation, updated_stores_after_add,
+        updated_stores_after_delete,
+    };
+
+    #[test]
+    fn adding_a_new_store_appends_it_once() {
+        let stores = vec!["/tmp/one".to_string()];
+
+        assert_eq!(
+            updated_stores_after_add(&stores, "/tmp/two"),
+            Some(vec!["/tmp/one".to_string(), "/tmp/two".to_string()])
+        );
+        assert_eq!(updated_stores_after_add(&stores, "/tmp/one"), None);
+    }
+
+    #[test]
+    fn deleting_a_store_removes_only_the_requested_entry() {
+        let stores = vec![
+            "/tmp/one".to_string(),
+            "/tmp/two".to_string(),
+            "/tmp/three".to_string(),
+        ];
+
+        assert_eq!(
+            updated_stores_after_delete(&stores, "/tmp/two"),
+            Some(vec!["/tmp/one".to_string(), "/tmp/three".to_string()])
+        );
+        assert_eq!(updated_stores_after_delete(&stores, "/tmp/missing"), None);
+    }
+
+    #[test]
+    fn store_creation_prefers_existing_recipients_over_suggested_ones() {
+        assert_eq!(
+            initial_recipients_for_store_creation(
+                vec!["existing@example.com".to_string()],
+                vec!["suggested@example.com".to_string()],
+            ),
+            vec!["existing@example.com".to_string()]
+        );
+        assert_eq!(
+            initial_recipients_for_store_creation(
+                Vec::new(),
+                vec!["suggested@example.com".to_string()],
+            ),
+            vec!["suggested@example.com".to_string()]
+        );
+    }
 }

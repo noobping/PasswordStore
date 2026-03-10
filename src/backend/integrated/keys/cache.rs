@@ -54,23 +54,6 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
     Ok(())
 }
 
-pub(in crate::backend::integrated) fn available_unlocked_private_key_fingerprints(
-    preferred: &str,
-) -> Vec<String> {
-    let mut fingerprints = vec![preferred.to_string()];
-    with_unlocked_ripasso_keys_read(|keys| {
-        for fingerprint in keys.keys() {
-            if !fingerprints
-                .iter()
-                .any(|existing| existing.eq_ignore_ascii_case(fingerprint))
-            {
-                fingerprints.push(fingerprint.clone());
-            }
-        }
-    });
-    fingerprints
-}
-
 #[cfg(test)]
 pub(in crate::backend::integrated) fn clear_cached_unlocked_ripasso_private_keys() {
     with_unlocked_ripasso_keys_write(|keys| keys.clear());

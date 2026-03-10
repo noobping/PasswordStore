@@ -9,15 +9,44 @@ use crate::support::background::spawn_result_task;
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
 
-fn can_autosave_store_recipients(state: &StoreRecipientsPageState) -> bool {
-    state.current_request().is_some()
-        && !state.recipients.borrow().is_empty()
-        && state.recipients_are_dirty()
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutosaveAction {
+    Skip,
+    Queue,
+    Trigger,
+}
+
+fn autosave_action(
+    has_request: bool,
+    has_recipients: bool,
+    is_dirty: bool,
+    save_in_flight: bool,
+) -> AutosaveAction {
+    if !has_request || !has_recipients || !is_dirty {
+        return AutosaveAction::Skip;
+    }
+    if save_in_flight {
+        return AutosaveAction::Queue;
+    }
+
+    AutosaveAction::Trigger
+}
+
+fn should_reschedule_after_finish(
+    save_queued: bool,
+    include_dirty: bool,
+    recipients_dirty: bool,
+) -> bool {
+    save_queued || (include_dirty && recipients_dirty)
 }
 
 fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty: bool) {
     state.save_in_flight.set(false);
-    if state.save_queued.get() || (include_dirty && state.recipients_are_dirty()) {
+    if should_reschedule_after_finish(
+        state.save_queued.get(),
+        include_dirty,
+        state.recipients_are_dirty(),
+    ) {
         state.save_queued.set(false);
         queue_store_recipients_autosave(state);
     }
@@ -102,15 +131,18 @@ fn save_store_recipients_async(
 }
 
 pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) {
-    if !can_autosave_store_recipients(state) {
-        return;
+    match autosave_action(
+        state.current_request().is_some(),
+        !state.recipients.borrow().is_empty(),
+        state.recipients_are_dirty(),
+        state.save_in_flight.get(),
+    ) {
+        AutosaveAction::Skip => {}
+        AutosaveAction::Queue => state.save_queued.set(true),
+        AutosaveAction::Trigger => {
+            activate_widget_action(&state.window, "win.save-store-recipients")
+        }
     }
-    if state.save_in_flight.get() {
-        state.save_queued.set(true);
-        return;
-    }
-
-    activate_widget_action(&state.window, "win.save-store-recipients");
 }
 
 pub(crate) fn register_store_recipients_save_action(
@@ -125,4 +157,49 @@ pub(crate) fn register_store_recipients_save_action(
     register_window_action(window, "save-store-recipients", move || {
         save_store_recipients_async(&overlay, &stores_list, &state);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{autosave_action, should_reschedule_after_finish, AutosaveAction};
+
+    #[test]
+    fn autosave_skips_without_a_request_or_recipients_or_changes() {
+        assert_eq!(
+            autosave_action(false, true, true, false),
+            AutosaveAction::Skip
+        );
+        assert_eq!(
+            autosave_action(true, false, true, false),
+            AutosaveAction::Skip
+        );
+        assert_eq!(
+            autosave_action(true, true, false, false),
+            AutosaveAction::Skip
+        );
+    }
+
+    #[test]
+    fn autosave_queues_while_a_save_is_in_flight() {
+        assert_eq!(
+            autosave_action(true, true, true, true),
+            AutosaveAction::Queue
+        );
+    }
+
+    #[test]
+    fn autosave_triggers_only_when_it_can_save_now() {
+        assert_eq!(
+            autosave_action(true, true, true, false),
+            AutosaveAction::Trigger
+        );
+    }
+
+    #[test]
+    fn finish_reschedules_for_queued_or_still_dirty_changes() {
+        assert!(should_reschedule_after_finish(true, false, false));
+        assert!(should_reschedule_after_finish(false, true, true));
+        assert!(!should_reschedule_after_finish(false, false, true));
+        assert!(!should_reschedule_after_finish(false, true, false));
+    }
 }

@@ -563,3 +563,66 @@ fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
         "supersecret\nusername: alice".to_string()
     );
 }
+
+#[test]
+fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let home = TestHome::new();
+    let password: Password = "hunter2".into();
+
+    let (cert_a, _) = CertBuilder::general_purpose(Some("Key A <a@example.com>"))
+        .set_password(Some(password.clone()))
+        .generate()
+        .expect("generate first certificate");
+    let mut bytes_a = Vec::new();
+    cert_a
+        .as_tsk()
+        .serialize(&mut bytes_a)
+        .expect("serialize first certificate");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+
+    let (cert_b, _) = CertBuilder::general_purpose(Some("Key B <b@example.com>"))
+        .set_password(Some(password.clone()))
+        .generate()
+        .expect("generate second certificate");
+    let mut bytes_b = Vec::new();
+    cert_b
+        .as_tsk()
+        .serialize(&mut bytes_b)
+        .expect("serialize second certificate");
+    let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+
+    let store = home.path.join("secondary-store");
+    fs::create_dir_all(&store).expect("create store");
+    fs::write(
+        store.join(".gpg-id"),
+        format!("{}\n{}\n", key_a.fingerprint, key_b.fingerprint),
+    )
+    .expect("write initial recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save initial entry");
+
+    Preferences::new()
+        .set_ripasso_own_fingerprint(Some(&key_a.fingerprint))
+        .expect("select first key");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&key_b.fingerprint),
+    )
+    .expect("re-encrypt store without the selected key");
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read re-encrypted entry"),
+        "supersecret\nusername: alice".to_string()
+    );
+}

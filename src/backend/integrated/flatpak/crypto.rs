@@ -1,6 +1,5 @@
 use super::super::keys::{
-    available_unlocked_private_key_fingerprints, build_ripasso_crypto_from_key_ring,
-    load_ripasso_key_ring, load_stored_ripasso_key_ring, locked_private_key_error,
+    build_ripasso_crypto_from_key_ring, load_ripasso_key_ring, load_stored_ripasso_key_ring,
 };
 use super::paths::recipients_file_for_label;
 use super::recipients::{
@@ -69,24 +68,6 @@ fn decrypt_password_entry_with_crypto(
     crypto
         .decrypt_string(&ciphertext)
         .map_err(|err| err.to_string())
-}
-
-pub(super) fn decrypt_password_entry_with_any_available_key(
-    preferred_fingerprint: &str,
-    entry_path: &Path,
-) -> Result<String, String> {
-    let mut last_error = None;
-    for fingerprint in available_unlocked_private_key_fingerprints(preferred_fingerprint) {
-        let context = FlatpakCryptoContext::load_for_fingerprint(&fingerprint)?;
-        match context.decrypt_entry(entry_path) {
-            Ok(secret) => return Ok(secret),
-            Err(err) => {
-                last_error = Some(err);
-            }
-        }
-    }
-
-    Err(last_error.unwrap_or_else(locked_private_key_error))
 }
 
 fn encrypt_password_entry_with_crypto(

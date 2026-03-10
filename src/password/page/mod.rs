@@ -7,6 +7,9 @@ mod state;
 
 use crate::backend::{read_password_entry, save_password_entry};
 use crate::support::background::spawn_result_task;
+use crate::support::ui::{
+    pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
+};
 use crate::password::model::OpenPassFile;
 use crate::logging::log_error;
 use crate::password::opened::{
@@ -47,10 +50,6 @@ fn save_error_toast(message: &str) -> &'static str {
     }
 }
 
-fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String, String> {
-    read_password_entry(store_root, label)
-}
-
 pub(crate) fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
@@ -71,7 +70,7 @@ pub(crate) fn open_password_entry_page(
     let state_for_disconnect = state.clone();
     let opened_pass_file_for_disconnect = opened_pass_file.clone();
     spawn_result_task(
-        move || read_password_entry_contents(&store_for_thread, &label_for_thread),
+        move || read_password_entry(&store_for_thread, &label_for_thread),
         move |result| {
             if !is_opened_pass_file(&opened_pass_file_for_result) {
                 return;
@@ -154,15 +153,7 @@ pub(crate) fn begin_new_password_entry(
     show_password_editor_chrome(state, "New item", path);
     show_password_editor_fields(state);
     state.otp.clear();
-    let already_visible = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == &state.page)
-        .unwrap_or(false);
-    if !already_visible {
-        state.nav.push(&state.page);
-    }
+    push_navigation_page_if_needed(&state.nav, &state.page);
 
     add_popover.popdown();
     git_popover.popdown();
@@ -178,15 +169,7 @@ pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
         .unwrap_or_else(|| "Password Store".to_string());
     show_password_editor_chrome(state, "Raw Pass File", &subtitle);
 
-    let already_visible = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == &state.raw_page)
-        .unwrap_or(false);
-    if !already_visible {
-        state.nav.push(&state.raw_page);
-    }
+    push_navigation_page_if_needed(&state.nav, &state.raw_page);
 }
 
 pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
@@ -209,13 +192,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             return;
         }
     };
-    let contents = if state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|page| page == &state.raw_page)
-        .unwrap_or(false)
-    {
+    let contents = if visible_navigation_page_is(&state.nav, &state.raw_page) {
         contents
     } else {
         structured_pass_contents(
@@ -227,7 +204,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
         )
     };
     let label = pass_file.label();
-    match write_pass_entry(pass_file.store_path(), &label, &contents, true) {
+    match save_password_entry(pass_file.store_path(), &label, &contents, true) {
         Ok(()) => {
             let updated_pass_file =
                 refresh_opened_pass_file_from_contents(&pass_file, &contents);
@@ -245,9 +222,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
 }
 
 pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bool) {
-    while state.nav.navigation_stack().n_items() > 1 {
-        state.nav.pop();
-    }
+    pop_navigation_to_root(&state.nav);
 
     clear_opened_pass_file();
     state.back.set_visible(false);
@@ -281,23 +256,11 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
     );
 }
 
-fn write_pass_entry(
-    store_root: &str,
-    label: &str,
-    contents: &str,
-    overwrite: bool,
-) -> Result<(), String> {
-    save_password_entry(store_root, label, contents, overwrite)
-}
-
 pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
-    let visible_text_page = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|page| page == &state.page)
-        .unwrap_or(false);
-    if !visible_text_page || !state.status.is_visible() || state.entry.is_visible() {
+    if !visible_navigation_page_is(&state.nav, &state.page)
+        || !state.status.is_visible()
+        || state.entry.is_visible()
+    {
         return false;
     }
 

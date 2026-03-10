@@ -43,3 +43,29 @@ pub(crate) fn navigation_stack_contains_page(
 
     false
 }
+
+pub(crate) fn visible_navigation_page_is(nav: &NavigationView, page: &NavigationPage) -> bool {
+    nav.visible_page().as_ref().is_some_and(|visible| visible == page)
+}
+
+pub(crate) fn push_navigation_page_if_needed(
+    nav: &NavigationView,
+    page: &NavigationPage,
+) -> bool {
+    if visible_navigation_page_is(nav, page) {
+        return false;
+    }
+
+    nav.push(page);
+    true
+}
+
+pub(crate) fn navigation_stack_is_root(nav: &NavigationView) -> bool {
+    nav.navigation_stack().n_items() <= 1
+}
+
+pub(crate) fn pop_navigation_to_root(nav: &NavigationView) {
+    while !navigation_stack_is_root(nav) {
+        nav.pop();
+    }
+}

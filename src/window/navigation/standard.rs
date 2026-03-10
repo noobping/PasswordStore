@@ -1,6 +1,8 @@
 use super::{restore_window_for_current_page, WindowNavigationState};
 use crate::store::management::StoreRecipientsPageState;
-use crate::support::ui::navigation_stack_contains_page;
+use crate::support::ui::{
+    navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
+};
 use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
@@ -13,15 +15,7 @@ pub(crate) fn show_log_page(state: &WindowNavigationState) {
     state.win.set_title("Logs");
     state.win.set_subtitle("Details");
 
-    let already_visible = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == &state.log_page)
-        .unwrap_or(false);
-    if !already_visible {
-        state.nav.push(&state.log_page);
-    }
+    push_navigation_page_if_needed(&state.nav, &state.log_page);
 }
 
 pub(crate) fn show_git_busy_page(
@@ -41,15 +35,7 @@ pub(crate) fn show_git_busy_page(
     status.set_title(title);
     status.set_description(description);
 
-    let already_visible = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == page)
-        .unwrap_or(false);
-    if !already_visible {
-        state.nav.push(page);
-    }
+    push_navigation_page_if_needed(&state.nav, page);
 }
 
 pub(crate) fn finish_git_busy_page(
@@ -62,10 +48,7 @@ pub(crate) fn finish_git_busy_page(
     set_actions_enabled(window, true);
 
     let current_page = state.nav.visible_page();
-    let busy_visible = current_page
-        .as_ref()
-        .map(|visible| visible == busy_page)
-        .unwrap_or(false);
+    let busy_visible = visible_navigation_page_is(&state.nav, busy_page);
     let busy_in_stack = navigation_stack_contains_page(&state.nav, busy_page);
 
     if busy_visible {

@@ -1,4 +1,4 @@
-use super::{default_backend_kind, load_file_prefs, save_file_prefs, BackendKind, Preferences};
+use super::{default_backend_kind, BackendKind, Preferences};
 use adw::gio::prelude::*;
 use adw::glib::BoolError;
 use std::env;
@@ -52,12 +52,14 @@ impl BackendKind {
 
 impl Preferences {
     pub fn command_value(&self) -> String {
-        if let Some(s) = &self.settings {
-            s.string("pass-command").to_string()
-        } else {
-            let cfg = load_file_prefs();
-            cfg.pass_command.unwrap_or_else(|| DEFAULT_CMD.to_string())
-        }
+        self.read_preference(
+            |settings| settings.string("pass-command").to_string(),
+            |cfg| {
+                cfg.pass_command
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_CMD.to_string())
+            },
+        )
     }
 
     pub fn command(&self) -> Command {
@@ -102,15 +104,15 @@ impl Preferences {
     }
 
     pub fn backend_kind(&self) -> BackendKind {
-        if let Some(s) = &self.settings {
-            BackendKind::from_stored(&s.string("backend"))
-        } else {
-            let cfg = load_file_prefs();
-            cfg.backend
-                .as_deref()
-                .map(BackendKind::from_stored)
-                .unwrap_or_else(default_backend_kind)
-        }
+        self.read_preference(
+            |settings| BackendKind::from_stored(&settings.string("backend")),
+            |cfg| {
+                cfg.backend
+                    .as_deref()
+                    .map(BackendKind::from_stored)
+                    .unwrap_or_else(default_backend_kind)
+            },
+        )
     }
 
     pub fn uses_integrated_backend(&self) -> bool {
@@ -118,23 +120,17 @@ impl Preferences {
     }
 
     pub fn set_command(&self, cmd: &str) -> Result<(), BoolError> {
-        if let Some(s) = &self.settings {
-            s.set_string("pass-command", cmd)
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.pass_command = Some(cmd.to_string());
-            save_file_prefs(&cfg)
-        }
+        self.write_preference(
+            |settings| settings.set_string("pass-command", cmd),
+            |cfg| cfg.pass_command = Some(cmd.to_string()),
+        )
     }
 
     pub fn set_backend_kind(&self, backend: BackendKind) -> Result<(), BoolError> {
-        if let Some(s) = &self.settings {
-            s.set_string("backend", backend.stored_value())
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.backend = Some(backend.stored_value().to_string());
-            save_file_prefs(&cfg)
-        }
+        self.write_preference(
+            |settings| settings.set_string("backend", backend.stored_value()),
+            |cfg| cfg.backend = Some(backend.stored_value().to_string()),
+        )
     }
 }
 

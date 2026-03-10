@@ -4,6 +4,7 @@ use super::super::file::{
 };
 use super::PasswordPageState;
 use crate::password::model::OpenPassFile;
+use crate::support::ui::visible_navigation_page_is;
 use adw::prelude::*;
 
 pub(super) fn structured_editor_contents(state: &PasswordPageState) -> String {
@@ -17,13 +18,7 @@ pub(super) fn structured_editor_contents(state: &PasswordPageState) -> String {
 }
 
 pub(super) fn current_editor_contents(state: &PasswordPageState) -> String {
-    let raw_visible = state
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|page| page == &state.raw_page)
-        .unwrap_or(false);
-    if raw_visible {
+    if visible_navigation_page_is(&state.nav, &state.raw_page) {
         let buffer = state.text.buffer();
         let (start, end) = buffer.bounds();
         buffer.text(&start, &end, false).to_string()

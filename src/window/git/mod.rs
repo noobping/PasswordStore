@@ -3,9 +3,11 @@ mod operations;
 use self::operations::{run_clone_operation, run_sync_operation, GitOperationResult};
 use crate::password::list::load_passwords_async;
 use crate::store::management::StoreRecipientsPageState;
+use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::{
-    finish_git_busy_page, restore_window_for_current_page, show_git_busy_page, WindowNavigationState,
+    finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
+    WindowNavigationState,
 };
 use crate::support::background::spawn_result_task;
 use adw::gio::{prelude::*, SimpleAction};
@@ -65,7 +67,7 @@ fn restore_after_git_operation(state: &GitActionState) {
 }
 
 fn reload_password_list(state: &GitActionState) {
-    let show_list_actions = state.navigation.nav.navigation_stack().n_items() <= 1;
+    let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
     load_passwords_async(
         &state.list,
         state.navigation.git.clone(),
@@ -202,14 +204,7 @@ pub(crate) fn register_synchronize_action(
 pub(crate) fn handle_git_busy_back(
     state: &GitActionState,
 ) -> bool {
-    let busy_visible = state
-        .navigation
-        .nav
-        .visible_page()
-        .as_ref()
-        .map(|visible| visible == &state.busy_page)
-        .unwrap_or(false);
-    if !busy_visible {
+    if !visible_navigation_page_is(&state.navigation.nav, &state.busy_page) {
         return false;
     }
 

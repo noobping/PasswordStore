@@ -52,6 +52,32 @@ impl Preferences {
         }
     }
 
+    fn read_preference<T>(
+        &self,
+        read_settings: impl FnOnce(&Settings) -> T,
+        read_file: impl FnOnce(&PreferenceFile) -> T,
+    ) -> T {
+        if let Some(settings) = &self.settings {
+            read_settings(settings)
+        } else {
+            read_file(&load_file_prefs())
+        }
+    }
+
+    fn write_preference(
+        &self,
+        write_settings: impl FnOnce(&Settings) -> Result<(), BoolError>,
+        write_file: impl FnOnce(&mut PreferenceFile),
+    ) -> Result<(), BoolError> {
+        if let Some(settings) = &self.settings {
+            write_settings(settings)
+        } else {
+            let mut cfg = load_file_prefs();
+            write_file(&mut cfg);
+            save_file_prefs(&cfg)
+        }
+    }
+
     fn try_settings() -> Option<Settings> {
         let source = gio::SettingsSchemaSource::default()?;
         let _schema = source.lookup(APP_ID, true)?;
@@ -76,29 +102,31 @@ impl Preferences {
     }
 
     pub fn new_pass_file_template(&self) -> String {
-        if let Some(s) = &self.settings {
-            s.string("new-pass-file-template").to_string()
-        } else {
-            let cfg = load_file_prefs();
-            cfg.new_pass_file_template
-                .unwrap_or_else(|| DEFAULT_NEW_PASS_FILE_TEMPLATE.to_string())
-        }
+        self.read_preference(
+            |settings| settings.string("new-pass-file-template").to_string(),
+            |cfg| {
+                cfg.new_pass_file_template
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_NEW_PASS_FILE_TEMPLATE.to_string())
+            },
+        )
     }
 
     pub fn stores(&self) -> Vec<String> {
-        if let Some(s) = &self.settings {
-            s.strv("password-store-dirs")
-                .iter()
-                .map(|g| g.to_string())
-                .collect()
-        } else {
-            let cfg = load_file_prefs();
-            if let Some(dirs) = cfg.password_store_dirs {
-                dirs
-            } else {
-                default_store_dirs()
-            }
-        }
+        self.read_preference(
+            |settings| {
+                settings
+                    .strv("password-store-dirs")
+                    .iter()
+                    .map(|path| path.to_string())
+                    .collect()
+            },
+            |cfg| {
+                cfg.password_store_dirs
+                    .clone()
+                    .unwrap_or_else(default_store_dirs)
+            },
+        )
     }
 
     pub fn paths(&self) -> Vec<PathBuf> {
@@ -106,23 +134,18 @@ impl Preferences {
     }
 
     pub fn set_stores(&self, stores: Vec<String>) -> Result<(), BoolError> {
-        if let Some(s) = &self.settings {
-            s.set_strv("password-store-dirs", stores.clone())
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.password_store_dirs = Some(stores);
-            save_file_prefs(&cfg)
-        }
+        let settings_stores = stores.clone();
+        self.write_preference(
+            |settings| settings.set_strv("password-store-dirs", settings_stores.clone()),
+            |cfg| cfg.password_store_dirs = Some(stores),
+        )
     }
 
     pub fn set_new_pass_file_template(&self, template: &str) -> Result<(), BoolError> {
-        if let Some(s) = &self.settings {
-            s.set_string("new-pass-file-template", template)
-        } else {
-            let mut cfg = load_file_prefs();
-            cfg.new_pass_file_template = Some(template.to_string());
-            save_file_prefs(&cfg)
-        }
+        self.write_preference(
+            |settings| settings.set_string("new-pass-file-template", template),
+            |cfg| cfg.new_pass_file_template = Some(template.to_string()),
+        )
     }
 
     pub fn prune_missing_stores(&self) -> Result<bool, BoolError> {

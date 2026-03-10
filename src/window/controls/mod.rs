@@ -3,6 +3,7 @@ use crate::password::page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
 use crate::store::management::StoreRecipientsPageState;
+use crate::support::ui::navigation_stack_is_root;
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gio::SimpleAction;
 use adw::prelude::*;
@@ -96,7 +97,7 @@ pub(crate) fn register_toggle_hidden_action(
     let action = SimpleAction::new("toggle-hidden", None);
     action.connect_activate(move |_, _| {
         let show_hidden = !state.show_hidden.get();
-        let show_list_actions = state.navigation.nav.navigation_stack().n_items() <= 1;
+        let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
         if !show_list_actions {
             return;
         }

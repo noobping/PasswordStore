@@ -137,25 +137,26 @@ fn append_store_picker_row(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    let row = ActionRow::builder()
-        .title("Add store folder")
-        .subtitle("Choose an existing folder.")
-        .build();
-    row.set_activatable(true);
-
-    let button = Button::from_icon_name("folder-open-symbolic");
-    button.add_css_class("flat");
-    row.add_suffix(&button);
-    list.append(&row);
-
     let settings = settings.clone();
-    let list = list.clone();
     let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
-    connect_row_and_button_action(&row, &button, move || {
-        open_store_picker(&window, &list, &settings, &overlay, &recipients_page);
-    });
+    let list_for_action = list.clone();
+    append_store_action_row(
+        list,
+        "Add store folder",
+        "Choose an existing folder.",
+        "folder-open-symbolic",
+        move || {
+            open_store_picker(
+                &window,
+                &list_for_action,
+                &settings,
+                &overlay,
+                &recipients_page,
+            )
+        },
+    );
 }
 
 fn open_store_picker(
@@ -215,24 +216,34 @@ fn append_store_creator_row(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    let row = ActionRow::builder()
-        .title("Create store")
-        .subtitle("Choose a folder and add recipients.")
-        .build();
-    row.set_activatable(true);
-
-    let button = Button::from_icon_name("folder-new-symbolic");
-    button.add_css_class("flat");
-    row.add_suffix(&button);
-    list.append(&row);
-
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
-    connect_row_and_button_action(&row, &button, move || {
-        open_store_creator_picker(&window, &settings, &overlay, &recipients_page);
-    });
+    append_store_action_row(
+        list,
+        "Create store",
+        "Choose a folder and add recipients.",
+        "folder-new-symbolic",
+        move || open_store_creator_picker(&window, &settings, &overlay, &recipients_page),
+    );
+}
+
+fn append_store_action_row(
+    list: &ListBox,
+    title: &str,
+    subtitle: &str,
+    icon_name: &str,
+    action: impl Fn() + 'static,
+) {
+    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    row.set_activatable(true);
+
+    let button = Button::from_icon_name(icon_name);
+    button.add_css_class("flat");
+    row.add_suffix(&button);
+    list.append(&row);
+    connect_row_and_button_action(&row, &button, action);
 }
 
 fn open_store_creator_picker(

@@ -1,5 +1,6 @@
 use crate::preferences::Preferences;
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
+use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::set_save_button_for_password;
 use crate::logging::log_error;
 use adw::gio::SimpleAction;
@@ -86,15 +87,7 @@ pub(crate) fn register_open_preferences_action(
         state.win.set_title("Preferences");
         state.win.set_subtitle("Password Store");
 
-        let already_visible = state
-            .nav
-            .visible_page()
-            .as_ref()
-            .map(|visible| visible == &state.page)
-            .unwrap_or(false);
-        if !already_visible {
-            state.nav.push(&state.page);
-        }
+        push_navigation_page_if_needed(&state.nav, &state.page);
 
         let settings = Preferences::new();
         #[cfg(not(feature = "flatpak"))]

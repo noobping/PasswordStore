@@ -1,3 +1,5 @@
+mod widgets;
+
 #[cfg(feature = "setup")]
 use crate::setup::*;
 use crate::clipboard::connect_copy_button;
@@ -18,13 +20,10 @@ use crate::store::management::{
 };
 use crate::support::object_data::non_null_to_string_option;
 #[cfg(feature = "setup")]
-use adw::gio::{Menu, MenuItem};
+use adw::gio::MenuItem;
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView};
-use adw::{
-    prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
-    PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle,
-};
+use adw::gtk::Builder;
+use adw::{prelude::*, Application, ApplicationWindow, Toast};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -46,23 +45,55 @@ use super::preferences::register_install_locally_action;
 use super::standard::{
     create_git_action_state, load_standard_window_parts, register_standard_window_actions,
 };
+use self::widgets::WindowWidgets;
 
-const UI_SRC: &str = include_str!("../../data/window.ui");
+const UI_SRC: &str = include_str!("../../../data/window.ui");
 
 pub(crate) fn create_main_window(
     app: &Application,
     startup_query: Option<String>,
 ) -> ApplicationWindow {
     let builder = Builder::from_string(UI_SRC);
-    let window: ApplicationWindow = builder
-        .object("main_window")
-        .expect("Failed to get main_window from UI");
+    let WindowWidgets {
+        window,
+        #[cfg(feature = "setup")]
+        primary_menu,
+        back_button,
+        add_button,
+        find_button,
+        add_button_popover,
+        new_password_store_box,
+        new_password_store_list,
+        path_entry,
+        git_button,
+        git_popover,
+        window_title,
+        save_button,
+        toast_overlay,
+        settings_page,
+        store_recipients_page,
+        store_recipients_list,
+        log_page,
+        new_pass_file_template_view,
+        password_stores,
+        navigation_view,
+        search_entry,
+        list,
+        text_page,
+        raw_text_page,
+        password_status,
+        password_entry,
+        username_entry,
+        otp_entry,
+        copy_password_button,
+        copy_username_button,
+        copy_otp_button,
+        text_view,
+        dynamic_fields_box,
+        open_raw_button,
+    } = WindowWidgets::load(&builder);
     window.set_application(Some(app));
 
-    #[cfg(feature = "setup")]
-    let primary_menu: Menu = builder
-        .object("primary_menu")
-        .expect("Failed to get primary menu");
     #[cfg(feature = "setup")]
     if can_install_locally() {
         let item = MenuItem::new(
@@ -73,77 +104,12 @@ pub(crate) fn create_main_window(
     }
     #[cfg(feature = "flatpak")]
     configure_flatpak_window(&builder);
-
-    let back_button: Button = builder
-        .object("back_button")
-        .expect("Failed to get back_button");
-    let add_button: Button = builder
-        .object("add_button")
-        .expect("Failed to get add_button");
-    let find_button: Button = builder
-        .object("find_button")
-        .expect("Failed to get find_button");
-    let add_button_popover: Popover = builder
-        .object("add_button_popover")
-        .expect("Failed to get add_button_popover");
-    let new_password_store_box: GtkBox = builder
-        .object("new_password_store_box")
-        .expect("Failed to get new_password_store_box");
-    let new_password_store_list: GtkBox = builder
-        .object("new_password_store_list")
-        .expect("Failed to get new_password_store_list");
-    let path_entry: EntryRow = builder
-        .object("path_entry")
-        .expect("Failed to get path_entry");
-    let git_button: Button = builder
-        .object("git_button")
-        .expect("Failed to get git_button");
-    let git_popover: Popover = builder
-        .object("git_popover")
-        .expect("Failed to get git_popover");
     #[cfg(feature = "flatpak")]
     git_button.set_visible(false);
-    let window_title: WindowTitle = builder
-        .object("window_title")
-        .expect("Failed to get window_title");
-    let save_button: Button = builder
-        .object("save_button")
-        .expect("Failed to get save_button");
     set_save_button_for_password(&save_button);
-
-    let toast_overlay: ToastOverlay = builder
-        .object("toast_overlay")
-        .expect("Failed to get toast_overlay");
 
     #[cfg(not(feature = "flatpak"))]
     let standard_parts = load_standard_window_parts(&builder);
-
-    let settings_page: NavigationPage = builder
-        .object("settings_page")
-        .expect("Failed to get settings page");
-    let store_recipients_page: NavigationPage = builder
-        .object("store_recipients_page")
-        .expect("Failed to get store recipients page");
-    let store_recipients_list: ListBox = builder
-        .object("store_recipients_list")
-        .expect("Failed to get store recipients list");
-    let log_page: NavigationPage = builder
-        .object("log_page")
-        .expect("Failed to get log page");
-    let new_pass_file_template_view: TextView = builder
-        .object("new_pass_file_template_view")
-        .expect("Failed to get new_pass_file_template_view");
-    let password_stores: ListBox = builder
-        .object("password_stores")
-        .expect("Failed to get the password store list");
-
-    let navigation_view: NavigationView = builder
-        .object("navigation_view")
-        .expect("Failed to get navigation_view");
-    let search_entry: SearchEntry = builder
-        .object("search_entry")
-        .expect("Failed to get search_entry");
-    let list: ListBox = builder.object("list").expect("Failed to get list");
 
     load_passwords_async(
         &list,
@@ -154,43 +120,6 @@ pub(crate) fn create_main_window(
         true,
         false,
     );
-
-    let text_page: NavigationPage = builder
-        .object("text_page")
-        .expect("Failed to get text_page");
-    let raw_text_page: NavigationPage = builder
-        .object("raw_text_page")
-        .expect("Failed to get raw_text_page");
-    let password_status: StatusPage = builder
-        .object("password_status")
-        .expect("Failed to get password_status");
-    let password_entry: PasswordEntryRow = builder
-        .object("password_entry")
-        .expect("Failed to get password_entry");
-    let username_entry: EntryRow = builder
-        .object("username_entry")
-        .expect("Failed to get username_entry");
-    let otp_entry: PasswordEntryRow = builder
-        .object("otp_entry")
-        .expect("Failed to get otp_entry");
-    let copy_password_button: Button = builder
-        .object("copy_password_button")
-        .expect("Failed to get copy_password_button");
-    let copy_username_button: Button = builder
-        .object("copy_username_button")
-        .expect("Failed to get copy_username_button");
-    let copy_otp_button: Button = builder
-        .object("copy_otp_button")
-        .expect("Failed to get copy_otp_button");
-    let text_view: TextView = builder
-        .object("text_view")
-        .expect("Failed to get text_view");
-    let dynamic_fields_box: GtkBox = builder
-        .object("dynamic_fields_box")
-        .expect("Failed to get dynamic_fields_box");
-    let open_raw_button: Button = builder
-        .object("open_raw_button")
-        .expect("Failed to get open_raw_button");
     let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
     let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
     let new_password_popover_state = NewPasswordPopoverState {

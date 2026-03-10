@@ -1,7 +1,5 @@
 use crate::backend::{read_password_entry, save_password_entry};
 use crate::background::spawn_result_task;
-#[cfg(feature = "flatpak")]
-use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
 use crate::item::OpenPassFile;
 use crate::logging::log_error;
 use crate::methods::{
@@ -16,10 +14,6 @@ use crate::pass_file::{
 use crate::password_otp::PasswordOtpState;
 use crate::password_list::load_passwords_async;
 use crate::preferences::Preferences;
-#[cfg(not(feature = "flatpak"))]
-use crate::preferences::BackendKind;
-#[cfg(feature = "flatpak")]
-use crate::ripasso_unlock::{is_locked_private_key_error, prompt_private_key_unlock_for_action};
 use crate::window_messages::with_logs_hint;
 use crate::window_navigation::set_save_button_for_password;
 use adw::prelude::*;
@@ -27,6 +21,17 @@ use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, Toast, ToastOv
 use adw::gtk::{Box as GtkBox, Button, ListBox, Popover, TextView};
 use std::cell::RefCell;
 use std::rc::Rc;
+
+#[cfg(feature = "flatpak")]
+#[path = "password_page_flatpak.rs"]
+mod platform;
+#[cfg(not(feature = "flatpak"))]
+#[path = "password_page_desktop.rs"]
+mod platform;
+
+use self::platform::{
+    friendly_password_entry_error_message, handle_open_password_entry_error,
+};
 
 #[derive(Clone)]
 pub(crate) struct PasswordPageState {
@@ -50,24 +55,6 @@ pub(crate) struct PasswordPageState {
     pub(crate) dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
     pub(crate) text: TextView,
     pub(crate) overlay: ToastOverlay,
-}
-
-#[cfg(feature = "flatpak")]
-fn friendly_password_entry_error_message(message: &str) -> Option<&'static str> {
-    if message.contains("cannot decrypt password store entries")
-        || message.contains("available private keys cannot decrypt")
-    {
-        Some("This key can't open your items.")
-    } else if message.contains("Import a private key in Preferences") {
-        Some("Add a private key in Preferences.")
-    } else {
-        None
-    }
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn friendly_password_entry_error_message(_message: &str) -> Option<&'static str> {
-    None
 }
 
 fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle: &str) {
@@ -168,44 +155,6 @@ fn read_password_entry_contents(store_root: &str, label: &str) -> Result<String,
     read_password_entry(store_root, label)
 }
 
-#[cfg(not(feature = "flatpak"))]
-fn should_switch_to_integrated_backend(message: &str) -> bool {
-    let lowered = message.to_ascii_lowercase();
-    !lowered.contains("not in the password store")
-        && !lowered.contains("was not found")
-        && !lowered.contains("no such file or directory")
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn switch_to_integrated_backend_and_retry(
-    state: &PasswordPageState,
-    pass_file: &OpenPassFile,
-    message: &str,
-) -> bool {
-    let settings = Preferences::new();
-    if settings.uses_integrated_backend() || !should_switch_to_integrated_backend(message) {
-        return false;
-    }
-
-    if let Err(err) = settings.set_backend_kind(BackendKind::Integrated) {
-        log_error(format!("Failed to switch to the integrated backend: {}", err.message));
-        return false;
-    }
-
-    state.overlay.add_toast(Toast::new("Using Integrated instead."));
-    open_password_entry_page(state, pass_file.clone(), false);
-    true
-}
-
-#[cfg(feature = "flatpak")]
-fn switch_to_integrated_backend_and_retry(
-    _state: &PasswordPageState,
-    _pass_file: &OpenPassFile,
-    _message: &str,
-) -> bool {
-    false
-}
-
 pub(crate) fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
@@ -225,8 +174,6 @@ pub(crate) fn open_password_entry_page(
     let opened_pass_file_for_result = opened_pass_file.clone();
     let state_for_disconnect = state.clone();
     let opened_pass_file_for_disconnect = opened_pass_file.clone();
-    #[cfg(feature = "flatpak")]
-    let retry_state = state.clone();
     spawn_result_task(
         move || read_password_entry_contents(&store_for_thread, &label_for_thread),
         move |result| {
@@ -245,53 +192,12 @@ pub(crate) fn open_password_entry_page(
                 }
                 Err(msg) => {
                     log_error(format!("Failed to open password entry: {msg}"));
-                    if switch_to_integrated_backend_and_retry(
+                    if handle_open_password_entry_error(
                         &state_for_result,
                         &opened_pass_file_for_result,
                         &msg,
                     ) {
                         return;
-                    }
-                    #[cfg(feature = "flatpak")]
-                    if is_locked_private_key_error(&msg) {
-                        state_for_result.status.set_title("Unlock key");
-                        state_for_result
-                            .status
-                            .set_description(Some("Enter your key password to continue."));
-                        match preferred_ripasso_private_key_fingerprint_for_entry(
-                            opened_pass_file_for_result.store_path(),
-                            &opened_pass_file_for_result.label(),
-                        ) {
-                            Ok(fingerprint) => {
-                                let retry_pass_file = opened_pass_file_for_result.clone();
-                                let retry_page_state = retry_state.clone();
-                                prompt_private_key_unlock_for_action(
-                                    &state_for_result.overlay,
-                                    fingerprint,
-                                    Rc::new(move || {
-                                        open_password_entry_page(
-                                            &retry_page_state,
-                                            retry_pass_file.clone(),
-                                            false,
-                                        );
-                                    }),
-                                );
-                                return;
-                            }
-                            Err(err) => {
-                                log_error(format!(
-                                    "Failed to resolve the private key for this item: {err}"
-                                ));
-                            }
-                        }
-                    }
-                    #[cfg(feature = "flatpak")]
-                    if msg.contains("Import a private key in Preferences") {
-                        let _ = adw::prelude::WidgetExt::activate_action(
-                            &state_for_result.nav,
-                            "win.open-preferences",
-                            None,
-                        );
                     }
 
                     show_password_open_error(&state_for_result);

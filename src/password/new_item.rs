@@ -1,5 +1,6 @@
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
+use crate::support::ui::toggle_popover_with_focus;
 use adw::gtk::{Box as GtkBox, CheckButton, Popover};
 use adw::prelude::*;
 use adw::{ApplicationWindow, EntryRow};
@@ -126,13 +127,10 @@ pub(crate) fn register_open_new_password_action(
 ) {
     let state = state.clone();
     register_window_action(window, "open-new-password", move || {
-        if state.popover.is_visible() {
-            state.popover.popdown();
-        } else {
+        if !state.popover.is_visible() {
             sync_new_password_store_selector(&state);
-            state.popover.popup();
-            state.path_entry.grab_focus();
         }
+        toggle_popover_with_focus(&state.popover, &state.path_entry);
     });
 }
 

@@ -1,20 +1,13 @@
-use super::management::rebuild_store_list;
-use super::recipients::{
-    apply_password_store_recipients, read_store_gpg_recipients, stores_with_preferred_first,
-};
-use crate::logging::log_error;
-use crate::preferences::Preferences;
-use crate::support::background::spawn_result_task;
+use super::recipients::read_store_gpg_recipients;
 use crate::support::ui::navigation_stack_contains_page;
-use crate::window::messages::with_logs_hint;
 use crate::window::navigation::set_save_button_for_password;
-use adw::gio::SimpleAction;
 use adw::prelude::*;
-use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
+use adw::{ApplicationWindow, NavigationPage, NavigationView, WindowTitle};
 use adw::gtk::{Button, ListBox};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+mod save;
 #[cfg(feature = "flatpak")]
 mod flatpak;
 #[cfg(not(feature = "flatpak"))]
@@ -26,6 +19,9 @@ use self::flatpak as platform;
 use self::standard as platform;
 
 pub(crate) use self::platform::StoreRecipientsPlatformState;
+pub(crate) use self::save::{
+    queue_store_recipients_autosave, register_store_recipients_save_action,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StoreRecipientsMode {
@@ -68,163 +64,26 @@ pub(crate) struct StoreRecipientsPageState {
     pub(crate) save_queued: Rc<Cell<bool>>,
 }
 
-fn current_store_recipients_request(
-    state: &StoreRecipientsPageState,
-) -> Option<StoreRecipientsRequest> {
-    state.request.borrow().clone()
-}
-
-fn store_recipients_are_dirty(state: &StoreRecipientsPageState) -> bool {
-    *state.recipients.borrow() != *state.saved_recipients.borrow()
-}
-
-fn can_autosave_store_recipients(state: &StoreRecipientsPageState) -> bool {
-    current_store_recipients_request(state).is_some()
-        && !state.recipients.borrow().is_empty()
-        && store_recipients_are_dirty(state)
-}
-
-fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty: bool) {
-    state.save_in_flight.set(false);
-    if state.save_queued.get() || (include_dirty && store_recipients_are_dirty(state)) {
-        state.save_queued.set(false);
-        queue_store_recipients_autosave(state);
+impl StoreRecipientsPageState {
+    pub(crate) fn current_request(&self) -> Option<StoreRecipientsRequest> {
+        self.request.borrow().clone()
     }
-}
 
-fn save_store_recipients_async(
-    overlay: &ToastOverlay,
-    stores_list: &ListBox,
-    state: &StoreRecipientsPageState,
-) {
-    let Some(request) = current_store_recipients_request(state) else {
-        return;
-    };
-
-    let recipients = state.recipients.borrow().clone();
-    if recipients.is_empty() {
-        return;
+    pub(crate) fn recipients_are_dirty(&self) -> bool {
+        *self.recipients.borrow() != *self.saved_recipients.borrow()
     }
-    if !store_recipients_are_dirty(state) {
-        state.save_queued.set(false);
-        return;
-    }
-    if state.save_in_flight.replace(true) {
-        state.save_queued.set(true);
-        return;
-    }
-    state.save_queued.set(false);
-
-    let store_for_thread = request.store.clone();
-    let recipients_for_save = recipients.clone();
-    let overlay = overlay.clone();
-    let stores_list = stores_list.clone();
-    let state = state.clone();
-    let request = request.clone();
-    let overlay_for_disconnect = overlay.clone();
-    let state_for_disconnect = state.clone();
-    let request_for_disconnect = request.clone();
-    spawn_result_task(
-        move || apply_password_store_recipients(&store_for_thread, &recipients_for_save),
-        move |result| match result {
-            Ok(()) => {
-                let settings = Preferences::new();
-                *state.saved_recipients.borrow_mut() = recipients.clone();
-                match request.mode {
-                    StoreRecipientsMode::Create => {
-                        let stores =
-                            stores_with_preferred_first(&settings.stores(), &request.store);
-                        if let Err(err) = settings.set_stores(stores) {
-                            log_error(format!("Failed to save stores: {err}"));
-                            overlay.add_toast(Toast::new(
-                                "Store created, but it wasn't added.",
-                            ));
-                        } else {
-                            rebuild_store_list(
-                                &stores_list,
-                                &settings,
-                                &state.window,
-                                &overlay,
-                                &state,
-                            );
-                            *state.request.borrow_mut() = Some(StoreRecipientsRequest {
-                                store: request.store.clone(),
-                                mode: StoreRecipientsMode::Edit,
-                            });
-                            sync_store_recipients_page_header(&state);
-                        }
-                    }
-                    StoreRecipientsMode::Edit => {
-                        rebuild_store_list(&stores_list, &settings, &state.window, &overlay, &state);
-                    }
-                }
-                finish_store_recipients_save(&state, true);
-            }
-            Err(message) => {
-                log_error(format!(
-                    "Failed to save store recipients for '{}': {message}",
-                    request.store
-                ));
-                let message = if request.mode == StoreRecipientsMode::Create {
-                    with_logs_hint("Couldn't create the store.")
-                } else {
-                    with_logs_hint("Couldn't save recipients.")
-                };
-                finish_store_recipients_save(&state, false);
-                overlay.add_toast(Toast::new(&message));
-            }
-        },
-        move || {
-            let message = if request_for_disconnect.mode == StoreRecipientsMode::Create {
-                with_logs_hint("Couldn't create the store.")
-            } else {
-                with_logs_hint("Couldn't save recipients.")
-            };
-            finish_store_recipients_save(&state_for_disconnect, false);
-            overlay_for_disconnect.add_toast(Toast::new(&message));
-        },
-    );
 }
 
 pub(crate) fn connect_store_recipients_entry(state: &StoreRecipientsPageState) {
     platform::connect_store_recipients_entry(state);
 }
 
-pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) {
-    if !can_autosave_store_recipients(state) {
-        return;
-    }
-    if state.save_in_flight.get() {
-        state.save_queued.set(true);
-        return;
-    }
-
-    let _ =
-        adw::prelude::WidgetExt::activate_action(&state.window, "win.save-store-recipients", None);
-}
-
 pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     platform::rebuild_store_recipients_list(state);
 }
 
-pub(crate) fn register_store_recipients_save_action(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    stores_list: &ListBox,
-    state: &StoreRecipientsPageState,
-) {
-    let overlay = overlay.clone();
-    let stores_list = stores_list.clone();
-    let state = state.clone();
-    let action = SimpleAction::new("save-store-recipients", None);
-    action.connect_activate(move |_, _| {
-        save_store_recipients_async(&overlay, &stores_list, &state);
-    });
-    window.add_action(&action);
-}
-
 pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
-    let Some(request) = current_store_recipients_request(state) else {
+    let Some(request) = state.current_request() else {
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
         state.win.set_title("Recipients");
@@ -274,7 +133,8 @@ pub(crate) fn show_store_recipients_page(
         state.nav.push(&state.page);
     }
 
-    if current_store_recipients_request(state)
+    if state
+        .current_request()
         .map(|request| request.mode == StoreRecipientsMode::Create)
         .unwrap_or(false)
     {

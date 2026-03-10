@@ -1,5 +1,4 @@
-use super::{current_store_recipients_request, queue_store_recipients_autosave};
-use super::{StoreRecipientsMode, StoreRecipientsPageState};
+use super::{queue_store_recipients_autosave, StoreRecipientsMode, StoreRecipientsPageState};
 use crate::support::ui::clear_list_box;
 use crate::store::recipients::append_gpg_recipients;
 use adw::gtk::{Button, Image};
@@ -29,7 +28,7 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     if state.recipients.borrow().is_empty() {
         let empty_row = ActionRow::builder()
             .title("No recipients yet")
-            .subtitle(empty_state_subtitle(current_store_recipients_request(state).as_ref()))
+            .subtitle(empty_state_subtitle(state.current_request().as_ref()))
             .build();
         empty_row.set_activatable(false);
         state.list.append(&empty_row);

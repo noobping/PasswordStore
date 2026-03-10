@@ -18,10 +18,10 @@
     </key>
 
     <key name="backend" type="s">
-      <default>'ripasso'</default>
+      <default>'integrated'</default>
       <summary>Password backend</summary>
       <description>
-        Backend used to open the password store. Valid values are "ripasso" and "pass".
+        Backend used to open the password store. Valid values are "integrated" and "host-command".
       </description>
     </key>
 

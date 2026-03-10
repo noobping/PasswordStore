@@ -12,6 +12,7 @@ fn global_log_state() -> &'static RwLock<LogState> {
     LOG_STATE.get_or_init(|| RwLock::new(LogState::default()))
 }
 
+#[cfg(any(test, not(feature = "flatpak")))]
 fn with_log_state_read<T>(f: impl FnOnce(&LogState) -> T) -> T {
     match global_log_state().read() {
         Ok(state) => f(&state),
@@ -53,6 +54,7 @@ fn push_log_entry(level: &str, message: String, is_error: bool) {
     });
 }
 
+#[cfg(any(test, not(feature = "flatpak")))]
 pub fn log_info(message: impl Into<String>) {
     push_log_entry("INFO", message.into(), false);
 }
@@ -61,6 +63,7 @@ pub fn log_error(message: impl Into<String>) {
     push_log_entry("ERROR", message.into(), true);
 }
 
+#[cfg(any(test, not(feature = "flatpak")))]
 pub fn log_snapshot() -> (usize, usize, String) {
     with_log_state_read(|state| (state.revision, state.error_revision, state.text.clone()))
 }

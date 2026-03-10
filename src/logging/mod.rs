@@ -1,5 +1,4 @@
-#![cfg_attr(feature = "flatpak", allow(dead_code))]
-
+#[cfg(any(test, not(feature = "flatpak")))]
 mod command;
 mod store;
 

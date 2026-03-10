@@ -1,11 +1,11 @@
 use super::entries::{read_password_entry, save_password_entry};
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
-use super::store::{resolved_ripasso_own_fingerprint, save_store_recipients};
+use super::store::save_store_recipients;
 use super::super::keys::{
     clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
     parse_managed_private_key_bytes, prepare_managed_private_key_bytes,
-    ripasso_keys_dir, ripasso_private_key_requires_passphrase,
+    resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
 use crate::preferences::Preferences;

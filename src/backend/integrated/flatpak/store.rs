@@ -6,11 +6,6 @@ use super::paths::{
 use super::recipients::preferred_ripasso_private_key_fingerprint_for_entry;
 use std::fs;
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
-    super::super::keys::resolved_ripasso_own_fingerprint()
-}
-
 pub(crate) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],

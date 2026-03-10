@@ -9,6 +9,9 @@ use config::{APP_ID, RESOURCE_ID};
 use std::{fs, path::Path};
 
 fn main() {
+    #[cfg(feature = "setup")]
+    let _ = config::APP_ID;
+
     // Directories
     let data_dir = Path::new("data");
 

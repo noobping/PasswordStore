@@ -19,8 +19,3 @@ pub use super::keys::{
     ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
     unlock_ripasso_private_key_for_session,
 };
-
-#[allow(dead_code)]
-pub(crate) fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
-    store::resolved_ripasso_own_fingerprint()
-}

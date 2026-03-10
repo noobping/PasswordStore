@@ -1,8 +1,8 @@
 use crate::backend::save_store_recipients;
 use crate::preferences::Preferences;
-use std::cell::RefCell;
 use std::fs;
-use std::rc::Rc;
+#[cfg(any(test, not(feature = "flatpak")))]
+use std::{cell::RefCell, rc::Rc};
 
 pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
     let path = std::path::Path::new(store_root).join(".gpg-id");
@@ -33,7 +33,7 @@ pub(crate) fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     Vec::new()
 }
 
-#[cfg_attr(feature = "flatpak", allow(dead_code))]
+#[cfg(any(test, not(feature = "flatpak")))]
 pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
     let parsed = parse_gpg_recipients(input);
     if parsed.is_empty() {

@@ -305,7 +305,7 @@ pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
     selected_ripasso_own_fingerprint()?.ok_or_else(missing_private_key_error)
 }

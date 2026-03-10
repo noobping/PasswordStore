@@ -29,6 +29,13 @@ pub(crate) struct GitActionState {
     pub(crate) show_hidden: Rc<Cell<bool>>,
 }
 
+pub(crate) fn clone_store_repository(url: &str, store_root: &str) -> Result<(), String> {
+    match operations::run_clone_operation_at_root(url, store_root) {
+        GitOperationResult::Success => Ok(()),
+        GitOperationResult::Failed(message) => Err(message),
+    }
+}
+
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
     let Some(action) = window.lookup_action(name) else {
         return;
@@ -171,7 +178,7 @@ pub(crate) fn register_synchronize_action(state: &GitActionState) {
         let state = state.clone();
         let state_for_disconnect = state.clone();
         spawn_result_task(
-            move || run_sync_operation(),
+            run_sync_operation,
             move |result| match result {
                 GitOperationResult::Success => {
                     restore_after_git_operation_and_reload(&state);

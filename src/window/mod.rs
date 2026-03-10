@@ -12,6 +12,8 @@ mod preferences;
 mod standard;
 
 pub(crate) use self::build::create_main_window;
+#[cfg(not(feature = "flatpak"))]
+pub(crate) use self::git::clone_store_repository;
 
 #[cfg(test)]
 mod tests {

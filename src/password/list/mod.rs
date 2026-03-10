@@ -1,7 +1,7 @@
 mod placeholder;
 mod row;
 
-use self::placeholder::{loading_placeholder, resolved_placeholder, should_show_restore_button};
+use self::placeholder::{loading_placeholder, resolved_placeholder};
 use self::row::append_password_row;
 use crate::logging::log_error;
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
@@ -59,8 +59,21 @@ fn list_action_visibility(
     ListActionVisibility {
         add_visible: has_store_dirs,
         find_visible: !empty,
-        git_visible: should_show_restore_button(show_list_actions, has_store_dirs, empty),
+        git_visible: should_show_root_git_button(show_list_actions, has_store_dirs),
         save_visible: false,
+    }
+}
+
+fn should_show_root_git_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
+    #[cfg(not(feature = "flatpak"))]
+    {
+        show_list_actions && !has_store_dirs
+    }
+
+    #[cfg(feature = "flatpak")]
+    {
+        let _ = (show_list_actions, has_store_dirs);
+        false
     }
 }
 
@@ -111,10 +124,9 @@ pub(crate) fn load_passwords_async(
             actions_for_disconnect.save.set_visible(false);
             actions_for_disconnect
                 .git
-                .set_visible(should_show_restore_button(
+                .set_visible(should_show_root_git_button(
                     show_list_actions,
                     has_store_dirs,
-                    true,
                 ));
             actions_for_disconnect.find.set_visible(false);
             list_for_disconnect.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
@@ -168,7 +180,22 @@ fn prune_missing_store_dirs(settings: &Preferences) {
 
 #[cfg(test)]
 mod tests {
-    use super::{list_action_visibility, ListActionVisibility};
+    use super::{list_action_visibility, should_show_root_git_button, ListActionVisibility};
+
+    #[test]
+    fn root_git_button_is_hidden_for_existing_store_setup() {
+        assert!(!should_show_root_git_button(true, true));
+        assert!(!should_show_root_git_button(false, false));
+    }
+
+    #[test]
+    fn root_git_button_only_shows_without_any_stores_on_standard_builds() {
+        #[cfg(not(feature = "flatpak"))]
+        assert!(should_show_root_git_button(true, false));
+
+        #[cfg(feature = "flatpak")]
+        assert!(!should_show_root_git_button(true, false));
+    }
 
     #[test]
     fn list_actions_hide_everything_when_list_actions_are_disabled() {

@@ -30,8 +30,13 @@ pub(super) fn run_clone_operation(url: &str) -> GitOperationResult {
         return GitOperationResult::Failed("Add a store folder in Preferences first.".to_string());
     }
 
+    run_clone_operation_at_root(url, &store_root)
+}
+
+pub(super) fn run_clone_operation_at_root(url: &str, store_root: &str) -> GitOperationResult {
+    let settings = Preferences::new();
     let mut cmd = settings.git_command();
-    cmd.arg("clone").arg(url).arg(&store_root);
+    cmd.arg("clone").arg(url).arg(store_root);
     match run_command_output(&mut cmd, "Clone password store", CommandLogOptions::DEFAULT) {
         Ok(output) if output.status.success() => GitOperationResult::Success,
         Ok(_) => git_operation_failed("Couldn't restore the store."),

@@ -9,10 +9,22 @@ pub(crate) use super::recipients_page::{
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+#[cfg(not(feature = "flatpak"))]
+use crate::support::background::spawn_result_task;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
+#[cfg(not(feature = "flatpak"))]
+use crate::window::clone_store_repository;
+#[cfg(not(feature = "flatpak"))]
+use adw::glib::object::IsA;
+#[cfg(not(feature = "flatpak"))]
+use adw::gtk::{Box as GtkBox, Orientation, Spinner};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
+#[cfg(not(feature = "flatpak"))]
+use adw::{
+    Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, StatusPage, WindowTitle,
+};
 use std::rc::Rc;
 
 fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
@@ -107,6 +119,8 @@ pub(crate) fn rebuild_store_list(
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
+    #[cfg(not(feature = "flatpak"))]
+    append_store_clone_row(list, settings, window, overlay, recipients_page);
     append_store_creator_row(list, settings, window, overlay, recipients_page);
 }
 
@@ -178,6 +192,112 @@ fn append_store_picker_row(
     );
 }
 
+#[cfg(not(feature = "flatpak"))]
+fn dialog_content_shell(
+    title: &str,
+    subtitle: Option<&str>,
+    child: &impl IsA<adw::gtk::Widget>,
+) -> GtkBox {
+    let window_title = WindowTitle::builder().title(title).build();
+    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
+        window_title.set_subtitle(subtitle);
+    }
+
+    let header = HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+
+    let shell = GtkBox::new(Orientation::Vertical, 0);
+    shell.append(&header);
+    shell.append(child);
+    shell
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
+    let status = StatusPage::builder().description("Please wait.").build();
+    status.set_child(Some(&Spinner::builder().spinning(true).build()));
+
+    let dialog = Dialog::builder()
+        .title("Cloning store")
+        .content_width(460)
+        .child(&dialog_content_shell("Cloning store", Some(store), &status))
+        .build();
+    dialog.set_can_close(false);
+    dialog.present(Some(window));
+    dialog
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn present_clone_url_dialog<F>(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    store: &str,
+    on_submit: F,
+) where
+    F: Fn(String) + 'static,
+{
+    let url_row = EntryRow::new();
+    url_row.set_title("Repository URL");
+    url_row.set_show_apply_button(true);
+
+    let group = PreferencesGroup::builder().build();
+    group.add(&url_row);
+
+    let page = PreferencesPage::new();
+    page.add(&group);
+
+    let dialog = Dialog::builder()
+        .title("Clone store")
+        .content_width(460)
+        .child(&dialog_content_shell("Clone store", Some(store), &page))
+        .build();
+
+    let dialog_clone = dialog.clone();
+    let overlay_clone = overlay.clone();
+    url_row.connect_apply(move |row| {
+        let url = row.text().trim().to_string();
+        if url.is_empty() {
+            overlay_clone.add_toast(Toast::new("Enter a repository URL."));
+            return;
+        }
+
+        dialog_clone.close();
+        on_submit(url);
+    });
+
+    dialog.present(Some(window));
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn append_store_clone_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let recipients_page = recipients_page.clone();
+    let list_for_action = list.clone();
+    append_action_row_with_button(
+        list,
+        "Clone store",
+        "Choose a folder and clone a Git repository into it.",
+        "git-symbolic",
+        move || {
+            open_store_clone_picker(
+                &window,
+                &list_for_action,
+                &settings,
+                &overlay,
+                &recipients_page,
+            )
+        },
+    );
+}
+
 fn open_store_picker(
     window: &ApplicationWindow,
     list: &ListBox,
@@ -214,6 +334,118 @@ fn open_store_picker(
                     show_store_recipients_edit_page(&recipients_page, &store);
                 }
             }
+        },
+    );
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn open_store_clone_picker(
+    window: &ApplicationWindow,
+    list: &ListBox,
+    settings: &Preferences,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let list = list.clone();
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let recipients_page = recipients_page.clone();
+    let window_for_selection = window.clone();
+    let overlay_for_selection = overlay.clone();
+    open_store_folder_picker(
+        &window,
+        "Choose password store folder for the clone",
+        "Select",
+        true,
+        &overlay,
+        move |store| {
+            let list_for_clone = list.clone();
+            let settings_for_clone = settings.clone();
+            let window_for_clone = window_for_selection.clone();
+            let overlay_for_clone = overlay_for_selection.clone();
+            let recipients_page_for_clone = recipients_page.clone();
+            let store_for_dialog = store.clone();
+            present_clone_url_dialog(
+                &window_for_selection,
+                &overlay_for_selection,
+                &store_for_dialog,
+                move |url| {
+                    start_store_clone(
+                        &window_for_clone,
+                        &list_for_clone,
+                        &settings_for_clone,
+                        &overlay_for_clone,
+                        &recipients_page_for_clone,
+                        store.clone(),
+                        url,
+                    );
+                },
+            );
+        },
+    );
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn start_store_clone(
+    window: &ApplicationWindow,
+    list: &ListBox,
+    settings: &Preferences,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+    store: String,
+    url: String,
+) {
+    let progress_dialog = build_clone_progress_dialog(window, &store);
+    let progress_dialog_for_disconnect = progress_dialog.clone();
+    let list = list.clone();
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let recipients_page = recipients_page.clone();
+    let store_for_thread = store.clone();
+    let store_for_result = store.clone();
+    let store_for_disconnect = store;
+    let window_for_result = window.clone();
+    let overlay_for_disconnect = overlay.clone();
+    let settings_for_result = settings.clone();
+    let list_for_result = list.clone();
+    let recipients_page_for_result = recipients_page.clone();
+    spawn_result_task(
+        move || clone_store_repository(&url, &store_for_thread),
+        move |result| match result {
+            Ok(()) => {
+                progress_dialog.force_close();
+                if let Some(stores) =
+                    updated_stores_after_add(&settings_for_result.stores(), &store_for_result)
+                {
+                    if let Err(err) = settings_for_result.set_stores(stores) {
+                        log_error(format!("Failed to save stores: {err}"));
+                        overlay.add_toast(Toast::new("Couldn't add that folder."));
+                        return;
+                    }
+                }
+                rebuild_store_list(
+                    &list_for_result,
+                    &settings_for_result,
+                    &window_for_result,
+                    &overlay,
+                    &recipients_page_for_result,
+                );
+                overlay.add_toast(Toast::new("Store restored."));
+            }
+            Err(message) => {
+                progress_dialog.force_close();
+                overlay.add_toast(Toast::new(&message));
+            }
+        },
+        move || {
+            progress_dialog_for_disconnect.force_close();
+            log_error(format!(
+                "Restore stopped unexpectedly for store '{}'.",
+                store_for_disconnect
+            ));
+            overlay_for_disconnect.add_toast(Toast::new("Restore stopped unexpectedly."));
         },
     );
 }

@@ -39,7 +39,8 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         return;
     }
 
-    for recipient in state.recipients.borrow().iter().cloned() {
+    let recipients = state.recipients.borrow().clone();
+    for recipient in recipients {
         let row = ActionRow::builder().title(&recipient).build();
         row.set_activatable(false);
         let row_icon = dim_label_icon("dialog-password-symbolic");

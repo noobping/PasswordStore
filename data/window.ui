@@ -35,9 +35,15 @@
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
                         <child>
-                          <object class="AdwComboRow" id="new_password_store_row">
+                          <object class="AdwActionRow" id="new_password_store_row">
                             <property name="visible">false</property>
                             <property name="title" translatable="yes">Store</property>
+                            <property name="activatable">false</property>
+                            <child type="suffix">
+                              <object class="GtkDropDown" id="new_password_store_dropdown">
+                                <property name="valign">center</property>
+                              </object>
+                            </child>
                           </object>
                         </child>
                         <child>

@@ -1,9 +1,9 @@
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
 use crate::support::ui::toggle_popover;
-use adw::gtk::{Popover, StringList, INVALID_LIST_POSITION};
+use adw::gtk::{DropDown, Popover, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::{ApplicationWindow, ComboRow};
+use adw::{ActionRow, ApplicationWindow};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -11,7 +11,8 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub(crate) struct NewPasswordPopoverState {
     pub(crate) popover: Popover,
-    pub(crate) store_row: ComboRow,
+    pub(crate) store_row: ActionRow,
+    pub(crate) store_dropdown: DropDown,
     pub(crate) store_roots: Rc<RefCell<Vec<String>>>,
 }
 
@@ -86,17 +87,17 @@ pub(crate) fn sync_new_password_store_selector(state: &NewPasswordPopoverState) 
 
     let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
     state
-        .store_row
+        .store_dropdown
         .set_model(Some(&StringList::new(&label_refs)));
     state
-        .store_row
+        .store_dropdown
         .set_selected(selected_store_position(&stores, selected.as_deref()));
 }
 
 pub(crate) fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
     let stores = state.store_roots.borrow();
     stores
-        .get(state.store_row.selected() as usize)
+        .get(state.store_dropdown.selected() as usize)
         .cloned()
         .or_else(|| stores.first().cloned())
 }

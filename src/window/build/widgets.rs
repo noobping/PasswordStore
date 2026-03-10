@@ -3,11 +3,11 @@ use adw::gio::Menu;
 use adw::glib::{object::IsA, Object};
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
-use adw::gtk::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView};
+use adw::gtk::{Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, SearchEntry, TextView};
 #[cfg(not(feature = "flatpak"))]
 use adw::PreferencesGroup;
 use adw::{
-    ApplicationWindow, ComboRow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
+    ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
     StatusPage, ToastOverlay, WindowTitle,
 };
 
@@ -21,7 +21,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) add_button: Button,
     pub(in crate::window) find_button: Button,
     pub(in crate::window) add_button_popover: Popover,
-    pub(in crate::window) new_password_store_row: ComboRow,
+    pub(in crate::window) new_password_store_row: ActionRow,
+    pub(in crate::window) new_password_store_dropdown: DropDown,
     pub(in crate::window) path_entry: EntryRow,
     pub(in crate::window) git_button: Button,
     pub(in crate::window) git_popover: Popover,
@@ -52,7 +53,7 @@ pub(in crate::window) struct WindowWidgets {
     #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) backend_preferences: PreferencesGroup,
     #[cfg(not(feature = "flatpak"))]
-    pub(in crate::window) backend_row: ComboRow,
+    pub(in crate::window) backend_row: adw::ComboRow,
     #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) pass_command_row: EntryRow,
     #[cfg(not(feature = "flatpak"))]
@@ -78,6 +79,7 @@ impl WindowWidgets {
             find_button: required_object(builder, "find_button"),
             add_button_popover: required_object(builder, "add_button_popover"),
             new_password_store_row: required_object(builder, "new_password_store_row"),
+            new_password_store_dropdown: required_object(builder, "new_password_store_dropdown"),
             path_entry: required_object(builder, "path_entry"),
             git_button: required_object(builder, "git_button"),
             git_popover: required_object(builder, "git_popover"),

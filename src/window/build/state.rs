@@ -23,6 +23,7 @@ pub(super) fn new_password_popover_state(widgets: &WindowWidgets) -> NewPassword
     NewPasswordPopoverState {
         popover: widgets.add_button_popover.clone(),
         store_row: widgets.new_password_store_row.clone(),
+        store_dropdown: widgets.new_password_store_dropdown.clone(),
         store_roots: Rc::new(RefCell::new(Vec::new())),
     }
 }

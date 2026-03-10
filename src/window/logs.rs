@@ -1,5 +1,5 @@
 use crate::logging::log_snapshot;
-use crate::window_navigation::{show_log_page, WindowNavigationState};
+use crate::window::navigation::{show_log_page, WindowNavigationState};
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::{glib, ApplicationWindow};

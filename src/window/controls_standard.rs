@@ -1,13 +1,13 @@
-use crate::window_git::{handle_git_busy_back, GitActionState};
+use super::git::{handle_git_busy_back, GitActionState};
 use adw::Application;
 use adw::prelude::GtkApplicationExt;
 
 #[derive(Clone)]
-pub(crate) struct DesktopBackActionState {
+pub(crate) struct StandardBackActionState {
     pub(crate) git_actions: GitActionState,
 }
 
-pub(crate) fn before_back_action(state: &DesktopBackActionState) -> bool {
+pub(crate) fn before_back_action(state: &StandardBackActionState) -> bool {
     handle_git_busy_back(&state.git_actions)
 }
 

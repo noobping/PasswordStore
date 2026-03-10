@@ -7,29 +7,27 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use walkdir::WalkDir;
 
-#[path = "integrated_keys.rs"]
-mod keys;
-pub use self::keys::{
+pub use super::keys::{
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     ManagedRipassoPrivateKey, remove_ripasso_private_key, ripasso_private_key_requires_passphrase,
     ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
     unlock_ripasso_private_key_for_session,
 };
-use self::keys::{
+use super::keys::{
     available_unlocked_private_key_fingerprints, build_ripasso_crypto_from_key_ring,
     ensure_ripasso_private_key_is_ready, fingerprint_from_string, imported_private_key_fingerprints,
     incompatible_private_key_error, load_ripasso_key_ring, load_stored_ripasso_key_ring,
     locked_private_key_error, missing_private_key_error, selected_ripasso_own_fingerprint,
 };
 #[cfg(test)]
-use self::keys::{
+use super::keys::{
     clear_cached_unlocked_ripasso_private_keys, parse_managed_private_key_bytes,
     prepare_managed_private_key_bytes, ripasso_keys_dir,
 };
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
-    self::keys::resolved_ripasso_own_fingerprint()
+    super::keys::resolved_ripasso_own_fingerprint()
 }
 
 struct FlatpakCryptoContext {

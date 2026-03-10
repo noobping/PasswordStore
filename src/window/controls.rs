@@ -3,7 +3,7 @@ use crate::password_page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
 use crate::store_management::StoreRecipientsPageState;
-use crate::window_navigation::{restore_window_for_current_page, WindowNavigationState};
+use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 use adw::Application;
@@ -13,13 +13,11 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 #[cfg(feature = "flatpak")]
-#[path = "window_controls_flatpak.rs"]
-mod platform;
+use super::controls_flatpak as platform;
 #[cfg(not(feature = "flatpak"))]
-#[path = "window_controls_desktop.rs"]
-mod platform;
+use super::controls_standard as platform;
 
-pub(crate) use self::platform::DesktopBackActionState;
+pub(crate) use self::platform::StandardBackActionState;
 use self::platform::{before_back_action, configure_shortcuts};
 
 #[derive(Clone)]
@@ -28,7 +26,7 @@ pub(crate) struct BackActionState {
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
     pub(crate) show_hidden: Rc<Cell<bool>>,
-    pub(crate) desktop: DesktopBackActionState,
+    pub(crate) platform: StandardBackActionState,
 }
 
 #[derive(Clone)]
@@ -62,7 +60,7 @@ pub(crate) fn register_back_action(
     let state = state.clone();
     let action = SimpleAction::new("back", None);
     action.connect_activate(move |_, _| {
-        if before_back_action(&state.desktop) {
+        if before_back_action(&state.platform) {
             return;
         }
 

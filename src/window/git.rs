@@ -5,8 +5,8 @@ use crate::logging::{
 use crate::password_list::load_passwords_async;
 use crate::preferences::Preferences;
 use crate::store_management::StoreRecipientsPageState;
-use crate::window_messages::with_logs_hint;
-use crate::window_navigation::{
+use crate::window::messages::with_logs_hint;
+use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page, WindowNavigationState,
 };
 use adw::gio::{prelude::*, SimpleAction};

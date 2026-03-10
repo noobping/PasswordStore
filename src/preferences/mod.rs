@@ -7,12 +7,14 @@ use std::fs;
 use crate::config::APP_ID;
 
 #[cfg(feature = "flatpak")]
-#[path = "preferences_flatpak.rs"]
-mod feature;
+mod flatpak;
 #[cfg(not(feature = "flatpak"))]
-#[path = "preferences_desktop.rs"]
-mod feature;
+mod standard;
 
+#[cfg(feature = "flatpak")]
+use self::flatpak as feature;
+#[cfg(not(feature = "flatpak"))]
+use self::standard as feature;
 use self::feature::default_store_dirs;
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";

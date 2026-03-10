@@ -7,11 +7,14 @@ use adw::gtk::{Button, Widget, gdk::Display};
 use std::time::Duration;
 
 #[cfg(feature = "flatpak")]
-#[path = "clipboard_flatpak.rs"]
-mod platform;
+mod flatpak;
 #[cfg(not(feature = "flatpak"))]
-#[path = "clipboard_desktop.rs"]
-mod platform;
+mod standard;
+
+#[cfg(feature = "flatpak")]
+use self::flatpak as platform;
+#[cfg(not(feature = "flatpak"))]
+use self::standard as platform;
 
 const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";
 const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";

@@ -10,8 +10,8 @@ use crate::store_management::rebuild_store_list;
 #[cfg(not(feature = "flatpak"))]
 use crate::ui_helpers::clear_list_box;
 use crate::ui_helpers::navigation_stack_contains_page;
-use crate::window_messages::with_logs_hint;
-use crate::window_navigation::set_save_button_for_password;
+use crate::window::messages::with_logs_hint;
+use crate::window::navigation::set_save_button_for_password;
 use adw::gio::SimpleAction;
 use adw::prelude::*;
 #[cfg(not(feature = "flatpak"))]
@@ -26,7 +26,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[cfg(feature = "flatpak")]
-#[path = "store_recipients_page_flatpak.rs"]
 mod flatpak;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

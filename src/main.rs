@@ -23,18 +23,6 @@ mod stores;
 mod store_management;
 mod store_recipients_page;
 mod ui_helpers;
-mod window_controls;
-#[cfg(not(feature = "flatpak"))]
-mod window_logs;
-#[cfg(not(feature = "flatpak"))]
-mod window_desktop;
-#[cfg(feature = "flatpak")]
-mod window_flatpak;
-mod window_preferences;
-#[cfg(not(feature = "flatpak"))]
-mod window_git;
-mod window_messages;
-mod window_navigation;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};

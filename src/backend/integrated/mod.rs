@@ -1,10 +1,14 @@
 #[cfg(feature = "flatpak")]
-#[path = "integrated_flatpak.rs"]
-mod imp;
-
+mod flatpak;
+#[cfg(feature = "flatpak")]
+mod keys;
 #[cfg(not(feature = "flatpak"))]
-#[path = "integrated_native.rs"]
-mod imp;
+mod standard;
+
+#[cfg(feature = "flatpak")]
+use self::flatpak as imp;
+#[cfg(not(feature = "flatpak"))]
+use self::standard as imp;
 
 #[cfg(feature = "flatpak")]
 pub use self::imp::{

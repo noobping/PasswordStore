@@ -1,4 +1,4 @@
-use super::{restore_window_for_current_page, WindowNavigationState};
+use super::navigation::{restore_window_for_current_page, WindowNavigationState};
 use crate::store_management::StoreRecipientsPageState;
 use crate::ui_helpers::navigation_stack_contains_page;
 use adw::prelude::*;

@@ -1,3 +1,26 @@
+mod controls;
+#[cfg(feature = "flatpak")]
+mod controls_flatpak;
+#[cfg(not(feature = "flatpak"))]
+mod controls_standard;
+#[cfg(feature = "flatpak")]
+mod flatpak;
+#[cfg(not(feature = "flatpak"))]
+mod git;
+#[cfg(not(feature = "flatpak"))]
+mod logs;
+pub(crate) mod messages;
+pub(crate) mod navigation;
+#[cfg(not(feature = "flatpak"))]
+mod navigation_standard;
+mod preferences;
+#[cfg(feature = "setup")]
+mod preferences_setup;
+#[cfg(not(feature = "flatpak"))]
+mod preferences_standard;
+#[cfg(not(feature = "flatpak"))]
+mod standard;
+
 #[cfg(feature = "setup")]
 use crate::setup::*;
 use crate::clipboard::connect_copy_button;
@@ -21,25 +44,25 @@ use crate::store_management::{
     connect_store_recipients_entry, register_store_recipients_save_action,
     StoreRecipientsPageState, StoreRecipientsRequest,
 };
-use crate::window_controls::{
+use self::controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
     register_toggle_find_action, register_toggle_hidden_action, BackActionState,
-    DesktopBackActionState,
+    StandardBackActionState,
     HiddenEntriesActionState,
 };
 #[cfg(not(feature = "flatpak"))]
-use crate::window_desktop::{
-    create_git_action_state, load_desktop_window_parts, register_desktop_window_actions,
+use self::standard::{
+    create_git_action_state, load_standard_window_parts, register_standard_window_actions,
 };
 #[cfg(feature = "flatpak")]
-use crate::window_flatpak::configure_flatpak_window;
-use crate::window_preferences::{
+use self::flatpak::configure_flatpak_window;
+use self::preferences::{
     connect_new_password_template_autosave, register_open_preferences_action,
     PreferencesActionState,
 };
 #[cfg(feature = "setup")]
-use crate::window_preferences::register_install_locally_action;
-use crate::window_navigation::{set_save_button_for_password, WindowNavigationState};
+use self::preferences::register_install_locally_action;
+use self::navigation::{set_save_button_for_password, WindowNavigationState};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::{
     prelude::*, Application, ApplicationWindow, EntryRow, NavigationPage, NavigationView,
@@ -51,7 +74,7 @@ use adw::gtk::{
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-const UI_SRC: &str = include_str!("../data/window.ui");
+const UI_SRC: &str = include_str!("../../data/window.ui");
 
 pub fn create_main_window(app: &Application, startup_query: Option<String>) -> ApplicationWindow {
     let builder = Builder::from_string(UI_SRC);
@@ -119,7 +142,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         .expect("Failed to get toast_overlay");
 
     #[cfg(not(feature = "flatpak"))]
-    let desktop = load_desktop_window_parts(&builder);
+    let standard_parts = load_standard_window_parts(&builder);
 
     // Settings
     let settings_page: NavigationPage = builder
@@ -244,7 +267,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         #[cfg(feature = "flatpak")]
         overlay: toast_overlay.clone(),
         #[cfg(not(feature = "flatpak"))]
-        entry: desktop.store_recipients_entry.clone(),
+        entry: standard_parts.store_recipients_entry.clone(),
         back: back_button.clone(),
         add: add_button.clone(),
         find: find_button.clone(),
@@ -286,13 +309,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         overlay: toast_overlay.clone(),
         recipients_page: store_recipients_page_state.clone(),
         #[cfg(not(feature = "flatpak"))]
-        pass_row: desktop.pass_row.clone(),
+        pass_row: standard_parts.pass_row.clone(),
         #[cfg(not(feature = "flatpak"))]
-        backend_row: desktop.backend_row.clone(),
+        backend_row: standard_parts.backend_row.clone(),
     };
     #[cfg(not(feature = "flatpak"))]
     let git_action_state = create_git_action_state(
-        &desktop,
+        &standard_parts,
         &window,
         &toast_overlay,
         &list,
@@ -306,11 +329,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         navigation: window_navigation_state.clone(),
         show_hidden: show_hidden_files.clone(),
         #[cfg(not(feature = "flatpak"))]
-        desktop: DesktopBackActionState {
+        platform: StandardBackActionState {
             git_actions: git_action_state.clone(),
         },
         #[cfg(feature = "flatpak")]
-        desktop: DesktopBackActionState,
+        platform: StandardBackActionState,
     };
     let hidden_entries_action_state = HiddenEntriesActionState {
         overlay: toast_overlay.clone(),
@@ -404,8 +427,8 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     #[cfg(not(feature = "flatpak"))]
     {
-        register_desktop_window_actions(
-            &desktop,
+        register_standard_window_actions(
+            &standard_parts,
             &window,
             &toast_overlay,
             &window_navigation_state,

@@ -6,11 +6,7 @@ use adw::{EntryRow, NavigationPage, NavigationView, WindowTitle};
 use adw::gtk::Button;
 
 #[cfg(not(feature = "flatpak"))]
-#[path = "window_navigation_desktop.rs"]
-mod desktop;
-
-#[cfg(not(feature = "flatpak"))]
-pub(crate) use self::desktop::{finish_git_busy_page, show_git_busy_page, show_log_page};
+pub(crate) use super::navigation_standard::{finish_git_busy_page, show_git_busy_page, show_log_page};
 
 #[derive(Clone)]
 pub(crate) struct WindowNavigationState {

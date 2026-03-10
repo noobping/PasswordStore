@@ -1,12 +1,12 @@
 use crate::preferences::Preferences;
 use crate::store_management::StoreRecipientsPageState;
-use crate::window_git::{
+use super::git::{
     connect_git_clone_apply, register_git_clone_action, register_open_git_action,
     register_synchronize_action, GitActionState, GitOperationControl,
 };
-use crate::window_logs::{register_open_log_action, start_log_poller};
-use crate::window_navigation::WindowNavigationState;
-use crate::window_preferences::{
+use super::logs::{register_open_log_action, start_log_poller};
+use super::navigation::WindowNavigationState;
+use super::preferences::{
     connect_backend_row, connect_pass_command_row, initialize_backend_row,
 };
 use adw::prelude::*;
@@ -16,7 +16,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub(crate) struct DesktopWindowParts {
+pub(crate) struct StandardWindowParts {
     pub(crate) settings: Preferences,
     pub(crate) backend_row: ComboRow,
     pub(crate) pass_row: EntryRow,
@@ -28,7 +28,7 @@ pub(crate) struct DesktopWindowParts {
     pub(crate) store_recipients_entry: EntryRow,
 }
 
-pub(crate) fn load_desktop_window_parts(builder: &Builder) -> DesktopWindowParts {
+pub(crate) fn load_standard_window_parts(builder: &Builder) -> StandardWindowParts {
     let backend_preferences: adw::PreferencesGroup = builder
         .object("backend_preferences")
         .expect("Failed to get backend_preferences");
@@ -47,7 +47,7 @@ pub(crate) fn load_desktop_window_parts(builder: &Builder) -> DesktopWindowParts
     store_recipients_entry.set_title("Add recipient");
     store_recipients_entry.set_show_apply_button(true);
 
-    DesktopWindowParts {
+    StandardWindowParts {
         settings,
         backend_row,
         pass_row,
@@ -69,7 +69,7 @@ pub(crate) fn load_desktop_window_parts(builder: &Builder) -> DesktopWindowParts
 }
 
 pub(crate) fn create_git_action_state(
-    parts: &DesktopWindowParts,
+    parts: &StandardWindowParts,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     list: &ListBox,
@@ -89,8 +89,8 @@ pub(crate) fn create_git_action_state(
     }
 }
 
-pub(crate) fn register_desktop_window_actions(
-    parts: &DesktopWindowParts,
+pub(crate) fn register_standard_window_actions(
+    parts: &StandardWindowParts,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     navigation_state: &WindowNavigationState,

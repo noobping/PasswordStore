@@ -14,8 +14,8 @@ use crate::pass_file::{
 use crate::password_otp::PasswordOtpState;
 use crate::password_list::load_passwords_async;
 use crate::preferences::Preferences;
-use crate::window_messages::with_logs_hint;
-use crate::window_navigation::set_save_button_for_password;
+use crate::window::messages::with_logs_hint;
+use crate::window::navigation::set_save_button_for_password;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, Toast, ToastOverlay, WindowTitle};
 use adw::gtk::{Box as GtkBox, Button, ListBox, Popover, TextView};
@@ -23,12 +23,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(feature = "flatpak")]
-#[path = "password_page_flatpak.rs"]
-mod platform;
+mod flatpak;
 #[cfg(not(feature = "flatpak"))]
-#[path = "password_page_desktop.rs"]
-mod platform;
+mod standard;
 
+#[cfg(feature = "flatpak")]
+use self::flatpak as platform;
+#[cfg(not(feature = "flatpak"))]
+use self::standard as platform;
 use self::platform::{
     friendly_password_entry_error_message, handle_open_password_entry_error,
 };

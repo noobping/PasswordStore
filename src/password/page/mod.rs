@@ -7,7 +7,9 @@ mod state;
 
 use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
 use super::list::load_passwords_async;
-use crate::backend::{read_password_entry, save_password_entry, PasswordEntryError};
+use crate::backend::{
+    read_password_entry, save_password_entry, PasswordEntryError, PasswordEntryWriteError,
+};
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
 use crate::password::opened::{
@@ -36,18 +38,14 @@ use self::state::{
     show_password_loading_state, show_password_open_error,
 };
 
-fn save_error_toast(message: &str) -> &'static str {
-    if message.contains("already exists") {
-        "An item with that name already exists."
-    } else {
-        "Couldn't save changes."
-    }
-}
-
 fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static str {
     error
         .and_then(PasswordEntryError::toast_message)
         .unwrap_or("Couldn't open the item.")
+}
+
+fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
+    error.save_toast_message()
 }
 
 fn show_password_open_failure(state: &PasswordPageState, error: Option<&PasswordEntryError>) {
@@ -206,11 +204,11 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
             state.overlay.add_toast(Toast::new("Saved."));
         }
-        Err(message) => {
-            log_error(format!("Failed to save password entry: {message}"));
+        Err(err) => {
+            log_error(format!("Failed to save password entry: {err}"));
             state
                 .overlay
-                .add_toast(Toast::new(save_error_toast(&message)));
+                .add_toast(Toast::new(password_save_failure_message(&err)));
         }
     }
 }

@@ -2,7 +2,7 @@ use super::super::keys::ensure_ripasso_private_key_is_ready;
 use super::crypto::FlatpakCryptoContext;
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
 use super::recipients::decryption_candidate_fingerprints_for_entry;
-use crate::backend::PasswordEntryError;
+use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
 use std::fs;
 use std::path::Path;
 
@@ -76,40 +76,61 @@ pub(crate) fn save_password_entry(
     label: &str,
     contents: &str,
     overwrite: bool,
-) -> Result<(), String> {
-    let entry_path = entry_file_path(store_root, label)?;
+) -> Result<(), PasswordEntryWriteError> {
+    let entry_path =
+        entry_file_path(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
     if entry_path.exists() && !overwrite {
-        return Err("That password entry already exists.".to_string());
+        return Err(PasswordEntryWriteError::already_exists(
+            "That password entry already exists.",
+        ));
     }
 
-    let context = FlatpakCryptoContext::load_for_label(store_root, label)?;
-    let ciphertext = context.encrypt_contents_for_label(store_root, label, contents)?;
+    let context = FlatpakCryptoContext::load_for_label(store_root, label)
+        .map_err(PasswordEntryWriteError::from_store_message)?;
+    let ciphertext = context
+        .encrypt_contents_for_label(store_root, label, contents)
+        .map_err(PasswordEntryWriteError::from_store_message)?;
     write_entry_ciphertext(&entry_path, &ciphertext)
+        .map_err(PasswordEntryWriteError::from_store_message)
 }
 
 pub(crate) fn rename_password_entry(
     store_root: &str,
     old_label: &str,
     new_label: &str,
-) -> Result<(), String> {
-    let old_path = entry_file_path(store_root, old_label)?;
-    let new_path = entry_file_path(store_root, new_label)?;
+) -> Result<(), PasswordEntryWriteError> {
+    let old_path = entry_file_path(store_root, old_label)
+        .map_err(PasswordEntryWriteError::from_store_message)?;
+    let new_path = entry_file_path(store_root, new_label)
+        .map_err(PasswordEntryWriteError::from_store_message)?;
     if !old_path.exists() {
-        return Err(format!("Password entry '{old_label}' was not found."));
+        return Err(PasswordEntryWriteError::entry_not_found(format!(
+            "Password entry '{old_label}' was not found."
+        )));
     }
     if new_path.exists() {
-        return Err("That password entry already exists.".to_string());
+        return Err(PasswordEntryWriteError::already_exists(
+            "That password entry already exists.",
+        ));
     }
 
-    ensure_parent_dir(&new_path)?;
-    fs::rename(&old_path, &new_path).map_err(|err| err.to_string())?;
+    ensure_parent_dir(&new_path).map_err(PasswordEntryWriteError::from_store_message)?;
+    fs::rename(&old_path, &new_path)
+        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
     cleanup_empty_store_dirs(store_root, &old_path)
+        .map_err(PasswordEntryWriteError::from_store_message)
 }
 
-pub(crate) fn delete_password_entry(store_root: &str, label: &str) -> Result<(), String> {
-    let entry_path = entry_file_path(store_root, label)?;
-    fs::remove_file(&entry_path).map_err(|err| err.to_string())?;
+pub(crate) fn delete_password_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<(), PasswordEntryWriteError> {
+    let entry_path =
+        entry_file_path(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
+    fs::remove_file(&entry_path)
+        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
     cleanup_empty_store_dirs(store_root, &entry_path)
+        .map_err(PasswordEntryWriteError::from_store_message)
 }
 
 fn write_entry_ciphertext(entry_path: &Path, ciphertext: &[u8]) -> Result<(), String> {

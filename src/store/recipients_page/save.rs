@@ -82,13 +82,15 @@ fn save_store_recipients_async(
                 }
                 finish_store_recipients_save(&state, true);
             }
-            Err(message) => {
+            Err(err) => {
                 log_error(format!(
-                    "Failed to save store recipients for '{}': {message}",
+                    "Failed to save store recipients for '{}': {err}",
                     request.store
                 ));
                 finish_store_recipients_save(&state, false);
-                overlay.add_toast(Toast::new(request.mode.save_failure_message()));
+                overlay.add_toast(Toast::new(
+                    err.toast_message(request.mode.save_failure_message()),
+                ));
             }
         },
         move || {

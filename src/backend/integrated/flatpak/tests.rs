@@ -5,10 +5,14 @@ use super::super::keys::{
     resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
-use super::entries::{read_password_entry, save_password_entry};
+use super::entries::{
+    delete_password_entry, read_password_entry, rename_password_entry, save_password_entry,
+};
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients;
-use crate::backend::{PasswordEntryError, PrivateKeyError};
+use crate::backend::{
+    PasswordEntryError, PasswordEntryWriteError, PrivateKeyError, StoreRecipientsError,
+};
 use crate::preferences::Preferences;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
 use std::env;
@@ -66,6 +70,19 @@ fn cert_bytes(email: &str) -> Vec<u8> {
     cert.as_tsk()
         .serialize(&mut bytes)
         .expect("failed to serialize test certificate");
+    bytes
+}
+
+fn protected_cert_bytes(email: &str) -> Vec<u8> {
+    let password: Password = "hunter2".into();
+    let (cert, _) = CertBuilder::general_purpose(Some(email))
+        .set_password(Some(password))
+        .generate()
+        .expect("failed to generate password-protected certificate");
+    let mut bytes = Vec::new();
+    cert.as_tsk()
+        .serialize(&mut bytes)
+        .expect("failed to serialize protected test certificate");
     bytes
 }
 
@@ -287,6 +304,83 @@ fn new_entries_can_be_saved_in_a_secondary_store() {
             .expect("read saved entry"),
         "supersecret\nusername: alice".to_string()
     );
+}
+
+#[test]
+fn duplicate_entry_saves_are_classified_as_already_existing() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let home = TestHome::new();
+    let bytes = protected_cert_bytes("Store Example <store@example.com>");
+    let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
+        .expect("expected private key import to succeed");
+
+    let store = home.path.join("secondary-store");
+    fs::create_dir_all(&store).expect("create secondary store");
+    fs::write(store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
+        .expect("write recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save initial entry");
+
+    let err = save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        false,
+    )
+    .expect_err("duplicate save should be rejected");
+
+    assert!(matches!(
+        err,
+        PasswordEntryWriteError::EntryAlreadyExists(_)
+    ));
+}
+
+#[test]
+fn missing_entry_renames_and_deletes_are_classified() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let home = TestHome::new();
+    let store = home.path.join("secondary-store");
+    fs::create_dir_all(&store).expect("create secondary store");
+
+    let rename_err = rename_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/missing",
+        "team/renamed",
+    )
+    .expect_err("missing rename should fail");
+    assert!(matches!(
+        rename_err,
+        PasswordEntryWriteError::EntryNotFound(_)
+    ));
+
+    let delete_err = delete_password_entry(store.to_string_lossy().as_ref(), "team/missing")
+        .expect_err("missing delete should fail");
+    assert!(matches!(
+        delete_err,
+        PasswordEntryWriteError::EntryNotFound(_)
+    ));
+}
+
+#[test]
+fn recipient_saves_reject_non_directory_store_paths() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let home = TestHome::new();
+    let file_path = home.path.join("store-file");
+    fs::write(&file_path, "not a directory").expect("write store placeholder file");
+
+    let err = save_store_recipients(
+        file_path.to_string_lossy().as_ref(),
+        &[String::from("alice@example.com")],
+    )
+    .expect_err("non-directory store paths should fail");
+
+    assert!(matches!(err, StoreRecipientsError::InvalidStorePath(_)));
 }
 
 #[test]

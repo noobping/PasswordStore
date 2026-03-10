@@ -6,6 +6,7 @@ mod integrated;
 pub(crate) use self::errors::PasswordEntryError;
 #[cfg(feature = "flatpak")]
 pub(crate) use self::errors::PrivateKeyError;
+pub(crate) use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
 
 #[cfg(feature = "flatpak")]
 pub(crate) use integrated::{
@@ -59,12 +60,15 @@ dispatch_backend_call! {
         label: &str,
         contents: &str,
         overwrite: bool,
-    ) -> Result<(), String>;
+    ) -> Result<(), PasswordEntryWriteError>;
     fn rename_password_entry(
         store_root: &str,
         old_label: &str,
         new_label: &str,
-    ) -> Result<(), String>;
-    fn delete_password_entry(store_root: &str, label: &str) -> Result<(), String>;
-    fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String>;
+    ) -> Result<(), PasswordEntryWriteError>;
+    fn delete_password_entry(store_root: &str, label: &str) -> Result<(), PasswordEntryWriteError>;
+    fn save_store_recipients(
+        store_root: &str,
+        recipients: &[String],
+    ) -> Result<(), StoreRecipientsError>;
 }

@@ -1,7 +1,7 @@
 mod command;
 
 use self::command::{ensure_success, run_store_command_output, run_store_command_with_input};
-use crate::backend::PasswordEntryError;
+use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
 use crate::logging::CommandLogOptions;
 use std::process::Output;
 
@@ -40,7 +40,7 @@ pub(super) fn save_password_entry(
     label: &str,
     contents: &str,
     overwrite: bool,
-) -> Result<(), String> {
+) -> Result<(), PasswordEntryWriteError> {
     let output = run_store_command_with_input(
         store_root,
         "Save password entry",
@@ -53,15 +53,18 @@ pub(super) fn save_password_entry(
             }
             cmd.arg(label);
         },
-    )?;
-    ensure_success(output, "pass insert failed").map(|_| ())
+    )
+    .map_err(PasswordEntryWriteError::from_store_message)?;
+    ensure_success(output, "pass insert failed")
+        .map(|_| ())
+        .map_err(PasswordEntryWriteError::from_store_message)
 }
 
 pub(super) fn rename_password_entry(
     store_root: &str,
     old_label: &str,
     new_label: &str,
-) -> Result<(), String> {
+) -> Result<(), PasswordEntryWriteError> {
     let output = run_store_command_output(
         store_root,
         "Rename password entry",
@@ -69,11 +72,17 @@ pub(super) fn rename_password_entry(
         |cmd| {
             cmd.arg("mv").arg(old_label).arg(new_label);
         },
-    )?;
-    ensure_success(output, "pass mv failed").map(|_| ())
+    )
+    .map_err(PasswordEntryWriteError::from_store_message)?;
+    ensure_success(output, "pass mv failed")
+        .map(|_| ())
+        .map_err(PasswordEntryWriteError::from_store_message)
 }
 
-pub(super) fn delete_password_entry(store_root: &str, label: &str) -> Result<(), String> {
+pub(super) fn delete_password_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<(), PasswordEntryWriteError> {
     let output = run_store_command_output(
         store_root,
         "Delete password entry",
@@ -81,11 +90,17 @@ pub(super) fn delete_password_entry(store_root: &str, label: &str) -> Result<(),
         |cmd| {
             cmd.arg("rm").arg("-rf").arg(label);
         },
-    )?;
-    ensure_success(output, "pass rm failed").map(|_| ())
+    )
+    .map_err(PasswordEntryWriteError::from_store_message)?;
+    ensure_success(output, "pass rm failed")
+        .map(|_| ())
+        .map_err(PasswordEntryWriteError::from_store_message)
 }
 
-pub(super) fn save_store_recipients(store_root: &str, recipients: &[String]) -> Result<(), String> {
+pub(super) fn save_store_recipients(
+    store_root: &str,
+    recipients: &[String],
+) -> Result<(), StoreRecipientsError> {
     let output = run_store_command_output(
         store_root,
         "Save password store recipients",
@@ -93,6 +108,9 @@ pub(super) fn save_store_recipients(store_root: &str, recipients: &[String]) -> 
         |cmd| {
             cmd.arg("init").args(recipients);
         },
-    )?;
-    ensure_success(output, "pass init failed").map(|_| ())
+    )
+    .map_err(StoreRecipientsError::from_store_message)?;
+    ensure_success(output, "pass init failed")
+        .map(|_| ())
+        .map_err(StoreRecipientsError::from_store_message)
 }

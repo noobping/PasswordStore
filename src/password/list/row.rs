@@ -99,8 +99,9 @@ fn connect_rename_action(
                 action_row.set_title(tail);
                 action_row.set_subtitle(parent);
             }
-            Err(_) => {
-                overlay.add_toast(Toast::new("Couldn't rename the item."));
+            Err(err) => {
+                log_error(format!("Failed to rename password entry: {err}"));
+                overlay.add_toast(Toast::new(err.rename_toast_message()));
             }
         }
     });
@@ -132,7 +133,7 @@ fn connect_delete_action(
                 }
                 Err(err) => {
                     log_error(format!("Failed to delete password entry: {err}"));
-                    overlay.add_toast(Toast::new("Couldn't delete the item."));
+                    overlay.add_toast(Toast::new(err.delete_toast_message()));
                 }
             },
             move || {

@@ -1,3 +1,4 @@
+use super::state::show_password_status_message;
 use super::{open_password_entry_page, PasswordPageState};
 use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
 use crate::logging::log_error;
@@ -26,10 +27,7 @@ pub(super) fn handle_open_password_entry_error(
     message: &str,
 ) -> bool {
     if is_locked_private_key_error(message) {
-        state.status.set_title("Unlock key");
-        state
-            .status
-            .set_description(Some("Enter your key password to continue."));
+        show_password_status_message(state, "Unlock key", "Enter your key password to continue.");
         match preferred_ripasso_private_key_fingerprint_for_entry(
             pass_file.store_path(),
             &pass_file.label(),

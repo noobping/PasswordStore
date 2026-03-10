@@ -36,17 +36,29 @@ pub(super) fn show_password_editor_chrome(state: &PasswordPageState, title: &str
     show_secondary_page_chrome(&chrome, title, subtitle, true);
 }
 
-pub(super) fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
-    show_password_editor_chrome(state, title, subtitle);
+fn hide_password_editor_fields(state: &PasswordPageState) {
     state.entry.set_visible(false);
-    state.username.set_text("");
     state.username.set_visible(false);
     state.otp.clear();
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
+}
+
+pub(super) fn show_password_status_message(
+    state: &PasswordPageState,
+    status_title: &str,
+    status_description: &str,
+) {
+    hide_password_editor_fields(state);
     state.status.set_visible(true);
-    state.status.set_title("Opening item");
-    state.status.set_description(Some("Please wait."));
+    state.status.set_title(status_title);
+    state.status.set_description(Some(status_description));
+}
+
+pub(super) fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
+    state.username.set_text("");
+    show_password_editor_chrome(state, title, subtitle);
+    show_password_status_message(state, "Opening item", "Please wait.");
 }
 
 pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
@@ -56,12 +68,5 @@ pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
 }
 
 pub(super) fn show_password_open_error(state: &PasswordPageState) {
-    state.entry.set_visible(false);
-    state.username.set_visible(false);
-    state.otp.clear();
-    state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
-    state.status.set_visible(true);
-    state.status.set_title("Item unavailable");
-    state.status.set_description(Some("Try again."));
+    show_password_status_message(state, "Item unavailable", "Try again.");
 }

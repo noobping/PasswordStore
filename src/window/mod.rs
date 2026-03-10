@@ -1,9 +1,5 @@
 mod controls;
-#[cfg(feature = "flatpak")]
-mod controls_flatpak;
 mod build;
-#[cfg(not(feature = "flatpak"))]
-mod controls_standard;
 #[cfg(feature = "flatpak")]
 mod flatpak;
 #[cfg(not(feature = "flatpak"))]
@@ -12,13 +8,7 @@ mod git;
 mod logs;
 pub(crate) mod messages;
 pub(crate) mod navigation;
-#[cfg(not(feature = "flatpak"))]
-mod navigation_standard;
 mod preferences;
-#[cfg(feature = "setup")]
-mod preferences_setup;
-#[cfg(not(feature = "flatpak"))]
-mod preferences_standard;
 #[cfg(not(feature = "flatpak"))]
 mod standard;
 

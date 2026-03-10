@@ -13,9 +13,13 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 #[cfg(feature = "flatpak")]
-use super::controls_flatpak as platform;
+mod flatpak;
+#[cfg(feature = "flatpak")]
+use self::flatpak as platform;
 #[cfg(not(feature = "flatpak"))]
-use super::controls_standard as platform;
+mod standard;
+#[cfg(not(feature = "flatpak"))]
+use self::standard as platform;
 
 pub(crate) use self::platform::StandardBackActionState;
 use self::platform::{before_back_action, configure_shortcuts};

@@ -1,4 +1,4 @@
-use super::preferences::{toast_preferences_save_error, PreferencesActionState};
+use super::{toast_preferences_save_error, PreferencesActionState};
 use crate::preferences::{BackendKind, Preferences};
 use adw::prelude::*;
 use adw::{ComboRow, EntryRow, Toast, ToastOverlay};

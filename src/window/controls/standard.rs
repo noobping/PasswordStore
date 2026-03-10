@@ -1,4 +1,4 @@
-use super::git::{handle_git_busy_back, GitActionState};
+use crate::window::git::{handle_git_busy_back, GitActionState};
 use adw::Application;
 use adw::prelude::GtkApplicationExt;
 

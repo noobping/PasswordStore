@@ -3,25 +3,27 @@ use super::super::keys::{
     load_ripasso_key_ring, load_stored_ripasso_key_ring, locked_private_key_error,
 };
 use super::paths::recipients_file_for_label;
-use super::recipients::{preferred_context_fingerprint_from_contents, recipients_for_encryption};
+use super::recipients::{
+    encryption_context_fingerprint_from_contents, recipients_for_encryption_from_contents,
+};
 use ripasso::crypto::{Crypto, Sequoia};
 use ripasso::pass::Recipient;
-use sequoia_openpgp::Cert;
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 
 pub(super) struct FlatpakCryptoContext {
-    key_ring: HashMap<[u8; 20], Arc<Cert>>,
     crypto: Sequoia,
+    recipients: Vec<Recipient>,
 }
 
 impl FlatpakCryptoContext {
     pub(super) fn load_for_fingerprint(fingerprint: &str) -> Result<Self, String> {
         let key_ring = load_ripasso_key_ring(fingerprint)?;
-        let crypto = build_ripasso_crypto_from_key_ring(fingerprint, key_ring.clone())?;
-        Ok(Self { key_ring, crypto })
+        let crypto = build_ripasso_crypto_from_key_ring(fingerprint, key_ring)?;
+        Ok(Self {
+            crypto,
+            recipients: Vec::new(),
+        })
     }
 
     pub(super) fn load_for_label(store_root: &str, label: &str) -> Result<Self, String> {
@@ -36,24 +38,18 @@ impl FlatpakCryptoContext {
 
     pub(super) fn load_for_recipient_contents(contents: &str) -> Result<Self, String> {
         let key_ring = load_stored_ripasso_key_ring()?;
-        let fingerprint = preferred_context_fingerprint_from_contents(contents, &key_ring)?;
-        let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring.clone())?;
-        Ok(Self { key_ring, crypto })
+        let recipients = recipients_for_encryption_from_contents(contents, &key_ring)?;
+        let fingerprint = encryption_context_fingerprint_from_contents(contents, &key_ring)?;
+        let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring)?;
+        Ok(Self { crypto, recipients })
     }
 
     pub(super) fn decrypt_entry(&self, entry_path: &Path) -> Result<String, String> {
         decrypt_password_entry_with_crypto(&self.crypto, entry_path)
     }
 
-    pub(super) fn encrypt_contents_for_label(
-        &self,
-        store_root: &str,
-        label: &str,
-        contents: &str,
-    ) -> Result<Vec<u8>, String> {
-        let recipients_file = recipients_file_for_label(store_root, label)?;
-        let recipients = recipients_for_encryption(&recipients_file, &self.key_ring)?;
-        encrypt_password_entry_with_crypto(&self.crypto, &recipients, contents)
+    pub(super) fn encrypt_contents(&self, contents: &str) -> Result<Vec<u8>, String> {
+        encrypt_password_entry_with_crypto(&self.crypto, &self.recipients, contents)
     }
 }
 

@@ -5,9 +5,7 @@ use crate::password::list::load_passwords_async;
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-use crate::support::ui::{
-    navigation_stack_is_root, toggle_popover_with_focus, visible_navigation_page_is,
-};
+use crate::support::ui::{navigation_stack_is_root, toggle_popover, visible_navigation_page_is};
 use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
     WindowNavigationState,
@@ -97,15 +95,10 @@ fn reload_password_list(state: &GitActionState) {
     );
 }
 
-pub(crate) fn register_open_git_action(
-    window: &ApplicationWindow,
-    popover: &Popover,
-    entry: &EntryRow,
-) {
+pub(crate) fn register_open_git_action(window: &ApplicationWindow, popover: &Popover) {
     let popover = popover.clone();
-    let entry = entry.clone();
     register_window_action(window, "open-git", move || {
-        toggle_popover_with_focus(&popover, &entry);
+        toggle_popover(&popover);
     });
 }
 

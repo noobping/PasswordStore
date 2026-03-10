@@ -1,5 +1,6 @@
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
+use std::path::Path;
 
 pub(super) enum GitOperationResult {
     Success,
@@ -8,6 +9,18 @@ pub(super) enum GitOperationResult {
 
 fn git_operation_failed(message: &str) -> GitOperationResult {
     GitOperationResult::Failed(message.to_string())
+}
+
+fn store_has_git_repository(root: &str) -> bool {
+    Path::new(root).join(".git").exists()
+}
+
+fn syncable_store_roots(stores: &[String]) -> Vec<&str> {
+    stores
+        .iter()
+        .map(String::as_str)
+        .filter(|root| store_has_git_repository(root))
+        .collect()
 }
 
 pub(super) fn run_clone_operation(url: &str) -> GitOperationResult {
@@ -31,10 +44,11 @@ pub(super) fn run_clone_operation(url: &str) -> GitOperationResult {
 
 pub(super) fn run_sync_operation() -> GitOperationResult {
     let settings = Preferences::new();
-    for root in settings.stores() {
+    let stores = settings.stores();
+    for root in syncable_store_roots(&stores) {
         for args in [&["fetch", "--all"][..], &["pull"][..], &["push"][..]] {
             let mut cmd = settings.git_command();
-            cmd.arg("-C").arg(&root).args(args);
+            cmd.arg("-C").arg(root).args(args);
             match run_command_output(
                 &mut cmd,
                 &format!("Synchronize password store {root}"),
@@ -62,4 +76,44 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
     }
 
     GitOperationResult::Success
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{store_has_git_repository, syncable_store_roots};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir_path(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("passwordstore-git-{name}-{nanos}"))
+    }
+
+    #[test]
+    fn sync_skips_store_roots_without_git_metadata() {
+        let git_store = temp_dir_path("git");
+        let plain_store = temp_dir_path("plain");
+        fs::create_dir_all(git_store.join(".git")).expect("create git metadata");
+        fs::create_dir_all(&plain_store).expect("create plain store");
+
+        let stores = vec![
+            git_store.to_string_lossy().to_string(),
+            plain_store.to_string_lossy().to_string(),
+        ];
+
+        let expected = vec![stores[0].as_str()];
+        assert_eq!(syncable_store_roots(&stores), expected);
+        assert!(store_has_git_repository(
+            git_store.to_string_lossy().as_ref()
+        ));
+        assert!(!store_has_git_repository(
+            plain_store.to_string_lossy().as_ref()
+        ));
+
+        let _ = fs::remove_dir_all(&git_store);
+        let _ = fs::remove_dir_all(&plain_store);
+    }
 }

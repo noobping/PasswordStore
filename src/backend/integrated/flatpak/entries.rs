@@ -88,7 +88,7 @@ pub(crate) fn save_password_entry(
     let context = FlatpakCryptoContext::load_for_label(store_root, label)
         .map_err(PasswordEntryWriteError::from_store_message)?;
     let ciphertext = context
-        .encrypt_contents_for_label(store_root, label, contents)
+        .encrypt_contents(contents)
         .map_err(PasswordEntryWriteError::from_store_message)?;
     write_entry_ciphertext(&entry_path, &ciphertext)
         .map_err(PasswordEntryWriteError::from_store_message)

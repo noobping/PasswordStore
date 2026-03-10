@@ -67,7 +67,6 @@ pub fn present_private_key_password_dialog<F>(
         .content_width(460)
         .child(&dialog_content_shell(title, subtitle, &page))
         .build();
-    dialog.set_focus(Some(&password_row));
 
     let dialog_clone = dialog.clone();
     let overlay_clone = overlay.clone();

@@ -22,11 +22,8 @@ use adw::ToastOverlay;
 pub(super) fn new_password_popover_state(widgets: &WindowWidgets) -> NewPasswordPopoverState {
     NewPasswordPopoverState {
         popover: widgets.add_button_popover.clone(),
-        path_entry: widgets.path_entry.clone(),
-        store_box: widgets.new_password_store_box.clone(),
-        store_list: widgets.new_password_store_list.clone(),
+        store_row: widgets.new_password_store_row.clone(),
         store_roots: Rc::new(RefCell::new(Vec::new())),
-        selected_store: Rc::new(RefCell::new(None)),
     }
 }
 

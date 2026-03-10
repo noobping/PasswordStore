@@ -73,7 +73,7 @@ pub(crate) fn register_standard_window_actions(
         &state.settings,
     );
     register_open_log_action(window, navigation_state);
-    register_open_git_action(window, git_popover, &widgets.git_url_entry);
+    register_open_git_action(window, git_popover);
     connect_git_clone_apply(window, &widgets.git_url_entry);
     register_git_clone_action(git_action_state, git_popover, &widgets.git_url_entry);
     register_synchronize_action(git_action_state);

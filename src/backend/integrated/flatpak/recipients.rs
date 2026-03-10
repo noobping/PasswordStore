@@ -91,25 +91,34 @@ fn resolved_recipients_from_contents<'a>(
     Ok(recipients)
 }
 
-pub(super) fn preferred_context_fingerprint_from_contents(
+pub(super) fn encryption_context_fingerprint_from_contents(
     contents: &str,
     key_ring: &HashMap<[u8; 20], Arc<Cert>>,
 ) -> Result<String, String> {
-    resolved_recipients_from_contents(contents, key_ring)?
+    let recipients = resolved_recipients_from_contents(contents, key_ring)?;
+    if let Some(selected) = selected_ripasso_own_fingerprint()? {
+        if recipients
+            .iter()
+            .any(|recipient| recipient.fingerprint_hex().eq_ignore_ascii_case(&selected))
+        {
+            return Ok(selected);
+        }
+    }
+
+    recipients
         .into_iter()
         .next()
         .map(|recipient| recipient.fingerprint_hex())
         .ok_or_else(|| "No recipients were found for this password entry.".to_string())
 }
 
-pub(super) fn recipients_for_encryption(
-    recipients_file: &std::path::Path,
+pub(super) fn recipients_for_encryption_from_contents(
+    contents: &str,
     key_ring: &HashMap<[u8; 20], Arc<Cert>>,
 ) -> Result<Vec<Recipient>, String> {
-    let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
     let mut recipients = Vec::new();
 
-    for recipient in resolved_recipients_from_contents(&contents, key_ring)? {
+    for recipient in resolved_recipients_from_contents(contents, key_ring)? {
         let name = recipient
             .cert
             .userids()

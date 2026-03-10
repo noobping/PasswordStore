@@ -1,7 +1,7 @@
 use super::super::keys::{
     clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
-    parse_managed_private_key_bytes, prepare_managed_private_key_bytes,
+    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
     resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
@@ -339,6 +339,49 @@ fn duplicate_entry_saves_are_classified_as_already_existing() {
         err,
         PasswordEntryWriteError::EntryAlreadyExists(_)
     ));
+}
+
+#[test]
+fn entries_are_encrypted_for_all_selected_private_keys() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let home = TestHome::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let bytes_b = protected_cert_bytes("Key B <b@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+
+    let store = home.path.join("secondary-store");
+    fs::create_dir_all(&store).expect("create secondary store");
+    fs::write(
+        store.join(".gpg-id"),
+        format!("{}\n{}\n", key_a.fingerprint, key_b.fingerprint),
+    )
+    .expect("write recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry for multiple recipients");
+
+    remove_ripasso_private_key(&key_b.fingerprint).expect("remove second key");
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry with first key only"),
+        "supersecret\nusername: alice".to_string()
+    );
+
+    import_ripasso_private_key_bytes(&bytes_b, Some("hunter2")).expect("re-import second key");
+    remove_ripasso_private_key(&key_a.fingerprint).expect("remove first key");
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry with second key only"),
+        "supersecret\nusername: alice".to_string()
+    );
 }
 
 #[test]

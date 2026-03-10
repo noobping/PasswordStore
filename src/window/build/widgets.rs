@@ -4,12 +4,12 @@ use adw::glib::{object::IsA, Object};
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
 use adw::gtk::{Box as GtkBox, Builder, Button, ListBox, Popover, SearchEntry, TextView};
-use adw::{
-    ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
-    ToastOverlay, WindowTitle,
-};
 #[cfg(not(feature = "flatpak"))]
-use adw::{ComboRow, PreferencesGroup};
+use adw::PreferencesGroup;
+use adw::{
+    ApplicationWindow, ComboRow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
+    StatusPage, ToastOverlay, WindowTitle,
+};
 
 pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) window: ApplicationWindow,
@@ -21,8 +21,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) add_button: Button,
     pub(in crate::window) find_button: Button,
     pub(in crate::window) add_button_popover: Popover,
-    pub(in crate::window) new_password_store_box: GtkBox,
-    pub(in crate::window) new_password_store_list: GtkBox,
+    pub(in crate::window) new_password_store_row: ComboRow,
     pub(in crate::window) path_entry: EntryRow,
     pub(in crate::window) git_button: Button,
     pub(in crate::window) git_popover: Popover,
@@ -78,8 +77,7 @@ impl WindowWidgets {
             add_button: required_object(builder, "add_button"),
             find_button: required_object(builder, "find_button"),
             add_button_popover: required_object(builder, "add_button_popover"),
-            new_password_store_box: required_object(builder, "new_password_store_box"),
-            new_password_store_list: required_object(builder, "new_password_store_list"),
+            new_password_store_row: required_object(builder, "new_password_store_row"),
             path_entry: required_object(builder, "path_entry"),
             git_button: required_object(builder, "git_button"),
             git_popover: required_object(builder, "git_popover"),

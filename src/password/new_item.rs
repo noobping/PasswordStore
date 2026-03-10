@@ -1,9 +1,9 @@
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
-use crate::support::ui::toggle_popover_with_focus;
-use adw::gtk::{Box as GtkBox, CheckButton, Popover};
+use crate::support::ui::toggle_popover;
+use adw::gtk::{Popover, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::{ApplicationWindow, EntryRow};
+use adw::{ApplicationWindow, ComboRow};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -11,11 +11,8 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub(crate) struct NewPasswordPopoverState {
     pub(crate) popover: Popover,
-    pub(crate) path_entry: EntryRow,
-    pub(crate) store_box: GtkBox,
-    pub(crate) store_list: GtkBox,
+    pub(crate) store_row: ComboRow,
     pub(crate) store_roots: Rc<RefCell<Vec<String>>>,
-    pub(crate) selected_store: Rc<RefCell<Option<String>>>,
 }
 
 fn available_store_roots() -> Vec<String> {
@@ -66,12 +63,6 @@ fn shortened_store_labels(stores: &[String]) -> Vec<String> {
     stores.to_vec()
 }
 
-fn clear_store_buttons(list: &GtkBox) {
-    while let Some(child) = list.first_child() {
-        list.remove(&child);
-    }
-}
-
 fn resolve_selected_store(stores: &[String], selected: Option<&str>) -> Option<String> {
     selected
         .and_then(|selected| stores.iter().find(|store| store.as_str() == selected))
@@ -79,46 +70,35 @@ fn resolve_selected_store(stores: &[String], selected: Option<&str>) -> Option<S
         .or_else(|| stores.first().cloned())
 }
 
+fn selected_store_position(stores: &[String], selected: Option<&str>) -> u32 {
+    resolve_selected_store(stores, selected)
+        .and_then(|selected| stores.iter().position(|store| store == &selected))
+        .map(|index| index as u32)
+        .unwrap_or(INVALID_LIST_POSITION)
+}
+
 pub(crate) fn sync_new_password_store_selector(state: &NewPasswordPopoverState) {
     let stores = available_store_roots();
     let labels = shortened_store_labels(&stores);
-    let selected = resolve_selected_store(&stores, state.selected_store.borrow().as_deref());
+    let selected = selected_new_password_store(state);
     *state.store_roots.borrow_mut() = stores.clone();
-    *state.selected_store.borrow_mut() = selected.clone();
-    state.store_box.set_visible(stores.len() > 1);
+    state.store_row.set_visible(stores.len() > 1);
 
-    clear_store_buttons(&state.store_list);
-
-    let mut group: Option<CheckButton> = None;
-    for (store, label) in stores.iter().zip(labels) {
-        let button = CheckButton::with_label(&label);
-        button.set_halign(adw::gtk::Align::Start);
-        if let Some(first) = group.as_ref() {
-            button.set_group(Some(first));
-        } else {
-            group = Some(button.clone());
-        }
-
-        let is_selected = selected.as_deref() == Some(store.as_str());
-        button.set_active(is_selected);
-
-        let store = store.clone();
-        let selected_store = state.selected_store.clone();
-        button.connect_toggled(move |button| {
-            if button.is_active() {
-                *selected_store.borrow_mut() = Some(store.clone());
-            }
-        });
-
-        state.store_list.append(&button);
-    }
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    state
+        .store_row
+        .set_model(Some(&StringList::new(&label_refs)));
+    state
+        .store_row
+        .set_selected(selected_store_position(&stores, selected.as_deref()));
 }
 
 pub(crate) fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
-    resolve_selected_store(
-        &state.store_roots.borrow(),
-        state.selected_store.borrow().as_deref(),
-    )
+    let stores = state.store_roots.borrow();
+    stores
+        .get(state.store_row.selected() as usize)
+        .cloned()
+        .or_else(|| stores.first().cloned())
 }
 
 pub(crate) fn register_open_new_password_action(
@@ -130,13 +110,14 @@ pub(crate) fn register_open_new_password_action(
         if !state.popover.is_visible() {
             sync_new_password_store_selector(&state);
         }
-        toggle_popover_with_focus(&state.popover, &state.path_entry);
+        toggle_popover(&state.popover);
     });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_selected_store, shortened_store_labels};
+    use super::{resolve_selected_store, selected_store_position, shortened_store_labels};
+    use adw::gtk::INVALID_LIST_POSITION;
 
     #[test]
     fn store_labels_use_short_unique_suffixes() {
@@ -172,5 +153,17 @@ mod tests {
             resolve_selected_store(&stores, Some("/home/nick/work/.password-store")),
             Some("/home/nick/work/.password-store".to_string())
         );
+    }
+
+    #[test]
+    fn selected_store_position_falls_back_to_the_first_store() {
+        let stores = vec![
+            "/home/nick/.password-store".to_string(),
+            "/home/nick/work/.password-store".to_string(),
+        ];
+
+        assert_eq!(selected_store_position(&stores, None), 0);
+        assert_eq!(selected_store_position(&stores, Some("/missing/store")), 0);
+        assert_eq!(selected_store_position(&[], None), INVALID_LIST_POSITION);
     }
 }

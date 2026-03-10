@@ -1,4 +1,4 @@
-use adw::gtk::{Button, Image, ListBox, Popover, Widget};
+use adw::gtk::{Button, Image, ListBox, Popover};
 use adw::prelude::*;
 use adw::{ActionRow, NavigationPage, NavigationView};
 use std::rc::Rc;
@@ -9,12 +9,11 @@ pub(crate) fn clear_list_box(list: &ListBox) {
     }
 }
 
-pub(crate) fn toggle_popover_with_focus(popover: &Popover, focus_target: &impl IsA<Widget>) {
+pub(crate) fn toggle_popover(popover: &Popover) {
     if popover.is_visible() {
         popover.popdown();
     } else {
         popover.popup();
-        focus_target.grab_focus();
     }
 }
 

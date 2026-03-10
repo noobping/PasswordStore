@@ -24,7 +24,7 @@ pub(crate) fn save_store_recipients(
             let preferred =
                 preferred_ripasso_private_key_fingerprint_for_entry(store_root, &label)?;
             let secret = decrypt_password_entry_with_any_available_key(&preferred, &entry_path)?;
-            let ciphertext = context.encrypt_contents_for_label(store_root, &label, &secret)?;
+            let ciphertext = context.encrypt_contents(&secret)?;
             fs::write(&entry_path, ciphertext).map_err(|err| err.to_string())?;
         }
         Ok(())

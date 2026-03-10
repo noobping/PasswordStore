@@ -1,6 +1,8 @@
 use super::recipients::read_store_gpg_recipients;
 use crate::support::ui::reveal_navigation_page;
-use crate::window::navigation::set_save_button_for_password;
+use crate::window::navigation::{
+    set_save_button_for_password, show_secondary_page_chrome, window_chrome, APP_WINDOW_TITLE,
+};
 use adw::gtk::{Button, ListBox};
 use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, NavigationView, WindowTitle};
@@ -87,19 +89,20 @@ pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
         state.win.set_title("Recipients");
-        state.win.set_subtitle("Password Store");
+        state.win.set_subtitle(APP_WINDOW_TITLE);
         return;
     };
 
-    state.add.set_visible(false);
-    state.find.set_visible(false);
-    state.git.set_visible(false);
-    state.back.set_visible(true);
-    state.save.set_visible(false);
-    set_save_button_for_password(&state.save);
+    let chrome = window_chrome(
+        &state.back,
+        &state.add,
+        &state.find,
+        &state.git,
+        &state.save,
+        &state.win,
+    );
+    show_secondary_page_chrome(&chrome, request.mode.page_title(), &request.store, false);
     state.page.set_title(request.mode.page_title());
-    state.win.set_title(request.mode.page_title());
-    state.win.set_subtitle(&request.store);
 }
 
 pub(crate) fn show_store_recipients_page(

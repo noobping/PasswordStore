@@ -1,19 +1,23 @@
-use super::{restore_window_for_current_page, WindowNavigationState};
+use super::{
+    restore_window_for_current_page, show_secondary_page_chrome, window_chrome,
+    WindowNavigationState,
+};
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::ui::{
     navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
 };
-use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
 pub(crate) fn show_log_page(state: &WindowNavigationState) {
-    state.add.set_visible(false);
-    state.find.set_visible(false);
-    state.git.set_visible(false);
-    state.back.set_visible(true);
-    state.save.set_visible(false);
-    state.win.set_title("Logs");
-    state.win.set_subtitle("Details");
+    let chrome = window_chrome(
+        &state.back,
+        &state.add,
+        &state.find,
+        &state.git,
+        &state.save,
+        &state.win,
+    );
+    show_secondary_page_chrome(&chrome, "Logs", "Details", false);
 
     push_navigation_page_if_needed(&state.nav, &state.log_page);
 }
@@ -25,13 +29,15 @@ pub(crate) fn show_git_busy_page(
     title: &str,
     description: Option<&str>,
 ) {
-    state.add.set_visible(false);
-    state.find.set_visible(false);
-    state.git.set_visible(false);
-    state.back.set_visible(true);
-    state.save.set_visible(false);
-    state.win.set_title("Working");
-    state.win.set_subtitle(title);
+    let chrome = window_chrome(
+        &state.back,
+        &state.add,
+        &state.find,
+        &state.git,
+        &state.save,
+        &state.win,
+    );
+    show_secondary_page_chrome(&chrome, "Working", title, false);
     status.set_title(title);
     status.set_description(description);
 

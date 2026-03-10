@@ -1,6 +1,6 @@
 use super::super::file::{DynamicFieldRow, StructuredPassLine};
 use super::super::otp::PasswordOtpState;
-use crate::window::navigation::set_save_button_for_password;
+use crate::window::navigation::{show_secondary_page_chrome, window_chrome};
 use adw::gtk::{Box as GtkBox, Button, ListBox, TextView};
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle};
@@ -32,14 +32,15 @@ pub(crate) struct PasswordPageState {
 }
 
 pub(super) fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle: &str) {
-    state.add.set_visible(false);
-    state.find.set_visible(false);
-    state.git.set_visible(false);
-    state.back.set_visible(true);
-    state.save.set_visible(true);
-    set_save_button_for_password(&state.save);
-    state.win.set_title(title);
-    state.win.set_subtitle(subtitle);
+    let chrome = window_chrome(
+        &state.back,
+        &state.add,
+        &state.find,
+        &state.git,
+        &state.save,
+        &state.win,
+    );
+    show_secondary_page_chrome(&chrome, title, subtitle, true);
 }
 
 pub(super) fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {

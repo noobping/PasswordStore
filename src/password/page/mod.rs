@@ -23,7 +23,7 @@ use crate::support::ui::{
     pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use crate::window::messages::with_logs_hint;
-use crate::window::navigation::set_save_button_for_password;
+use crate::window::navigation::{show_primary_page_chrome, window_chrome, APP_WINDOW_TITLE};
 use adw::gtk::Popover;
 use adw::prelude::*;
 use adw::Toast;
@@ -162,7 +162,7 @@ pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
 
     let subtitle = get_opened_pass_file()
         .map(|pass_file| pass_file.label())
-        .unwrap_or_else(|| "Password Store".to_string());
+        .unwrap_or_else(|| APP_WINDOW_TITLE.to_string());
     show_password_editor_chrome(state, "Raw Pass File", &subtitle);
 
     push_navigation_page_if_needed(&state.nav, &state.raw_page);
@@ -220,15 +220,15 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
     pop_navigation_to_root(&state.nav);
 
     clear_opened_pass_file();
-    state.back.set_visible(false);
-    state.save.set_visible(false);
-    set_save_button_for_password(&state.save);
-    state.add.set_visible(true);
-    state.find.set_visible(true);
-    state.git.set_visible(false);
-
-    state.win.set_title("Password Store");
-    state.win.set_subtitle("Manage your passwords");
+    let chrome = window_chrome(
+        &state.back,
+        &state.add,
+        &state.find,
+        &state.git,
+        &state.save,
+        &state.win,
+    );
+    show_primary_page_chrome(&chrome);
 
     state.entry.set_text("");
     sync_username_row(&state.username, None);

@@ -1,6 +1,7 @@
 use crate::password::file::sync_username_row;
 use crate::password::opened::get_opened_pass_file;
 use crate::password::page::PasswordPageState;
+use crate::preferences::Preferences;
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::preferences::PreferencesActionState;
@@ -135,11 +136,11 @@ pub(crate) fn set_save_button_for_password(save: &Button) {
     save.set_tooltip_text(Some("Save changes"));
 }
 
-pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>) {
+pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool) {
     chrome.back.set_visible(false);
     chrome.save.set_visible(false);
     set_save_button_for_password(chrome.save);
-    chrome.add.set_visible(true);
+    chrome.add.set_visible(has_store_dirs);
     chrome.find.set_visible(true);
     chrome.git.set_visible(false);
     chrome.win.set_title(APP_WINDOW_TITLE);
@@ -177,7 +178,7 @@ pub(crate) fn restore_window_for_current_page(
     );
 
     if page_kind == RestoredPageKind::Root {
-        show_primary_page_chrome(&chrome);
+        show_primary_page_chrome(&chrome, !Preferences::new().stores().is_empty());
         return true;
     }
 

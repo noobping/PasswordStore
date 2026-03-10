@@ -17,9 +17,29 @@ use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ListActionVisibility {
+    add_visible: bool,
     find_visible: bool,
     git_visible: bool,
     save_visible: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct PasswordListActions {
+    pub(crate) add: Button,
+    pub(crate) git: Button,
+    pub(crate) find: Button,
+    pub(crate) save: Button,
+}
+
+impl PasswordListActions {
+    pub(crate) fn new(add: &Button, git: &Button, find: &Button, save: &Button) -> Self {
+        Self {
+            add: add.clone(),
+            git: git.clone(),
+            find: find.clone(),
+            save: save.clone(),
+        }
+    }
 }
 
 fn list_action_visibility(
@@ -29,6 +49,7 @@ fn list_action_visibility(
 ) -> ListActionVisibility {
     if !show_list_actions {
         return ListActionVisibility {
+            add_visible: false,
             find_visible: false,
             git_visible: false,
             save_visible: false,
@@ -36,6 +57,7 @@ fn list_action_visibility(
     }
 
     ListActionVisibility {
+        add_visible: has_store_dirs,
         find_visible: !empty,
         git_visible: should_show_restore_button(show_list_actions, has_store_dirs, empty),
         save_visible: false,
@@ -44,9 +66,7 @@ fn list_action_visibility(
 
 pub(crate) fn load_passwords_async(
     list: &ListBox,
-    git: &Button,
-    find: &Button,
-    save: &Button,
+    actions: &PasswordListActions,
     overlay: &ToastOverlay,
     show_list_actions: bool,
     show_hidden: bool,
@@ -57,19 +77,16 @@ pub(crate) fn load_passwords_async(
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
 
-    git.set_visible(false);
-    find.set_visible(show_list_actions);
+    actions.git.set_visible(false);
+    actions.add.set_visible(show_list_actions && has_store_dirs);
+    actions.find.set_visible(show_list_actions);
     list.set_placeholder(Some(&loading_placeholder()));
 
     let list_clone = list.clone();
-    let git_clone = git.clone();
-    let find_clone = find.clone();
-    let save_clone = save.clone();
+    let actions_clone = actions.clone();
     let overlay_clone = overlay.clone();
     let list_for_disconnect = list_clone.clone();
-    let git_for_disconnect = git_clone.clone();
-    let find_for_disconnect = find_clone.clone();
-    let save_for_disconnect = save_clone.clone();
+    let actions_for_disconnect = actions_clone.clone();
     spawn_result_task(
         move || match collect_all_password_items_with_options(CollectItemsOptions { show_hidden }) {
             Ok(items) => items,
@@ -84,24 +101,22 @@ pub(crate) fn load_passwords_async(
                 append_password_row(&list_clone, item, &overlay_clone);
             }
 
-            update_list_actions(
-                &find_clone,
-                &git_clone,
-                &save_clone,
-                show_list_actions,
-                has_store_dirs,
-                empty,
-            );
+            update_list_actions(&actions_clone, show_list_actions, has_store_dirs, empty);
             list_clone.set_placeholder(Some(&resolved_placeholder(empty, has_store_dirs)));
         },
         move || {
-            save_for_disconnect.set_visible(false);
-            git_for_disconnect.set_visible(should_show_restore_button(
-                show_list_actions,
-                has_store_dirs,
-                true,
-            ));
-            find_for_disconnect.set_visible(false);
+            actions_for_disconnect
+                .add
+                .set_visible(show_list_actions && has_store_dirs);
+            actions_for_disconnect.save.set_visible(false);
+            actions_for_disconnect
+                .git
+                .set_visible(should_show_restore_button(
+                    show_list_actions,
+                    has_store_dirs,
+                    true,
+                ));
+            actions_for_disconnect.find.set_visible(false);
             list_for_disconnect.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
         },
     );
@@ -133,17 +148,16 @@ pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
 }
 
 fn update_list_actions(
-    find: &Button,
-    git: &Button,
-    save: &Button,
+    actions: &PasswordListActions,
     show_list_actions: bool,
     has_store_dirs: bool,
     empty: bool,
 ) {
     let visibility = list_action_visibility(show_list_actions, has_store_dirs, empty);
-    save.set_visible(visibility.save_visible);
-    find.set_visible(visibility.find_visible);
-    git.set_visible(visibility.git_visible);
+    actions.add.set_visible(visibility.add_visible);
+    actions.save.set_visible(visibility.save_visible);
+    actions.find.set_visible(visibility.find_visible);
+    actions.git.set_visible(visibility.git_visible);
 }
 
 fn prune_missing_store_dirs(settings: &Preferences) {
@@ -161,6 +175,7 @@ mod tests {
         assert_eq!(
             list_action_visibility(false, true, false),
             ListActionVisibility {
+                add_visible: false,
                 find_visible: false,
                 git_visible: false,
                 save_visible: false,
@@ -173,6 +188,7 @@ mod tests {
         assert_eq!(
             list_action_visibility(true, true, false),
             ListActionVisibility {
+                add_visible: true,
                 find_visible: true,
                 git_visible: false,
                 save_visible: false,
@@ -181,6 +197,7 @@ mod tests {
         assert_eq!(
             list_action_visibility(true, true, true),
             ListActionVisibility {
+                add_visible: true,
                 find_visible: false,
                 git_visible: false,
                 save_visible: false,
@@ -194,6 +211,7 @@ mod tests {
         assert_eq!(
             list_action_visibility(true, false, true),
             ListActionVisibility {
+                add_visible: false,
                 find_visible: false,
                 git_visible: true,
                 save_visible: false,
@@ -204,6 +222,7 @@ mod tests {
         assert_eq!(
             list_action_visibility(true, false, true),
             ListActionVisibility {
+                add_visible: false,
                 find_visible: false,
                 git_visible: false,
                 save_visible: false,

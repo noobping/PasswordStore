@@ -1,4 +1,4 @@
-use crate::password::list::load_passwords_async;
+use crate::password::list::{load_passwords_async, PasswordListActions};
 use crate::password::page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
@@ -168,11 +168,15 @@ pub(crate) fn register_toggle_hidden_action(
             return;
         }
         state.show_hidden.set(show_hidden);
-        load_passwords_async(
-            &state.list,
+        let list_actions = PasswordListActions::new(
+            &state.navigation.add,
             &state.navigation.git,
             &state.navigation.find,
             &state.navigation.save,
+        );
+        load_passwords_async(
+            &state.list,
+            &list_actions,
             &state.overlay,
             show_list_actions,
             show_hidden,

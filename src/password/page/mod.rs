@@ -6,7 +6,7 @@ mod standard;
 mod state;
 
 use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
-use super::list::load_passwords_async;
+use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
     read_password_entry, save_password_entry, PasswordEntryError, PasswordEntryWriteError,
 };
@@ -227,15 +227,14 @@ pub(crate) fn show_password_list_page(state: &PasswordPageState, show_hidden: bo
 
     clear_opened_pass_file();
     let chrome = state.window_chrome();
-    show_primary_page_chrome(&chrome);
+    show_primary_page_chrome(&chrome, !Preferences::new().stores().is_empty());
 
     reset_password_editor(state);
 
+    let list_actions = PasswordListActions::new(&state.add, &state.git, &state.find, &state.save);
     load_passwords_async(
         &state.list,
-        &state.git,
-        &state.find,
-        &state.save,
+        &list_actions,
         &state.overlay,
         true,
         show_hidden,

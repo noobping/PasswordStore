@@ -2,7 +2,7 @@ mod actions;
 mod state;
 pub(super) mod widgets;
 
-use crate::password::list::{load_passwords_async, setup_search_filter};
+use crate::password::list::{load_passwords_async, setup_search_filter, PasswordListActions};
 use crate::password::new_item::register_open_new_password_action;
 use crate::password::otp::PasswordOtpState;
 #[cfg(feature = "setup")]
@@ -71,11 +71,15 @@ pub(crate) fn create_main_window(
     #[cfg(not(feature = "flatpak"))]
     let standard_window = configure_standard_window(&widgets);
 
-    load_passwords_async(
-        &widgets.list,
+    let list_actions = PasswordListActions::new(
+        &widgets.add_button,
         &widgets.git_button,
         &widgets.find_button,
         &widgets.save_button,
+    );
+    load_passwords_async(
+        &widgets.list,
+        &list_actions,
         &widgets.toast_overlay,
         true,
         false,

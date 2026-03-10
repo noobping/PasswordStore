@@ -1,7 +1,7 @@
 mod operations;
 
 use self::operations::{run_clone_operation, run_sync_operation, GitOperationResult};
-use crate::password::list::load_passwords_async;
+use crate::password::list::{load_passwords_async, PasswordListActions};
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
@@ -85,11 +85,15 @@ fn begin_git_operation(state: &GitActionState, title: &str) {
 
 fn reload_password_list(state: &GitActionState) {
     let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
-    load_passwords_async(
-        &state.list,
+    let list_actions = PasswordListActions::new(
+        &state.navigation.add,
         &state.navigation.git,
         &state.navigation.find,
         &state.navigation.save,
+    );
+    load_passwords_async(
+        &state.list,
+        &list_actions,
         &state.overlay,
         show_list_actions,
         state.show_hidden.get(),

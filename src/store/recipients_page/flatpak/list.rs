@@ -7,8 +7,10 @@ use crate::backend::{
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
-use crate::support::ui::{append_info_row, clear_list_box};
-use adw::gtk::{Button, CheckButton, Image};
+use crate::support::ui::{
+    append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
+};
+use adw::gtk::{CheckButton, Image};
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
 use std::rc::Rc;
@@ -102,8 +104,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             .build();
         row.set_activatable(true);
 
-        let key_icon = Image::from_icon_name("dialog-password-symbolic");
-        key_icon.add_css_class("dim-label");
+        let key_icon = dim_label_icon("dialog-password-symbolic");
         row.add_prefix(&key_icon);
 
         let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
@@ -112,9 +113,8 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         row.add_suffix(&toggle);
 
         if requires_unlock {
-            let unlock_button = Button::from_icon_name("system-lock-screen-symbolic");
-            unlock_button.add_css_class("flat");
-            unlock_button.set_tooltip_text(Some("Unlock key"));
+            let unlock_button =
+                flat_icon_button_with_tooltip("system-lock-screen-symbolic", "Unlock key");
             row.add_suffix(&unlock_button);
 
             let unlock_state = state.clone();
@@ -133,9 +133,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             row.add_suffix(&unlocked_icon);
         }
 
-        let delete_button = Button::from_icon_name("user-trash-symbolic");
-        delete_button.add_css_class("flat");
-        delete_button.set_tooltip_text(Some("Remove key"));
+        let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove key");
         row.add_suffix(&delete_button);
         state.list.append(&row);
 

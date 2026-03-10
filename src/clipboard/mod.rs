@@ -2,6 +2,7 @@ use crate::backend::read_password_line;
 use crate::logging::log_error;
 use crate::password::model::PassEntry;
 use crate::support::background::spawn_result_task;
+use crate::support::ui::flat_icon_button_with_tooltip;
 use adw::gtk::{gdk::Display, Button, Widget};
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use std::time::Duration;
@@ -64,9 +65,7 @@ pub(crate) fn add_copy_suffix<W>(
 ) where
     W: IsA<Widget> + Clone,
 {
-    let button = Button::from_icon_name(COPY_BUTTON_ICON_NAME);
-    button.set_tooltip_text(Some("Copy value"));
-    button.add_css_class("flat");
+    let button = flat_icon_button_with_tooltip(COPY_BUTTON_ICON_NAME, "Copy value");
     connect_copy_button(&button, overlay, text);
 
     if let Some(row) = widget.dynamic_cast_ref::<EntryRow>() {

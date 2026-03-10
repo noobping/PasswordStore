@@ -9,8 +9,8 @@ pub(crate) use super::recipients_page::{
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-use crate::support::ui::{append_action_row_with_button, clear_list_box};
-use adw::gtk::{Button, FileChooserAction, FileChooserNative, ListBox, ResponseType};
+use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
+use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
@@ -94,8 +94,7 @@ fn append_store_row(
         .build();
     row.set_activatable(true);
 
-    let delete_button = Button::from_icon_name("user-trash-symbolic");
-    delete_button.add_css_class("flat");
+    let delete_button = flat_icon_button("user-trash-symbolic");
     row.add_suffix(&delete_button);
 
     list.append(&row);

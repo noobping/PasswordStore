@@ -1,4 +1,5 @@
 use crate::logging::log_error;
+use crate::support::ui::flat_icon_button_with_tooltip;
 use adw::prelude::*;
 use adw::{EntryRow, Toast, ToastOverlay};
 
@@ -23,9 +24,7 @@ pub(super) fn add_open_url_suffix(
 ) {
     use adw::gtk::gdk::Display;
 
-    let button = adw::gtk::Button::from_icon_name("adw-external-link-symbolic");
-    button.set_tooltip_text(Some("Open URL"));
-    button.add_css_class("flat");
+    let button = flat_icon_button_with_tooltip("adw-external-link-symbolic", "Open URL");
     let overlay = overlay.clone();
     button.connect_clicked(move |_| {
         let Some(uri) = uri_to_open(&text()) else {

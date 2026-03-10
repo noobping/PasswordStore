@@ -1,4 +1,4 @@
-use adw::gtk::{Button, ListBox};
+use adw::gtk::{Button, Image, ListBox};
 use adw::prelude::*;
 use adw::{ActionRow, NavigationPage, NavigationView};
 use std::rc::Rc;
@@ -29,6 +29,24 @@ pub(crate) fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
     list.append(&row);
 }
 
+pub(crate) fn flat_icon_button(icon_name: &str) -> Button {
+    let button = Button::from_icon_name(icon_name);
+    button.add_css_class("flat");
+    button
+}
+
+pub(crate) fn flat_icon_button_with_tooltip(icon_name: &str, tooltip: &str) -> Button {
+    let button = flat_icon_button(icon_name);
+    button.set_tooltip_text(Some(tooltip));
+    button
+}
+
+pub(crate) fn dim_label_icon(icon_name: &str) -> Image {
+    let icon = Image::from_icon_name(icon_name);
+    icon.add_css_class("dim-label");
+    icon
+}
+
 pub(crate) fn append_action_row_with_button(
     list: &ListBox,
     title: &str,
@@ -39,8 +57,7 @@ pub(crate) fn append_action_row_with_button(
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
     row.set_activatable(true);
 
-    let button = Button::from_icon_name(button_icon_name);
-    button.add_css_class("flat");
+    let button = flat_icon_button(button_icon_name);
     row.add_suffix(&button);
     list.append(&row);
     connect_row_and_button_action(&row, &button, action);

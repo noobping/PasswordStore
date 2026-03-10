@@ -1,7 +1,6 @@
 use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::store::recipients::append_gpg_recipients;
-use crate::support::ui::{append_info_row, clear_list_box};
-use adw::gtk::{Button, Image};
+use crate::support::ui::{append_info_row, clear_list_box, dim_label_icon, flat_icon_button};
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow};
 
@@ -42,12 +41,10 @@ pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     for recipient in state.recipients.borrow().iter().cloned() {
         let row = ActionRow::builder().title(&recipient).build();
         row.set_activatable(false);
-        let row_icon = Image::from_icon_name("dialog-password-symbolic");
-        row_icon.add_css_class("dim-label");
+        let row_icon = dim_label_icon("dialog-password-symbolic");
         row.add_prefix(&row_icon);
 
-        let delete_button = Button::from_icon_name("user-trash-symbolic");
-        delete_button.add_css_class("flat");
+        let delete_button = flat_icon_button("user-trash-symbolic");
         row.add_suffix(&delete_button);
         state.list.append(&row);
 

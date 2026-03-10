@@ -3,6 +3,7 @@ use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::logging::log_error;
 use crate::password::model::PassEntry;
 use crate::support::background::spawn_result_task;
+use crate::support::ui::flat_icon_button;
 use adw::gtk::{Button, ListBox, ListBoxRow, MenuButton, Popover};
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow, Toast, ToastOverlay};
@@ -24,11 +25,9 @@ pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &Toa
     rename_row.set_title("Move or rename");
     rename_row.set_show_apply_button(true);
     rename_row.set_text(&item.label());
-    let copy_button = Button::from_icon_name("edit-copy-symbolic");
-    copy_button.add_css_class("flat");
+    let copy_button = flat_icon_button("edit-copy-symbolic");
     action_row.add_suffix(&copy_button);
-    let delete_button = Button::from_icon_name("user-trash-symbolic");
-    delete_button.add_css_class("flat");
+    let delete_button = flat_icon_button("user-trash-symbolic");
     delete_button.add_css_class("destructive-action");
     rename_row.add_suffix(&delete_button);
 

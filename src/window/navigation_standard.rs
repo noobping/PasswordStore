@@ -1,6 +1,6 @@
 use super::navigation::{restore_window_for_current_page, WindowNavigationState};
-use crate::store_management::StoreRecipientsPageState;
-use crate::ui_helpers::navigation_stack_contains_page;
+use crate::store::management::StoreRecipientsPageState;
+use crate::support::ui::navigation_stack_contains_page;
 use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 

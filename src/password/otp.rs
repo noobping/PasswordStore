@@ -1,5 +1,5 @@
 use crate::logging::log_error;
-use crate::pass_file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
+use super::file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
 use adw::glib::{self, ControlFlow};
 use adw::prelude::*;
 use adw::{PasswordEntryRow, Toast, ToastOverlay};

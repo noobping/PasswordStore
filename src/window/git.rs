@@ -1,10 +1,10 @@
-use crate::background::spawn_result_task;
+use crate::support::background::spawn_result_task;
 use crate::logging::{
     log_error, run_command_output_controlled, CommandControl, CommandLogOptions,
 };
-use crate::password_list::load_passwords_async;
+use crate::password::list::load_passwords_async;
 use crate::preferences::Preferences;
-use crate::store_management::StoreRecipientsPageState;
+use crate::store::management::StoreRecipientsPageState;
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page, WindowNavigationState,

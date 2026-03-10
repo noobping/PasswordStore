@@ -1,19 +1,5 @@
-use crate::item::OpenPassFile;
-use adw::prelude::*;
+use super::model::OpenPassFile;
 use std::sync::{OnceLock, RwLock};
-
-pub fn non_null_to_string_option<O: ObjectExt>(obj: &O, key: &str) -> Option<String> {
-    non_null_to_string_result(unsafe { obj.data::<String>(key) }).ok()
-}
-
-fn non_null_to_string_result(label_opt: Option<std::ptr::NonNull<String>>) -> Result<String, ()> {
-    if let Some(ptr) = label_opt {
-        let s: &String = unsafe { ptr.as_ref() };
-        Ok(s.clone())
-    } else {
-        Err(())
-    }
-}
 
 fn opened_pass_file_state() -> &'static RwLock<Option<OpenPassFile>> {
     static OPENED_PASS_FILE: OnceLock<RwLock<Option<OpenPassFile>>> = OnceLock::new();
@@ -40,27 +26,27 @@ fn with_opened_pass_file_write<T>(f: impl FnOnce(&mut Option<OpenPassFile>) -> T
     }
 }
 
-pub fn set_opened_pass_file(pass_file: OpenPassFile) {
+pub(crate) fn set_opened_pass_file(pass_file: OpenPassFile) {
     with_opened_pass_file_write(|current| {
         *current = Some(pass_file);
     });
 }
 
-pub fn get_opened_pass_file() -> Option<OpenPassFile> {
+pub(crate) fn get_opened_pass_file() -> Option<OpenPassFile> {
     with_opened_pass_file_read(|current| current.cloned())
 }
 
-pub fn clear_opened_pass_file() {
+pub(crate) fn clear_opened_pass_file() {
     with_opened_pass_file_write(|current| {
         *current = None;
     });
 }
 
-pub fn is_opened_pass_file(pass_file: &OpenPassFile) -> bool {
+pub(crate) fn is_opened_pass_file(pass_file: &OpenPassFile) -> bool {
     with_opened_pass_file_read(|current| current == Some(pass_file))
 }
 
-pub fn refresh_opened_pass_file_from_contents(
+pub(crate) fn refresh_opened_pass_file_from_contents(
     pass_file: &OpenPassFile,
     contents: &str,
 ) -> Option<OpenPassFile> {
@@ -81,7 +67,7 @@ mod tests {
         clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
         refresh_opened_pass_file_from_contents, set_opened_pass_file,
     };
-    use crate::item::OpenPassFile;
+    use crate::password::model::OpenPassFile;
     use std::sync::{Mutex, OnceLock};
 
     fn test_lock() -> &'static Mutex<()> {

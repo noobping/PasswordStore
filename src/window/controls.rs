@@ -1,8 +1,8 @@
-use crate::password_list::load_passwords_async;
-use crate::password_page::{
+use crate::password::list::load_passwords_async;
+use crate::password::page::{
     retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
 };
-use crate::store_management::StoreRecipientsPageState;
+use crate::store::management::StoreRecipientsPageState;
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gio::SimpleAction;
 use adw::prelude::*;

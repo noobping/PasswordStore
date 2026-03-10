@@ -1,5 +1,5 @@
 use crate::clipboard::add_copy_suffix;
-use crate::item::OpenPassFile;
+use crate::password::model::OpenPassFile;
 use crate::logging::log_error;
 use adw::{prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use adw::gtk::{Box as GtkBox, Widget, gdk::Display};

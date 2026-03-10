@@ -1,12 +1,12 @@
 use crate::backend::{delete_password_entry, rename_password_entry};
-use crate::background::spawn_result_task;
+use crate::support::background::spawn_result_task;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::config::APP_ID;
-use crate::item::{collect_all_password_items_with_options, CollectItemsOptions, PassEntry};
+use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions, PassEntry};
 use crate::logging::log_error;
-use crate::methods::non_null_to_string_option;
+use crate::support::object_data::non_null_to_string_option;
 use crate::preferences::Preferences;
-use crate::ui_helpers::clear_list_box;
+use crate::support::ui::clear_list_box;
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow, StatusPage, Toast, ToastOverlay};
 use adw::gtk::{Button, ListBox, ListBoxRow, MenuButton, Popover, SearchEntry, Spinner};

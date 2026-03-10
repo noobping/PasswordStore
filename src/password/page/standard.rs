@@ -1,5 +1,5 @@
 use super::{open_password_entry_page, PasswordPageState};
-use crate::item::OpenPassFile;
+use crate::password::model::OpenPassFile;
 use crate::logging::log_error;
 use crate::preferences::{BackendKind, Preferences};
 use adw::Toast;

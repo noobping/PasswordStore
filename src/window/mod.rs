@@ -28,19 +28,19 @@ use crate::clipboard::connect_copy_button;
 use adw::gio::Menu;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
-use crate::item::OpenPassFile;
-use crate::methods::non_null_to_string_option;
-use crate::new_password_popover::{
+use crate::password::model::OpenPassFile;
+use crate::support::object_data::non_null_to_string_option;
+use crate::password::new_item::{
     register_open_new_password_action, selected_new_password_store, NewPasswordPopoverState,
 };
-use crate::pass_file::{DynamicFieldRow, StructuredPassLine};
-use crate::password_list::{load_passwords_async, setup_search_filter};
-use crate::password_otp::PasswordOtpState;
-use crate::password_page::{
+use crate::password::file::{DynamicFieldRow, StructuredPassLine};
+use crate::password::list::{load_passwords_async, setup_search_filter};
+use crate::password::otp::PasswordOtpState;
+use crate::password::page::{
     begin_new_password_entry, open_password_entry_page, save_current_password_entry,
     show_raw_pass_file_page, PasswordPageState,
 };
-use crate::store_management::{
+use crate::store::management::{
     connect_store_recipients_entry, register_store_recipients_save_action,
     StoreRecipientsPageState, StoreRecipientsRequest,
 };
@@ -479,7 +479,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
 #[cfg(test)]
 mod tests {
-    use crate::pass_file::{
+    use crate::password::file::{
         new_pass_file_contents_from_template, parse_structured_pass_lines,
         structured_otp_line, structured_pass_contents_from_values, structured_username_value,
         uri_to_open, OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,

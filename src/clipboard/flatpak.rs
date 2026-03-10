@@ -1,6 +1,6 @@
 use super::copy_password_entry_to_clipboard_via_read;
 use crate::backend::preferred_ripasso_private_key_fingerprint_for_entry;
-use crate::item::PassEntry;
+use crate::password::model::PassEntry;
 use crate::logging::log_error;
 use crate::ripasso_unlock::{is_locked_private_key_error, prompt_private_key_unlock_for_action};
 use adw::gtk::Button;

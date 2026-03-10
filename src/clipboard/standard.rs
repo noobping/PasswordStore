@@ -1,5 +1,5 @@
 use super::{copy_password_entry_to_clipboard_via_read, show_copy_feedback};
-use crate::item::PassEntry;
+use crate::password::model::PassEntry;
 use crate::logging::{run_command_status, CommandLogOptions};
 use crate::preferences::Preferences;
 use adw::gtk::Button;

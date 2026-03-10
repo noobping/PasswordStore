@@ -1,5 +1,5 @@
 use crate::preferences::Preferences;
-use crate::store_management::StoreRecipientsPageState;
+use crate::store::management::StoreRecipientsPageState;
 use super::git::{
     connect_git_clone_apply, register_git_clone_action, register_open_git_action,
     register_synchronize_action, GitActionState, GitOperationControl,

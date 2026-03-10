@@ -1,7 +1,7 @@
 use crate::backend::{
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
-use crate::background::spawn_result_task;
+use crate::support::background::spawn_result_task;
 use crate::logging::log_error;
 use crate::private_key_dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,

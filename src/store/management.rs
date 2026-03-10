@@ -1,14 +1,14 @@
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-pub(crate) use crate::store_recipients_page::{
+pub(crate) use super::recipients_page::{
     connect_store_recipients_entry, register_store_recipients_save_action,
     show_store_recipients_page, sync_store_recipients_page_header, StoreRecipientsMode,
     StoreRecipientsPageState, StoreRecipientsRequest,
 };
-use crate::stores::{
+use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
 };
-use crate::ui_helpers::{clear_list_box, connect_row_and_button_action};
+use crate::support::ui::{clear_list_box, connect_row_and_button_action};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use adw::gtk::{Button, FileChooserAction, FileChooserNative, ListBox, ResponseType};

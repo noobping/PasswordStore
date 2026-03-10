@@ -4,31 +4,22 @@ mod setup;
 
 mod config;
 mod backend;
-mod background;
 mod clipboard;
-mod item;
 mod logging;
-mod methods;
-mod new_password_popover;
-mod pass_file;
-mod password_list;
-mod password_otp;
-mod password_page;
+mod password;
 #[cfg(feature = "flatpak")]
 mod private_key_dialog;
 mod preferences;
 #[cfg(feature = "flatpak")]
 mod ripasso_unlock;
-mod stores;
-mod store_management;
-mod store_recipients_page;
-mod ui_helpers;
+mod store;
+mod support;
 mod window;
 
 use crate::config::{APP_ID, RESOURCE_ID};
 #[cfg(not(feature = "flatpak"))]
 use crate::logging::{run_command_output, CommandLogOptions};
-use crate::methods::non_null_to_string_option;
+use crate::support::object_data::non_null_to_string_option;
 #[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
 

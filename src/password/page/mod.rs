@@ -1,18 +1,18 @@
 use crate::backend::{read_password_entry, save_password_entry};
-use crate::background::spawn_result_task;
-use crate::item::OpenPassFile;
+use crate::support::background::spawn_result_task;
+use crate::password::model::OpenPassFile;
 use crate::logging::log_error;
-use crate::methods::{
+use crate::password::opened::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
-use crate::pass_file::{
+use super::file::{
     clear_box_children, new_pass_file_contents_from_template, parse_structured_pass_lines,
     rebuild_dynamic_fields_from_lines, structured_pass_contents, sync_username_row,
     sync_username_row_from_parsed_lines, DynamicFieldRow, StructuredPassLine,
 };
-use crate::password_otp::PasswordOtpState;
-use crate::password_list::load_passwords_async;
+use super::list::load_passwords_async;
+use super::otp::PasswordOtpState;
 use crate::preferences::Preferences;
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::set_save_button_for_password;

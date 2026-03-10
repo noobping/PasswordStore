@@ -1,5 +1,5 @@
-use crate::background::spawn_result_task;
-use crate::item::PassEntry;
+use crate::support::background::spawn_result_task;
+use crate::password::model::PassEntry;
 use crate::logging::log_error;
 use crate::backend::read_password_line;
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};

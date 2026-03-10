@@ -1,15 +1,15 @@
-use crate::background::spawn_result_task;
+use crate::support::background::spawn_result_task;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 #[cfg(not(feature = "flatpak"))]
-use crate::stores::append_gpg_recipients;
-use crate::stores::{
+use super::recipients::append_gpg_recipients;
+use super::recipients::{
     apply_password_store_recipients, read_store_gpg_recipients, stores_with_preferred_first,
 };
-use crate::store_management::rebuild_store_list;
+use super::management::rebuild_store_list;
 #[cfg(not(feature = "flatpak"))]
-use crate::ui_helpers::clear_list_box;
-use crate::ui_helpers::navigation_stack_contains_page;
+use crate::support::ui::clear_list_box;
+use crate::support::ui::navigation_stack_contains_page;
 use crate::window::messages::with_logs_hint;
 use crate::window::navigation::set_save_button_for_password;
 use adw::gio::SimpleAction;

@@ -1,5 +1,5 @@
 use crate::preferences::Preferences;
-use crate::store_management::{rebuild_store_list, StoreRecipientsPageState};
+use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::window::navigation::set_save_button_for_password;
 use crate::logging::log_error;
 use adw::gio::SimpleAction;

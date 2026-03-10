@@ -1,9 +1,9 @@
 use adw::Application;
 
 #[derive(Clone, Default)]
-pub(crate) struct StandardBackActionState;
+pub(crate) struct PlatformBackActionState;
 
-pub(crate) fn before_back_action(_state: &StandardBackActionState) -> bool {
+pub(crate) fn before_back_action(_state: &PlatformBackActionState) -> bool {
     false
 }
 

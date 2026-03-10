@@ -1,43 +1,40 @@
+mod actions;
+mod state;
 mod widgets;
 
 #[cfg(feature = "setup")]
 use crate::setup::*;
-use crate::clipboard::connect_copy_button;
-use crate::password::file::{DynamicFieldRow, StructuredPassLine};
 use crate::password::list::{load_passwords_async, setup_search_filter};
-use crate::password::model::OpenPassFile;
-use crate::password::new_item::{
-    register_open_new_password_action, selected_new_password_store, NewPasswordPopoverState,
-};
+use crate::password::new_item::register_open_new_password_action;
 use crate::password::otp::PasswordOtpState;
-use crate::password::page::{
-    begin_new_password_entry, open_password_entry_page, save_current_password_entry,
-    show_raw_pass_file_page, PasswordPageState,
-};
 use crate::store::management::{
     connect_store_recipients_entry, register_store_recipients_save_action,
-    StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
-use crate::support::object_data::non_null_to_string_option;
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
-use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::Builder;
-use adw::{prelude::*, Application, ApplicationWindow, Toast};
-use std::cell::{Cell, RefCell};
+use adw::{prelude::*, Application, ApplicationWindow};
+use std::cell::Cell;
 use std::rc::Rc;
 
+use self::actions::{
+    connect_new_password_submit, connect_password_copy_buttons,
+    connect_password_list_activation, register_password_page_actions,
+};
+use self::state::{
+    back_action_state, hidden_entries_action_state, new_password_popover_state,
+    password_page_state, preferences_action_state, store_recipients_page_state,
+    window_navigation_state,
+};
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
-    register_toggle_find_action, register_toggle_hidden_action, BackActionState,
-    HiddenEntriesActionState, StandardBackActionState,
+    register_toggle_find_action, register_toggle_hidden_action,
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
-use super::navigation::{set_save_button_for_password, WindowNavigationState};
+use super::navigation::set_save_button_for_password;
 use super::preferences::{
     connect_new_password_template_autosave, register_open_preferences_action,
-    PreferencesActionState,
 };
 #[cfg(feature = "setup")]
 use super::preferences::register_install_locally_action;
@@ -120,109 +117,80 @@ pub(crate) fn create_main_window(
         true,
         false,
     );
-    let structured_templates = Rc::new(RefCell::new(Vec::<StructuredPassLine>::new()));
-    let dynamic_field_rows = Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new()));
-    let new_password_popover_state = NewPasswordPopoverState {
-        popover: add_button_popover.clone(),
-        path_entry: path_entry.clone(),
-        store_box: new_password_store_box.clone(),
-        store_list: new_password_store_list.clone(),
-        store_roots: Rc::new(RefCell::new(Vec::new())),
-        selected_store: Rc::new(RefCell::new(None)),
-    };
+    let new_password_popover_state = new_password_popover_state(
+        &add_button_popover,
+        &path_entry,
+        &new_password_store_box,
+        &new_password_store_list,
+    );
     let password_otp_state = PasswordOtpState::new(&otp_entry, &toast_overlay);
-    let password_list_state = PasswordPageState {
-        nav: navigation_view.clone(),
-        page: text_page.clone(),
-        raw_page: raw_text_page.clone(),
-        list: list.clone(),
-        back: back_button.clone(),
-        add: add_button.clone(),
-        find: find_button.clone(),
-        git: git_button.clone(),
-        save: save_button.clone(),
-        win: window_title.clone(),
-        status: password_status.clone(),
-        entry: password_entry.clone(),
-        username: username_entry.clone(),
-        otp: password_otp_state.clone(),
-        dynamic_box: dynamic_fields_box.clone(),
-        raw_button: open_raw_button.clone(),
-        structured_templates: structured_templates.clone(),
-        dynamic_rows: dynamic_field_rows.clone(),
-        text: text_view.clone(),
-        overlay: toast_overlay.clone(),
-    };
-    let store_recipients_request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
-    let store_recipients_values = Rc::new(RefCell::new(Vec::<String>::new()));
-    let store_recipients_saved = Rc::new(RefCell::new(Vec::<String>::new()));
-    let store_recipients_save_in_flight = Rc::new(Cell::new(false));
-    let store_recipients_save_queued = Rc::new(Cell::new(false));
+    let password_list_state = password_page_state(
+        &navigation_view,
+        &text_page,
+        &raw_text_page,
+        &list,
+        &back_button,
+        &add_button,
+        &find_button,
+        &git_button,
+        &save_button,
+        &window_title,
+        &password_status,
+        &password_entry,
+        &username_entry,
+        &password_otp_state,
+        &dynamic_fields_box,
+        &open_raw_button,
+        &text_view,
+        &toast_overlay,
+    );
     let show_hidden_files = Rc::new(Cell::new(false));
-    let store_recipients_page_state = StoreRecipientsPageState {
-        window: window.clone(),
-        nav: navigation_view.clone(),
-        page: store_recipients_page.clone(),
-        list: store_recipients_list.clone(),
-        platform: {
-            #[cfg(feature = "flatpak")]
-            {
-                StoreRecipientsPlatformState {
-                    overlay: toast_overlay.clone(),
-                }
-            }
-            #[cfg(not(feature = "flatpak"))]
-            {
-                StoreRecipientsPlatformState {
-                    entry: standard_parts.store_recipients_entry.clone(),
-                }
-            }
-        },
-        back: back_button.clone(),
-        add: add_button.clone(),
-        find: find_button.clone(),
-        git: git_button.clone(),
-        save: save_button.clone(),
-        win: window_title.clone(),
-        request: store_recipients_request.clone(),
-        recipients: store_recipients_values.clone(),
-        saved_recipients: store_recipients_saved.clone(),
-        save_in_flight: store_recipients_save_in_flight.clone(),
-        save_queued: store_recipients_save_queued.clone(),
-    };
-    let window_navigation_state = WindowNavigationState {
-        nav: navigation_view.clone(),
-        text_page: text_page.clone(),
-        raw_text_page: raw_text_page.clone(),
-        settings_page: settings_page.clone(),
-        log_page: log_page.clone(),
-        back: back_button.clone(),
-        add: add_button.clone(),
-        find: find_button.clone(),
-        git: git_button.clone(),
-        save: save_button.clone(),
-        win: window_title.clone(),
-        username: username_entry.clone(),
-    };
-    let preferences_action_state = PreferencesActionState {
-        window: window.clone(),
-        nav: navigation_view.clone(),
-        page: settings_page.clone(),
-        back: back_button.clone(),
-        add: add_button.clone(),
-        find: find_button.clone(),
-        git: git_button.clone(),
-        save: save_button.clone(),
-        win: window_title.clone(),
-        template_view: new_pass_file_template_view.clone(),
-        stores_list: password_stores.clone(),
-        overlay: toast_overlay.clone(),
-        recipients_page: store_recipients_page_state.clone(),
+    let store_recipients_page_state = store_recipients_page_state(
+        &window,
+        &navigation_view,
+        &store_recipients_page,
+        &store_recipients_list,
+        &back_button,
+        &add_button,
+        &find_button,
+        &git_button,
+        &save_button,
+        &window_title,
+        &toast_overlay,
         #[cfg(not(feature = "flatpak"))]
-        pass_row: standard_parts.pass_row.clone(),
+        &standard_parts,
+    );
+    let window_navigation_state = window_navigation_state(
+        &navigation_view,
+        &text_page,
+        &raw_text_page,
+        &settings_page,
+        &log_page,
+        &back_button,
+        &add_button,
+        &find_button,
+        &git_button,
+        &save_button,
+        &window_title,
+        &username_entry,
+    );
+    let preferences_action_state = preferences_action_state(
+        &window,
+        &navigation_view,
+        &settings_page,
+        &back_button,
+        &add_button,
+        &find_button,
+        &git_button,
+        &save_button,
+        &window_title,
+        &new_pass_file_template_view,
+        &password_stores,
+        &toast_overlay,
+        &store_recipients_page_state,
         #[cfg(not(feature = "flatpak"))]
-        backend_row: standard_parts.backend_row.clone(),
-    };
+        &standard_parts,
+    );
     #[cfg(not(feature = "flatpak"))]
     let git_action_state = create_git_action_state(
         &standard_parts,
@@ -233,87 +201,42 @@ pub(crate) fn create_main_window(
         &store_recipients_page_state,
         &show_hidden_files,
     );
-    let back_action_state = BackActionState {
-        password_page: password_list_state.clone(),
-        recipients_page: store_recipients_page_state.clone(),
-        navigation: window_navigation_state.clone(),
-        show_hidden: show_hidden_files.clone(),
+    let back_action_state = back_action_state(
+        &password_list_state,
+        &store_recipients_page_state,
+        &window_navigation_state,
+        &show_hidden_files,
         #[cfg(not(feature = "flatpak"))]
-        platform: StandardBackActionState {
-            git_actions: git_action_state.clone(),
-        },
-        #[cfg(feature = "flatpak")]
-        platform: StandardBackActionState,
-    };
-    let hidden_entries_action_state = HiddenEntriesActionState {
-        overlay: toast_overlay.clone(),
-        list: list.clone(),
-        navigation: window_navigation_state.clone(),
-        show_hidden: show_hidden_files.clone(),
-    };
+        &git_action_state,
+    );
+    let hidden_entries_action_state = hidden_entries_action_state(
+        &toast_overlay,
+        &list,
+        &window_navigation_state,
+        &show_hidden_files,
+    );
 
-    {
-        let overlay = toast_overlay.clone();
-        let list_state = password_list_state.clone();
-        list.connect_row_activated(move |_list, row| {
-            let label = non_null_to_string_option(row, "label");
-            let root = non_null_to_string_option(row, "root");
-
-            let Some(label) = label else {
-                overlay.add_toast(Toast::new("Couldn't open that item."));
-                return;
-            };
-            let Some(root) = root else {
-                overlay.add_toast(Toast::new("That item is missing its store."));
-                return;
-            };
-            let opened_pass_file = OpenPassFile::from_label(root, &label);
-            open_password_entry_page(&list_state, opened_pass_file, true);
-        });
-    }
+    connect_password_list_activation(&list, &toast_overlay, &password_list_state);
 
     connect_new_password_template_autosave(&new_pass_file_template_view, &toast_overlay);
     connect_store_recipients_entry(&store_recipients_page_state);
-
-    {
-        let entry = password_entry.clone();
-        let btn = copy_password_button.clone();
-        connect_copy_button(&btn, &toast_overlay, move || entry.text().to_string());
-    }
-    {
-        let entry = username_entry.clone();
-        let btn = copy_username_button.clone();
-        connect_copy_button(&btn, &toast_overlay, move || entry.text().to_string());
-    }
-    {
-        let entry = otp_entry.clone();
-        let btn = copy_otp_button.clone();
-        connect_copy_button(&btn, &toast_overlay, move || entry.text().to_string());
-    }
-    {
-        let popover_add = add_button_popover.clone();
-        let popover_git = git_popover.clone();
-        let page_state = password_list_state.clone();
-        let popover_state = new_password_popover_state.clone();
-        path_entry.connect_apply(move |row| {
-            begin_new_password_entry(
-                &page_state,
-                &row.text(),
-                selected_new_password_store(&popover_state),
-                &popover_add,
-                &popover_git,
-            );
-        });
-    }
-
-    {
-        let page_state = password_list_state.clone();
-        let action = SimpleAction::new("save-password", None);
-        action.connect_activate(move |_, _| {
-            save_current_password_entry(&page_state);
-        });
-        window.add_action(&action);
-    }
+    connect_password_copy_buttons(
+        &toast_overlay,
+        &password_entry,
+        &copy_password_button,
+        &username_entry,
+        &copy_username_button,
+        &otp_entry,
+        &copy_otp_button,
+    );
+    connect_new_password_submit(
+        &path_entry,
+        &password_list_state,
+        &new_password_popover_state,
+        &add_button_popover,
+        &git_popover,
+    );
+    register_password_page_actions(&window, &password_list_state);
     register_store_recipients_save_action(
         &window,
         &toast_overlay,
@@ -331,15 +254,6 @@ pub(crate) fn create_main_window(
         &git_action_state,
         &git_popover,
     );
-
-    {
-        let page_state = password_list_state.clone();
-        let action = SimpleAction::new("open-raw-pass-file", None);
-        action.connect_activate(move |_, _| {
-            show_raw_pass_file_page(&page_state);
-        });
-        window.add_action(&action);
-    }
 
     #[cfg(feature = "setup")]
     register_install_locally_action(&window, &primary_menu, &toast_overlay);

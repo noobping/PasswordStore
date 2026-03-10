@@ -1,94 +1,11 @@
-use super::store::{log_error, log_info};
+use super::super::store::{log_error, log_info};
+use super::streams::{join_stream_logger, spawn_stream_logger};
+use super::{CommandControl, CommandLogOptions};
 use std::ffi::OsStr;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 #[cfg(unix)]
 use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::process::{Child, Command, ExitStatus, Output, Stdio};
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CommandLogOptions {
-    pub redact_stdout: bool,
-    pub redact_stdin: bool,
-}
-
-impl CommandLogOptions {
-    pub const DEFAULT: Self = Self {
-        redact_stdout: false,
-        redact_stdin: false,
-    };
-
-    pub const SENSITIVE: Self = Self {
-        redact_stdout: true,
-        redact_stdin: true,
-    };
-}
-
-#[derive(Clone, Default)]
-pub struct CommandControl {
-    child: Arc<Mutex<Option<Child>>>,
-}
-
-impl CommandControl {
-    fn set_child(&self, child: Child) {
-        match self.child.lock() {
-            Ok(mut slot) => *slot = Some(child),
-            Err(poisoned) => {
-                let mut slot = poisoned.into_inner();
-                *slot = Some(child);
-            }
-        }
-    }
-
-    fn clear(&self) {
-        match self.child.lock() {
-            Ok(mut slot) => {
-                slot.take();
-            }
-            Err(poisoned) => {
-                let mut slot = poisoned.into_inner();
-                slot.take();
-            }
-        }
-    }
-
-    fn wait(&self, context: &str, command: &str) -> io::Result<ExitStatus> {
-        loop {
-            let status = match self.child.lock() {
-                Ok(mut slot) => Self::try_wait_locked(&mut slot),
-                Err(poisoned) => {
-                    let mut slot = poisoned.into_inner();
-                    Self::try_wait_locked(&mut slot)
-                }
-            };
-
-            match status {
-                Ok(Some(status)) => {
-                    self.clear();
-                    return Ok(status);
-                }
-                Ok(None) => thread::sleep(Duration::from_millis(50)),
-                Err(err) => {
-                    self.clear();
-                    log_error(format!("{context}\n$ {command}\nfailed to wait: {err}"));
-                    return Err(err);
-                }
-            }
-        }
-    }
-
-    fn try_wait_locked(child: &mut Option<Child>) -> io::Result<Option<ExitStatus>> {
-        let Some(child) = child.as_mut() else {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "command handle missing child process",
-            ));
-        };
-        child.try_wait()
-    }
-}
+use std::process::{Command, ExitStatus, Output, Stdio};
 
 fn shell_quote(value: &OsStr) -> String {
     let text = value.to_string_lossy();
@@ -146,99 +63,6 @@ fn log_command_state(
         log_error(message);
     } else {
         log_info(message);
-    }
-}
-
-fn log_command_stream(
-    context: &str,
-    command: &str,
-    label: &str,
-    bytes: &[u8],
-    redacted: bool,
-) {
-    if bytes.is_empty() {
-        return;
-    }
-
-    let mut message = format!("{context}\n$ {command}\n{label}:");
-    if redacted {
-        message.push_str(" [redacted]");
-        log_info(message);
-        return;
-    }
-
-    let text = String::from_utf8_lossy(bytes);
-    let text = text.trim_end_matches(['\n', '\r']);
-    if text.is_empty() {
-        return;
-    }
-
-    message.push('\n');
-    message.push_str(text);
-    log_info(message);
-}
-
-fn spawn_stream_logger<R>(
-    mut reader: R,
-    context: String,
-    command: String,
-    label: &'static str,
-    redacted: bool,
-) -> thread::JoinHandle<io::Result<Vec<u8>>>
-where
-    R: Read + Send + 'static,
-{
-    thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let mut buf = [0u8; 4096];
-        let mut logged_redaction = false;
-
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => return Ok(bytes),
-                Ok(n) => {
-                    let chunk = &buf[..n];
-                    bytes.extend_from_slice(chunk);
-                    if redacted {
-                        if !logged_redaction {
-                            log_command_stream(&context, &command, label, chunk, true);
-                            logged_redaction = true;
-                        }
-                    } else {
-                        log_command_stream(&context, &command, label, chunk, false);
-                    }
-                }
-                Err(err) => {
-                    log_error(format!(
-                        "{context}\n$ {command}\nfailed to read {label}: {err}"
-                    ));
-                    return Err(err);
-                }
-            }
-        }
-    })
-}
-
-fn join_stream_logger(
-    handle: Option<thread::JoinHandle<io::Result<Vec<u8>>>>,
-    context: &str,
-    command: &str,
-    label: &str,
-) -> io::Result<Vec<u8>> {
-    let Some(handle) = handle else {
-        return Ok(Vec::new());
-    };
-
-    match handle.join() {
-        Ok(result) => result,
-        Err(_) => {
-            let err = io::Error::new(
-                io::ErrorKind::Other,
-                format!("stream logger panicked while reading {label}"),
-            );
-            log_error(format!("{context}\n$ {command}\n{err}"));
-            Err(err)
-        }
     }
 }
 
@@ -327,7 +151,7 @@ fn run_command_output_inner(
     }
 }
 
-pub fn run_command_output(
+pub(crate) fn run_command_output(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
@@ -336,7 +160,7 @@ pub fn run_command_output(
 }
 
 #[cfg(not(feature = "flatpak"))]
-pub fn run_command_output_controlled(
+pub(crate) fn run_command_output_controlled(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
@@ -345,7 +169,7 @@ pub fn run_command_output_controlled(
     run_command_output_inner(cmd, context, options, Some(control))
 }
 
-pub fn run_command_status(
+pub(crate) fn run_command_status(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
@@ -353,7 +177,7 @@ pub fn run_command_status(
     run_command_output(cmd, context, options).map(|output| output.status)
 }
 
-pub fn run_command_with_input(
+pub(crate) fn run_command_with_input(
     cmd: &mut Command,
     context: &str,
     input: &str,

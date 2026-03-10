@@ -21,7 +21,7 @@ mod standard;
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform;
 
-pub(crate) use self::platform::StandardBackActionState;
+pub(crate) use self::platform::PlatformBackActionState;
 use self::platform::{before_back_action, configure_shortcuts};
 
 #[derive(Clone)]
@@ -30,7 +30,7 @@ pub(crate) struct BackActionState {
     pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
     pub(crate) show_hidden: Rc<Cell<bool>>,
-    pub(crate) platform: StandardBackActionState,
+    pub(crate) platform: PlatformBackActionState,
 }
 
 #[derive(Clone)]

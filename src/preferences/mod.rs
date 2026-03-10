@@ -12,10 +12,10 @@ mod flatpak;
 mod standard;
 
 #[cfg(feature = "flatpak")]
-use self::flatpak as feature;
+use self::flatpak as platform_defaults;
 #[cfg(not(feature = "flatpak"))]
-use self::standard as feature;
-use self::feature::default_store_dirs;
+use self::standard as platform_defaults;
+use self::platform_defaults::default_store_dirs;
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 

@@ -3,11 +3,11 @@ use adw::Application;
 use adw::prelude::GtkApplicationExt;
 
 #[derive(Clone)]
-pub(crate) struct StandardBackActionState {
+pub(crate) struct PlatformBackActionState {
     pub(crate) git_actions: GitActionState,
 }
 
-pub(crate) fn before_back_action(state: &StandardBackActionState) -> bool {
+pub(crate) fn before_back_action(state: &PlatformBackActionState) -> bool {
     handle_git_busy_back(&state.git_actions)
 }
 

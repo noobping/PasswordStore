@@ -26,7 +26,10 @@ use adw::gtk::Popover;
 use adw::prelude::*;
 use adw::Toast;
 
-use self::editor::{current_editor_contents, structured_editor_contents, sync_editor_contents};
+use self::editor::{
+    add_empty_otp_secret as add_empty_otp_secret_to_editor, current_editor_contents,
+    structured_editor_contents, sync_editor_contents,
+};
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform;
 use self::platform::handle_open_password_entry_error;
@@ -170,6 +173,10 @@ pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
     show_password_editor_chrome(state, "Raw Pass File", &subtitle);
 
     push_navigation_page_if_needed(&state.nav, &state.raw_page);
+}
+
+pub(crate) fn add_empty_otp_secret(state: &PasswordPageState) {
+    add_empty_otp_secret_to_editor(state);
 }
 
 pub(crate) fn save_current_password_entry(state: &PasswordPageState) {

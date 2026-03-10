@@ -46,6 +46,7 @@ pub(super) fn password_page_state(
         entry: widgets.password_entry.clone(),
         username: widgets.username_entry.clone(),
         otp: otp.clone(),
+        otp_add_button: widgets.add_otp_button.clone(),
         dynamic_box: widgets.dynamic_fields_box.clone(),
         raw_button: widgets.open_raw_button.clone(),
         structured_templates: Rc::new(RefCell::new(Vec::<StructuredPassLine>::new())),

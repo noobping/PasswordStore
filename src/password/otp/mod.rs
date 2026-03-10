@@ -13,6 +13,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
+const EMPTY_OTP_URL: &str =
+    "otpauth://totp/PasswordStore?issuer=PasswordStore&secret=&digits=6&period=30";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OtpMode {
     Live,
@@ -78,8 +81,13 @@ impl PasswordOtpState {
         };
 
         *self.template.borrow_mut() = Some(template);
-        *self.url.borrow_mut() = Some(url);
+        *self.url.borrow_mut() = Some(url.clone());
         self.row.set_visible(true);
+        self.mode.set(OtpMode::Live);
+        if otp_secret_is_blank(&url) {
+            self.set_edit_mode(false);
+            return;
+        }
         self.render(show_errors);
     }
 
@@ -106,6 +114,13 @@ impl PasswordOtpState {
         }
 
         Ok(Some(url))
+    }
+
+    pub(crate) fn add_empty_secret(&self) {
+        *self.template.borrow_mut() = Some(OtpFieldTemplate::BareUrl);
+        *self.url.borrow_mut() = Some(EMPTY_OTP_URL.to_string());
+        self.row.set_visible(true);
+        self.set_edit_mode(true);
     }
 
     fn connect_row_signals(&self) {
@@ -145,7 +160,7 @@ impl PasswordOtpState {
         });
     }
 
-    fn has_otp(&self) -> bool {
+    pub(crate) fn has_otp(&self) -> bool {
         self.template.borrow().is_some()
     }
 
@@ -163,21 +178,20 @@ impl PasswordOtpState {
             return;
         }
 
-        self.mode.set(OtpMode::Editing);
-        self.render(false);
-        if let Some(delegate) = self.row.delegate() {
-            glib::idle_add_local_once(move || {
-                delegate.grab_focus();
-                delegate.select_region(0, -1);
-            });
-        } else {
-            self.row.grab_focus_without_selecting();
-        }
+        self.set_edit_mode(true);
     }
 
     fn exit_edit_mode(&self, show_errors: bool) {
         self.mode.set(OtpMode::Live);
         self.render(show_errors);
+    }
+
+    fn set_edit_mode(&self, focus_editor: bool) {
+        self.mode.set(OtpMode::Editing);
+        self.render(false);
+        if focus_editor {
+            self.focus_editor();
+        }
     }
 
     fn bump_refresh_generation(&self) -> u64 {
@@ -206,6 +220,17 @@ impl PasswordOtpState {
         self.row.set_show_apply_button(true);
         self.row.set_text(&secret);
         self.countdown.set_visible(false);
+    }
+
+    fn focus_editor(&self) {
+        if let Some(delegate) = self.row.delegate() {
+            glib::idle_add_local_once(move || {
+                delegate.grab_focus();
+                delegate.select_region(0, -1);
+            });
+        } else {
+            self.row.grab_focus_without_selecting();
+        }
     }
 
     fn render_live_mode(&self, show_errors: bool) {
@@ -279,9 +304,18 @@ impl PasswordOtpState {
     }
 }
 
+fn otp_secret_is_blank(url: &str) -> bool {
+    otp_secret_from_url(url)
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::url::{otp_period, otp_secret_from_url, replace_otp_secret};
+    use super::{otp_secret_is_blank, EMPTY_OTP_URL};
+    use totp_rs::TOTP;
 
     #[test]
     fn otp_secret_is_read_from_otpauth_url() {
@@ -305,5 +339,20 @@ mod tests {
     #[test]
     fn otp_period_defaults_to_thirty_seconds() {
         assert_eq!(otp_period("otpauth://totp/Test?secret=ABC123"), 30);
+    }
+
+    #[test]
+    fn empty_or_missing_otp_secret_is_treated_as_blank() {
+        assert!(otp_secret_is_blank(EMPTY_OTP_URL));
+        assert!(otp_secret_is_blank("otpauth://totp/Test?issuer=Example"));
+        assert!(!otp_secret_is_blank(
+            "otpauth://totp/Test?issuer=Example&secret=ABC123"
+        ));
+    }
+
+    #[test]
+    fn placeholder_url_becomes_a_valid_totp_url_after_filling_in_the_secret() {
+        let url = replace_otp_secret(EMPTY_OTP_URL, "JBSWY3DPEHPK3PXP");
+        assert!(TOTP::from_url_unchecked(&url).is_ok());
     }
 }

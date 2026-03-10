@@ -25,6 +25,7 @@ pub(crate) struct PasswordPageState {
     pub(crate) entry: PasswordEntryRow,
     pub(crate) username: EntryRow,
     pub(crate) otp: PasswordOtpState,
+    pub(crate) otp_add_button: Button,
     pub(crate) dynamic_box: GtkBox,
     pub(crate) raw_button: Button,
     pub(crate) structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
@@ -42,6 +43,7 @@ fn hide_password_editor_fields(state: &PasswordPageState) {
     state.entry.set_visible(false);
     state.username.set_visible(false);
     state.otp.clear();
+    state.otp_add_button.set_visible(false);
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);
 }
@@ -67,12 +69,14 @@ pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
     state.status.set_visible(false);
     state.entry.set_visible(true);
     state.raw_button.set_visible(true);
+    state.otp_add_button.set_visible(false);
 }
 
 pub(super) fn reset_password_editor(state: &PasswordPageState) {
     state.entry.set_text("");
     sync_username_row(&state.username, None);
     state.otp.clear();
+    state.otp_add_button.set_visible(false);
     clear_box_children(&state.dynamic_box);
     state.dynamic_box.set_visible(false);
     state.raw_button.set_visible(false);

@@ -60,18 +60,18 @@ fn desktop_file() {
     let app_id = app_id();
     let project = env!("CARGO_PKG_NAME");
     let dir = Path::new(".");
-    let version = env!("CARGO_PKG_VERSION");
     let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
     let contents = format!(
         "[Desktop Entry]
 Type=Application
-Version={version}
-Name={project}
+Version=1.0
+Name=Keycord
 Comment={comment}
-Exec={project} %u
+Exec={project}
 Icon={app_id}
 Terminal=false
-Categories=Utility;
+Categories=System;Security;
+StartupNotify=true
 "
     );
     fs::write(dir.join(format!("{project}.desktop")), contents).expect("Can not build desktop file")

@@ -1,10 +1,10 @@
 
-# Password Store
+# Keycord
 
 ![License](https://img.shields.io/badge/license-GPLv3+-blue.svg)
-[![Linux](https://github.com/noobping/PasswordStore/actions/workflows/linux.yml/badge.svg)](https://github.com/noobping/PasswordStore/actions/workflows/linux.yml)
+[![Linux](https://github.com/noobping/keycord/actions/workflows/linux.yml/badge.svg)](https://github.com/noobping/keycord/actions/workflows/linux.yml)
 
-Password Store is a app for people who use the standard Unix password manager [`pass`](https://www.passwordstore.org/).
+Keycord is a app for people who use the standard Unix password manager [`pass`](https://www.passwordstore.org/).
 
 if your passwords already live in a `pass` store, this project gives you a clean graphical app to browse, search, copy, edit, and organize them.
 
@@ -54,7 +54,7 @@ while making day-to-day use easier:
 
 ## How It Works
 
-Password Store reads and writes standard `pass` stores. On a normal build, it can work in two ways:
+Keycord reads and writes standard `pass` stores. On a normal build, it can work in two ways:
 
 - `Integrated` backend: the app reads and writes the store directly. This is the default.
 - `Host command` backend: the app runs your chosen `pass` command (wich can come from a Docker container if you want) instead.

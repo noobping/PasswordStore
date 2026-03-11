@@ -2,21 +2,21 @@ version: 1
 
 script:
   - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/{256x256,scalable,symbolic}/apps AppDir/usr/share/metainfo
-  - cp data/256x256/apps/io.github.noobping.passwordstore.png AppDir/usr/share/icons/hicolor/256x256/apps/
+  - cp data/256x256/apps/io.github.noobping.keycord.png AppDir/usr/share/icons/hicolor/256x256/apps/
   - cp -r data/scalable/apps/* AppDir/usr/share/icons/hicolor/scalable/apps/
   - cp -r data/symbolic/apps/* AppDir/usr/share/icons/hicolor/symbolic/apps/
-  - cp target/release/passwordstore AppDir/usr/bin/
-  - cp data/metainfo.xml AppDir/usr/share/metainfo/io.github.noobping.passwordstore.appdata.xml
+  - cp target/release/keycord AppDir/usr/bin/
+  - cp data/metainfo.xml AppDir/usr/share/metainfo/io.github.noobping.keycord.appdata.xml
 
 AppDir:
   path: ./AppDir
 
   app_info:
-    id: io.github.noobping.passwordstore
-    name: "Password Store"
-    icon: io.github.noobping.passwordstore
+    id: io.github.noobping.keycord
+    name: "Keycord"
+    icon: io.github.noobping.keycord
     version: "1.0.5"
-    exec: usr/bin/passwordstore
+    exec: usr/bin/keycord
 
   apt:
     arch: amd64

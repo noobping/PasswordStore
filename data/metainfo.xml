@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.noobping.passwordstore</id>
+  <id>io.github.noobping.keycord</id>
 
-  <name>Password Store</name>
+  <name>Keycord</name>
   <summary>A modern Rust-based password manager for Linux, built with GTK4/Libadwaita</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
@@ -13,7 +13,7 @@
   </developer>
 
   <description>
-    <p>Password Store is a modern client for the standard Unix password manager “pass”.</p>
+    <p>Keycord is a modern client for the standard Unix password manager “pass”.</p>
     <ul>
       <li>Browse and search entries</li>
       <li>Copy passwords to clipboard</li>
@@ -23,26 +23,26 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">io.github.noobping.passwordstore.desktop</launchable>
+  <launchable type="desktop-id">io.github.noobping.keycord.desktop</launchable>
 
   <provides>
-    <binary>passwordstore</binary>
+    <binary>keycord</binary>
   </provides>
 
   <screenshots>
     <screenshot type="default">
       <image>
-        https://raw.githubusercontent.com/noobping/passwordstore/main/screenshots/menu.png</image>
+        https://raw.githubusercontent.com/noobping/keycord/main/screenshots/menu.png</image>
       <caption>Password list and main menu</caption>
     </screenshot>
     <screenshot>
       <image>
-        https://raw.githubusercontent.com/noobping/passwordstore/main/screenshots/rename.png</image>
+        https://raw.githubusercontent.com/noobping/keycord/main/screenshots/rename.png</image>
       <caption>Rename, move or remove a pass file</caption>
     </screenshot>
     <screenshot>
       <image>
-        https://raw.githubusercontent.com/noobping/passwordstore/main/screenshots/file.png</image>
+        https://raw.githubusercontent.com/noobping/keycord/main/screenshots/file.png</image>
       <caption>Pass file</caption>
     </screenshot>
   </screenshots>
@@ -55,8 +55,8 @@
     </release>
   </releases>
 
-  <url type="homepage">https://github.com/noobping/passwordstore</url>
-  <url type="bugtracker">https://github.com/noobping/passwordstore/issues</url>
+  <url type="homepage">https://github.com/noobping/keycord</url>
+  <url type="bugtracker">https://github.com/noobping/keycord/issues</url>
 
   <content_rating type="oars-1.1"/>
 

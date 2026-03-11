@@ -43,7 +43,7 @@ pub(crate) struct WindowChrome<'a> {
     pub(crate) win: &'a WindowTitle,
 }
 
-pub(crate) const APP_WINDOW_TITLE: &str = "Password Store";
+pub(crate) const APP_WINDOW_TITLE: &str = "Keycord";
 pub(crate) const APP_WINDOW_SUBTITLE: &str = "Manage your passwords";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

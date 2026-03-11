@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <object class="AdwApplicationWindow" id="main_window">
-    <property name="title">Password Store</property>
+    <property name="title">Keycord</property>
     <property name="default-width">600</property>
     <property name="default-height">450</property>
-    <property name="icon-name">io.github.noobping.passwordstore</property>
+    <property name="icon-name">io.github.noobping.keycord</property>
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
@@ -95,7 +95,7 @@
             </child>
             <child type="title">
               <object class="AdwWindowTitle" id="window_title">
-                <property name="title" translatable="yes">Password Store</property>
+                <property name="title" translatable="yes">Keycord</property>
                 <property name="subtitle" translatable="yes">Manage your passwords</property>
               </object>
             </child>
@@ -140,7 +140,7 @@
                                 <property name="vexpand">true</property>
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
-                                    <property name="icon-name">passwordstore-symbolic</property>
+                                    <property name="icon-name">keycord-symbolic</property>
                                   </object>
                                 </child>
                               </object>
@@ -459,7 +459,7 @@
 
                             <child>
                               <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">Password Stores</property>
+                                <property name="title" translatable="yes">Keycords</property>
                                 <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>
                                 <child>
                                   <object class="GtkListBox" id="password_stores">
@@ -483,7 +483,7 @@
                               <object class="AdwPreferencesGroup" id="backend_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
-                                <property name="description" translatable="yes">Choose how Password Store opens your data. Integrated is the default. Use Host command to run your own command.</property>
+                                <property name="description" translatable="yes">Choose how Keycord opens your data. Integrated is the default. Use Host command to run your own command.</property>
                                 <child>
                                   <object class="AdwComboRow" id="backend_row">
                                     <property name="visible">false</property>
@@ -806,7 +806,7 @@
         <attribute name="action">win.open-log</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_About PasswordStore</attribute>
+        <attribute name="label" translatable="yes">_About Keycord</attribute>
         <attribute name="action">app.about</attribute>
       </item>
     </section>

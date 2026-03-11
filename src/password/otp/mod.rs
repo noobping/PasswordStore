@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const EMPTY_OTP_URL: &str =
-    "otpauth://totp/PasswordStore?issuer=PasswordStore&secret=&digits=6&period=30";
+    "otpauth://totp/Keycord?issuer=Keycord&secret=&digits=6&period=30";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OtpMode {

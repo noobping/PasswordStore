@@ -10,7 +10,7 @@ if your passwords already live in a `pass` store, this project gives you a clean
 
 It is:
 
-- a (local) Linux application
+- a (local) application
 - written in Rust
 - built with GTK4 and Libadwaita
 - designed around the existing `pass` ecosystem, not around a separate cloud account
@@ -71,7 +71,7 @@ There are a few important runtime differences depending on how you build the app
 
 | Build mode | Best for | Notes |
 | --- | --- | --- |
-| Standard build | Most Linux users and developers | Default build. Uses the integrated backend by default, can switch to a custom `pass` command in Preferences, supports Git clone/sync, and can use `pass import` when available. |
+| Standard build | Most users and developers | Default build. Uses the integrated backend by default, can switch to a custom `pass` command in Preferences, supports Git clone/sync, and can use `pass import` when available. |
 | `flatpak` feature | Sandboxed / Containerized environments | Uses the integrated backend only and includes built-in private-key management, avoiding external dependencies. |
 | `setup` feature | Self-built installs | Adds an in-app action to add or remove the built binary from the app menu. |
 

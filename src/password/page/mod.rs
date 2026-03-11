@@ -256,7 +256,13 @@ pub(crate) fn show_password_list_page(
 
     reset_password_editor(state);
 
-    let list_actions = PasswordListActions::new(&state.add, &state.git, &state.find, &state.save);
+    let list_actions = PasswordListActions::new(
+        &state.add,
+        &state.git,
+        &state.store,
+        &state.find,
+        &state.save,
+    );
     load_passwords_async(
         &state.list,
         &list_actions,

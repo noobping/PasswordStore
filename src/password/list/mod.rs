@@ -20,6 +20,7 @@ struct ListActionVisibility {
     add_visible: bool,
     find_visible: bool,
     git_visible: bool,
+    store_visible: bool,
     save_visible: bool,
 }
 
@@ -27,15 +28,23 @@ struct ListActionVisibility {
 pub(crate) struct PasswordListActions {
     pub(crate) add: Button,
     pub(crate) git: Button,
+    pub(crate) store: Button,
     pub(crate) find: Button,
     pub(crate) save: Button,
 }
 
 impl PasswordListActions {
-    pub(crate) fn new(add: &Button, git: &Button, find: &Button, save: &Button) -> Self {
+    pub(crate) fn new(
+        add: &Button,
+        git: &Button,
+        store: &Button,
+        find: &Button,
+        save: &Button,
+    ) -> Self {
         Self {
             add: add.clone(),
             git: git.clone(),
+            store: store.clone(),
             find: find.clone(),
             save: save.clone(),
         }
@@ -52,6 +61,7 @@ fn list_action_visibility(
             add_visible: false,
             find_visible: false,
             git_visible: false,
+            store_visible: false,
             save_visible: false,
         };
     }
@@ -60,6 +70,7 @@ fn list_action_visibility(
         add_visible: has_store_dirs,
         find_visible: !empty,
         git_visible: should_show_root_git_button(show_list_actions, has_store_dirs),
+        store_visible: should_show_root_store_button(show_list_actions, has_store_dirs),
         save_visible: false,
     }
 }
@@ -69,8 +80,19 @@ fn should_show_root_git_button(show_list_actions: bool, has_store_dirs: bool) ->
     {
         show_list_actions && !has_store_dirs
     }
-
     #[cfg(feature = "flatpak")]
+    {
+        let _ = (show_list_actions, has_store_dirs);
+        false
+    }
+}
+
+fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
+    #[cfg(feature = "flatpak")]
+    {
+        show_list_actions && !has_store_dirs
+    }
+    #[cfg(not(feature = "flatpak"))]
     {
         let _ = (show_list_actions, has_store_dirs);
         false
@@ -92,6 +114,7 @@ pub(crate) fn load_passwords_async(
     let has_store_dirs = !settings.stores().is_empty();
 
     actions.git.set_visible(false);
+    actions.store.set_visible(false);
     actions.add.set_visible(show_list_actions && has_store_dirs);
     actions.find.set_visible(show_list_actions);
     list.set_placeholder(Some(&loading_placeholder()));
@@ -129,6 +152,12 @@ pub(crate) fn load_passwords_async(
             actions_for_disconnect
                 .git
                 .set_visible(should_show_root_git_button(
+                    show_list_actions,
+                    has_store_dirs,
+                ));
+            actions_for_disconnect
+                .store
+                .set_visible(should_show_root_store_button(
                     show_list_actions,
                     has_store_dirs,
                 ));
@@ -181,6 +210,7 @@ fn update_list_actions(
     actions.save.set_visible(visibility.save_visible);
     actions.find.set_visible(visibility.find_visible);
     actions.git.set_visible(visibility.git_visible);
+    actions.store.set_visible(visibility.store_visible);
 }
 
 fn prune_missing_store_dirs(settings: &Preferences) {
@@ -193,23 +223,31 @@ fn prune_missing_store_dirs(settings: &Preferences) {
 mod tests {
     use super::{
         collect_items_options, list_action_visibility, should_show_root_git_button,
-        ListActionVisibility,
+        should_show_root_store_button, ListActionVisibility,
     };
     use crate::password::model::CollectItemsOptions;
 
     #[test]
-    fn root_git_button_is_hidden_for_existing_store_setup() {
+    fn root_shortcut_buttons_are_hidden_for_existing_store_setup() {
         assert!(!should_show_root_git_button(true, true));
+        assert!(!should_show_root_store_button(true, true));
         assert!(!should_show_root_git_button(false, false));
+        assert!(!should_show_root_store_button(false, false));
     }
 
     #[test]
-    fn root_git_button_only_shows_without_any_stores_on_standard_builds() {
+    fn root_shortcut_buttons_match_the_current_build() {
         #[cfg(not(feature = "flatpak"))]
-        assert!(should_show_root_git_button(true, false));
+        {
+            assert!(should_show_root_git_button(true, false));
+            assert!(!should_show_root_store_button(true, false));
+        }
 
         #[cfg(feature = "flatpak")]
-        assert!(!should_show_root_git_button(true, false));
+        {
+            assert!(!should_show_root_git_button(true, false));
+            assert!(should_show_root_store_button(true, false));
+        }
     }
 
     #[test]
@@ -220,6 +258,7 @@ mod tests {
                 add_visible: false,
                 find_visible: false,
                 git_visible: false,
+                store_visible: false,
                 save_visible: false,
             }
         );
@@ -233,6 +272,7 @@ mod tests {
                 add_visible: true,
                 find_visible: true,
                 git_visible: false,
+                store_visible: false,
                 save_visible: false,
             }
         );
@@ -242,13 +282,14 @@ mod tests {
                 add_visible: true,
                 find_visible: false,
                 git_visible: false,
+                store_visible: false,
                 save_visible: false,
             }
         );
     }
 
     #[test]
-    fn list_actions_show_restore_only_for_empty_missing_store_setup() {
+    fn list_actions_show_the_build_specific_root_shortcut_for_empty_missing_store_setup() {
         #[cfg(not(feature = "flatpak"))]
         assert_eq!(
             list_action_visibility(true, false, true),
@@ -256,6 +297,7 @@ mod tests {
                 add_visible: false,
                 find_visible: false,
                 git_visible: true,
+                store_visible: false,
                 save_visible: false,
             }
         );
@@ -267,6 +309,7 @@ mod tests {
                 add_visible: false,
                 find_visible: false,
                 git_visible: false,
+                store_visible: true,
                 save_visible: false,
             }
         );

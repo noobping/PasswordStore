@@ -210,6 +210,7 @@ pub(crate) fn register_list_visibility_action(
         let list_actions = PasswordListActions::new(
             &state.navigation.add,
             &state.navigation.git,
+            &state.navigation.store,
             &state.navigation.find,
             &state.navigation.save,
         );

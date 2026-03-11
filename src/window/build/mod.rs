@@ -7,6 +7,8 @@ use crate::password::new_item::register_open_new_password_action;
 use crate::password::otp::PasswordOtpState;
 #[cfg(feature = "setup")]
 use crate::setup::*;
+#[cfg(feature = "flatpak")]
+use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
     connect_store_recipients_entry, register_store_recipients_save_action,
 };
@@ -64,8 +66,6 @@ pub(crate) fn create_main_window(
     }
     #[cfg(feature = "flatpak")]
     configure_flatpak_window(&widgets);
-    #[cfg(feature = "flatpak")]
-    widgets.git_button.set_visible(false);
     set_save_button_for_password(&widgets.save_button);
 
     #[cfg(not(feature = "flatpak"))]
@@ -74,6 +74,7 @@ pub(crate) fn create_main_window(
     let list_actions = PasswordListActions::new(
         &widgets.add_button,
         &widgets.git_button,
+        &widgets.store_button,
         &widgets.find_button,
         &widgets.save_button,
     );
@@ -162,6 +163,13 @@ pub(crate) fn create_main_window(
         &widgets.window,
         &widgets.toast_overlay,
         &widgets.password_stores,
+        &store_recipients_page_state,
+    );
+    #[cfg(feature = "flatpak")]
+    register_open_store_picker_action(
+        &widgets.window,
+        &widgets.password_stores,
+        &widgets.toast_overlay,
         &store_recipients_page_state,
     );
     register_open_preferences_action(&widgets.window, &preferences_action_state);

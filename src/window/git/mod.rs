@@ -95,6 +95,7 @@ fn reload_password_list(state: &GitActionState) {
     let list_actions = PasswordListActions::new(
         &state.navigation.add,
         &state.navigation.git,
+        &state.navigation.store,
         &state.navigation.find,
         &state.navigation.save,
     );

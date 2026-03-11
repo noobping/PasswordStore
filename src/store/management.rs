@@ -9,6 +9,8 @@ pub(crate) use super::recipients_page::{
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+#[cfg(feature = "flatpak")]
+use crate::support::actions::register_window_action;
 #[cfg(not(feature = "flatpak"))]
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
@@ -207,7 +209,7 @@ fn append_store_picker_row(
         "Choose a folder. Empty folders become new stores.",
         "folder-new-symbolic",
         move || {
-            open_store_picker(
+            prompt_add_or_create_store(
                 &window,
                 &list_for_action,
                 &settings,
@@ -378,7 +380,7 @@ fn append_store_clone_row(
     );
 }
 
-fn open_store_picker(
+pub(crate) fn prompt_add_or_create_store(
     window: &ApplicationWindow,
     list: &ListBox,
     settings: &Preferences,
@@ -438,6 +440,24 @@ fn open_store_picker(
             };
         },
     );
+}
+
+#[cfg(feature = "flatpak")]
+pub(crate) fn register_open_store_picker_action(
+    window: &ApplicationWindow,
+    list: &ListBox,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let action_window = window.clone();
+    let prompt_window = action_window.clone();
+    let list = list.clone();
+    let overlay = overlay.clone();
+    let recipients_page = recipients_page.clone();
+    register_window_action(&action_window, "open-store-picker", move || {
+        let settings = Preferences::new();
+        prompt_add_or_create_store(&prompt_window, &list, &settings, &overlay, &recipients_page);
+    });
 }
 
 #[cfg(not(feature = "flatpak"))]

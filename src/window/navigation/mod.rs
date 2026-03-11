@@ -25,6 +25,7 @@ pub(crate) struct WindowNavigationState {
     pub(crate) add: Button,
     pub(crate) find: Button,
     pub(crate) git: Button,
+    pub(crate) store: Button,
     pub(crate) save: Button,
     pub(crate) win: WindowTitle,
     pub(crate) username: EntryRow,
@@ -35,6 +36,7 @@ pub(crate) struct WindowChrome<'a> {
     pub(crate) add: &'a Button,
     pub(crate) find: &'a Button,
     pub(crate) git: &'a Button,
+    pub(crate) store: &'a Button,
     pub(crate) save: &'a Button,
     pub(crate) win: &'a WindowTitle,
 }
@@ -88,6 +90,7 @@ pub(crate) fn window_chrome<'a>(
     add: &'a Button,
     find: &'a Button,
     git: &'a Button,
+    store: &'a Button,
     save: &'a Button,
     win: &'a WindowTitle,
 ) -> WindowChrome<'a> {
@@ -96,6 +99,7 @@ pub(crate) fn window_chrome<'a>(
         add,
         find,
         git,
+        store,
         save,
         win,
     }
@@ -115,6 +119,7 @@ macro_rules! impl_has_window_chrome {
                         &self.add,
                         &self.find,
                         &self.git,
+                        &self.store,
                         &self.save,
                         &self.win,
                     )
@@ -143,9 +148,15 @@ pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs
     chrome.add.set_visible(has_store_dirs);
     chrome.find.set_visible(true);
     #[cfg(not(feature = "flatpak"))]
-    chrome.git.set_visible(!has_store_dirs);
+    {
+        chrome.git.set_visible(!has_store_dirs);
+        chrome.store.set_visible(false);
+    }
     #[cfg(feature = "flatpak")]
-    chrome.git.set_visible(false);
+    {
+        chrome.git.set_visible(false);
+        chrome.store.set_visible(!has_store_dirs);
+    }
     chrome.win.set_title(APP_WINDOW_TITLE);
     chrome.win.set_subtitle(APP_WINDOW_SUBTITLE);
 }
@@ -160,6 +171,7 @@ pub(crate) fn show_secondary_page_chrome(
     chrome.add.set_visible(false);
     chrome.find.set_visible(false);
     chrome.git.set_visible(false);
+    chrome.store.set_visible(false);
     chrome.save.set_visible(save_visible);
     set_save_button_for_password(chrome.save);
     chrome.win.set_title(title);

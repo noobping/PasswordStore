@@ -7,4 +7,5 @@
 AppDir/
 excludelist
 resources.xml
+squashfs*
 target/

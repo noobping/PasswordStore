@@ -1,8 +1,12 @@
 use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
+use crate::logging::{log_error, run_command_output, CommandLogOptions};
+use crate::preferences::Preferences;
+use crate::support::git::has_git_repository;
 use ripasso::crypto::CryptoImpl;
 use ripasso::pass::PasswordStore;
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Command, Output};
 
 fn user_home() -> Option<PathBuf> {
     dirs_next::home_dir()
@@ -41,6 +45,100 @@ fn load_store_entry(
     Ok((store, entry))
 }
 
+fn password_entry_git_path(label: &str) -> String {
+    format!("{label}.gpg")
+}
+
+fn git_command_error(action: &str, output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stderr.is_empty() {
+        format!("{action} failed: {stderr}")
+    } else if !stdout.is_empty() {
+        format!("{action} failed: {stdout}")
+    } else {
+        format!("{action} failed: {}", output.status)
+    }
+}
+
+fn run_store_git_command(
+    store_root: &str,
+    context: &str,
+    configure: impl FnOnce(&mut Command),
+) -> Result<Output, String> {
+    let settings = Preferences::new();
+    let mut cmd = settings.git_command();
+    cmd.arg("-C").arg(store_root);
+    configure(&mut cmd);
+    run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
+        .map_err(|err| format!("Failed to run git command: {err}"))
+}
+
+fn stage_git_paths(store_root: &str, paths: &[String]) -> Result<(), String> {
+    let output = run_store_git_command(store_root, "Stage password store Git changes", |cmd| {
+        cmd.arg("add").arg("-A").arg("--").args(paths);
+    })?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(git_command_error("git add", &output))
+    }
+}
+
+fn staged_git_paths_have_changes(store_root: &str, paths: &[String]) -> Result<bool, String> {
+    let output = run_store_git_command(
+        store_root,
+        "Check staged password store Git changes",
+        |cmd| {
+            cmd.args(["diff", "--cached", "--quiet", "--exit-code", "--"])
+                .args(paths);
+        },
+    )?;
+    match output.status.code() {
+        Some(0) => Ok(false),
+        Some(1) => Ok(true),
+        _ => Err(git_command_error("git diff --cached", &output)),
+    }
+}
+
+fn commit_git_paths(store_root: &str, message: &str, paths: &[String]) -> Result<(), String> {
+    if paths.is_empty() || !has_git_repository(store_root) {
+        return Ok(());
+    }
+    stage_git_paths(store_root, paths)?;
+    if !staged_git_paths_have_changes(store_root, paths)? {
+        return Ok(());
+    }
+
+    let output = run_store_git_command(store_root, "Commit password store Git changes", |cmd| {
+        cmd.arg("commit")
+            .arg("-m")
+            .arg(message)
+            .arg("--")
+            .args(paths);
+    })?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(git_command_error("git commit", &output))
+    }
+}
+
+fn maybe_commit_git_paths(
+    store_root: &str,
+    message: &str,
+    paths: impl IntoIterator<Item = String>,
+) {
+    let mut paths = paths.into_iter().collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    if let Err(err) = commit_git_paths(store_root, message, &paths) {
+        log_error(format!(
+            "Integrated backend Git commit failed for {store_root}: {err}"
+        ));
+    }
+}
+
 pub(crate) fn read_password_entry(
     store_root: &str,
     label: &str,
@@ -73,7 +171,8 @@ pub(crate) fn save_password_entry(
     store
         .reload_password_list()
         .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
-    if let Some(entry) = store
+    let git_message;
+    let result = if let Some(entry) = store
         .passwords
         .iter()
         .find(|entry| entry.name == label)
@@ -84,15 +183,21 @@ pub(crate) fn save_password_entry(
                 "That password entry already exists.",
             ));
         }
+        git_message = format!("Update password for {label}");
         entry
             .update(contents.to_string(), &store)
             .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))
     } else {
+        git_message = format!("Add password for {label}");
         store
             .new_password_file(label, contents)
             .map(|_| ())
             .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))
+    };
+    if result.is_ok() {
+        maybe_commit_git_paths(store_root, &git_message, [password_entry_git_path(label)]);
     }
+    result
 }
 
 pub(crate) fn rename_password_entry(
@@ -104,10 +209,21 @@ pub(crate) fn rename_password_entry(
     store
         .reload_password_list()
         .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
-    store
+    let result = store
         .rename_file(old_label, new_label)
         .map(|_| ())
-        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))
+        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()));
+    if result.is_ok() {
+        maybe_commit_git_paths(
+            store_root,
+            &format!("Rename password from {old_label} to {new_label}"),
+            [
+                password_entry_git_path(old_label),
+                password_entry_git_path(new_label),
+            ],
+        );
+    }
+    result
 }
 
 pub(crate) fn delete_password_entry(
@@ -116,9 +232,17 @@ pub(crate) fn delete_password_entry(
 ) -> Result<(), PasswordEntryWriteError> {
     let (store, entry) =
         load_store_entry(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
-    entry
+    let result = entry
         .delete_file(&store)
-        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))
+        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()));
+    if result.is_ok() {
+        maybe_commit_git_paths(
+            store_root,
+            &format!("Remove password for {label}"),
+            [password_entry_git_path(label)],
+        );
+    }
+    result
 }
 
 pub(crate) fn save_store_recipients(
@@ -149,6 +273,10 @@ pub(crate) fn save_store_recipients(
         let entries = store
             .all_passwords()
             .map_err(|err| StoreRecipientsError::from_store_message(err.to_string()))?;
+        let entry_labels = entries
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect::<Vec<_>>();
         for entry in entries {
             let secret = entry
                 .secret(&store)
@@ -157,20 +285,33 @@ pub(crate) fn save_store_recipients(
                 .update(secret, &store)
                 .map_err(|err| StoreRecipientsError::from_store_message(err.to_string()))?;
         }
-        Ok(())
+        Ok(entry_labels)
     })();
 
-    if let Err(err) = result {
-        match previous_recipients {
-            Some(previous) => {
-                let _ = fs::write(&recipients_path, previous);
+    let entry_labels = match result {
+        Ok(entry_labels) => entry_labels,
+        Err(err) => {
+            match previous_recipients {
+                Some(previous) => {
+                    let _ = fs::write(&recipients_path, previous);
+                }
+                None => {
+                    let _ = fs::remove_file(&recipients_path);
+                }
             }
-            None => {
-                let _ = fs::remove_file(&recipients_path);
-            }
+            return Err(err);
         }
-        return Err(err);
-    }
+    };
+
+    maybe_commit_git_paths(
+        store_root,
+        "Update password store recipients",
+        std::iter::once(".gpg-id".to_string()).chain(
+            entry_labels
+                .into_iter()
+                .map(|label| password_entry_git_path(&label)),
+        ),
+    );
 
     Ok(())
 }
@@ -178,7 +319,9 @@ pub(crate) fn save_store_recipients(
 #[cfg(test)]
 mod tests {
     use super::{save_password_entry, save_store_recipients};
-    use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
+    use crate::backend::test_support::{
+        assert_entry_is_encrypted_for_each_recipient, SystemBackendTestEnv,
+    };
 
     #[test]
     fn integrated_standard_backend_encrypts_entries_for_all_store_recipients() {
@@ -191,5 +334,38 @@ mod tests {
                     .map_err(|err| err.to_string())
             },
         );
+    }
+
+    #[test]
+    fn integrated_standard_backend_commits_git_backed_store_changes() {
+        let env = SystemBackendTestEnv::new();
+        env.init_store_git_repository()
+            .expect("initialize git repository");
+
+        let key = env
+            .generate_secret_key("Recipient <git-integrated@example.com>")
+            .expect("generate git recipient key");
+        env.import_public_key(&key.public_key_bytes)
+            .expect("import git recipient key");
+        env.trust_public_key(&key.fingerprint_hex)
+            .expect("trust git recipient key");
+
+        let store_root = env.store_root().to_string_lossy().to_string();
+        save_store_recipients(&store_root, std::slice::from_ref(&key.fingerprint_hex))
+            .expect("save store recipients");
+        save_password_entry(
+            &store_root,
+            "team/service",
+            "secret-value\nusername: alice",
+            true,
+        )
+        .expect("save password entry");
+
+        let subjects = env
+            .store_git_commit_subjects()
+            .expect("read store git commit subjects");
+        assert_eq!(subjects.len(), 2);
+        assert!(subjects[0].contains("Add password for team/service"));
+        assert_eq!(subjects[1], "Update password store recipients");
     }
 }

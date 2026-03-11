@@ -1,6 +1,6 @@
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
-use std::path::Path;
+use crate::support::git::has_git_repository;
 
 pub(super) enum GitOperationResult {
     Success,
@@ -11,15 +11,11 @@ fn git_operation_failed(message: &str) -> GitOperationResult {
     GitOperationResult::Failed(message.to_string())
 }
 
-fn store_has_git_repository(root: &str) -> bool {
-    Path::new(root).join(".git").exists()
-}
-
 fn syncable_store_roots(stores: &[String]) -> Vec<&str> {
     stores
         .iter()
         .map(String::as_str)
-        .filter(|root| store_has_git_repository(root))
+        .filter(|root| has_git_repository(root))
         .collect()
 }
 
@@ -79,7 +75,8 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{store_has_git_repository, syncable_store_roots};
+    use super::syncable_store_roots;
+    use crate::support::git::has_git_repository;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -105,12 +102,8 @@ mod tests {
 
         let expected = vec![stores[0].as_str()];
         assert_eq!(syncable_store_roots(&stores), expected);
-        assert!(store_has_git_repository(
-            git_store.to_string_lossy().as_ref()
-        ));
-        assert!(!store_has_git_repository(
-            plain_store.to_string_lossy().as_ref()
-        ));
+        assert!(has_git_repository(git_store.to_string_lossy().as_ref()));
+        assert!(!has_git_repository(plain_store.to_string_lossy().as_ref()));
 
         let _ = fs::remove_dir_all(&git_store);
         let _ = fs::remove_dir_all(&plain_store);

@@ -30,6 +30,14 @@ fn command_error(action: &str, output: &Output) -> String {
     }
 }
 
+fn ensure_success(action: &str, output: Output) -> Result<Output, String> {
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(command_error(action, &output))
+    }
+}
+
 pub(crate) struct GeneratedSecretKey {
     pub(crate) cert: Arc<Cert>,
     pub(crate) fingerprint: [u8; 20],
@@ -49,7 +57,10 @@ pub(crate) struct SystemBackendTestEnv {
 
 impl SystemBackendTestEnv {
     pub(crate) fn new() -> Self {
-        let guard = test_lock().lock().expect("lock backend test environment");
+        let guard = match test_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time before unix epoch")
@@ -88,6 +99,53 @@ impl SystemBackendTestEnv {
         env::set_var("XDG_CONFIG_HOME", &config);
         env::set_var("GNUPGHOME", &gnupg);
         env::remove_var("GPG_AGENT_INFO");
+    }
+
+    pub(crate) fn init_store_git_repository(&self) -> Result<(), String> {
+        ensure_success(
+            "git init",
+            Command::new("git")
+                .args(["-C"])
+                .arg(self.store_root())
+                .arg("init")
+                .output()
+                .map_err(|err| format!("Failed to start git init: {err}"))?,
+        )?;
+        ensure_success(
+            "git config user.name",
+            Command::new("git")
+                .args(["-C"])
+                .arg(self.store_root())
+                .args(["config", "user.name", "PasswordStore Tests"])
+                .output()
+                .map_err(|err| format!("Failed to start git config user.name: {err}"))?,
+        )?;
+        ensure_success(
+            "git config user.email",
+            Command::new("git")
+                .args(["-C"])
+                .arg(self.store_root())
+                .args(["config", "user.email", "tests@example.com"])
+                .output()
+                .map_err(|err| format!("Failed to start git config user.email: {err}"))?,
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn store_git_commit_subjects(&self) -> Result<Vec<String>, String> {
+        let output = ensure_success(
+            "git log",
+            Command::new("git")
+                .args(["-C"])
+                .arg(self.store_root())
+                .args(["log", "--format=%s"])
+                .output()
+                .map_err(|err| format!("Failed to start git log: {err}"))?,
+        )?;
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect())
     }
 
     pub(crate) fn generate_secret_key(&self, user_id: &str) -> Result<GeneratedSecretKey, String> {

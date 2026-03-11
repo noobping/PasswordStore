@@ -9,17 +9,23 @@ pub(crate) use super::recipients_page::{
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+#[cfg(not(feature = "flatpak"))]
+use crate::store::labels::shortened_store_labels;
 #[cfg(feature = "flatpak")]
 use crate::support::actions::register_window_action;
 #[cfg(not(feature = "flatpak"))]
 use crate::support::background::spawn_result_task;
+#[cfg(not(feature = "flatpak"))]
+use crate::support::pass_import::{
+    available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
+};
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
 #[cfg(not(feature = "flatpak"))]
 use crate::window::clone_store_repository;
 #[cfg(not(feature = "flatpak"))]
 use adw::glib::object::IsA;
 #[cfg(not(feature = "flatpak"))]
-use adw::gtk::{Box as GtkBox, Orientation, Spinner};
+use adw::gtk::{Align, Box as GtkBox, Button, DropDown, Orientation, Spinner};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
@@ -130,6 +136,11 @@ fn folder_is_empty(path: &str) -> io::Result<bool> {
     Ok(entries.next().is_none())
 }
 
+#[cfg(not(feature = "flatpak"))]
+fn should_show_pass_import_row(stores: &[String], import_sources: &[String]) -> bool {
+    !stores.is_empty() && !import_sources.is_empty()
+}
+
 pub(crate) fn rebuild_store_list(
     list: &ListBox,
     settings: &Preferences,
@@ -143,13 +154,21 @@ pub(crate) fn rebuild_store_list(
         log_error(format!("Failed to remove missing password stores: {err}"));
     }
 
-    for store in settings.stores() {
-        append_store_row(list, settings, &store, recipients_page);
+    let stores = settings.stores();
+    for store in &stores {
+        append_store_row(list, settings, store, recipients_page);
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
     #[cfg(not(feature = "flatpak"))]
-    append_store_clone_row(list, settings, window, overlay, recipients_page);
+    {
+        append_store_clone_row(list, settings, window, overlay, recipients_page);
+        if let Ok(import_sources) = available_pass_import_sources() {
+            if should_show_pass_import_row(&stores, &import_sources) {
+                append_store_import_row(list, settings, window, overlay);
+            }
+        }
+    }
 }
 
 fn append_store_row(
@@ -241,22 +260,38 @@ fn dialog_content_shell(
 }
 
 #[cfg(not(feature = "flatpak"))]
-fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
-    let status = StatusPage::builder().description("Please wait.").build();
+fn build_progress_dialog(
+    window: &ApplicationWindow,
+    title: &str,
+    subtitle: Option<&str>,
+    description: &str,
+) -> Dialog {
+    let status = StatusPage::builder().description(description).build();
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
     let dialog = Dialog::builder()
-        .title("Restoring password store")
+        .title(title)
         .content_width(460)
-        .child(&dialog_content_shell(
-            "Restoring password store",
-            Some(store),
-            &status,
-        ))
+        .child(&dialog_content_shell(title, subtitle, &status))
         .build();
     dialog.set_can_close(false);
     dialog.present(Some(window));
     dialog
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
+    build_progress_dialog(
+        window,
+        "Restoring password store",
+        Some(store),
+        "Please wait.",
+    )
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn build_import_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
+    build_progress_dialog(window, "Importing passwords", Some(store), "Please wait.")
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -375,6 +410,172 @@ fn append_store_clone_row(
                     store,
                     url,
                 );
+            });
+        },
+    );
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn present_pass_import_dialog<F>(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    stores: &[String],
+    import_sources: &[String],
+    on_submit: F,
+) where
+    F: Fn(PassImportRequest) + 'static,
+{
+    let store_labels = shortened_store_labels(stores);
+    let store_label_refs = store_labels.iter().map(String::as_str).collect::<Vec<_>>();
+    let source_refs = import_sources
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+
+    let store_dropdown = DropDown::from_strings(&store_label_refs);
+    store_dropdown.set_valign(Align::Center);
+    let store_row = ActionRow::builder().title("Store").build();
+    store_row.add_suffix(&store_dropdown);
+
+    let source_dropdown = DropDown::from_strings(&source_refs);
+    source_dropdown.set_valign(Align::Center);
+    let source_row = ActionRow::builder().title("Importer").build();
+    source_row.add_suffix(&source_dropdown);
+
+    let source_path_row = EntryRow::new();
+    source_path_row.set_title("Source path");
+
+    let target_path_row = EntryRow::new();
+    target_path_row.set_title("Store subfolder");
+
+    let group = PreferencesGroup::builder().build();
+    group.add(&store_row);
+    group.add(&source_row);
+    group.add(&source_path_row);
+    group.add(&target_path_row);
+
+    let page = PreferencesPage::new();
+    page.add(&group);
+
+    let import_button = Button::builder()
+        .label("Import")
+        .halign(Align::End)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_end(12)
+        .css_classes(vec!["suggested-action"])
+        .build();
+
+    let content = GtkBox::new(Orientation::Vertical, 0);
+    content.append(&page);
+    content.append(&import_button);
+
+    let dialog = Dialog::builder()
+        .title("Import passwords")
+        .content_width(460)
+        .child(&dialog_content_shell(
+            "Import passwords",
+            Some("Use pass import to import into an existing store."),
+            &content,
+        ))
+        .build();
+
+    let dialog_clone = dialog.clone();
+    let overlay_clone = overlay.clone();
+    let stores = stores.to_vec();
+    let import_sources = import_sources.to_vec();
+    import_button.connect_clicked(move |_| {
+        let Some(store_root) = stores.get(store_dropdown.selected() as usize).cloned() else {
+            overlay_clone.add_toast(Toast::new("Choose a store."));
+            return;
+        };
+        let Some(source) = import_sources
+            .get(source_dropdown.selected() as usize)
+            .cloned()
+        else {
+            overlay_clone.add_toast(Toast::new("Choose an importer."));
+            return;
+        };
+
+        dialog_clone.close();
+        on_submit(PassImportRequest {
+            store_root,
+            source,
+            source_path: normalize_optional_text(&source_path_row.text()),
+            target_path: normalize_optional_text(&target_path_row.text()),
+        });
+    });
+
+    dialog.present(Some(window));
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn start_pass_import(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    request: PassImportRequest,
+) {
+    let progress_dialog = build_import_progress_dialog(window, &request.store_root);
+    let progress_dialog_for_disconnect = progress_dialog.clone();
+    let overlay = overlay.clone();
+    let overlay_for_disconnect = overlay.clone();
+    let store_for_error = request.store_root.clone();
+    let source_for_error = request.source.clone();
+    spawn_result_task(
+        move || run_pass_import(&request),
+        move |result| {
+            progress_dialog.force_close();
+            match result {
+                Ok(()) => overlay.add_toast(Toast::new("Passwords imported.")),
+                Err(err) => {
+                    log_error(format!(
+                        "Failed to import passwords into '{store_for_error}' from '{source_for_error}': {err}"
+                    ));
+                    overlay.add_toast(Toast::new(&err));
+                }
+            }
+        },
+        move || {
+            progress_dialog_for_disconnect.force_close();
+            overlay_for_disconnect.add_toast(Toast::new("Couldn't import passwords."));
+        },
+    );
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn append_store_import_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+) {
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    append_action_row_with_button(
+        list,
+        "Import passwords",
+        "Use pass import with an existing store.",
+        "document-open-symbolic",
+        move || {
+            let stores = settings.stores();
+            if stores.is_empty() {
+                overlay.add_toast(Toast::new("Add a store first."));
+                return;
+            }
+
+            let import_sources = match available_pass_import_sources() {
+                Ok(import_sources) if !import_sources.is_empty() => import_sources,
+                _ => {
+                    overlay.add_toast(Toast::new("pass import is not available."));
+                    return;
+                }
+            };
+
+            present_pass_import_dialog(&window, &overlay, &stores, &import_sources, {
+                let window = window.clone();
+                let overlay = overlay.clone();
+                move |request| start_pass_import(&window, &overlay, request)
             });
         },
     );
@@ -526,6 +727,8 @@ fn start_store_clone(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "flatpak"))]
+    use super::should_show_pass_import_row;
     use super::{
         initial_recipients_for_store_creation, selected_store_folder_mode,
         updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
@@ -585,5 +788,22 @@ mod tests {
             selected_store_folder_mode(false),
             SelectedStoreFolderMode::AddExisting
         );
+    }
+
+    #[cfg(not(feature = "flatpak"))]
+    #[test]
+    fn pass_import_row_requires_an_existing_store_and_available_sources() {
+        assert!(!should_show_pass_import_row(
+            &[],
+            &["bitwarden".to_string()]
+        ));
+        assert!(!should_show_pass_import_row(
+            &["/tmp/store".to_string()],
+            &[]
+        ));
+        assert!(should_show_pass_import_row(
+            &["/tmp/store".to_string()],
+            &["bitwarden".to_string()]
+        ));
     }
 }

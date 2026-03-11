@@ -4,8 +4,8 @@ use adw::glib::{object::IsA, Object};
 #[cfg(feature = "flatpak")]
 use adw::gtk::MenuButton;
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, DropDown, ListBox, Popover, Revealer, SearchEntry, SpinButton,
-    TextView, ToggleButton,
+    Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer, SearchEntry,
+    SpinButton, TextView, ToggleButton,
 };
 #[cfg(not(feature = "flatpak"))]
 use adw::PreferencesGroup;
@@ -36,6 +36,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_list: ListBox,
     pub(in crate::window) log_page: NavigationPage,
     pub(in crate::window) new_pass_file_template_view: TextView,
+    pub(in crate::window) preferences_username_folder_check: CheckButton,
+    pub(in crate::window) preferences_username_filename_check: CheckButton,
     pub(in crate::window) password_stores: ListBox,
     pub(in crate::window) navigation_view: NavigationView,
     pub(in crate::window) search_entry: SearchEntry,
@@ -103,6 +105,14 @@ impl WindowWidgets {
             store_recipients_list: required_object(builder, "store_recipients_list"),
             log_page: required_object(builder, "log_page"),
             new_pass_file_template_view: required_object(builder, "new_pass_file_template_view"),
+            preferences_username_folder_check: required_object(
+                builder,
+                "preferences_username_folder_check",
+            ),
+            preferences_username_filename_check: required_object(
+                builder,
+                "preferences_username_filename_check",
+            ),
             password_stores: required_object(builder, "password_stores"),
             navigation_view: required_object(builder, "navigation_view"),
             search_entry: required_object(builder, "search_entry"),

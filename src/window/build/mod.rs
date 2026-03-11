@@ -39,7 +39,7 @@ use super::navigation::set_save_button_for_password;
 use super::preferences::register_install_locally_action;
 use super::preferences::{
     connect_new_password_template_autosave, connect_password_generation_autosave,
-    register_open_preferences_action,
+    connect_username_fallback_autosave, register_open_preferences_action,
 };
 #[cfg(not(feature = "flatpak"))]
 use super::standard::{
@@ -122,6 +122,11 @@ pub(crate) fn create_main_window(
 
     connect_new_password_template_autosave(
         &widgets.new_pass_file_template_view,
+        &widgets.toast_overlay,
+    );
+    connect_username_fallback_autosave(
+        &widgets.preferences_username_folder_check,
+        &widgets.preferences_username_filename_check,
         &widgets.toast_overlay,
     );
     connect_password_generation_autosave(

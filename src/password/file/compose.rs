@@ -102,10 +102,15 @@ pub(crate) fn sync_username_row_from_parsed_lines(
 mod tests {
     use super::username_row_state;
     use crate::password::model::OpenPassFile;
+    use crate::preferences::UsernameFallbackMode;
 
     #[test]
     fn visible_usernames_stay_editable_for_path_and_field_sources() {
-        let path_pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        let path_pass_file = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
         assert_eq!(
             username_row_state(Some(&path_pass_file)),
             (Some("alice".to_string()), true)

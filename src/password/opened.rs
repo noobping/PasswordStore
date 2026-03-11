@@ -68,6 +68,7 @@ mod tests {
         refresh_opened_pass_file_from_contents, set_opened_pass_file,
     };
     use crate::password::model::OpenPassFile;
+    use crate::preferences::UsernameFallbackMode;
     use std::sync::{Mutex, OnceLock};
 
     fn test_lock() -> &'static Mutex<()> {
@@ -80,7 +81,11 @@ mod tests {
         let _guard = test_lock().lock().expect("test lock poisoned");
         clear_opened_pass_file();
 
-        let pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        let pass_file = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
         set_opened_pass_file(pass_file.clone());
 
         assert_eq!(get_opened_pass_file(), Some(pass_file.clone()));
@@ -94,8 +99,16 @@ mod tests {
         let _guard = test_lock().lock().expect("test lock poisoned");
         clear_opened_pass_file();
 
-        let first = OpenPassFile::from_label("/tmp/store", "work/alice/github");
-        let second = OpenPassFile::from_label("/tmp/store", "work/bob/gitlab");
+        let first = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
+        let second = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/bob/gitlab",
+            UsernameFallbackMode::Folder,
+        );
         set_opened_pass_file(second.clone());
 
         let refreshed =

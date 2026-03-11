@@ -32,6 +32,30 @@ fn default_backend_kind() -> BackendKind {
     BackendKind::Integrated
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UsernameFallbackMode {
+    #[default]
+    Folder,
+    Filename,
+}
+
+impl UsernameFallbackMode {
+    pub fn stored_value(self) -> &'static str {
+        match self {
+            Self::Folder => "folder",
+            Self::Filename => "filename",
+        }
+    }
+
+    pub fn from_stored(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "filename" | "file" | "name" => Self::Filename,
+            _ => Self::Folder,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PreferenceFile {
     backend: Option<String>,
@@ -39,6 +63,7 @@ struct PreferenceFile {
     password_store_dirs: Option<Vec<String>>,
     new_pass_file_template: Option<String>,
     password_generation: Option<PasswordGenerationSettings>,
+    username_fallback_mode: Option<UsernameFallbackMode>,
     ripasso_own_fingerprint: Option<String>,
 }
 
@@ -135,6 +160,15 @@ impl Preferences {
         )
     }
 
+    pub fn username_fallback_mode(&self) -> UsernameFallbackMode {
+        self.read_preference(
+            |settings| {
+                UsernameFallbackMode::from_stored(&settings.string("username-fallback-mode"))
+            },
+            |cfg| cfg.username_fallback_mode.unwrap_or_default(),
+        )
+    }
+
     pub fn stores(&self) -> Vec<String> {
         self.read_preference(
             |settings| {
@@ -189,6 +223,13 @@ impl Preferences {
                 Ok(())
             },
             |cfg| cfg.password_generation = Some(file_settings),
+        )
+    }
+
+    pub fn set_username_fallback_mode(&self, mode: UsernameFallbackMode) -> Result<(), BoolError> {
+        self.write_preference(
+            |settings| settings.set_string("username-fallback-mode", mode.stored_value()),
+            |cfg| cfg.username_fallback_mode = Some(mode),
         )
     }
 
@@ -250,7 +291,7 @@ fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
 mod tests {
     #[cfg(not(feature = "flatpak"))]
     use super::{default_backend_kind, BackendKind};
-    use super::{default_store_dirs, Preferences};
+    use super::{default_store_dirs, Preferences, UsernameFallbackMode};
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -331,5 +372,27 @@ mod tests {
         .normalized();
 
         assert_eq!(settings.length, 8);
+    }
+
+    #[test]
+    fn username_fallback_mode_defaults_to_folder() {
+        assert_eq!(
+            UsernameFallbackMode::default(),
+            UsernameFallbackMode::Folder
+        );
+    }
+
+    #[test]
+    fn username_fallback_mode_storage_accepts_current_names() {
+        assert_eq!(UsernameFallbackMode::Folder.stored_value(), "folder");
+        assert_eq!(UsernameFallbackMode::Filename.stored_value(), "filename");
+        assert_eq!(
+            UsernameFallbackMode::from_stored("folder"),
+            UsernameFallbackMode::Folder
+        );
+        assert_eq!(
+            UsernameFallbackMode::from_stored("filename"),
+            UsernameFallbackMode::Filename
+        );
     }
 }

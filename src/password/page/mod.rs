@@ -13,7 +13,7 @@ use crate::backend::{
     PasswordEntryWriteError,
 };
 use crate::logging::log_error;
-use crate::password::model::OpenPassFile;
+use crate::password::model::{OpenPassFile, UsernameFallbackError};
 use crate::password::opened::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
@@ -53,12 +53,8 @@ fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static st
     error.save_toast_message()
 }
 
-fn updated_label_from_username(pass_file: &OpenPassFile, username: &str) -> Option<String> {
-    if pass_file.username_is_from_path() {
-        pass_file.entry.label_with_updated_path_username(username)
-    } else {
-        None
-    }
+fn username_fallback_failure_message(error: UsernameFallbackError) -> &'static str {
+    error.toast_message()
 }
 
 fn show_password_open_failure(state: &PasswordPageState, error: Option<&PasswordEntryError>) {
@@ -235,7 +231,15 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             &state.dynamic_rows.borrow(),
         )
     };
-    let target_label = updated_label_from_username(&pass_file, &state.username.text());
+    let target_label = match pass_file.updated_label_from_username(&state.username.text()) {
+        Ok(target_label) => target_label,
+        Err(err) => {
+            state
+                .overlay
+                .add_toast(Toast::new(username_fallback_failure_message(err)));
+            return;
+        }
+    };
     let label = pass_file.label();
     match save_password_entry(pass_file.store_path(), &label, &contents, true) {
         Ok(()) => {
@@ -244,8 +248,11 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             {
                 match rename_password_entry(pass_file.store_path(), &label, &target_label) {
                     Ok(()) => {
-                        let renamed_pass_file =
-                            OpenPassFile::from_label(pass_file.store_path(), &target_label);
+                        let renamed_pass_file = OpenPassFile::from_label_with_mode(
+                            pass_file.store_path(),
+                            &target_label,
+                            pass_file.username_fallback_mode(),
+                        );
                         set_opened_pass_file(renamed_pass_file.clone());
                         renamed_pass_file
                     }
@@ -327,10 +334,11 @@ pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> 
 mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
-        should_retry_open_password_entry, updated_label_from_username,
+        should_retry_open_password_entry,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
-    use crate::password::model::OpenPassFile;
+    use crate::password::model::{OpenPassFile, UsernameFallbackError};
+    use crate::preferences::UsernameFallbackMode;
 
     #[test]
     fn retry_open_requires_a_hidden_editor_on_the_password_page_with_an_open_item() {
@@ -396,17 +404,51 @@ mod tests {
 
     #[test]
     fn folder_derived_usernames_update_the_pass_file_path_on_save() {
-        let pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        let pass_file = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
         assert_eq!(
-            updated_label_from_username(&pass_file, "bob").as_deref(),
-            Some("work/bob/github")
+            pass_file.updated_label_from_username("bob"),
+            Ok(Some("work/bob/github".to_string()))
         );
     }
 
     #[test]
     fn explicit_usernames_do_not_move_the_pass_file_path_on_save() {
-        let mut pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        let mut pass_file = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
         pass_file.refresh_from_contents("secret\nusername: bob");
-        assert_eq!(updated_label_from_username(&pass_file, "carol"), None);
+        assert_eq!(pass_file.updated_label_from_username("carol"), Ok(None));
+    }
+
+    #[test]
+    fn filename_derived_usernames_update_only_the_file_name_on_save() {
+        let pass_file = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Filename,
+        );
+        assert_eq!(
+            pass_file.updated_label_from_username("gitlab"),
+            Ok(Some("work/alice/gitlab".to_string()))
+        );
+    }
+
+    #[test]
+    fn filename_derived_usernames_reject_invalid_names_on_save() {
+        let pass_file = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Filename,
+        );
+        assert_eq!(
+            pass_file.updated_label_from_username(""),
+            Err(UsernameFallbackError::EmptyFilename)
+        );
     }
 }

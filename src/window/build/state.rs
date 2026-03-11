@@ -157,6 +157,8 @@ pub(super) fn preferences_action_state(
         raw: widgets.open_raw_button.clone(),
         win: widgets.window_title.clone(),
         template_view: widgets.new_pass_file_template_view.clone(),
+        username_folder_check: widgets.preferences_username_folder_check.clone(),
+        username_filename_check: widgets.preferences_username_filename_check.clone(),
         generator_controls: PasswordGenerationControls::new(
             &widgets.preferences_password_generator_length_spin,
             &widgets.preferences_password_generator_min_lowercase_spin,

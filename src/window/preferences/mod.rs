@@ -1,11 +1,11 @@
 use crate::logging::log_error;
 use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
-use crate::preferences::Preferences;
+use crate::preferences::{Preferences, UsernameFallbackMode};
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::register_window_action;
 use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
-use adw::gtk::{Button, ListBox, TextView};
+use adw::gtk::{Button, CheckButton, ListBox, TextView};
 use adw::prelude::*;
 use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
 #[cfg(not(feature = "flatpak"))]
@@ -51,6 +51,8 @@ pub(crate) struct PreferencesActionState {
     pub(crate) raw: Button,
     pub(crate) win: WindowTitle,
     pub(crate) template_view: TextView,
+    pub(crate) username_folder_check: CheckButton,
+    pub(crate) username_filename_check: CheckButton,
     pub(crate) generator_controls: PasswordGenerationControls,
     pub(crate) stores_list: ListBox,
     pub(crate) overlay: ToastOverlay,
@@ -78,6 +80,67 @@ pub(crate) fn connect_new_password_template_autosave(
             toast_preferences_save_error(&overlay, "new item template", &err);
         }
     });
+}
+
+fn sync_username_fallback_checks(
+    folder_check: &CheckButton,
+    filename_check: &CheckButton,
+    mode: UsernameFallbackMode,
+) {
+    let (folder_active, filename_active) = username_fallback_check_state(mode);
+    folder_check.set_active(folder_active);
+    filename_check.set_active(filename_active);
+}
+
+fn username_fallback_check_state(mode: UsernameFallbackMode) -> (bool, bool) {
+    match mode {
+        UsernameFallbackMode::Folder => (true, false),
+        UsernameFallbackMode::Filename => (false, true),
+    }
+}
+
+pub(crate) fn connect_username_fallback_autosave(
+    folder_check: &CheckButton,
+    filename_check: &CheckButton,
+    overlay: &ToastOverlay,
+) {
+    let preferences = Preferences::new();
+    sync_username_fallback_checks(
+        folder_check,
+        filename_check,
+        preferences.username_fallback_mode(),
+    );
+
+    let syncing = Rc::new(Cell::new(false));
+    for (button, mode) in [
+        (folder_check.clone(), UsernameFallbackMode::Folder),
+        (filename_check.clone(), UsernameFallbackMode::Filename),
+    ] {
+        let folder_check = folder_check.clone();
+        let filename_check = filename_check.clone();
+        let overlay = overlay.clone();
+        let preferences = preferences.clone();
+        let syncing = syncing.clone();
+        button.connect_toggled(move |button| {
+            if syncing.get() || !button.is_active() {
+                return;
+            }
+
+            let stored = preferences.username_fallback_mode();
+            if stored == mode {
+                return;
+            }
+
+            syncing.set(true);
+            if let Err(err) = preferences.set_username_fallback_mode(mode) {
+                toast_preferences_save_error(&overlay, "username fallback", &err);
+                sync_username_fallback_checks(&folder_check, &filename_check, stored);
+            } else {
+                sync_username_fallback_checks(&folder_check, &filename_check, mode);
+            }
+            syncing.set(false);
+        });
+    }
 }
 
 pub(crate) fn connect_password_generation_autosave(
@@ -155,6 +218,11 @@ pub(crate) fn register_open_preferences_action(
         let settings = Preferences::new();
         #[cfg(not(feature = "flatpak"))]
         self::standard::refresh_open_preferences_state(&state, &settings);
+        sync_username_fallback_checks(
+            &state.username_folder_check,
+            &state.username_filename_check,
+            settings.username_fallback_mode(),
+        );
         sync_password_generation_controls(
             &state.generator_controls,
             &settings.password_generation_settings(),
@@ -171,4 +239,22 @@ pub(crate) fn register_open_preferences_action(
             &state.recipients_page,
         );
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::username_fallback_check_state;
+    use crate::preferences::UsernameFallbackMode;
+
+    #[test]
+    fn username_fallback_sync_marks_only_the_selected_mode() {
+        assert_eq!(
+            username_fallback_check_state(UsernameFallbackMode::Folder),
+            (true, false)
+        );
+        assert_eq!(
+            username_fallback_check_state(UsernameFallbackMode::Filename),
+            (false, true)
+        );
+    }
 }

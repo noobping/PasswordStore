@@ -1,4 +1,4 @@
-use crate::preferences::Preferences;
+use crate::preferences::{Preferences, UsernameFallbackMode};
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -41,7 +41,7 @@ impl PassEntry {
         }
     }
 
-    pub fn username_from_path(&self) -> Option<String> {
+    fn folder_username_from_path(&self) -> Option<String> {
         self.relative_path
             .trim_end_matches('/')
             .rsplit('/')
@@ -50,7 +50,14 @@ impl PassEntry {
             .map(str::to_string)
     }
 
-    pub fn label_with_updated_path_username(&self, username: &str) -> Option<String> {
+    fn username_from_label(&self, mode: UsernameFallbackMode) -> Option<String> {
+        match mode {
+            UsernameFallbackMode::Folder => self.folder_username_from_path(),
+            UsernameFallbackMode::Filename => Some(self.basename.clone()),
+        }
+    }
+
+    fn label_with_updated_folder_username(&self, username: &str) -> Option<String> {
         let relative_path = self.relative_path.trim_end_matches('/');
         if relative_path.is_empty() {
             return None;
@@ -65,25 +72,61 @@ impl PassEntry {
             None => format!("{username}/{basename}"),
         })
     }
+
+    fn label_with_updated_filename_username(
+        &self,
+        username: &str,
+    ) -> Result<String, UsernameFallbackError> {
+        let username = username.trim();
+        if username.is_empty() {
+            return Err(UsernameFallbackError::EmptyFilename);
+        }
+        if username.contains('/') {
+            return Err(UsernameFallbackError::NestedFilename);
+        }
+
+        Ok(format!("{}{}", self.relative_path, username))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UsernameSource {
     None,
-    Path,
+    FolderFallback,
+    FilenameFallback,
     Field,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsernameFallbackError {
+    EmptyFilename,
+    NestedFilename,
+}
+
+impl UsernameFallbackError {
+    pub fn toast_message(self) -> &'static str {
+        match self {
+            Self::EmptyFilename => "Enter a username.",
+            Self::NestedFilename => "Use a single file name for the username.",
+        }
+    }
 }
 
 fn username_from_contents_or_path(
     entry: &PassEntry,
     output: &str,
+    fallback_mode: UsernameFallbackMode,
 ) -> (Option<String>, UsernameSource) {
     if let Some(username) = extract_username_from_contents(output) {
         return (Some(username), UsernameSource::Field);
     }
 
-    match entry.username_from_path() {
-        Some(username) => (Some(username), UsernameSource::Path),
+    let username_source = match fallback_mode {
+        UsernameFallbackMode::Folder => UsernameSource::FolderFallback,
+        UsernameFallbackMode::Filename => UsernameSource::FilenameFallback,
+    };
+    match entry.username_from_label(fallback_mode) {
+        Some(username) => (Some(username), username_source),
         None => (None, UsernameSource::None),
     }
 }
@@ -92,21 +135,39 @@ fn username_from_contents_or_path(
 pub struct OpenPassFile {
     pub entry: PassEntry,
     pub username: Option<String>,
+    username_fallback_mode: UsernameFallbackMode,
     username_source: UsernameSource,
 }
 
 impl OpenPassFile {
     pub fn new(entry: PassEntry) -> Self {
-        let (username, username_source) = username_from_contents_or_path(&entry, "");
+        Self::new_with_mode(entry, Preferences::new().username_fallback_mode())
+    }
+
+    pub fn new_with_mode(entry: PassEntry, username_fallback_mode: UsernameFallbackMode) -> Self {
+        let (username, username_source) =
+            username_from_contents_or_path(&entry, "", username_fallback_mode);
         Self {
             entry,
             username,
+            username_fallback_mode,
             username_source,
         }
     }
 
     pub fn from_label(store_path: impl Into<String>, label: impl AsRef<str>) -> Self {
         Self::new(PassEntry::from_label(store_path, label))
+    }
+
+    pub fn from_label_with_mode(
+        store_path: impl Into<String>,
+        label: impl AsRef<str>,
+        username_fallback_mode: UsernameFallbackMode,
+    ) -> Self {
+        Self::new_with_mode(
+            PassEntry::from_label(store_path, label),
+            username_fallback_mode,
+        )
     }
 
     pub fn label(&self) -> String {
@@ -125,12 +186,37 @@ impl OpenPassFile {
         &self.entry.store_path
     }
 
-    pub fn username_is_from_path(&self) -> bool {
-        matches!(self.username_source, UsernameSource::Path)
+    #[cfg(test)]
+    pub(crate) fn username_is_derived_from_label(&self) -> bool {
+        matches!(
+            self.username_source,
+            UsernameSource::FolderFallback | UsernameSource::FilenameFallback
+        )
+    }
+
+    pub fn username_fallback_mode(&self) -> UsernameFallbackMode {
+        self.username_fallback_mode
+    }
+
+    pub fn updated_label_from_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<String>, UsernameFallbackError> {
+        match self.username_source {
+            UsernameSource::FolderFallback => {
+                Ok(self.entry.label_with_updated_folder_username(username))
+            }
+            UsernameSource::FilenameFallback => self
+                .entry
+                .label_with_updated_filename_username(username)
+                .map(Some),
+            UsernameSource::Field | UsernameSource::None => Ok(None),
+        }
     }
 
     pub fn refresh_from_contents(&mut self, output: &str) {
-        let (username, username_source) = username_from_contents_or_path(&self.entry, output);
+        let (username, username_source) =
+            username_from_contents_or_path(&self.entry, output, self.username_fallback_mode);
         self.username = username;
         self.username_source = username_source;
     }
@@ -288,50 +374,108 @@ fn collect_items_in_dir(
 mod tests {
     use super::{
         collapse_duplicate_store_entries, collect_items_in_dir, filter_duplicate_store_entries,
-        CollectItemsOptions, OpenPassFile, PassEntry,
+        CollectItemsOptions, OpenPassFile, PassEntry, UsernameFallbackError,
     };
+    use crate::preferences::UsernameFallbackMode;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn root_level_entries_do_not_invent_a_username() {
         let entry = PassEntry::from_label("/tmp/store", "github");
-        assert_eq!(entry.username_from_path(), None);
+        assert_eq!(
+            entry.username_from_label(UsernameFallbackMode::Folder),
+            None
+        );
     }
 
     #[test]
     fn username_falls_back_to_last_directory_only() {
         let entry = PassEntry::from_label("/tmp/store", "work/email/alice/github");
-        assert_eq!(entry.username_from_path().as_deref(), Some("alice"));
+        assert_eq!(
+            entry
+                .username_from_label(UsernameFallbackMode::Folder)
+                .as_deref(),
+            Some("alice")
+        );
     }
 
     #[test]
     fn path_usernames_update_only_the_last_directory_segment() {
         let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
         assert_eq!(
-            entry.label_with_updated_path_username("bob").as_deref(),
+            entry.label_with_updated_folder_username("bob").as_deref(),
             Some("work/bob/github")
         );
         assert_eq!(
-            entry.label_with_updated_path_username("").as_deref(),
+            entry.label_with_updated_folder_username("").as_deref(),
             Some("work/github")
         );
     }
 
     #[test]
     fn explicit_username_beats_directory_fallback() {
-        let mut opened = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        let mut opened = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
         opened.refresh_from_contents("secret\nusername: bob\nurl: https://example.com");
         assert_eq!(opened.username.as_deref(), Some("bob"));
-        assert!(!opened.username_is_from_path());
+        assert!(!opened.username_is_derived_from_label());
     }
 
     #[test]
     fn blank_username_uses_last_directory_fallback() {
-        let mut opened = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        let mut opened = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
         opened.refresh_from_contents("secret\nusername:\nurl: https://example.com");
         assert_eq!(opened.username.as_deref(), Some("alice"));
-        assert!(opened.username_is_from_path());
+        assert!(opened.username_is_derived_from_label());
+    }
+
+    #[test]
+    fn filename_mode_uses_the_pass_file_name_as_username() {
+        let opened = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Filename,
+        );
+        assert_eq!(opened.username.as_deref(), Some("github"));
+        assert!(opened.username_is_derived_from_label());
+    }
+
+    #[test]
+    fn filename_usernames_update_only_the_pass_file_name() {
+        let opened = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Filename,
+        );
+        assert_eq!(
+            opened.updated_label_from_username("gitlab"),
+            Ok(Some("work/alice/gitlab".to_string()))
+        );
+    }
+
+    #[test]
+    fn filename_usernames_reject_empty_and_nested_names() {
+        let opened = OpenPassFile::from_label_with_mode(
+            "/tmp/store",
+            "work/alice/github",
+            UsernameFallbackMode::Filename,
+        );
+        assert_eq!(
+            opened.updated_label_from_username(""),
+            Err(UsernameFallbackError::EmptyFilename)
+        );
+        assert_eq!(
+            opened.updated_label_from_username("team/gitlab"),
+            Err(UsernameFallbackError::NestedFilename)
+        );
     }
 
     #[test]

@@ -130,19 +130,19 @@ fn is_writable(dir: &Path) -> bool {
 
 fn write_desktop_file(apps_path: &Path, bin_path: &Path) -> std::io::Result<()> {
     let project = env!("CARGO_PKG_NAME");
-    let version = env!("CARGO_PKG_VERSION");
     let comment = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("Password manager");
     let exec = bin_path.display(); // absolute path to the installed binary
     let contents = format!(
         "[Desktop Entry]
 Type=Application
-Version={version}
+Version=1.0
 Name={project}
 Comment={comment}
-Exec={exec} %u
+Exec={exec}
 Icon={APP_ID}
 Terminal=false
-Categories=Utility;
+Categories=System;Security;
+StartupNotify=true
 ",
     );
 

@@ -94,6 +94,7 @@ pub(crate) struct StoreRecipientsPageState {
     pub(crate) git: Button,
     pub(crate) store: Button,
     pub(crate) save: Button,
+    pub(crate) raw: Button,
     pub(crate) win: WindowTitle,
     pub(crate) request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
     pub(crate) recipients: Rc<RefCell<Vec<String>>>,

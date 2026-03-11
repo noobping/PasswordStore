@@ -48,6 +48,7 @@ pub(crate) struct PreferencesActionState {
     pub(crate) git: Button,
     pub(crate) store: Button,
     pub(crate) save: Button,
+    pub(crate) raw: Button,
     pub(crate) win: WindowTitle,
     pub(crate) template_view: TextView,
     pub(crate) generator_controls: PasswordGenerationControls,

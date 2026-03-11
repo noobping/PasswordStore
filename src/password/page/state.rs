@@ -22,6 +22,7 @@ pub(crate) struct PasswordPageState {
     pub(crate) git: Button,
     pub(crate) store: Button,
     pub(crate) save: Button,
+    pub(crate) raw: Button,
     pub(crate) win: WindowTitle,
     pub(crate) status: StatusPage,
     pub(crate) entry: PasswordEntryRow,
@@ -32,7 +33,6 @@ pub(crate) struct PasswordPageState {
     pub(crate) generator_settings_revealer: Revealer,
     pub(crate) generator_controls: PasswordGenerationControls,
     pub(crate) dynamic_box: GtkBox,
-    pub(crate) raw_button: Button,
     pub(crate) structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
     pub(crate) dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
     pub(crate) text: TextView,
@@ -51,7 +51,7 @@ fn hide_password_editor_fields(state: &PasswordPageState) {
     state.otp_add_button.set_visible(false);
     hide_password_generator_settings(state);
     state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
+    state.raw.set_visible(false);
 }
 
 pub(super) fn show_password_status_message(
@@ -74,7 +74,7 @@ pub(super) fn show_password_loading_state(state: &PasswordPageState, title: &str
 pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
     state.status.set_visible(false);
     state.entry.set_visible(true);
-    state.raw_button.set_visible(true);
+    state.raw.set_visible(true);
     state.otp_add_button.set_visible(false);
     hide_password_generator_settings(state);
 }
@@ -87,7 +87,7 @@ pub(super) fn reset_password_editor(state: &PasswordPageState) {
     hide_password_generator_settings(state);
     clear_box_children(&state.dynamic_box);
     state.dynamic_box.set_visible(false);
-    state.raw_button.set_visible(false);
+    state.raw.set_visible(false);
     state.structured_templates.borrow_mut().clear();
     state.dynamic_rows.borrow_mut().clear();
     state.text.buffer().set_text("");

@@ -27,6 +27,7 @@ pub(crate) struct WindowNavigationState {
     pub(crate) git: Button,
     pub(crate) store: Button,
     pub(crate) save: Button,
+    pub(crate) raw: Button,
     pub(crate) win: WindowTitle,
     pub(crate) username: EntryRow,
 }
@@ -38,6 +39,7 @@ pub(crate) struct WindowChrome<'a> {
     pub(crate) git: &'a Button,
     pub(crate) store: &'a Button,
     pub(crate) save: &'a Button,
+    pub(crate) raw: &'a Button,
     pub(crate) win: &'a WindowTitle,
 }
 
@@ -85,26 +87,6 @@ fn restored_page_kind(
     RestoredPageKind::Other
 }
 
-pub(crate) fn window_chrome<'a>(
-    back: &'a Button,
-    add: &'a Button,
-    find: &'a Button,
-    git: &'a Button,
-    store: &'a Button,
-    save: &'a Button,
-    win: &'a WindowTitle,
-) -> WindowChrome<'a> {
-    WindowChrome {
-        back,
-        add,
-        find,
-        git,
-        store,
-        save,
-        win,
-    }
-}
-
 pub(crate) trait HasWindowChrome {
     fn window_chrome(&self) -> WindowChrome<'_>;
 }
@@ -114,15 +96,16 @@ macro_rules! impl_has_window_chrome {
         $(
             impl HasWindowChrome for $state {
                 fn window_chrome(&self) -> WindowChrome<'_> {
-                    window_chrome(
-                        &self.back,
-                        &self.add,
-                        &self.find,
-                        &self.git,
-                        &self.store,
-                        &self.save,
-                        &self.win,
-                    )
+                    WindowChrome {
+                        back: &self.back,
+                        add: &self.add,
+                        find: &self.find,
+                        git: &self.git,
+                        store: &self.store,
+                        save: &self.save,
+                        raw: &self.raw,
+                        win: &self.win,
+                    }
                 }
             }
         )+
@@ -159,6 +142,7 @@ pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs
     }
     chrome.win.set_title(APP_WINDOW_TITLE);
     chrome.win.set_subtitle(APP_WINDOW_SUBTITLE);
+    chrome.raw.set_visible(false);
 }
 
 pub(crate) fn show_secondary_page_chrome(
@@ -173,6 +157,7 @@ pub(crate) fn show_secondary_page_chrome(
     chrome.git.set_visible(false);
     chrome.store.set_visible(false);
     chrome.save.set_visible(save_visible);
+    chrome.raw.set_visible(false);
     set_save_button_for_password(chrome.save);
     chrome.win.set_title(title);
     chrome.win.set_subtitle(subtitle);
@@ -205,6 +190,7 @@ pub(crate) fn restore_window_for_current_page(
         if let Some(pass_file) = get_opened_pass_file() {
             let label = pass_file.label();
             show_secondary_page_chrome(&chrome, pass_file.title(), &label, true);
+            state.raw.set_visible(true);
             sync_username_row(&state.username, Some(&pass_file));
         } else {
             show_secondary_page_chrome(&chrome, APP_WINDOW_TITLE, APP_WINDOW_SUBTITLE, true);

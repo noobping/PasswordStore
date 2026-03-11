@@ -68,6 +68,14 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="open_raw_button">
+                    <property name="icon-name">text-x-generic-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Open raw pass file</property>
+                    <property name="action-name">win.open-raw-pass-file</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Restore password store from Git</property>
@@ -402,18 +410,6 @@
                               </object>
                             </child>
 
-                            <child>
-                              <object class="GtkButton" id="open_raw_button">
-                                <property name="visible">false</property>
-                                <property name="label" translatable="yes">Open Raw Pass File</property>
-                                <property name="halign">start</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-top">6</property>
-                                <property name="margin-bottom">15</property>
-                                <property name="action-name">win.open-raw-pass-file</property>
-                              </object>
-                            </child>
                           </object>
                         </child>
                       </object>

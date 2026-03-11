@@ -70,6 +70,12 @@ Build with the optional local installer action:
 cargo build --release --features setup
 ```
 
+Build the flatpack app:
+
+```sh
+flatpak run org.flatpak.Builder --user --install --force-clean build-dir io.github.noobping.keycord.yml
+```
+
 ### Project Layout
 
 | Path | Purpose |

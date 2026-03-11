@@ -140,7 +140,7 @@
                                 <property name="vexpand">true</property>
                                 <child type="placeholder">
                                   <object class="AdwStatusPage">
-                                    <property name="icon-name">keycord-symbolic</property>
+                                    <property name="icon-name">io.github.noobping.keycord-symbolic</property>
                                   </object>
                                 </child>
                               </object>

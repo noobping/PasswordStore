@@ -79,7 +79,7 @@ Categories=Utility;
 
 #[cfg(debug_assertions)]
 fn app_id() -> &'static str {
-    concat!("io.github.noobping.", env!("CARGO_PKG_NAME"), ".beta")
+    concat!("io.github.noobping.", env!("CARGO_PKG_NAME"), "-beta")
 }
 
 #[cfg(not(debug_assertions))]

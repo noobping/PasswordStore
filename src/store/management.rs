@@ -21,6 +21,8 @@ use crate::support::object_data::non_null_to_string_option;
 use crate::support::pass_import::{
     available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
 };
+#[cfg(not(feature = "flatpak"))]
+use crate::support::ui::flat_icon_button_with_tooltip;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
 #[cfg(not(feature = "flatpak"))]
 use crate::window::clone_store_repository;
@@ -35,6 +37,8 @@ use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use adw::{
     Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, StatusPage, WindowTitle,
 };
+#[cfg(not(feature = "flatpak"))]
+use std::cell::RefCell;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -78,6 +82,21 @@ fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> 
                 .to_string(),
         );
         overlay.add_toast(Toast::new("Choose a local folder."));
+        None
+    })?;
+
+    Some(path.to_string_lossy().to_string())
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
+    let file = dialog.file()?;
+    let path = file.path().or_else(|| {
+        log_error(
+            "The selected file is not available as a local path. Choose a local file or folder."
+                .to_string(),
+        );
+        overlay.add_toast(Toast::new("Choose a local file or folder."));
         None
     })?;
 
@@ -143,6 +162,15 @@ fn folder_is_empty(path: &str) -> io::Result<bool> {
 #[cfg(not(feature = "flatpak"))]
 fn should_show_pass_import_row(stores: &[String], import_sources: &[String]) -> bool {
     !stores.is_empty() && !import_sources.is_empty()
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn import_source_subtitle(source_path: Option<&str>) -> &'static str {
+    if source_path.is_some() {
+        ""
+    } else {
+        "Choose a file or folder if the importer needs one."
+    }
 }
 
 #[cfg(not(feature = "flatpak"))]
@@ -458,8 +486,20 @@ fn present_pass_import_dialog<F>(
     let source_row = ActionRow::builder().title("Importer").build();
     source_row.add_suffix(&source_dropdown);
 
-    let source_path_row = EntryRow::new();
-    source_path_row.set_title("Source path");
+    let source_path = Rc::new(RefCell::new(None::<String>));
+    let source_path_row = ActionRow::builder()
+        .title("Import source")
+        .subtitle(import_source_subtitle(None))
+        .build();
+    let source_file_button =
+        flat_icon_button_with_tooltip("paper-symbolic", "Choose source file");
+    let source_folder_button =
+        flat_icon_button_with_tooltip("folder-open-symbolic", "Choose source folder");
+    let source_clear_button =
+        flat_icon_button_with_tooltip("edit-clear-symbolic", "Clear source path");
+    source_path_row.add_suffix(&source_file_button);
+    source_path_row.add_suffix(&source_folder_button);
+    source_path_row.add_suffix(&source_clear_button);
 
     let target_path_row = EntryRow::new();
     target_path_row.set_title("Store subfolder");
@@ -496,6 +536,73 @@ fn present_pass_import_dialog<F>(
         ))
         .build();
 
+    {
+        let window = window.clone();
+        let overlay = overlay.clone();
+        let source_path = source_path.clone();
+        let source_path_row = source_path_row.clone();
+        source_file_button.connect_clicked(move |_| {
+            let dialog = FileChooserNative::new(
+                Some("Choose import source file"),
+                Some(&window),
+                FileChooserAction::Open,
+                Some("Select"),
+                Some("Cancel"),
+            );
+            let overlay = overlay.clone();
+            let source_path = source_path.clone();
+            let source_path_row = source_path_row.clone();
+            dialog.connect_response(move |dialog, response| {
+                if response == ResponseType::Accept {
+                    if let Some(path) = selected_local_path(dialog, &overlay) {
+                        *source_path.borrow_mut() = Some(path.clone());
+                        source_path_row.set_subtitle(&path);
+                    }
+                }
+                dialog.hide();
+            });
+            dialog.show();
+        });
+    }
+
+    {
+        let window = window.clone();
+        let overlay = overlay.clone();
+        let source_path = source_path.clone();
+        let source_path_row = source_path_row.clone();
+        source_folder_button.connect_clicked(move |_| {
+            let dialog = FileChooserNative::new(
+                Some("Choose import source folder"),
+                Some(&window),
+                FileChooserAction::SelectFolder,
+                Some("Select"),
+                Some("Cancel"),
+            );
+            let overlay = overlay.clone();
+            let source_path = source_path.clone();
+            let source_path_row = source_path_row.clone();
+            dialog.connect_response(move |dialog, response| {
+                if response == ResponseType::Accept {
+                    if let Some(path) = selected_local_path(dialog, &overlay) {
+                        *source_path.borrow_mut() = Some(path.clone());
+                        source_path_row.set_subtitle(&path);
+                    }
+                }
+                dialog.hide();
+            });
+            dialog.show();
+        });
+    }
+
+    {
+        let source_path = source_path.clone();
+        let source_path_row = source_path_row.clone();
+        source_clear_button.connect_clicked(move |_| {
+            *source_path.borrow_mut() = None;
+            source_path_row.set_subtitle(import_source_subtitle(None));
+        });
+    }
+
     let dialog_clone = dialog.clone();
     let overlay_clone = overlay.clone();
     let stores = stores.to_vec();
@@ -517,7 +624,7 @@ fn present_pass_import_dialog<F>(
         on_submit(PassImportRequest {
             store_root,
             source,
-            source_path: normalize_optional_text(&source_path_row.text()),
+            source_path: source_path.borrow().clone(),
             target_path: normalize_optional_text(&target_path_row.text()),
         });
     });

@@ -16,6 +16,8 @@ use crate::support::actions::register_window_action;
 #[cfg(not(feature = "flatpak"))]
 use crate::support::background::spawn_result_task;
 #[cfg(not(feature = "flatpak"))]
+use crate::support::object_data::non_null_to_string_option;
+#[cfg(not(feature = "flatpak"))]
 use crate::support::pass_import::{
     available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
 };
@@ -37,6 +39,8 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::rc::Rc;
+#[cfg(not(feature = "flatpak"))]
+use std::sync::atomic::{AtomicU64, Ordering};
 
 fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
     if stores.iter().any(|store| store == new_store) {
@@ -141,6 +145,22 @@ fn should_show_pass_import_row(stores: &[String], import_sources: &[String]) -> 
     !stores.is_empty() && !import_sources.is_empty()
 }
 
+#[cfg(not(feature = "flatpak"))]
+const STORE_LIST_REFRESH_ID_KEY: &str = "store-list-refresh-id";
+
+#[cfg(not(feature = "flatpak"))]
+fn next_store_list_refresh_id() -> String {
+    static NEXT_STORE_LIST_REFRESH_ID: AtomicU64 = AtomicU64::new(1);
+    NEXT_STORE_LIST_REFRESH_ID
+        .fetch_add(1, Ordering::Relaxed)
+        .to_string()
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn stores_list_refresh_is_current(list: &ListBox, refresh_id: &str) -> bool {
+    non_null_to_string_option(list, STORE_LIST_REFRESH_ID_KEY).as_deref() == Some(refresh_id)
+}
+
 pub(crate) fn rebuild_store_list(
     list: &ListBox,
     settings: &Preferences,
@@ -163,11 +183,7 @@ pub(crate) fn rebuild_store_list(
     #[cfg(not(feature = "flatpak"))]
     {
         append_store_clone_row(list, settings, window, overlay, recipients_page);
-        if let Ok(import_sources) = available_pass_import_sources() {
-            if should_show_pass_import_row(&stores, &import_sources) {
-                append_store_import_row(list, settings, window, overlay);
-            }
-        }
+        schedule_store_import_row(list, settings, window, overlay, stores);
     }
 }
 
@@ -548,6 +564,7 @@ fn append_store_import_row(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    import_sources: Vec<String>,
 ) {
     let settings = settings.clone();
     let window = window.clone();
@@ -564,13 +581,10 @@ fn append_store_import_row(
                 return;
             }
 
-            let import_sources = match available_pass_import_sources() {
-                Ok(import_sources) if !import_sources.is_empty() => import_sources,
-                _ => {
-                    overlay.add_toast(Toast::new("pass import is not available."));
-                    return;
-                }
-            };
+            if !should_show_pass_import_row(&stores, &import_sources) {
+                overlay.add_toast(Toast::new("pass import is not available."));
+                return;
+            }
 
             present_pass_import_dialog(&window, &overlay, &stores, &import_sources, {
                 let window = window.clone();
@@ -578,6 +592,49 @@ fn append_store_import_row(
                 move |request| start_pass_import(&window, &overlay, request)
             });
         },
+    );
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn schedule_store_import_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    stores: Vec<String>,
+) {
+    let refresh_id = next_store_list_refresh_id();
+    unsafe {
+        list.set_data(STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
+    }
+
+    let list_for_result = list.clone();
+    let settings = settings.clone();
+    let window = window.clone();
+    let overlay = overlay.clone();
+    let stores_for_result = stores.clone();
+    let refresh_id_for_result = refresh_id.clone();
+    spawn_result_task(
+        available_pass_import_sources,
+        move |result| {
+            if !stores_list_refresh_is_current(&list_for_result, &refresh_id_for_result) {
+                return;
+            }
+
+            let Ok(import_sources) = result else {
+                return;
+            };
+            if should_show_pass_import_row(&stores_for_result, &import_sources) {
+                append_store_import_row(
+                    &list_for_result,
+                    &settings,
+                    &window,
+                    &overlay,
+                    import_sources,
+                );
+            }
+        },
+        move || {},
     );
 }
 

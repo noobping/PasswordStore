@@ -25,6 +25,9 @@ use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use adw::{
     Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, StatusPage, WindowTitle,
 };
+use std::fs;
+use std::io;
+use std::path::Path;
 use std::rc::Rc;
 
 fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
@@ -101,6 +104,30 @@ fn open_store_folder_picker(
     dialog.show();
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SelectedStoreFolderMode {
+    AddExisting,
+    CreateNew,
+}
+
+fn selected_store_folder_mode(is_empty: bool) -> SelectedStoreFolderMode {
+    if is_empty {
+        SelectedStoreFolderMode::CreateNew
+    } else {
+        SelectedStoreFolderMode::AddExisting
+    }
+}
+
+fn folder_is_empty(path: &str) -> io::Result<bool> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Ok(true);
+    }
+
+    let mut entries = fs::read_dir(path)?;
+    Ok(entries.next().is_none())
+}
+
 pub(crate) fn rebuild_store_list(
     list: &ListBox,
     settings: &Preferences,
@@ -121,7 +148,6 @@ pub(crate) fn rebuild_store_list(
     append_store_picker_row(list, settings, window, overlay, recipients_page);
     #[cfg(not(feature = "flatpak"))]
     append_store_clone_row(list, settings, window, overlay, recipients_page);
-    append_store_creator_row(list, settings, window, overlay, recipients_page);
 }
 
 fn append_store_row(
@@ -177,9 +203,9 @@ fn append_store_picker_row(
     let list_for_action = list.clone();
     append_action_row_with_button(
         list,
-        "Add store folder",
-        "Choose an existing folder.",
-        "folder-open-symbolic",
+        "Add or create store",
+        "Choose a folder. Empty folders become new stores.",
+        "folder-new-symbolic",
         move || {
             open_store_picker(
                 &window,
@@ -370,14 +396,29 @@ fn open_store_picker(
         &window,
         "Choose password store folder",
         "Select",
-        false,
+        true,
         &overlay,
         move |store| {
-            if let Some(stores) = updated_stores_after_add(&settings.stores(), &store) {
-                if let Err(err) = settings.set_stores(stores) {
-                    log_error(format!("Failed to save stores: {err}"));
-                    overlay_for_selection.add_toast(Toast::new("Couldn't add that folder."));
-                } else {
+            let mode = match folder_is_empty(&store) {
+                Ok(is_empty) => selected_store_folder_mode(is_empty),
+                Err(err) => {
+                    log_error(format!("Failed to read password store folder: {err}"));
+                    overlay_for_selection.add_toast(Toast::new("Couldn't read that folder."));
+                    return;
+                }
+            };
+
+            match mode {
+                SelectedStoreFolderMode::AddExisting => {
+                    if let Some(stores) = updated_stores_after_add(&settings.stores(), &store) {
+                        if let Err(err) = settings.set_stores(stores) {
+                            log_error(format!("Failed to save stores: {err}"));
+                            overlay_for_selection
+                                .add_toast(Toast::new("Couldn't add that folder."));
+                            return;
+                        }
+                    }
+
                     rebuild_store_list(
                         &list,
                         &settings,
@@ -387,7 +428,14 @@ fn open_store_picker(
                     );
                     show_store_recipients_edit_page(&recipients_page, &store);
                 }
-            }
+                SelectedStoreFolderMode::CreateNew => {
+                    let recipients = initial_recipients_for_store_creation(
+                        read_store_gpg_recipients(&store),
+                        suggested_gpg_recipients(&settings),
+                    );
+                    show_store_recipients_create_page(&recipients_page, store, recipients);
+                }
+            };
         },
     );
 }
@@ -456,56 +504,11 @@ fn start_store_clone(
     );
 }
 
-fn append_store_creator_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-) {
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let recipients_page = recipients_page.clone();
-    append_action_row_with_button(
-        list,
-        "Create store",
-        "Choose a folder and add recipients.",
-        "folder-new-symbolic",
-        move || open_store_creator_picker(&window, &settings, &overlay, &recipients_page),
-    );
-}
-
-fn open_store_creator_picker(
-    window: &ApplicationWindow,
-    settings: &Preferences,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-) {
-    let settings = settings.clone();
-    let overlay = overlay.clone();
-    let recipients_page = recipients_page.clone();
-    open_store_folder_picker(
-        window,
-        "Choose new password store folder",
-        "Select",
-        true,
-        &overlay,
-        move |store| {
-            let recipients = initial_recipients_for_store_creation(
-                read_store_gpg_recipients(&store),
-                suggested_gpg_recipients(&settings),
-            );
-            show_store_recipients_create_page(&recipients_page, store, recipients);
-        },
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        initial_recipients_for_store_creation, updated_stores_after_add,
-        updated_stores_after_delete,
+        initial_recipients_for_store_creation, selected_store_folder_mode,
+        updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
     };
 
     #[test]
@@ -549,6 +552,18 @@ mod tests {
                 vec!["suggested@example.com".to_string()],
             ),
             vec!["suggested@example.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn empty_selected_folders_start_store_creation_while_non_empty_ones_are_added() {
+        assert_eq!(
+            selected_store_folder_mode(true),
+            SelectedStoreFolderMode::CreateNew
+        );
+        assert_eq!(
+            selected_store_folder_mode(false),
+            SelectedStoreFolderMode::AddExisting
         );
     }
 }

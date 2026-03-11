@@ -96,7 +96,7 @@
             <child type="title">
               <object class="AdwWindowTitle" id="window_title">
                 <property name="title" translatable="yes">Keycord</property>
-                <property name="subtitle" translatable="yes">Manage your passwords</property>
+                <property name="subtitle" translatable="yes">Browse and edit password stores</property>
               </object>
             </child>
             <child type="end">

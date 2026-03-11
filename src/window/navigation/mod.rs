@@ -44,7 +44,7 @@ pub(crate) struct WindowChrome<'a> {
 }
 
 pub(crate) const APP_WINDOW_TITLE: &str = "Keycord";
-pub(crate) const APP_WINDOW_SUBTITLE: &str = "Manage your passwords";
+pub(crate) const APP_WINDOW_SUBTITLE: &str = "Browse and edit password stores";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RestoredPageKind {

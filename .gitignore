@@ -1,9 +1,10 @@
-target/
-*.lock
-resources.xml
-AppDir/
-*cache/
 *.AppImage
 *.desktop
+*.lock
 *.sh
+*builder/
+*cache/
+AppDir/
 excludelist
+resources.xml
+target/

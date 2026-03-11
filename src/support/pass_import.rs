@@ -107,7 +107,7 @@ pub(crate) fn run_pass_import(request: &PassImportRequest) -> Result<(), String>
         &request.store_root,
         "Import passwords with pass import",
         |cmd| {
-            cmd.arg("import");
+            cmd.arg("import").arg("--convert");
             if let Some(target_path) = &request.target_path {
                 cmd.arg("--path").arg(target_path);
             }

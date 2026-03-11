@@ -67,6 +67,7 @@ jobs:
             libglib2.0-dev \
             libgpg-error-dev \
             libgtk-4-dev \
+            gpgme \
             libpango1.0-dev \
             librust-gtk4-dev \
             librust-libadwaita-dev \

@@ -33,7 +33,7 @@ modules:
       - install -Dm0644 screenshots/preferences1.png /app/share/metainfo/${FLATPAK_ID}.preferences1.png
       - install -Dm0644 data/gschema.xml /app/share/glib-2.0/schemas/${FLATPAK_ID}.gschema.xml
       - glib-compile-schemas /app/share/glib-2.0/schemas
-      - install -Dm0644 data/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm0644 data/metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
 
     sources:
       - type: git

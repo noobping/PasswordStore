@@ -30,7 +30,9 @@ The AppImage version only bundles the `pass` command. The standalone application
 
 ![edit pass file](screenshots/file.png)
 
-![preferences](screenshots/preferences.png?raw=true)
+![preferences on flatpak](screenshots/preferences1.png?raw=true)
+
+![preferences on host](screenshots/preferences2.png?raw=true)
 
 ## Cargo Features
 

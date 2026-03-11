@@ -462,6 +462,28 @@
                           <object class="AdwPreferencesPage">
 
                             <child>
+                              <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Password Stores</property>
+                                <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>
+                                <child>
+                                  <object class="GtkListBox" id="password_stores">
+                                    <property name="hexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                    <child type="placeholder">
+                                      <object class="AdwActionRow" id="stores_row">
+                                        <property name="title">No folders added</property>
+                                        <property name="subtitle">Add an existing folder or create a new store.</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
                               <object class="AdwPreferencesGroup" id="backend_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
@@ -476,122 +498,6 @@
                                   <object class="AdwEntryRow" id="pass_command_row">
                                     <property name="title" translatable="yes">Host command</property>
                                     <property name="show-apply-button">true</property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">Password Generation</property>
-                                <property name="description" translatable="yes">These settings are used when you generate or regenerate a password from the editor.</property>
-                                <child>
-                                  <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Length</property>
-                                    <property name="subtitle" translatable="yes">Total characters</property>
-                                    <child type="suffix">
-                                      <object class="GtkSpinButton" id="preferences_password_generator_length_spin">
-                                        <property name="adjustment">
-                                          <object class="GtkAdjustment">
-                                            <property name="lower">1</property>
-                                            <property name="upper">256</property>
-                                            <property name="step-increment">1</property>
-                                            <property name="page-increment">5</property>
-                                            <property name="value">24</property>
-                                          </object>
-                                        </property>
-                                        <property name="numeric">true</property>
-                                        <property name="width-chars">4</property>
-                                        <property name="valign">center</property>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Lowercase letters</property>
-                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                    <child type="suffix">
-                                      <object class="GtkSpinButton" id="preferences_password_generator_min_lowercase_spin">
-                                        <property name="adjustment">
-                                          <object class="GtkAdjustment">
-                                            <property name="lower">0</property>
-                                            <property name="upper">256</property>
-                                            <property name="step-increment">1</property>
-                                            <property name="page-increment">5</property>
-                                            <property name="value">1</property>
-                                          </object>
-                                        </property>
-                                        <property name="numeric">true</property>
-                                        <property name="width-chars">4</property>
-                                        <property name="valign">center</property>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Uppercase letters</property>
-                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                    <child type="suffix">
-                                      <object class="GtkSpinButton" id="preferences_password_generator_min_uppercase_spin">
-                                        <property name="adjustment">
-                                          <object class="GtkAdjustment">
-                                            <property name="lower">0</property>
-                                            <property name="upper">256</property>
-                                            <property name="step-increment">1</property>
-                                            <property name="page-increment">5</property>
-                                            <property name="value">1</property>
-                                          </object>
-                                        </property>
-                                        <property name="numeric">true</property>
-                                        <property name="width-chars">4</property>
-                                        <property name="valign">center</property>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Numbers</property>
-                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                    <child type="suffix">
-                                      <object class="GtkSpinButton" id="preferences_password_generator_min_numbers_spin">
-                                        <property name="adjustment">
-                                          <object class="GtkAdjustment">
-                                            <property name="lower">0</property>
-                                            <property name="upper">256</property>
-                                            <property name="step-increment">1</property>
-                                            <property name="page-increment">5</property>
-                                            <property name="value">1</property>
-                                          </object>
-                                        </property>
-                                        <property name="numeric">true</property>
-                                        <property name="width-chars">4</property>
-                                        <property name="valign">center</property>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Symbols</property>
-                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                    <child type="suffix">
-                                      <object class="GtkSpinButton" id="preferences_password_generator_min_symbols_spin">
-                                        <property name="adjustment">
-                                          <object class="GtkAdjustment">
-                                            <property name="lower">0</property>
-                                            <property name="upper">256</property>
-                                            <property name="step-increment">1</property>
-                                            <property name="page-increment">5</property>
-                                            <property name="value">1</property>
-                                          </object>
-                                        </property>
-                                        <property name="numeric">true</property>
-                                        <property name="width-chars">4</property>
-                                        <property name="valign">center</property>
-                                      </object>
-                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -620,21 +526,121 @@
                                 </child>
                               </object>
                             </child>
+
                             <child>
                               <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">Password Stores</property>
-                                <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>
+                                <property name="title" translatable="yes">Password Generation</property>
+                                <property name="description" translatable="yes">These settings are used when you generate or regenerate a password from the editor.</property>
                                 <child>
-                                  <object class="GtkListBox" id="password_stores">
-                                    <property name="hexpand">true</property>
-                                    <property name="selection-mode">none</property>
-                                    <style>
-                                      <class name="boxed-list" />
-                                    </style>
-                                    <child type="placeholder">
-                                      <object class="AdwActionRow" id="stores_row">
-                                        <property name="title">No folders added</property>
-                                        <property name="subtitle">Add an existing folder or create a new store.</property>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Length</property>
+                                    <property name="subtitle" translatable="yes">Total characters</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinButton" id="preferences_password_generator_length_spin">
+                                        <property name="adjustment">
+                                          <object class="GtkAdjustment">
+                                            <property name="lower">1</property>
+                                            <property name="upper">256</property>
+                                            <property name="step-increment">1</property>
+                                            <property name="page-increment">5</property>
+                                            <property name="value">24</property>
+                                          </object>
+                                        </property>
+                                        <property name="numeric">true</property>
+                                        <property name="width-chars">4</property>
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Lowercase letters</property>
+                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinButton" id="preferences_password_generator_min_lowercase_spin">
+                                        <property name="adjustment">
+                                          <object class="GtkAdjustment">
+                                            <property name="lower">0</property>
+                                            <property name="upper">256</property>
+                                            <property name="step-increment">1</property>
+                                            <property name="page-increment">5</property>
+                                            <property name="value">1</property>
+                                          </object>
+                                        </property>
+                                        <property name="numeric">true</property>
+                                        <property name="width-chars">4</property>
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Uppercase letters</property>
+                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinButton" id="preferences_password_generator_min_uppercase_spin">
+                                        <property name="adjustment">
+                                          <object class="GtkAdjustment">
+                                            <property name="lower">0</property>
+                                            <property name="upper">256</property>
+                                            <property name="step-increment">1</property>
+                                            <property name="page-increment">5</property>
+                                            <property name="value">1</property>
+                                          </object>
+                                        </property>
+                                        <property name="numeric">true</property>
+                                        <property name="width-chars">4</property>
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Numbers</property>
+                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinButton" id="preferences_password_generator_min_numbers_spin">
+                                        <property name="adjustment">
+                                          <object class="GtkAdjustment">
+                                            <property name="lower">0</property>
+                                            <property name="upper">256</property>
+                                            <property name="step-increment">1</property>
+                                            <property name="page-increment">5</property>
+                                            <property name="value">1</property>
+                                          </object>
+                                        </property>
+                                        <property name="numeric">true</property>
+                                        <property name="width-chars">4</property>
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Symbols</property>
+                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinButton" id="preferences_password_generator_min_symbols_spin">
+                                        <property name="adjustment">
+                                          <object class="GtkAdjustment">
+                                            <property name="lower">0</property>
+                                            <property name="upper">256</property>
+                                            <property name="step-increment">1</property>
+                                            <property name="page-increment">5</property>
+                                            <property name="value">1</property>
+                                          </object>
+                                        </property>
+                                        <property name="numeric">true</property>
+                                        <property name="width-chars">4</property>
+                                        <property name="valign">center</property>
                                       </object>
                                     </child>
                                   </object>

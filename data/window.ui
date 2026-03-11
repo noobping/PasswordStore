@@ -501,7 +501,7 @@
 
                             <child>
                               <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">Username Fallback</property>
+                                <property name="title" translatable="yes">Username</property>
                                 <property name="description" translatable="yes">Used only when a pass file has no encrypted username field.</property>
                                 <child>
                                   <object class="AdwActionRow">

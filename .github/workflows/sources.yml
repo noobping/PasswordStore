@@ -1,0 +1,130 @@
+name: Flatpak Cargo Sources
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - development
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "**/Cargo.toml"
+      - ".github/workflows/sources.yml"
+
+concurrency:
+  group: sources-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Python
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip git
+          python3 --version
+
+      - name: Install Python deps
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m pip install --upgrade --user pip
+          python3 -m pip install --user aiohttp tomlkit
+          python3 -m pip show tomlkit aiohttp
+          python3 -c "import tomlkit, aiohttp; print('ok', tomlkit.__version__)"
+
+      - name: Ensure Cargo.lock exists
+        run: |
+          if [ ! -f Cargo.lock ]; then
+            echo "Cargo.lock missing; generating..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+            cargo generate-lockfile
+          fi
+
+      - name: Fetch flatpak-builder-tools
+        run: |
+          rm -rf /tmp/flatpak-builder-tools
+          git clone --depth 1 https://github.com/flatpak/flatpak-builder-tools.git /tmp/flatpak-builder-tools
+
+      - name: Generate cargo sources
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euxo pipefail
+          python3 -u /tmp/flatpak-builder-tools/cargo/flatpak-cargo-generator.py --help || true
+          python3 -u /tmp/flatpak-builder-tools/cargo/flatpak-cargo-generator.py --yaml Cargo.lock -o cargo-sources.yml
+          test -s cargo-sources.yml
+          head -n 20 cargo-sources.yml
+
+      - name: Debug python
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -x
+          which python3 || true
+          python3 --version || true
+          python3 -m pip --version || true
+          python3 -c "import sys; print('\n'.join(sys.path))" || true
+          python3 -c "import tomlkit, aiohttp; print('tomlkit', tomlkit.__version__, 'aiohttp', aiohttp.__version__)" || true
+          ls -la || true
+          ls -la /tmp/flatpak-builder-tools/cargo || true
+          echo "----- Cargo.lock head -----"
+          head -n 60 Cargo.lock || true
+          echo "----- cargo-sources.yml head -----"
+          head -n 80 cargo-sources.yml || true
+          echo "----- cargo-sources.yml tail -----"
+          tail -n 80 cargo-sources.yml || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-sources
+          path: cargo-sources.yml
+
+      - name: Commit and push if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=== ls -la ==="
+          ls -la cargo-sources.yml || true
+
+          echo "=== git status (before add) ==="
+          git status --porcelain
+
+          # Make sure it's not ignored
+          echo "=== check ignore ==="
+          git check-ignore -v cargo-sources.yml || true
+
+          # Stage the file
+          git add -A cargo-sources.yml
+
+          echo "=== git status (after add) ==="
+          git status --porcelain
+
+          # If nothing staged, bail out
+          if git diff --cached --quiet; then
+            echo "No changes staged (cargo-sources.yml unchanged or ignored)."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git commit -m "chore(flatpak): update cargo-sources.yml"
+          git push

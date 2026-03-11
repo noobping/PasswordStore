@@ -1,18 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 128 128" fill="none" preserveAspectRatio="xMidYMid meet">
-  <title>Keycord symbolic icon
-</title>
-<g fill="currentColor">
-  <!-- Key body -->
-  <rect x="16" y="44" width="78" height="48" rx="12" transform="translate(-0.7585185185185246 1.0113580246913583) scale(1)"/>
-  <!-- K cutout / glyph -->
-  <rect x="34" y="54" width="8" height="28" rx="4"/>
-  <path d="M60 54a4 4 0 0 1 2.35 7.24L50.8 70l11.55 8.76A4 4 0 1 1 57.5 85L41.5 73a4 4 0 0 1 0-6l16-12A3.98 3.98 0 0 1 60 54z"/>
-  <!-- Cord -->
-  <path d="M92 28c10 0 18 8 18 18 0 9-6 16-14 18-6 2-10 7-10 13v7a4 4 0 0 1-8 0v-7c0-10 6-18 16-21 5-1 8-5 8-10 0-6-4-10-10-10a4 4 0 0 1 0-8z"/>
-  <!-- Plug head -->
-  <rect x="88" y="16" width="20" height="14" rx="4" transform="translate(-10.872098765432101 8.596543209876543) scale(1)"/>
-  <!-- Plug prongs -->
-  <rect x="92" y="8" width="4" height="10" rx="2" transform="translate(-10.872098765432112 7.079506172839507) scale(1)"/>
-  <rect x="100" y="8" width="4" height="10" rx="2" transform="translate(-11.124938271604945 7.079506172839504) scale(1)"/>
-</g>
-</svg>
+<svg width="100%" height="100%" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><path d="M88 24 C100 24 108 33 108 45 C108 56 101 65 91 67" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" transform="translate(4.298271604938272 -0.2528395061728396) scale(1)"/><path d="M91 67 C85 69 81 74 81 79 V84" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 22 H84 C94.493 22 103 30.507 103 41 V69 C103 79.493 94.493 88 84 88 H24 C13.507 88 5 79.493 5 69 V41 C5 30.507 13.507 22 24 22Z" fill="currentColor" transform="translate(6.573827160493828 5.3096296296296295) scale(1)"/><rect x="85" y="12" width="18" height="14" rx="4" fill="currentColor" transform="translate(-0.7585185185185186 5.562469135802469) scale(1)"/><rect x="89" y="8" width="3" height="8" rx="1.5" fill="currentColor" transform="translate(-1.0113580246913576 3.7925925925925936) scale(1)"/><rect x="96" y="8" width="3" height="8" rx="1.5" fill="currentColor" transform="translate(-1.5170370370370372 4.045432098765432) scale(1)"/></svg>

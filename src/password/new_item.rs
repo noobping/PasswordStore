@@ -1,11 +1,11 @@
 use crate::preferences::Preferences;
+use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
 use crate::support::ui::toggle_popover;
 use adw::gtk::{DropDown, Popover, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
 use adw::ApplicationWindow;
 use std::cell::RefCell;
-use std::path::Path;
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -17,50 +17,6 @@ pub(crate) struct NewPasswordPopoverState {
 
 fn available_store_roots() -> Vec<String> {
     Preferences::new().store_roots()
-}
-
-fn shortened_store_labels(stores: &[String]) -> Vec<String> {
-    let path_segments = stores
-        .iter()
-        .map(|store| {
-            Path::new(store)
-                .components()
-                .filter_map(|component| component.as_os_str().to_str())
-                .filter(|segment| !segment.is_empty() && *segment != "/")
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    let max_depth = path_segments.iter().map(Vec::len).max().unwrap_or_default();
-    for depth in 1..=max_depth {
-        let labels = path_segments
-            .iter()
-            .zip(stores)
-            .map(|(segments, full_path)| {
-                if segments.is_empty() {
-                    return full_path.clone();
-                }
-
-                let start = segments.len().saturating_sub(depth);
-                let suffix = segments[start..].join("/");
-                if start == 0 {
-                    suffix
-                } else {
-                    format!(".../{suffix}")
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let mut unique = labels.clone();
-        unique.sort();
-        unique.dedup();
-        if unique.len() == labels.len() {
-            return labels;
-        }
-    }
-
-    stores.to_vec()
 }
 
 fn resolve_selected_store(stores: &[String], selected: Option<&str>) -> Option<String> {
@@ -116,31 +72,8 @@ pub(crate) fn register_open_new_password_action(
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_selected_store, selected_store_position, shortened_store_labels};
+    use super::{resolve_selected_store, selected_store_position};
     use adw::gtk::INVALID_LIST_POSITION;
-
-    #[test]
-    fn store_labels_use_short_unique_suffixes() {
-        let stores = vec![
-            "/home/nick/.password-store".to_string(),
-            "/home/nick/work/.password-store".to_string(),
-        ];
-
-        assert_eq!(
-            shortened_store_labels(&stores),
-            vec![
-                ".../nick/.password-store".to_string(),
-                ".../work/.password-store".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn store_labels_fall_back_to_full_paths_when_needed() {
-        let stores = vec!["/same".to_string(), "/same".to_string()];
-
-        assert_eq!(shortened_store_labels(&stores), stores);
-    }
 
     #[test]
     fn selected_store_uses_current_dropdown_index() {

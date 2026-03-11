@@ -1,6 +1,6 @@
 [package]
 name = "keycord"
-description = "A modern Rust-based password manager for Linux, built with GTK4/Libadwaita"
+description = "Browse and edit password stores"
 authors = ["noobping"]
 version = "0.8.0"
 edition = "2021"

@@ -4,7 +4,7 @@
 ![License](https://img.shields.io/badge/license-GPLv3+-blue.svg)
 [![Linux](https://github.com/noobping/PasswordStore/actions/workflows/linux.yml/badge.svg)](https://github.com/noobping/PasswordStore/actions/workflows/linux.yml)
 
-Password Store is a Linux and mobile app for people who use the standard Unix password manager [`pass`](https://www.passwordstore.org/).
+Password Store is a app for people who use the standard Unix password manager [`pass`](https://www.passwordstore.org/).
 
 if your passwords already live in a `pass` store, this project gives you a clean graphical app to browse, search, copy, edit, and organize them.
 

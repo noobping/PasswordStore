@@ -392,6 +392,13 @@
                             </child>
 
                             <child>
+                              <object class="GtkBox" id="dynamic_fields_box">
+                                <property name="visible">false</property>
+                                <property name="orientation">vertical</property>
+                              </object>
+                            </child>
+
+                            <child>
                               <object class="GtkButton" id="add_otp_button">
                                 <property name="visible">false</property>
                                 <property name="label" translatable="yes">Add OTP secret</property>
@@ -400,13 +407,6 @@
                                 <property name="margin-end">15</property>
                                 <property name="margin-bottom">6</property>
                                 <property name="action-name">win.add-otp-secret</property>
-                              </object>
-                            </child>
-
-                            <child>
-                              <object class="GtkBox" id="dynamic_fields_box">
-                                <property name="visible">false</property>
-                                <property name="orientation">vertical</property>
                               </object>
                             </child>
 

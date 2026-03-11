@@ -9,7 +9,8 @@ use super::file::{new_pass_file_contents_from_template, structured_pass_contents
 use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
-    read_password_entry, save_password_entry, PasswordEntryError, PasswordEntryWriteError,
+    read_password_entry, rename_password_entry, save_password_entry, PasswordEntryError,
+    PasswordEntryWriteError,
 };
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
@@ -50,6 +51,14 @@ fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static
 
 fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
     error.save_toast_message()
+}
+
+fn updated_label_from_username(pass_file: &OpenPassFile, username: &str) -> Option<String> {
+    if pass_file.username_is_from_path() {
+        pass_file.entry.label_with_updated_path_username(username)
+    } else {
+        None
+    }
 }
 
 fn show_password_open_failure(state: &PasswordPageState, error: Option<&PasswordEntryError>) {
@@ -226,10 +235,34 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             &state.dynamic_rows.borrow(),
         )
     };
+    let target_label = updated_label_from_username(&pass_file, &state.username.text());
     let label = pass_file.label();
     match save_password_entry(pass_file.store_path(), &label, &contents, true) {
         Ok(()) => {
-            let updated_pass_file = refresh_opened_pass_file_from_contents(&pass_file, &contents);
+            let active_pass_file = if let Some(target_label) =
+                target_label.filter(|target_label| target_label != &label)
+            {
+                match rename_password_entry(pass_file.store_path(), &label, &target_label) {
+                    Ok(()) => {
+                        let renamed_pass_file =
+                            OpenPassFile::from_label(pass_file.store_path(), &target_label);
+                        set_opened_pass_file(renamed_pass_file.clone());
+                        renamed_pass_file
+                    }
+                    Err(err) => {
+                        log_error(format!("Failed to move password entry after save: {err}"));
+                        state
+                            .overlay
+                            .add_toast(Toast::new(err.rename_toast_message()));
+                        return;
+                    }
+                }
+            } else {
+                pass_file.clone()
+            };
+            let updated_pass_file =
+                refresh_opened_pass_file_from_contents(&active_pass_file, &contents)
+                    .or(Some(active_pass_file));
             show_password_editor_fields(state);
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
             state.overlay.add_toast(Toast::new("Saved."));
@@ -294,9 +327,10 @@ pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> 
 mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
-        should_retry_open_password_entry,
+        should_retry_open_password_entry, updated_label_from_username,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+    use crate::password::model::OpenPassFile;
 
     #[test]
     fn retry_open_requires_a_hidden_editor_on_the_password_page_with_an_open_item() {
@@ -358,5 +392,21 @@ mod tests {
             )),
             "Unlock the key in Preferences."
         );
+    }
+
+    #[test]
+    fn folder_derived_usernames_update_the_pass_file_path_on_save() {
+        let pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        assert_eq!(
+            updated_label_from_username(&pass_file, "bob").as_deref(),
+            Some("work/bob/github")
+        );
+    }
+
+    #[test]
+    fn explicit_usernames_do_not_move_the_pass_file_path_on_save() {
+        let mut pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        pass_file.refresh_from_contents("secret\nusername: bob");
+        assert_eq!(updated_label_from_username(&pass_file, "carol"), None);
     }
 }

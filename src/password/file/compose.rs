@@ -64,14 +64,23 @@ pub(crate) fn new_pass_file_contents_from_template(template: &str) -> String {
     }
 }
 
+fn username_row_state(pass_file: Option<&OpenPassFile>) -> (Option<String>, bool) {
+    match pass_file.and_then(OpenPassFile::username) {
+        Some(username) => (Some(username.to_string()), true),
+        None => (None, false),
+    }
+}
+
 pub(crate) fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
-    row.set_editable(false);
-    if let Some(username) = pass_file.and_then(OpenPassFile::username) {
-        row.set_text(username);
+    let (username, editable) = username_row_state(pass_file);
+    if let Some(username) = username {
+        row.set_text(&username);
         row.set_visible(true);
+        row.set_editable(editable);
     } else {
         row.set_text("");
         row.set_visible(false);
+        row.set_editable(false);
     }
 }
 
@@ -86,5 +95,27 @@ pub(crate) fn sync_username_row_from_parsed_lines(
         row.set_editable(true);
     } else {
         sync_username_row(row, pass_file);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::username_row_state;
+    use crate::password::model::OpenPassFile;
+
+    #[test]
+    fn visible_usernames_stay_editable_for_path_and_field_sources() {
+        let path_pass_file = OpenPassFile::from_label("/tmp/store", "work/alice/github");
+        assert_eq!(
+            username_row_state(Some(&path_pass_file)),
+            (Some("alice".to_string()), true)
+        );
+
+        let mut field_pass_file = path_pass_file;
+        field_pass_file.refresh_from_contents("secret\nusername: bob");
+        assert_eq!(
+            username_row_state(Some(&field_pass_file)),
+            (Some("bob".to_string()), true)
+        );
     }
 }

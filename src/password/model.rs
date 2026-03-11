@@ -49,18 +49,60 @@ impl PassEntry {
             .filter(|segment| !segment.is_empty())
             .map(str::to_string)
     }
+
+    pub fn label_with_updated_path_username(&self, username: &str) -> Option<String> {
+        let relative_path = self.relative_path.trim_end_matches('/');
+        if relative_path.is_empty() {
+            return None;
+        }
+
+        let basename = &self.basename;
+        let username = username.trim();
+        Some(match relative_path.rsplit_once('/') {
+            Some((prefix, _)) if username.is_empty() => format!("{prefix}/{basename}"),
+            Some((prefix, _)) => format!("{prefix}/{username}/{basename}"),
+            None if username.is_empty() => basename.clone(),
+            None => format!("{username}/{basename}"),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UsernameSource {
+    None,
+    Path,
+    Field,
+}
+
+fn username_from_contents_or_path(
+    entry: &PassEntry,
+    output: &str,
+) -> (Option<String>, UsernameSource) {
+    if let Some(username) = extract_username_from_contents(output) {
+        return (Some(username), UsernameSource::Field);
+    }
+
+    match entry.username_from_path() {
+        Some(username) => (Some(username), UsernameSource::Path),
+        None => (None, UsernameSource::None),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenPassFile {
     pub entry: PassEntry,
     pub username: Option<String>,
+    username_source: UsernameSource,
 }
 
 impl OpenPassFile {
     pub fn new(entry: PassEntry) -> Self {
-        let username = entry.username_from_path();
-        Self { entry, username }
+        let (username, username_source) = username_from_contents_or_path(&entry, "");
+        Self {
+            entry,
+            username,
+            username_source,
+        }
     }
 
     pub fn from_label(store_path: impl Into<String>, label: impl AsRef<str>) -> Self {
@@ -83,9 +125,14 @@ impl OpenPassFile {
         &self.entry.store_path
     }
 
+    pub fn username_is_from_path(&self) -> bool {
+        matches!(self.username_source, UsernameSource::Path)
+    }
+
     pub fn refresh_from_contents(&mut self, output: &str) {
-        self.username =
-            extract_username_from_contents(output).or_else(|| self.entry.username_from_path());
+        let (username, username_source) = username_from_contents_or_path(&self.entry, output);
+        self.username = username;
+        self.username_source = username_source;
     }
 }
 
@@ -259,10 +306,24 @@ mod tests {
     }
 
     #[test]
+    fn path_usernames_update_only_the_last_directory_segment() {
+        let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
+        assert_eq!(
+            entry.label_with_updated_path_username("bob").as_deref(),
+            Some("work/bob/github")
+        );
+        assert_eq!(
+            entry.label_with_updated_path_username("").as_deref(),
+            Some("work/github")
+        );
+    }
+
+    #[test]
     fn explicit_username_beats_directory_fallback() {
         let mut opened = OpenPassFile::from_label("/tmp/store", "work/alice/github");
         opened.refresh_from_contents("secret\nusername: bob\nurl: https://example.com");
         assert_eq!(opened.username.as_deref(), Some("bob"));
+        assert!(!opened.username_is_from_path());
     }
 
     #[test]
@@ -270,6 +331,7 @@ mod tests {
         let mut opened = OpenPassFile::from_label("/tmp/store", "work/alice/github");
         opened.refresh_from_contents("secret\nusername:\nurl: https://example.com");
         assert_eq!(opened.username.as_deref(), Some("alice"));
+        assert!(opened.username_is_from_path());
     }
 
     #[test]

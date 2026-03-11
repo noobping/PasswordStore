@@ -5,6 +5,7 @@ sdk: org.gnome.Sdk
 
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm20
 
 command: keycord
 
@@ -19,9 +20,14 @@ modules:
     buildsystem: simple
 
     build-options:
+      prepend-path: /usr/lib/sdk/llvm20/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm20/lib
       append-path: /usr/lib/sdk/rust-stable/bin
       env:
+        CLANG_PATH: /usr/lib/sdk/llvm20/bin/clang
         CARGO_HOME: /run/build/keycord/cargo
+        LIBCLANG_PATH: /usr/lib/sdk/llvm20/lib
+        BINDGEN_EXTRA_CLANG_ARGS: -resource-dir=/usr/lib/sdk/llvm20/lib/clang/20
 
     build-commands:
       - cargo build --release --features flatpak

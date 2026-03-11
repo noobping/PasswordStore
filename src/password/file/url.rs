@@ -24,7 +24,7 @@ pub(super) fn add_open_url_suffix(
 ) {
     use adw::gtk::gdk::Display;
 
-    let button = flat_icon_button_with_tooltip("adw-external-link-symbolic", "Open URL");
+    let button = flat_icon_button_with_tooltip("external-link-symbolic", "Open URL");
     let overlay = overlay.clone();
     button.connect_clicked(move |_| {
         let Some(uri) = uri_to_open(&text()) else {

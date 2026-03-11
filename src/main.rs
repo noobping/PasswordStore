@@ -53,10 +53,7 @@ fn main() -> ExitCode {
         println!("RESOURCE_ID = {RESOURCE_ID}");
         println!("has git-symbolic? {}", theme.has_icon("git-symbolic"));
         println!("has left-symbolic? {}", theme.has_icon("left-symbolic"));
-        println!(
-            "has io.github.noobping.keycord-symbolic? {}",
-            theme.has_icon("io.github.noobping.keycord-symbolic")
-        );
+        println!("has io.github.noobping.keycord? {}", theme.has_icon("io.github.noobping.keycord"));
     }
 
     // Create the application

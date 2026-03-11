@@ -21,10 +21,11 @@ use crate::support::object_data::non_null_to_string_option;
 
 use adw::gio::SimpleAction;
 use adw::gtk::{
+    Builder,
     gdk::Display,
     gio::{resources_register_include, ApplicationFlags},
     glib::ExitCode,
-    IconTheme,
+    IconTheme, ShortcutsWindow,
 };
 use adw::prelude::*;
 use adw::Application;
@@ -33,6 +34,10 @@ use std::result::Result::Ok;
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
+#[cfg(not(feature = "flatpak"))]
+const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-standard.ui");
+#[cfg(feature = "flatpak")]
+const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-flatpak.ui");
 
 fn main() -> ExitCode {
     resources_register_include!("compiled.gresource").expect("Failed to register resources");
@@ -62,6 +67,7 @@ fn main() -> ExitCode {
 
     // keyboard shortcuts
     app.set_accels_for_action("app.about", &["F1"]);
+    register_app_actions(&app);
 
     // When the desktop asks us to "open" something, just activate the app
     {
@@ -93,44 +99,66 @@ fn main() -> ExitCode {
         let query = non_null_to_string_option(app, "query");
         let win = window::create_main_window(app, query);
         win.present();
-
-        let about_action = SimpleAction::new("about", None);
-        about_action.connect_activate(move |_, _| {
-            let project = env!("CARGO_PKG_NAME");
-            let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
-            let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
-            #[cfg(not(feature = "flatpak"))]
-            let settings = Preferences::new();
-            #[cfg(not(feature = "flatpak"))]
-            let backend_details = if settings.uses_integrated_backend() {
-                "backend: integrated".to_string()
-            } else {
-                get_pass_version(&settings).map_or_else(
-                    || "backend: host command".to_string(),
-                    |version| format!("backend: host command\n{version}"),
-                )
-            };
-            #[cfg(not(feature = "flatpak"))]
-            let full_comments = if comments.is_empty() {
-                backend_details
-            } else {
-                format!("{project}: {comments}\n\n{backend_details}")
-            };
-            #[cfg(feature = "flatpak")]
-            let full_comments = comments;
-            let about = adw::AboutDialog::builder()
-                .application_name(project)
-                .application_icon(APP_ID)
-                .version(env!("CARGO_PKG_VERSION"))
-                .developers(&authors[..])
-                .comments(full_comments)
-                .build();
-            about.present(Some(&win));
-        });
-        app.add_action(&about_action);
     });
 
     app.run()
+}
+
+fn register_app_actions(app: &Application) {
+    let about_action = SimpleAction::new("about", None);
+    let app_for_about = app.clone();
+    about_action.connect_activate(move |_, _| {
+        let project = env!("CARGO_PKG_NAME");
+        let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
+        let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
+        #[cfg(not(feature = "flatpak"))]
+        let settings = Preferences::new();
+        #[cfg(not(feature = "flatpak"))]
+        let backend_details = if settings.uses_integrated_backend() {
+            "backend: integrated".to_string()
+        } else {
+            get_pass_version(&settings).map_or_else(
+                || "backend: host command".to_string(),
+                |version| format!("backend: host command\n{version}"),
+            )
+        };
+        #[cfg(not(feature = "flatpak"))]
+        let full_comments = if comments.is_empty() {
+            backend_details
+        } else {
+            format!("{project}: {comments}\n\n{backend_details}")
+        };
+        #[cfg(feature = "flatpak")]
+        let full_comments = comments;
+        let about = adw::AboutDialog::builder()
+            .application_name(project)
+            .application_icon(APP_ID)
+            .version(env!("CARGO_PKG_VERSION"))
+            .developers(&authors[..])
+            .comments(full_comments)
+            .build();
+        let active_window = app_for_about.active_window();
+        about.present(active_window.as_ref());
+    });
+    app.add_action(&about_action);
+
+    let shortcuts_action = SimpleAction::new("shortcuts", None);
+    let app_for_shortcuts = app.clone();
+    shortcuts_action.connect_activate(move |_, _| {
+        let shortcuts = build_shortcuts_window();
+        if let Some(active_window) = app_for_shortcuts.active_window() {
+            shortcuts.set_transient_for(Some(&active_window));
+        }
+        shortcuts.present();
+    });
+    app.add_action(&shortcuts_action);
+}
+
+fn build_shortcuts_window() -> ShortcutsWindow {
+    let builder = Builder::from_string(SHORTCUTS_UI);
+    builder
+        .object("shortcuts_window")
+        .expect("Failed to build shortcuts window")
 }
 
 #[cfg(not(feature = "flatpak"))]

@@ -308,6 +308,7 @@ pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.toggle-hidden-and-duplicates", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
+    app.set_accels_for_action("app.shortcuts", &["<primary>question"]);
     configure_shortcuts(app);
 }
 

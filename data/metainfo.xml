@@ -3,27 +3,32 @@
   <id>io.github.noobping.keycord</id>
 
   <name>Keycord</name>
-  <summary>A modern Rust-based password manager for Linux, built with GTK4/Libadwaita</summary>
+  <summary>Browse and edit password stores</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPLv3</project_license>
+  <project_license>GPL-3.0-only</project_license>
 
   <developer id="io.github.noobping">
     <name>noobping</name>
   </developer>
 
+  <branding>
+    <color type="primary" scheme_preference="light">#99C1F1</color>
+    <color type="primary" scheme_preference="dark">#613583</color>
+  </branding>
+
   <description>
-    <p>Keycord is a modern client for the standard Unix password manager “pass”.</p>
+    <p>Works with password stores that use the standard pass layout, so existing data can stay in place and remain compatible with established workflows.</p>
     <ul>
-      <li>Browse and search entries</li>
-      <li>Copy passwords to clipboard</li>
-      <li>Works with Git-backed stores</li>
-      <li>Optional OTP support (pass-otp)</li>
-      <li>Supports multiple Password Stores</li>
+      <li>Search entries across more than one store</li>
+      <li>Work with structured fields or raw pass-file text</li>
+      <li>Generate passwords and copy usernames, secrets, and one-time codes</li>
+      <li>Manage recipients and private keys</li>
     </ul>
   </description>
 
   <launchable type="desktop-id">io.github.noobping.keycord.desktop</launchable>
+  <icon type="stock">io.github.noobping.keycord</icon>
 
   <provides>
     <binary>keycord</binary>
@@ -31,43 +36,43 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>
-        https://raw.githubusercontent.com/noobping/keycord/main/screenshots/menu.png</image>
-      <caption>Password list and main menu</caption>
+      <image>https://raw.githubusercontent.com/noobping/keycord/e4d83fa3b05eddcb8cd3148b409bef4e4b94757c/screenshots/list.png</image>
+      <caption>Password list</caption>
     </screenshot>
     <screenshot>
-      <image>
-        https://raw.githubusercontent.com/noobping/keycord/main/screenshots/rename.png</image>
-      <caption>Rename, move or remove a pass file</caption>
+      <image>https://raw.githubusercontent.com/noobping/keycord/e4d83fa3b05eddcb8cd3148b409bef4e4b94757c/screenshots/file.png</image>
+      <caption>Edit a password entry</caption>
     </screenshot>
     <screenshot>
-      <image>
-        https://raw.githubusercontent.com/noobping/keycord/main/screenshots/file.png</image>
-      <caption>Pass file</caption>
+      <image>https://raw.githubusercontent.com/noobping/keycord/e4d83fa3b05eddcb8cd3148b409bef4e4b94757c/screenshots/preferences1.png</image>
+      <caption>Manage stores and private keys</caption>
     </screenshot>
   </screenshots>
 
   <releases>
-    <release version="0.1.2" date="2026-01-12">
+    <release version="0.8.0" date="2026-03-11">
       <description>
-        <p>Initial AppImage release.</p>
+        <p>First release</p>
       </description>
     </release>
   </releases>
 
   <url type="homepage">https://github.com/noobping/keycord</url>
   <url type="bugtracker">https://github.com/noobping/keycord/issues</url>
+  <url type="vcs-browser">https://github.com/noobping/keycord</url>
 
   <content_rating type="oars-1.1"/>
 
   <categories>
     <category>Utility</category>
+    <category>Security</category>
   </categories>
 
   <keywords>
     <keyword>password</keyword>
     <keyword>pass</keyword>
+    <keyword>gpg</keyword>
     <keyword>otp</keyword>
-    <keyword>security</keyword>
+    <keyword>totp</keyword>
   </keywords>
 </component>

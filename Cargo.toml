@@ -2,7 +2,7 @@
 name = "keycord"
 description = "A modern Rust-based password manager for Linux, built with GTK4/Libadwaita"
 authors = ["noobping"]
-version = "0.1.2"
+version = "0.8.0"
 edition = "2021"
 
 [features]

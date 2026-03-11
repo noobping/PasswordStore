@@ -1,12 +1,14 @@
 version: 1
 
 script:
-  - mkdir -p AppDir/usr/bin AppDir/usr/share/icons/hicolor/{256x256,scalable,symbolic}/apps AppDir/usr/share/metainfo
-  - cp data/256x256/apps/io.github.noobping.keycord.png AppDir/usr/share/icons/hicolor/256x256/apps/
-  - cp -r data/scalable/apps/* AppDir/usr/share/icons/hicolor/scalable/apps/
-  - cp -r data/symbolic/apps/* AppDir/usr/share/icons/hicolor/symbolic/apps/
-  - cp target/release/keycord AppDir/usr/bin/
-  - cp data/metainfo.xml AppDir/usr/share/metainfo/io.github.noobping.keycord.appdata.xml
+  - mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/glib-2.0/schemas AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/share/icons/hicolor/scalable/apps AppDir/usr/share/metainfo
+  - install -Dm0755 target/release/keycord AppDir/usr/bin/keycord
+  - printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Version=0.8.0' 'Name=Keycord' 'Comment=A modern Rust-based password manager for Linux, built with GTK4/Libadwaita' 'Exec=keycord %u' 'Icon=io.github.noobping.keycord' 'Terminal=false' 'Categories=Utility;Security;' > AppDir/usr/share/applications/io.github.noobping.keycord.desktop
+  - install -Dm0644 data/256x256/apps/io.github.noobping.keycord.png AppDir/usr/share/icons/hicolor/256x256/apps/io.github.noobping.keycord.png
+  - install -Dm0644 data/scalable/apps/io.github.noobping.keycord.svg AppDir/usr/share/icons/hicolor/scalable/apps/io.github.noobping.keycord.svg
+  - install -Dm0644 data/gschema.xml AppDir/usr/share/glib-2.0/schemas/io.github.noobping.keycord.gschema.xml
+  - glib-compile-schemas AppDir/usr/share/glib-2.0/schemas
+  - install -Dm0644 data/metainfo.xml AppDir/usr/share/metainfo/io.github.noobping.keycord.metainfo.xml
 
 AppDir:
   path: ./AppDir

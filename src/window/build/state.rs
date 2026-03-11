@@ -8,7 +8,8 @@ use crate::store::management::{
     StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
 use crate::window::controls::{
-    BackActionState, ListVisibilityActionState, ListVisibilityState, PlatformBackActionState,
+    BackActionState, ContextUndoActionState, ListVisibilityActionState, ListVisibilityState,
+    PlatformBackActionState,
 };
 use crate::window::navigation::WindowNavigationState;
 use crate::window::preferences::PreferencesActionState;
@@ -66,6 +67,8 @@ pub(super) fn password_page_state(
         dynamic_rows: Rc::new(RefCell::new(Vec::<DynamicFieldRow>::new())),
         text: widgets.text_view.clone(),
         overlay: widgets.toast_overlay.clone(),
+        saved_contents: Rc::new(RefCell::new(String::new())),
+        saved_entry_exists: Rc::new(Cell::new(false)),
     }
 }
 
@@ -217,6 +220,20 @@ pub(super) fn list_visibility_action_state(
     ListVisibilityActionState {
         overlay: widgets.toast_overlay.clone(),
         list: widgets.list.clone(),
+        navigation: navigation.clone(),
+        visibility: visibility.clone(),
+    }
+}
+
+pub(super) fn context_undo_action_state(
+    password_page: &PasswordPageState,
+    recipients_page: &StoreRecipientsPageState,
+    navigation: &WindowNavigationState,
+    visibility: &ListVisibilityState,
+) -> ContextUndoActionState {
+    ContextUndoActionState {
+        password_page: password_page.clone(),
+        recipients_page: recipients_page.clone(),
         navigation: navigation.clone(),
         visibility: visibility.clone(),
     }

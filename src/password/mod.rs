@@ -6,3 +6,4 @@ pub(crate) mod new_item;
 pub(crate) mod opened;
 pub(crate) mod otp;
 pub(crate) mod page;
+pub(crate) mod undo;

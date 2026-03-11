@@ -1,10 +1,11 @@
-use crate::backend::{
-    delete_password_entry, read_password_entry, rename_password_entry, save_password_entry,
-    PasswordEntryError, PasswordEntryWriteError,
-};
+use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::logging::log_error;
 use crate::password::model::PassEntry;
+use crate::password::undo::{
+    delete_entry_and_capture_undo, move_entry_between_stores_action, move_entry_to_store,
+    push_undo_action, rename_entry_action, UndoError,
+};
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
@@ -24,17 +25,6 @@ use std::rc::Rc;
 enum TextEditMode {
     RenameFile,
     MoveWithinStore,
-}
-
-#[derive(Debug)]
-enum StoreMoveError {
-    Read(PasswordEntryError),
-    Save(PasswordEntryWriteError),
-    DeleteSource(PasswordEntryWriteError),
-    RollbackFailed {
-        delete_error: PasswordEntryWriteError,
-        rollback_error: PasswordEntryWriteError,
-    },
 }
 
 #[derive(Clone)]
@@ -247,6 +237,7 @@ fn connect_text_edit_actions(
             Ok(()) => {
                 *state.item.borrow_mut() =
                     PassEntry::from_label(entry.store_path.clone(), &new_label);
+                push_undo_action(rename_entry_action(&entry, &new_label));
                 sync_password_row_display(&state);
                 show_password_row_display(&state);
             }
@@ -319,10 +310,13 @@ fn connect_store_move_actions(
         let state_for_result = state.clone();
         let overlay_for_result = overlay.clone();
         let list_for_result = list.clone();
+        let entry_for_task = entry.clone();
+        let target_store_for_task = target_store.clone();
         spawn_result_task(
-            move || move_password_entry_to_store(&entry, &target_store),
+            move || move_entry_to_store(&entry_for_task, &target_store_for_task),
             move |result| match result {
                 Ok(updated_entry) => {
+                    push_undo_action(move_entry_between_stores_action(&entry, &target_store));
                     *state_for_result.item.borrow_mut() = updated_entry;
                     sync_password_row_display(&state_for_result);
                     show_password_row_display(&state_for_result);
@@ -330,8 +324,8 @@ fn connect_store_move_actions(
                     overlay_for_result.add_toast(Toast::new("Moved."));
                 }
                 Err(err) => {
-                    log_store_move_error(&err);
-                    overlay_for_result.add_toast(Toast::new(store_move_failure_message(&err)));
+                    log_undo_error("move password entry to another store", &err);
+                    overlay_for_result.add_toast(Toast::new(err.toast_message()));
                 }
             },
             move || {
@@ -348,41 +342,21 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
     let overlay = overlay.clone();
     let overlay_for_disconnect = overlay.clone();
     spawn_result_task(
-        move || delete_password_entry(&entry.store_path, &entry.label()),
+        move || delete_entry_and_capture_undo(&entry),
         move |result| match result {
-            Ok(()) => {
+            Ok(undo_action) => {
+                push_undo_action(undo_action);
                 list.remove(&row);
             }
             Err(err) => {
-                log_error(format!("Failed to delete password entry: {err}"));
-                overlay.add_toast(Toast::new(err.delete_toast_message()));
+                log_undo_error("delete password entry", &err);
+                overlay.add_toast(Toast::new(err.toast_message()));
             }
         },
         move || {
             overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the item."));
         },
     );
-}
-
-fn move_password_entry_to_store(
-    entry: &PassEntry,
-    target_store: &str,
-) -> Result<PassEntry, StoreMoveError> {
-    let label = entry.label();
-    let contents = read_password_entry(&entry.store_path, &label).map_err(StoreMoveError::Read)?;
-    save_password_entry(target_store, &label, &contents, false).map_err(StoreMoveError::Save)?;
-
-    if let Err(delete_error) = delete_password_entry(&entry.store_path, &label) {
-        if let Err(rollback_error) = delete_password_entry(target_store, &label) {
-            return Err(StoreMoveError::RollbackFailed {
-                delete_error,
-                rollback_error,
-            });
-        }
-        return Err(StoreMoveError::DeleteSource(delete_error));
-    }
-
-    Ok(PassEntry::from_label(target_store.to_string(), &label))
 }
 
 fn renamed_file_label(entry: &PassEntry, new_name: &str) -> Result<Option<String>, &'static str> {
@@ -460,50 +434,26 @@ fn entry_parent_directory(entry: &PassEntry) -> PathBuf {
     }
 }
 
-fn store_move_failure_message(error: &StoreMoveError) -> &'static str {
+fn log_undo_error(action: &str, error: &UndoError) {
     match error {
-        StoreMoveError::Read(err) => err.toast_message().unwrap_or("Couldn't move the item."),
-        StoreMoveError::Save(PasswordEntryWriteError::EntryAlreadyExists(_)) => {
-            "An item with that name already exists in that store."
+        UndoError::Read(err) => {
+            log_error(format!("Failed to {action}: read step failed: {err}"));
         }
-        StoreMoveError::Save(PasswordEntryWriteError::MissingPrivateKey(_)) => {
-            "Add a private key in Preferences."
+        UndoError::Write(err) => {
+            log_error(format!("Failed to {action}: write step failed: {err}"));
         }
-        StoreMoveError::Save(PasswordEntryWriteError::LockedPrivateKey(_)) => {
-            "Unlock the key in Preferences."
+        UndoError::Delete(err) => {
+            log_error(format!("Failed to {action}: delete step failed: {err}"));
         }
-        StoreMoveError::Save(PasswordEntryWriteError::IncompatiblePrivateKey(_)) => {
-            "This key can't open your items."
+        UndoError::Rename(err) => {
+            log_error(format!("Failed to {action}: rename step failed: {err}"));
         }
-        StoreMoveError::Save(_)
-        | StoreMoveError::DeleteSource(_)
-        | StoreMoveError::RollbackFailed { .. } => "Couldn't move the item.",
-    }
-}
-
-fn log_store_move_error(error: &StoreMoveError) {
-    match error {
-        StoreMoveError::Read(err) => {
-            log_error(format!(
-                "Failed to read password entry before moving stores: {err}"
-            ));
-        }
-        StoreMoveError::Save(err) => {
-            log_error(format!(
-                "Failed to save password entry into the target store: {err}"
-            ));
-        }
-        StoreMoveError::DeleteSource(err) => {
-            log_error(format!(
-                "Failed to delete the original password entry after store move: {err}"
-            ));
-        }
-        StoreMoveError::RollbackFailed {
-            delete_error,
+        UndoError::Rollback {
+            action_error,
             rollback_error,
         } => {
             log_error(format!(
-                "Failed to finish or roll back a store move.\nDelete error: {delete_error}\nRollback error: {rollback_error}"
+                "Failed to {action}: rollback failed.\nAction error: {action_error}\nRollback error: {rollback_error}"
             ));
         }
     }
@@ -511,12 +461,10 @@ fn log_store_move_error(error: &StoreMoveError) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        entry_parent_directory, moved_file_label, renamed_file_label, store_move_failure_message,
-        StoreMoveError,
-    };
+    use super::{entry_parent_directory, moved_file_label, renamed_file_label};
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::PassEntry;
+    use crate::password::undo::UndoError;
     use std::path::PathBuf;
 
     #[test]
@@ -555,10 +503,10 @@ mod tests {
 
     #[test]
     fn duplicate_store_move_target_uses_a_specific_toast() {
-        let error = StoreMoveError::Save(PasswordEntryWriteError::already_exists("duplicate"));
+        let error = UndoError::Write(PasswordEntryWriteError::already_exists("duplicate"));
         assert_eq!(
-            store_move_failure_message(&error),
-            "An item with that name already exists in that store."
+            error.toast_message(),
+            "An item with that name already exists."
         );
     }
 
@@ -566,20 +514,14 @@ mod tests {
     fn store_move_read_errors_keep_specific_open_toasts() {
         #[cfg(feature = "flatpak")]
         {
-            let error = StoreMoveError::Read(PasswordEntryError::missing_private_key("missing"));
-            assert_eq!(
-                store_move_failure_message(&error),
-                "Add a private key in Preferences."
-            );
+            let error = UndoError::Read(PasswordEntryError::missing_private_key("missing"));
+            assert_eq!(error.toast_message(), "Add a private key in Preferences.");
         }
 
         #[cfg(not(feature = "flatpak"))]
         {
-            let error = StoreMoveError::Read(PasswordEntryError::other("missing"));
-            assert_eq!(
-                store_move_failure_message(&error),
-                "Couldn't move the item."
-            );
+            let error = UndoError::Read(PasswordEntryError::other("missing"));
+            assert_eq!(error.toast_message(), "Couldn't undo the last change.");
         }
     }
 }

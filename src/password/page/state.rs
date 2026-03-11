@@ -7,7 +7,7 @@ use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::gtk::{Box as GtkBox, Button, ListBox, Revealer, TextView, ToggleButton};
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -37,6 +37,8 @@ pub(crate) struct PasswordPageState {
     pub(crate) dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
     pub(crate) text: TextView,
     pub(crate) overlay: ToastOverlay,
+    pub(crate) saved_contents: Rc<RefCell<String>>,
+    pub(crate) saved_entry_exists: Rc<Cell<bool>>,
 }
 
 pub(super) fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle: &str) {
@@ -91,6 +93,8 @@ pub(super) fn reset_password_editor(state: &PasswordPageState) {
     state.structured_templates.borrow_mut().clear();
     state.dynamic_rows.borrow_mut().clear();
     state.text.buffer().set_text("");
+    state.saved_contents.borrow_mut().clear();
+    state.saved_entry_exists.set(false);
 }
 
 pub(super) fn show_password_open_error(state: &PasswordPageState) {
@@ -100,4 +104,13 @@ pub(super) fn show_password_open_error(state: &PasswordPageState) {
 fn hide_password_generator_settings(state: &PasswordPageState) {
     state.generator_settings_button.set_active(false);
     state.generator_settings_revealer.set_reveal_child(false);
+}
+
+pub(super) fn sync_saved_password_state(
+    state: &PasswordPageState,
+    contents: &str,
+    entry_exists: bool,
+) {
+    *state.saved_contents.borrow_mut() = contents.to_string();
+    state.saved_entry_exists.set(entry_exists);
 }

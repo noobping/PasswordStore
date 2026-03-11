@@ -49,6 +49,7 @@ fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bo
 fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
     for action in [
         "context-save",
+        "context-undo",
         "open-new-password",
         "toggle-find",
         "open-git",

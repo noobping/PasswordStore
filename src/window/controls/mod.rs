@@ -1,9 +1,16 @@
 use crate::password::list::{load_passwords_async, PasswordListActions};
+use crate::password::model::OpenPassFile;
 use crate::password::page::{
-    retry_open_password_entry_if_needed, show_password_list_page, PasswordPageState,
+    open_password_entry_page, password_page_has_unsaved_changes,
+    retry_open_password_entry_if_needed, revert_unsaved_password_changes, show_password_list_page,
+    PasswordPageState,
+};
+use crate::password::undo::{
+    execute_undo_action, pop_undo_action, push_undo_action, undo_action_restored_entry,
 };
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
+use crate::support::background::spawn_result_task;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gtk::{ListBox, SearchEntry};
@@ -74,6 +81,14 @@ pub(crate) struct BackActionState {
 pub(crate) struct ListVisibilityActionState {
     pub(crate) overlay: ToastOverlay,
     pub(crate) list: ListBox,
+    pub(crate) navigation: WindowNavigationState,
+    pub(crate) visibility: ListVisibilityState,
+}
+
+#[derive(Clone)]
+pub(crate) struct ContextUndoActionState {
+    pub(crate) password_page: PasswordPageState,
+    pub(crate) recipients_page: StoreRecipientsPageState,
     pub(crate) navigation: WindowNavigationState,
     pub(crate) visibility: ListVisibilityState,
 }
@@ -151,6 +166,105 @@ pub(crate) fn register_context_save_action(
     );
 }
 
+fn reload_password_list(
+    list: &ListBox,
+    overlay: &ToastOverlay,
+    navigation: &WindowNavigationState,
+    visibility: &ListVisibilityState,
+) {
+    let show_list_actions = navigation_stack_is_root(&navigation.nav);
+    let list_actions = PasswordListActions::new(
+        &navigation.add,
+        &navigation.git,
+        &navigation.store,
+        &navigation.find,
+        &navigation.save,
+    );
+    load_passwords_async(
+        list,
+        &list_actions,
+        overlay,
+        show_list_actions,
+        visibility.show_hidden(),
+        visibility.show_duplicates(),
+    );
+}
+
+pub(crate) fn register_context_undo_action(
+    window: &ApplicationWindow,
+    state: &ContextUndoActionState,
+) {
+    let state = state.clone();
+    register_window_action(window, "context-undo", move || {
+        let editing_password =
+            visible_navigation_page_is(&state.navigation.nav, &state.navigation.text_page)
+                || visible_navigation_page_is(
+                    &state.navigation.nav,
+                    &state.navigation.raw_text_page,
+                );
+        if editing_password && password_page_has_unsaved_changes(&state.password_page) {
+            let _ = revert_unsaved_password_changes(&state.password_page);
+            return;
+        }
+
+        let Some(action) = pop_undo_action() else {
+            return;
+        };
+
+        let overlay = state.password_page.overlay.clone();
+        let state_for_result = state.clone();
+        let state_for_disconnect = state.clone();
+        let action_for_result = action.clone();
+        let action_for_disconnect = action.clone();
+        spawn_result_task(
+            move || execute_undo_action(&action),
+            move |result| match result {
+                Ok(()) => {
+                    if editing_password {
+                        if let Some((store, label)) = undo_action_restored_entry(&action_for_result)
+                        {
+                            open_password_entry_page(
+                                &state_for_result.password_page,
+                                OpenPassFile::from_label(store, &label),
+                                false,
+                            );
+                        } else {
+                            show_password_list_page(
+                                &state_for_result.password_page,
+                                state_for_result.visibility.show_hidden(),
+                                state_for_result.visibility.show_duplicates(),
+                            );
+                        }
+                    } else {
+                        reload_password_list(
+                            &state_for_result.password_page.list,
+                            &state_for_result.password_page.overlay,
+                            &state_for_result.navigation,
+                            &state_for_result.visibility,
+                        );
+                        let _ = restore_window_for_current_page(
+                            &state_for_result.navigation,
+                            &state_for_result.recipients_page,
+                        );
+                    }
+                    overlay.add_toast(adw::Toast::new("Undone."));
+                }
+                Err(err) => {
+                    push_undo_action(action_for_result);
+                    overlay.add_toast(adw::Toast::new(err.toast_message()));
+                }
+            },
+            move || {
+                push_undo_action(action_for_disconnect);
+                state_for_disconnect
+                    .password_page
+                    .overlay
+                    .add_toast(adw::Toast::new("Couldn't undo the last change."));
+            },
+        );
+    });
+}
+
 pub(crate) fn register_toggle_find_action(
     window: &adw::ApplicationWindow,
     search_entry: &SearchEntry,
@@ -189,6 +303,7 @@ pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &Back
 pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.context-save", &["<primary>s"]);
+    app.set_accels_for_action("win.context-undo", &["<primary>z"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.toggle-hidden-and-duplicates", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
@@ -206,21 +321,12 @@ pub(crate) fn register_list_visibility_action(
         if !show_list_actions {
             return;
         }
-        let (show_hidden, show_duplicates) = state.visibility.toggle_all();
-        let list_actions = PasswordListActions::new(
-            &state.navigation.add,
-            &state.navigation.git,
-            &state.navigation.store,
-            &state.navigation.find,
-            &state.navigation.save,
-        );
-        load_passwords_async(
+        let _ = state.visibility.toggle_all();
+        reload_password_list(
             &state.list,
-            &list_actions,
             &state.overlay,
-            show_list_actions,
-            show_hidden,
-            show_duplicates,
+            &state.navigation,
+            &state.visibility,
         );
     });
 }

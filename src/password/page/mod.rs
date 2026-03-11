@@ -18,6 +18,7 @@ use crate::password::opened::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
+use crate::password::undo::{push_undo_action, restore_saved_entry_action};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{
@@ -40,7 +41,7 @@ use self::standard as platform;
 pub(crate) use self::state::PasswordPageState;
 use self::state::{
     reset_password_editor, show_password_editor_chrome, show_password_editor_fields,
-    show_password_loading_state, show_password_open_error,
+    show_password_loading_state, show_password_open_error, sync_saved_password_state,
 };
 
 fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static str {
@@ -107,6 +108,7 @@ pub(crate) fn open_password_entry_page(
                     );
                     show_password_editor_fields(&state_for_result);
                     sync_editor_contents(&state_for_result, &output, updated_pass_file.as_ref());
+                    sync_saved_password_state(&state_for_result, &output, true);
                 }
                 Err(err) => {
                     log_error(format!("Failed to open password entry: {err}"));
@@ -167,6 +169,7 @@ pub(crate) fn begin_new_password_entry(
 
     add_popover.popdown();
     sync_editor_contents(state, &template_contents, template_pass_file.as_ref());
+    sync_saved_password_state(state, &template_contents, false);
 }
 
 pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
@@ -183,6 +186,22 @@ pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
 
 pub(crate) fn add_empty_otp_secret(state: &PasswordPageState) {
     add_empty_otp_secret_to_editor(state);
+}
+
+pub(crate) fn password_page_has_unsaved_changes(state: &PasswordPageState) -> bool {
+    current_editor_contents(state) != *state.saved_contents.borrow()
+}
+
+pub(crate) fn revert_unsaved_password_changes(state: &PasswordPageState) -> bool {
+    if !password_page_has_unsaved_changes(state) {
+        return false;
+    }
+
+    let saved_contents = state.saved_contents.borrow().clone();
+    let pass_file = get_opened_pass_file();
+    sync_editor_contents(state, &saved_contents, pass_file.as_ref());
+    state.overlay.add_toast(Toast::new("Reverted."));
+    true
 }
 
 pub(crate) fn generate_password_entry(state: &PasswordPageState) {
@@ -231,6 +250,10 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             &state.dynamic_rows.borrow(),
         )
     };
+    let previous_store = pass_file.store_path().to_string();
+    let previous_label = pass_file.label();
+    let previous_contents = state.saved_contents.borrow().clone();
+    let previous_entry_exists = state.saved_entry_exists.get();
     let target_label = match pass_file.updated_label_from_username(&state.username.text()) {
         Ok(target_label) => target_label,
         Err(err) => {
@@ -272,6 +295,23 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
                     .or(Some(active_pass_file));
             show_password_editor_fields(state);
             sync_editor_contents(state, &contents, updated_pass_file.as_ref());
+            sync_saved_password_state(state, &contents, true);
+            let current_label = updated_pass_file
+                .as_ref()
+                .map(OpenPassFile::label)
+                .unwrap_or_else(|| previous_label.clone());
+            if !previous_entry_exists
+                || previous_contents != contents
+                || previous_label != current_label
+            {
+                push_undo_action(restore_saved_entry_action(
+                    &previous_store,
+                    &previous_label,
+                    previous_entry_exists.then_some(previous_contents.as_str()),
+                    pass_file.store_path(),
+                    &current_label,
+                ));
+            }
             state.overlay.add_toast(Toast::new("Saved."));
         }
         Err(err) => {

@@ -22,15 +22,15 @@ use self::actions::{
     register_password_page_actions,
 };
 use self::state::{
-    back_action_state, list_visibility_action_state, new_password_popover_state,
-    password_page_state, preferences_action_state, store_recipients_page_state,
-    window_navigation_state,
+    back_action_state, context_undo_action_state, list_visibility_action_state,
+    new_password_popover_state, password_page_state, preferences_action_state,
+    store_recipients_page_state, window_navigation_state,
 };
 use self::widgets::WindowWidgets;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
-    register_context_save_action, register_list_visibility_action, register_toggle_find_action,
-    ListVisibilityState,
+    register_context_save_action, register_context_undo_action, register_list_visibility_action,
+    register_toggle_find_action, ListVisibilityState,
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
@@ -117,6 +117,12 @@ pub(crate) fn create_main_window(
     );
     let list_visibility_action_state =
         list_visibility_action_state(&widgets, &window_navigation_state, &list_visibility);
+    let context_undo_state = context_undo_action_state(
+        &password_list_state,
+        &store_recipients_page_state,
+        &window_navigation_state,
+        &list_visibility,
+    );
 
     connect_password_list_activation(&widgets.list, &widgets.toast_overlay, &password_list_state);
 
@@ -202,6 +208,7 @@ pub(crate) fn create_main_window(
         &window_navigation_state,
         &store_recipients_page_state,
     );
+    register_context_undo_action(&widgets.window, &context_undo_state);
     register_toggle_find_action(&widgets.window, &widgets.search_entry);
     register_list_visibility_action(&widgets.window, &list_visibility_action_state);
     register_back_action(&widgets.window, &back_action_state);

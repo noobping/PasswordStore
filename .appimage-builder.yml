@@ -15,7 +15,7 @@ AppDir:
     id: io.github.noobping.keycord
     name: "Keycord"
     icon: io.github.noobping.keycord
-    version: "0.8.0"
+    version: "0.8.1"
     exec: usr/bin/keycord
 
   apt:

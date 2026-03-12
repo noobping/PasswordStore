@@ -2,7 +2,7 @@
 name = "keycord"
 description = "Browse and edit password stores"
 authors = ["noobping"]
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 
 [features]

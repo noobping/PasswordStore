@@ -76,6 +76,19 @@ fn format_exit_status(status: &ExitStatus) -> String {
     status.to_string()
 }
 
+fn exit_status_is_error(status: &ExitStatus, options: CommandLogOptions) -> bool {
+    #[cfg(unix)]
+    if status.signal().is_some() {
+        return true;
+    }
+
+    match status.code() {
+        Some(0) => false,
+        Some(code) => !options.accepted_exit_codes.contains(&code),
+        None => true,
+    }
+}
+
 fn run_command_output_inner(
     cmd: &mut Command,
     context: &str,
@@ -130,7 +143,7 @@ fn run_command_output_inner(
                 &format_exit_status(&output.status),
                 false,
                 options.redact_stdin,
-                !output.status.success(),
+                exit_status_is_error(&output.status, options),
             );
             Ok(output)
         }
@@ -243,7 +256,7 @@ pub(crate) fn run_command_with_input(
         &format_exit_status(&output.status),
         true,
         options.redact_stdin,
-        !output.status.success(),
+        exit_status_is_error(&output.status, options),
     );
 
     Ok(output)

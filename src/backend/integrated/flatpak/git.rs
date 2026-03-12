@@ -1,7 +1,9 @@
 use super::super::keys::{
     cached_unlocked_ripasso_private_key, list_ripasso_private_keys, ManagedRipassoPrivateKey,
 };
-use crate::logging::{log_error, run_command_output, run_command_with_input, CommandLogOptions};
+use crate::logging::{
+    log_error, log_info, run_command_output, run_command_with_input, CommandLogOptions,
+};
 use crate::preferences::Preferences;
 use crate::support::git::has_git_repository;
 use sequoia_openpgp::policy::StandardPolicy;
@@ -16,6 +18,19 @@ struct CommitIdentity {
     name: String,
     email: String,
     signing_fingerprint: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CommitIdentitySource {
+    ExplicitPrivateKey(String),
+    MissingExplicitPrivateKey(String),
+    MissingExplicitFingerprint,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CommitIdentityResolution {
+    identity: CommitIdentity,
+    source: CommitIdentitySource,
 }
 
 fn git_command_error(action: &str, output: &Output) -> String {
@@ -34,12 +49,13 @@ fn run_store_git_command(
     store_root: &str,
     context: &str,
     configure: impl FnOnce(&mut Command),
+    options: CommandLogOptions,
 ) -> Result<Output, String> {
     let settings = Preferences::new();
     let mut cmd = settings.git_command();
     cmd.arg("-C").arg(store_root);
     configure(&mut cmd);
-    run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
+    run_command_output(&mut cmd, context, options)
         .map_err(|err| format!("Failed to run git command: {err}"))
 }
 
@@ -58,9 +74,14 @@ fn run_store_git_command_with_input(
 }
 
 fn stage_git_paths(store_root: &str, paths: &[String]) -> Result<(), String> {
-    let output = run_store_git_command(store_root, "Stage password store Git changes", |cmd| {
-        cmd.arg("add").arg("-A").arg("--").args(paths);
-    })?;
+    let output = run_store_git_command(
+        store_root,
+        "Stage password store Git changes",
+        |cmd| {
+            cmd.arg("add").arg("-A").arg("--").args(paths);
+        },
+        CommandLogOptions::DEFAULT,
+    )?;
     if output.status.success() {
         Ok(())
     } else {
@@ -75,6 +96,10 @@ fn staged_git_paths_have_changes(store_root: &str, paths: &[String]) -> Result<b
         |cmd| {
             cmd.args(["diff", "--cached", "--quiet", "--exit-code", "--"])
                 .args(paths);
+        },
+        CommandLogOptions {
+            accepted_exit_codes: &[1],
+            ..CommandLogOptions::DEFAULT
         },
     )?;
     match output.status.code() {
@@ -95,9 +120,14 @@ fn git_output_text(output: &Output) -> Result<String, String> {
 }
 
 fn write_git_tree(store_root: &str) -> Result<String, String> {
-    let output = run_store_git_command(store_root, "Write password store Git tree", |cmd| {
-        cmd.arg("write-tree");
-    })?;
+    let output = run_store_git_command(
+        store_root,
+        "Write password store Git tree",
+        |cmd| {
+            cmd.arg("write-tree");
+        },
+        CommandLogOptions::DEFAULT,
+    )?;
     if output.status.success() {
         git_output_text(&output)
     } else {
@@ -106,9 +136,14 @@ fn write_git_tree(store_root: &str) -> Result<String, String> {
 }
 
 fn head_oid(store_root: &str) -> Result<Option<String>, String> {
-    let output = run_store_git_command(store_root, "Read password store Git HEAD", |cmd| {
-        cmd.args(["rev-parse", "--verify", "HEAD"]);
-    })?;
+    let output = run_store_git_command(
+        store_root,
+        "Read password store Git HEAD",
+        |cmd| {
+            cmd.args(["rev-parse", "--verify", "HEAD"]);
+        },
+        CommandLogOptions::DEFAULT,
+    )?;
     if output.status.success() {
         git_output_text(&output).map(Some)
     } else {
@@ -118,13 +153,17 @@ fn head_oid(store_root: &str) -> Result<Option<String>, String> {
 
 fn git_ident(store_root: &str, role: &str, identity: &CommitIdentity) -> Result<String, String> {
     let env_prefix = role.to_ascii_uppercase();
-    let output =
-        run_store_git_command(store_root, &format!("Resolve Git {role} identity"), |cmd| {
+    let output = run_store_git_command(
+        store_root,
+        &format!("Resolve Git {role} identity"),
+        |cmd| {
             cmd.env(format!("GIT_{env_prefix}_NAME"), &identity.name)
                 .env(format!("GIT_{env_prefix}_EMAIL"), &identity.email)
                 .arg("var")
                 .arg(format!("GIT_{env_prefix}_IDENT"));
-        })?;
+        },
+        CommandLogOptions::DEFAULT,
+    )?;
     if output.status.success() {
         git_output_text(&output)
     } else {
@@ -187,16 +226,35 @@ fn parse_private_key_user_id(user_id: &str, fingerprint: &str) -> (String, Strin
     (name, email)
 }
 
-fn commit_identity(explicit_fingerprint: Option<&str>) -> Result<CommitIdentity, String> {
-    if let Some(key) = preferred_commit_private_key(explicit_fingerprint)? {
-        return Ok(commit_identity_from_private_key(&key));
+fn commit_identity(explicit_fingerprint: Option<&str>) -> Result<CommitIdentityResolution, String> {
+    if let Some(explicit_fingerprint) = explicit_fingerprint {
+        if let Some(key) = preferred_commit_private_key(Some(explicit_fingerprint))? {
+            return Ok(CommitIdentityResolution {
+                identity: commit_identity_from_private_key(&key),
+                source: CommitIdentitySource::ExplicitPrivateKey(explicit_fingerprint.to_string()),
+            });
+        }
+
+        return Ok(CommitIdentityResolution {
+            identity: generic_commit_identity(),
+            source: CommitIdentitySource::MissingExplicitPrivateKey(
+                explicit_fingerprint.to_string(),
+            ),
+        });
     }
 
-    Ok(CommitIdentity {
+    Ok(CommitIdentityResolution {
+        identity: generic_commit_identity(),
+        source: CommitIdentitySource::MissingExplicitFingerprint,
+    })
+}
+
+fn generic_commit_identity() -> CommitIdentity {
+    CommitIdentity {
         name: "Keycord".to_string(),
         email: "git@keycord.invalid".to_string(),
         signing_fingerprint: None,
-    })
+    }
 }
 
 fn commit_identity_from_private_key(key: &ManagedRipassoPrivateKey) -> CommitIdentity {
@@ -329,17 +387,66 @@ fn update_git_head(
     new_oid: &str,
     previous_oid: Option<&str>,
 ) -> Result<(), String> {
-    let output = run_store_git_command(store_root, "Update password store Git HEAD", |cmd| {
-        cmd.arg("update-ref").arg("HEAD").arg(new_oid);
-        if let Some(previous_oid) = previous_oid {
-            cmd.arg(previous_oid);
-        }
-    })?;
+    let output = run_store_git_command(
+        store_root,
+        "Update password store Git HEAD",
+        |cmd| {
+            cmd.arg("update-ref").arg("HEAD").arg(new_oid);
+            if let Some(previous_oid) = previous_oid {
+                cmd.arg(previous_oid);
+            }
+        },
+        CommandLogOptions::DEFAULT,
+    )?;
     if output.status.success() {
         Ok(())
     } else {
         Err(git_command_error("git update-ref", &output))
     }
+}
+
+fn log_commit_identity_resolution(store_root: &str, resolution: &CommitIdentityResolution) {
+    match &resolution.source {
+        CommitIdentitySource::ExplicitPrivateKey(fingerprint) => log_info(format!(
+            "Preparing password store Git commit for {store_root} with {name} <{email}> ({fingerprint}).",
+            name = resolution.identity.name,
+            email = resolution.identity.email,
+        )),
+        CommitIdentitySource::MissingExplicitPrivateKey(fingerprint) => log_info(format!(
+            "Preparing password store Git commit for {store_root} without signing because private key {fingerprint} is not available in the app."
+        )),
+        CommitIdentitySource::MissingExplicitFingerprint => log_info(format!(
+            "Preparing password store Git commit for {store_root} without signing because no recipients-derived private key was resolved."
+        )),
+    }
+}
+
+fn signature_for_commit(
+    store_root: &str,
+    resolution: &CommitIdentityResolution,
+    unsigned_commit: &str,
+) -> Result<Option<String>, String> {
+    let Some(fingerprint) = resolution.identity.signing_fingerprint.as_deref() else {
+        return Ok(None);
+    };
+
+    let Some(cert) = unlocked_signing_cert(fingerprint)? else {
+        log_info(format!(
+            "Password store Git commit for {store_root} is unsigned because private key {fingerprint} is not unlocked in this session."
+        ));
+        return Ok(None);
+    };
+
+    log_info(format!(
+        "Signing password store Git commit for {store_root} with {name} <{email}> ({fingerprint}).",
+        name = resolution.identity.name,
+        email = resolution.identity.email,
+    ));
+    let signature = sign_commit_buffer(unsigned_commit, &cert)?;
+    log_info(format!(
+        "Signed password store Git commit for {store_root} with private key {fingerprint}."
+    ));
+    Ok(Some(signature))
 }
 
 fn commit_git_paths(
@@ -360,8 +467,9 @@ fn commit_git_paths(
     let tree_oid = write_git_tree(store_root)?;
     let parent_oid = head_oid(store_root)?;
     let identity = commit_identity(explicit_fingerprint)?;
-    let author_ident = git_ident(store_root, "author", &identity)?;
-    let committer_ident = git_ident(store_root, "committer", &identity)?;
+    log_commit_identity_resolution(store_root, &identity);
+    let author_ident = git_ident(store_root, "author", &identity.identity)?;
+    let committer_ident = git_ident(store_root, "committer", &identity.identity)?;
     let headers = build_commit_headers(
         &tree_oid,
         parent_oid.as_deref(),
@@ -369,14 +477,7 @@ fn commit_git_paths(
         &committer_ident,
     );
     let unsigned_commit = build_signed_commit_buffer(&headers, message, None);
-    let signature = identity
-        .signing_fingerprint
-        .as_deref()
-        .map(unlocked_signing_cert)
-        .transpose()?
-        .flatten()
-        .map(|cert| sign_commit_buffer(&unsigned_commit, &cert))
-        .transpose();
+    let signature = signature_for_commit(store_root, &identity, &unsigned_commit);
 
     let commit_buffer = match signature {
         Ok(signature) => build_signed_commit_buffer(&headers, message, signature.as_deref()),
@@ -416,8 +517,9 @@ pub(super) fn maybe_commit_git_paths(
 mod tests {
     use super::{
         build_commit_headers, build_signed_commit_buffer, commit_identity,
-        commit_identity_from_private_key, parse_private_key_user_id,
-        preferred_commit_private_key_from_values, CommitIdentity,
+        commit_identity_from_private_key, generic_commit_identity, parse_private_key_user_id,
+        preferred_commit_private_key_from_values, CommitIdentity, CommitIdentityResolution,
+        CommitIdentitySource,
     };
     use crate::backend::ManagedRipassoPrivateKey;
 
@@ -506,10 +608,23 @@ mod tests {
     fn commit_identity_is_generic_and_unsigned_without_an_explicit_key() {
         assert_eq!(
             commit_identity(None).expect("build generic identity"),
-            CommitIdentity {
-                name: "Keycord".to_string(),
-                email: "git@keycord.invalid".to_string(),
-                signing_fingerprint: None,
+            CommitIdentityResolution {
+                identity: generic_commit_identity(),
+                source: CommitIdentitySource::MissingExplicitFingerprint,
+            }
+        );
+    }
+
+    #[test]
+    fn commit_identity_is_generic_when_the_explicit_key_is_missing() {
+        assert_eq!(
+            commit_identity(Some("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"))
+                .expect("build generic identity for missing key"),
+            CommitIdentityResolution {
+                identity: generic_commit_identity(),
+                source: CommitIdentitySource::MissingExplicitPrivateKey(
+                    "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_string(),
+                ),
             }
         );
     }

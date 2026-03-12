@@ -6,6 +6,8 @@ pub(crate) use command::run_command_status;
 pub(crate) use command::run_command_with_input;
 pub(crate) use command::{run_command_output, CommandLogOptions};
 pub(crate) use store::log_error;
+#[cfg(feature = "flatpak")]
+pub(crate) use store::log_info;
 pub(crate) use store::log_snapshot;
 
 #[cfg(test)]
@@ -48,5 +50,33 @@ mod tests {
         assert!(text.contains(&marker));
         assert!(text.contains(&format!("stdout:\n{marker} stdout")));
         assert!(text.contains(&format!("stderr:\n{marker} stderr")));
+    }
+
+    #[test]
+    fn run_command_output_can_accept_expected_non_zero_exit_codes() {
+        let marker = format!("expected-exit-{}", std::process::id());
+        let mut cmd = Command::new("sh");
+        cmd.args(["-lc", "exit 1"]);
+
+        let output = run_command_output(
+            &mut cmd,
+            &marker,
+            CommandLogOptions {
+                accepted_exit_codes: &[1],
+                ..CommandLogOptions::DEFAULT
+            },
+        )
+        .expect("command should run");
+
+        assert_eq!(output.status.code(), Some(1));
+
+        let (_, _, text) = log_snapshot();
+        assert!(text.contains(&format!(
+            "[INFO] {marker}\n$ sh -lc 'exit 1'\nstatus: exit status: 1"
+        )));
+        assert!(!text.contains(&format!(
+            "[ERROR] {marker}\n$ sh -lc 'exit 1'\nstatus: exit status: 1"
+        )));
+        assert!(text.contains(&marker));
     }
 }

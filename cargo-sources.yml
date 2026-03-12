@@ -2020,13 +2020,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/openssl/openssl-0.10.75.crate
-  sha256: 08838db121398ad17ab8531ce9de97b244589089e290a384c900cb9ff7434328
-  dest: cargo/vendor/openssl-0.10.75
+  url: https://static.crates.io/crates/openssl/openssl-0.10.76.crate
+  sha256: 951c002c75e16ea2c65b8c7e4d3d51d5530d8dfa7d060b4776828c88cfb18ecf
+  dest: cargo/vendor/openssl-0.10.76
 - type: inline
-  contents: '{"package": "08838db121398ad17ab8531ce9de97b244589089e290a384c900cb9ff7434328",
+  contents: '{"package": "951c002c75e16ea2c65b8c7e4d3d51d5530d8dfa7d060b4776828c88cfb18ecf",
     "files": {}}'
-  dest: cargo/vendor/openssl-0.10.75
+  dest: cargo/vendor/openssl-0.10.76
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -2060,13 +2060,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/openssl-sys/openssl-sys-0.9.111.crate
-  sha256: 82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321
-  dest: cargo/vendor/openssl-sys-0.9.111
+  url: https://static.crates.io/crates/openssl-sys/openssl-sys-0.9.112.crate
+  sha256: 57d55af3b3e226502be1526dfdba67ab0e9c96fc293004e79576b2b9edb0dbdb
+  dest: cargo/vendor/openssl-sys-0.9.112
 - type: inline
-  contents: '{"package": "82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321",
+  contents: '{"package": "57d55af3b3e226502be1526dfdba67ab0e9c96fc293004e79576b2b9edb0dbdb",
     "files": {}}'
-  dest: cargo/vendor/openssl-sys-0.9.111
+  dest: cargo/vendor/openssl-sys-0.9.112
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

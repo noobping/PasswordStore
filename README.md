@@ -18,29 +18,17 @@ Keycord works with password stores that use the standard [`pass`](https://www.pa
 Keycord reads and writes standard `pass` stores. On a normal build, it can work in two ways:
 
 - `Integrated` backend: the app reads and writes the store directly. This is the default.
-- `Host command` backend: the app runs your chosen `pass` command (wich can come from a Docker container if you want) instead.
-
-## Build Modes
-
-There are a few important runtime differences depending on how you build the app.
-
-| Build mode | Best for | Notes |
-| --- | --- | --- |
-| Standard build | Most users and developers | Default build. Uses the integrated backend by default, can switch to a custom `pass` command in Preferences, supports Git clone/sync, and can use `pass import` when available. |
-| `flatpak` feature | Sandboxed / Containerized environments | Uses the integrated backend only and includes built-in private-key management, avoiding external dependencies. |
-| `setup` feature | Self-built installs | Adds an in-app action to add or remove the built binary from the app menu. |
+- `Host command` backend (not in the flatpak app): the app runs your chosen `pass` command (wich can come from a Docker container if you want) instead.
 
 ## Screenshots
 
 ### Password entry editor
 
-![Password entry editor](screenshots/file.png)
+![list](screenshots/demo1.png)
 
-### Preferences in a Flatpak build
+![Password entry editor](screenshots/demo2.png)
 
-![Preferences in a Flatpak build](screenshots/preferences1.png)
-
-### Preferences in a standard build
+### Preferences
 
 ![Preferences in a standard build](screenshots/preferences2.png)
 

@@ -63,16 +63,3 @@ Build the flatpack app:
 ```sh
 flatpak run org.flatpak.Builder --user --install --force-clean build-dir io.github.noobping.keycord.yml
 ```
-
-### Project Layout
-
-| Path | Purpose |
-| --- | --- |
-| `src/backend` | Reading, writing, deleting, renaming, and recipient management for password entries |
-| `src/password` | Entry model, list loading, editor flow, OTP support, password generation, undo |
-| `src/store` | Store creation, store list management, recipient editing, import flows |
-| `src/window` | Main window, navigation, actions, preferences, Git UI, logs |
-| `src/preferences` | Stored app settings such as backend choice, store paths, templates, and generator settings |
-| `src/support` | Background-task helpers, UI helpers, Git helpers, and `pass import` support |
-| `src/private_key` | Flatpak-only dialogs and flows for private-key unlocking |
-| `data` | GTK UI definition, app metadata, icons, and resources |

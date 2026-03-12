@@ -3,14 +3,17 @@ mod state;
 pub(super) mod widgets;
 
 use crate::password::list::{load_passwords_async, setup_search_filter, PasswordListActions};
+use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::new_item::register_open_new_password_action;
 use crate::password::otp::PasswordOtpState;
+use crate::password::page::PasswordPageState;
 #[cfg(feature = "setup")]
 use crate::setup::*;
 #[cfg(feature = "flatpak")]
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
     connect_store_recipients_entry, register_store_recipients_save_action,
+    StoreRecipientsPageState,
 };
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
@@ -22,8 +25,9 @@ use self::actions::{
     register_password_page_actions,
 };
 use self::state::{
-    back_action_state, context_undo_action_state, list_visibility_action_state,
-    new_password_popover_state, password_page_state, preferences_action_state,
+    back_action_state, build_git_action_state, context_undo_action_state,
+    list_visibility_action_state, new_password_popover_state, password_page_state,
+    preferences_action_state,
     store_recipients_page_state, window_navigation_state,
 };
 use self::widgets::WindowWidgets;
@@ -34,19 +38,72 @@ use super::controls::{
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
-use super::git::{register_open_git_action, register_synchronize_action, GitActionState};
+use super::git::{register_open_git_action, register_synchronize_action};
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::set_save_button_for_password;
 #[cfg(feature = "setup")]
 use super::preferences::register_install_locally_action;
 use super::preferences::{
     connect_new_password_template_autosave, connect_password_generation_autosave,
-    connect_username_fallback_autosave, register_open_preferences_action,
+    connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
 #[cfg(not(feature = "flatpak"))]
 use super::standard::{configure_standard_window, register_standard_window_actions};
 
 const UI_SRC: &str = include_str!("../../../data/window.ui");
+
+fn connect_window_behaviors(
+    widgets: &WindowWidgets,
+    password_list_state: &PasswordPageState,
+    preferences_action_state: &PreferencesActionState,
+    store_recipients_page_state: &StoreRecipientsPageState,
+    new_password_popover_state: &NewPasswordPopoverState,
+) {
+    connect_password_list_activation(&widgets.list, &widgets.toast_overlay, password_list_state);
+
+    connect_new_password_template_autosave(
+        &widgets.new_pass_file_template_view,
+        &widgets.toast_overlay,
+    );
+    connect_username_fallback_autosave(
+        &widgets.preferences_username_folder_check,
+        &widgets.preferences_username_filename_check,
+        &widgets.toast_overlay,
+    );
+    connect_password_generation_autosave(
+        &password_list_state.generator_controls,
+        std::slice::from_ref(&preferences_action_state.generator_controls),
+        &widgets.toast_overlay,
+    );
+    connect_password_generation_autosave(
+        &preferences_action_state.generator_controls,
+        std::slice::from_ref(&password_list_state.generator_controls),
+        &widgets.toast_overlay,
+    );
+    connect_store_recipients_entry(store_recipients_page_state);
+    connect_password_copy_buttons(
+        &widgets.toast_overlay,
+        &widgets.password_entry,
+        &widgets.copy_password_button,
+        &widgets.username_entry,
+        &widgets.copy_username_button,
+        &widgets.otp_entry,
+        &widgets.copy_otp_button,
+    );
+    connect_new_password_submit(
+        &widgets.path_entry,
+        password_list_state,
+        new_password_popover_state,
+        &widgets.add_button_popover,
+    );
+
+    let revealer = widgets.password_generator_settings_revealer.clone();
+    widgets
+        .password_generator_settings_button
+        .connect_toggled(move |button| {
+            revealer.set_reveal_child(button.is_active());
+        });
+}
 
 pub(crate) fn create_main_window(
     app: &Application,
@@ -97,16 +154,12 @@ pub(crate) fn create_main_window(
     );
     let window_navigation_state = window_navigation_state(&widgets);
     let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);
-    let git_action_state = GitActionState {
-        window: widgets.window.clone(),
-        overlay: widgets.toast_overlay.clone(),
-        list: widgets.list.clone(),
-        navigation: window_navigation_state.clone(),
-        recipients_page: store_recipients_page_state.clone(),
-        busy_page: widgets.git_busy_page.clone(),
-        busy_status: widgets.git_busy_status.clone(),
-        visibility: list_visibility.clone(),
-    };
+    let git_action_state = build_git_action_state(
+        &widgets,
+        &window_navigation_state,
+        &store_recipients_page_state,
+        &list_visibility,
+    );
     let back_action_state = back_action_state(
         &password_list_state,
         &store_recipients_page_state,
@@ -123,51 +176,13 @@ pub(crate) fn create_main_window(
         &list_visibility,
     );
 
-    connect_password_list_activation(&widgets.list, &widgets.toast_overlay, &password_list_state);
-
-    connect_new_password_template_autosave(
-        &widgets.new_pass_file_template_view,
-        &widgets.toast_overlay,
-    );
-    connect_username_fallback_autosave(
-        &widgets.preferences_username_folder_check,
-        &widgets.preferences_username_filename_check,
-        &widgets.toast_overlay,
-    );
-    connect_password_generation_autosave(
-        &password_list_state.generator_controls,
-        std::slice::from_ref(&preferences_action_state.generator_controls),
-        &widgets.toast_overlay,
-    );
-    connect_password_generation_autosave(
-        &preferences_action_state.generator_controls,
-        std::slice::from_ref(&password_list_state.generator_controls),
-        &widgets.toast_overlay,
-    );
-    connect_store_recipients_entry(&store_recipients_page_state);
-    connect_password_copy_buttons(
-        &widgets.toast_overlay,
-        &widgets.password_entry,
-        &widgets.copy_password_button,
-        &widgets.username_entry,
-        &widgets.copy_username_button,
-        &widgets.otp_entry,
-        &widgets.copy_otp_button,
-    );
-    connect_new_password_submit(
-        &widgets.path_entry,
+    connect_window_behaviors(
+        &widgets,
         &password_list_state,
+        &preferences_action_state,
+        &store_recipients_page_state,
         &new_password_popover_state,
-        &widgets.add_button_popover,
     );
-    {
-        let revealer = widgets.password_generator_settings_revealer.clone();
-        widgets
-            .password_generator_settings_button
-            .connect_toggled(move |button| {
-                revealer.set_reveal_child(button.is_active());
-            });
-    }
     register_password_page_actions(&widgets.window, &password_list_state);
     register_store_recipients_save_action(
         &widgets.window,

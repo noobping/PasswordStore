@@ -178,6 +178,24 @@ pub(super) fn preferences_action_state(
     }
 }
 
+pub(super) fn build_git_action_state(
+    widgets: &WindowWidgets,
+    navigation: &WindowNavigationState,
+    recipients_page: &StoreRecipientsPageState,
+    visibility: &ListVisibilityState,
+) -> GitActionState {
+    GitActionState {
+        window: widgets.window.clone(),
+        overlay: widgets.toast_overlay.clone(),
+        list: widgets.list.clone(),
+        navigation: navigation.clone(),
+        recipients_page: recipients_page.clone(),
+        busy_page: widgets.git_busy_page.clone(),
+        busy_status: widgets.git_busy_status.clone(),
+        visibility: visibility.clone(),
+    }
+}
+
 fn build_back_action_platform_state(git_action_state: &GitActionState) -> PlatformBackActionState {
     PlatformBackActionState {
         git_actions: git_action_state.clone(),

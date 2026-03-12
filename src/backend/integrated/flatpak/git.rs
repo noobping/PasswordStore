@@ -1,6 +1,5 @@
 use super::super::keys::{
-    cached_unlocked_ripasso_private_key, list_ripasso_private_keys,
-    selected_ripasso_own_fingerprint, ManagedRipassoPrivateKey,
+    cached_unlocked_ripasso_private_key, list_ripasso_private_keys, ManagedRipassoPrivateKey,
 };
 use crate::logging::{log_error, run_command_output, run_command_with_input, CommandLogOptions};
 use crate::preferences::Preferences;
@@ -136,33 +135,23 @@ fn git_ident(store_root: &str, role: &str, identity: &CommitIdentity) -> Result<
 fn preferred_commit_private_key(
     explicit_fingerprint: Option<&str>,
 ) -> Result<Option<ManagedRipassoPrivateKey>, String> {
+    let Some(explicit_fingerprint) = explicit_fingerprint else {
+        return Ok(None);
+    };
     let keys = list_ripasso_private_keys()?;
     Ok(preferred_commit_private_key_from_values(
         explicit_fingerprint,
-        selected_ripasso_own_fingerprint()?.as_deref(),
         &keys,
     ))
 }
 
 fn preferred_commit_private_key_from_values(
-    explicit: Option<&str>,
-    selected: Option<&str>,
+    explicit: &str,
     keys: &[ManagedRipassoPrivateKey],
 ) -> Option<ManagedRipassoPrivateKey> {
-    if keys.is_empty() {
-        return None;
-    }
-
-    for candidate in [explicit, selected].into_iter().flatten() {
-        if let Some(key) = keys
-            .iter()
-            .find(|key| key.fingerprint.eq_ignore_ascii_case(candidate))
-        {
-            return Some(key.clone());
-        }
-    }
-
-    keys.first().cloned()
+    keys.iter()
+        .find(|key| key.fingerprint.eq_ignore_ascii_case(explicit))
+        .cloned()
 }
 
 fn synthetic_commit_email(fingerprint: &str) -> String {
@@ -426,8 +415,9 @@ pub(super) fn maybe_commit_git_paths(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_commit_headers, build_signed_commit_buffer, commit_identity_from_private_key,
-        parse_private_key_user_id, preferred_commit_private_key_from_values, CommitIdentity,
+        build_commit_headers, build_signed_commit_buffer, commit_identity,
+        commit_identity_from_private_key, parse_private_key_user_id,
+        preferred_commit_private_key_from_values, CommitIdentity,
     };
     use crate::backend::ManagedRipassoPrivateKey;
 
@@ -473,23 +463,15 @@ mod tests {
     }
 
     #[test]
-    fn commit_identity_prefers_explicit_private_key_over_selected_private_key() {
+    fn commit_identity_uses_the_explicit_private_key() {
         let key_a = ManagedRipassoPrivateKey {
             fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             user_ids: vec!["Key A <a@example.com>".to_string()],
         };
-        let key_b = ManagedRipassoPrivateKey {
-            fingerprint: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
-            user_ids: vec!["Key B <b@example.com>".to_string()],
-        };
         let explicit = key_a.fingerprint.clone();
-        let selected_fingerprint = key_b.fingerprint.clone();
-        let selected = preferred_commit_private_key_from_values(
-            Some(&explicit),
-            Some(&selected_fingerprint),
-            &[key_a.clone(), key_b],
-        )
-        .expect("resolve explicit key");
+        let selected =
+            preferred_commit_private_key_from_values(&explicit, std::slice::from_ref(&key_a))
+                .expect("resolve explicit key");
 
         assert_eq!(
             commit_identity_from_private_key(&selected),
@@ -502,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn commit_identity_prefers_selected_private_key_when_no_explicit_key_is_given() {
+    fn commit_identity_has_no_fallback_private_key_when_the_explicit_key_is_missing() {
         let key_a = ManagedRipassoPrivateKey {
             fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             user_ids: vec!["Key A <a@example.com>".to_string()],
@@ -511,19 +493,23 @@ mod tests {
             fingerprint: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
             user_ids: vec!["Key B <b@example.com>".to_string()],
         };
-        let selected = preferred_commit_private_key_from_values(
-            None,
-            Some(&key_b.fingerprint),
-            &[key_a, key_b.clone()],
-        )
-        .expect("resolve selected key");
-
         assert_eq!(
-            commit_identity_from_private_key(&selected),
+            preferred_commit_private_key_from_values(
+                "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+                &[key_a, key_b]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn commit_identity_is_generic_and_unsigned_without_an_explicit_key() {
+        assert_eq!(
+            commit_identity(None).expect("build generic identity"),
             CommitIdentity {
-                name: "Key B".to_string(),
-                email: "b@example.com".to_string(),
-                signing_fingerprint: Some(key_b.fingerprint),
+                name: "Keycord".to_string(),
+                email: "git@keycord.invalid".to_string(),
+                signing_fingerprint: None,
             }
         );
     }

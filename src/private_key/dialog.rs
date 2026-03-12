@@ -4,6 +4,8 @@ use adw::{
     ApplicationWindow, Dialog, HeaderBar, PasswordEntryRow, PreferencesGroup, PreferencesPage,
     StatusPage, Toast, ToastOverlay, WindowTitle,
 };
+use std::cell::Cell;
+use std::rc::Rc;
 
 fn dialog_content_shell(
     title: &str,
@@ -52,6 +54,27 @@ pub fn present_private_key_password_dialog<F>(
 ) where
     F: Fn(String) + 'static,
 {
+    present_private_key_password_dialog_with_close_handler(
+        window,
+        overlay,
+        title,
+        subtitle,
+        on_submit,
+        || {},
+    );
+}
+
+pub fn present_private_key_password_dialog_with_close_handler<F, G>(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    title: &str,
+    subtitle: Option<&str>,
+    on_submit: F,
+    on_close: G,
+) where
+    F: Fn(String) + 'static,
+    G: Fn() + 'static,
+{
     let password_row = PasswordEntryRow::new();
     password_row.set_title("Key password");
     password_row.set_show_apply_button(true);
@@ -67,9 +90,11 @@ pub fn present_private_key_password_dialog<F>(
         .content_width(460)
         .child(&dialog_content_shell(title, subtitle, &page))
         .build();
+    let submitted = Rc::new(Cell::new(false));
 
     let dialog_clone = dialog.clone();
     let overlay_clone = overlay.clone();
+    let submitted_for_apply = submitted.clone();
     password_row.connect_apply(move |row| {
         let passphrase = row.text().to_string();
         if passphrase.is_empty() {
@@ -78,8 +103,15 @@ pub fn present_private_key_password_dialog<F>(
             return;
         }
 
+        submitted_for_apply.set(true);
         dialog_clone.close();
         on_submit(passphrase);
+    });
+
+    dialog.connect_closed(move |_| {
+        if !submitted.get() {
+            on_close();
+        }
     });
 
     dialog.present(Some(window));

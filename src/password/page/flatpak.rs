@@ -1,5 +1,8 @@
 use super::state::show_password_status_message;
-use super::{open_password_entry_page, save_current_password_entry, PasswordPageState};
+use super::{
+    open_password_entry_page, save_current_password_entry_without_git_unlock_prompt,
+    PasswordPageState,
+};
 use crate::backend::{preferred_ripasso_private_key_fingerprint_for_entry, PasswordEntryError};
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
@@ -74,7 +77,7 @@ pub(super) fn prompt_unlock_for_git_commit_if_needed(
         &state.overlay,
         pass_file.store_path(),
         &pass_file.label(),
-        Rc::new(move || save_current_password_entry(&retry_state)),
+        Rc::new(move || save_current_password_entry_without_git_unlock_prompt(&retry_state)),
     )
 }
 

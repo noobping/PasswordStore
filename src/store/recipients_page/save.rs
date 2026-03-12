@@ -60,6 +60,7 @@ fn save_store_recipients_async(
     overlay: &ToastOverlay,
     stores_list: &ListBox,
     state: &StoreRecipientsPageState,
+    _allow_git_unlock_prompt: bool,
 ) {
     let Some(request) = state.current_request() else {
         return;
@@ -74,13 +75,22 @@ fn save_store_recipients_async(
         return;
     }
     #[cfg(feature = "flatpak")]
-    {
-        let action_window = state.window.clone();
+    if _allow_git_unlock_prompt {
+        let overlay_for_retry = overlay.clone();
+        let stores_list_for_retry = stores_list.clone();
+        let state_for_retry = state.clone();
         if prompt_private_key_unlock_for_store_git_commit_if_needed(
             &state.platform.overlay,
             &request.store,
             &recipients,
-            Rc::new(move || activate_widget_action(&action_window, "win.save-store-recipients")),
+            Rc::new(move || {
+                save_store_recipients_async(
+                    &overlay_for_retry,
+                    &stores_list_for_retry,
+                    &state_for_retry,
+                    false,
+                );
+            }),
         ) {
             return;
         }
@@ -171,7 +181,7 @@ pub(crate) fn register_store_recipients_save_action(
     let stores_list = stores_list.clone();
     let state = state.clone();
     register_window_action(window, "save-store-recipients", move || {
-        save_store_recipients_async(&overlay, &stores_list, &state);
+        save_store_recipients_async(&overlay, &stores_list, &state, true);
     });
 }
 

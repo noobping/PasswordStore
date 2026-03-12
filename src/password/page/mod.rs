@@ -219,7 +219,7 @@ pub(crate) fn generate_password_entry(state: &PasswordPageState) {
     }
 }
 
-pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
+fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_prompt: bool) {
     let Some(pass_file) = get_opened_pass_file() else {
         state.overlay.add_toast(Toast::new("Open an item first."));
         return;
@@ -263,7 +263,9 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             return;
         }
     };
-    if platform::prompt_unlock_for_git_commit_if_needed(state, &pass_file) {
+    if allow_git_unlock_prompt
+        && platform::prompt_unlock_for_git_commit_if_needed(state, &pass_file)
+    {
         return;
     }
     let label = pass_file.label();
@@ -324,6 +326,15 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
                 .add_toast(Toast::new(password_save_failure_message(&err)));
         }
     }
+}
+
+pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
+    save_current_password_entry_impl(state, true);
+}
+
+#[cfg(feature = "flatpak")]
+pub(super) fn save_current_password_entry_without_git_unlock_prompt(state: &PasswordPageState) {
+    save_current_password_entry_impl(state, false);
 }
 
 pub(crate) fn show_password_list_page(

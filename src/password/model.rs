@@ -117,8 +117,8 @@ fn username_from_contents_or_path(
     output: &str,
     fallback_mode: UsernameFallbackMode,
 ) -> (Option<String>, UsernameSource) {
-    if let Some(username) = extract_username_from_contents(output) {
-        return (Some(username), UsernameSource::Field);
+    if let Some(username) = extract_username_field_from_contents(output) {
+        return (Some(username.unwrap_or_default()), UsernameSource::Field);
     }
 
     let username_source = match fallback_mode {
@@ -222,7 +222,7 @@ impl OpenPassFile {
     }
 }
 
-fn extract_username_from_contents(output: &str) -> Option<String> {
+fn extract_username_field_from_contents(output: &str) -> Option<Option<String>> {
     output.lines().skip(1).find_map(|line| {
         let (key, value) = line.split_once(':')?;
         let key = key.trim().to_ascii_lowercase();
@@ -232,9 +232,9 @@ fn extract_username_from_contents(output: &str) -> Option<String> {
 
         let value = value.trim();
         if value.is_empty() {
-            None
+            Some(None)
         } else {
-            Some(value.to_string())
+            Some(Some(value.to_string()))
         }
     })
 }
@@ -426,15 +426,16 @@ mod tests {
     }
 
     #[test]
-    fn blank_username_uses_last_directory_fallback() {
+    fn blank_username_counts_as_an_explicit_field() {
         let mut opened = OpenPassFile::from_label_with_mode(
             "/tmp/store",
             "work/alice/github",
             UsernameFallbackMode::Folder,
         );
         opened.refresh_from_contents("secret\nusername:\nurl: https://example.com");
-        assert_eq!(opened.username.as_deref(), Some("alice"));
-        assert!(opened.username_is_derived_from_label());
+        assert_eq!(opened.username.as_deref(), Some(""));
+        assert!(!opened.username_is_derived_from_label());
+        assert_eq!(opened.updated_label_from_username(""), Ok(None));
     }
 
     #[test]

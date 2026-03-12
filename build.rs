@@ -3,12 +3,14 @@ use std::{fs, path::Path};
 fn main() {
     println!("cargo:rustc-env=APP_ID={}", app_id());
     println!("cargo:rustc-env=RESOURCE_ID={}", resource_id());
+    export_dependency_versions();
 
     // Directories
     let data_dir = Path::new("data");
 
     // Tell Cargo when to rerun the build script
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-changed=data");
 
     // Ensure data/ exists
@@ -35,6 +37,50 @@ fn main() {
 
     #[cfg(not(feature = "setup"))]
     desktop_file();
+}
+
+fn export_dependency_versions() {
+    let lockfile =
+        fs::read_to_string("Cargo.lock").expect("Failed to read Cargo.lock for version metadata");
+    let ripasso = find_locked_package_version(&lockfile, "ripasso")
+        .expect("ripasso version not found in Cargo.lock");
+    let sequoia = find_locked_package_version(&lockfile, "sequoia-openpgp")
+        .expect("sequoia-openpgp version not found in Cargo.lock");
+
+    println!("cargo:rustc-env=RIPASSO_VERSION={ripasso}");
+    println!("cargo:rustc-env=SEQUOIA_OPENPGP_VERSION={sequoia}");
+}
+
+fn find_locked_package_version(lockfile: &str, package: &str) -> Option<String> {
+    let mut current_package = None;
+
+    for line in lockfile.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "[[package]]" {
+            current_package = None;
+            continue;
+        }
+
+        if let Some(name) = trimmed
+            .strip_prefix("name = \"")
+            .and_then(|value| value.strip_suffix('"'))
+        {
+            current_package = Some(name);
+            continue;
+        }
+
+        if current_package == Some(package) {
+            if let Some(version) = trimmed
+                .strip_prefix("version = \"")
+                .and_then(|value| value.strip_suffix('"'))
+            {
+                return Some(version.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 /// Recursively collect all `.svg` files under `dir`,

@@ -35,6 +35,10 @@ const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
 const ISSUE_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
 #[cfg(not(feature = "flatpak"))]
+const RIPASSO_VERSION: &str = env!("RIPASSO_VERSION");
+#[cfg(not(feature = "flatpak"))]
+const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
+#[cfg(not(feature = "flatpak"))]
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-standard.ui");
 #[cfg(feature = "flatpak")]
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-flatpak.ui");
@@ -157,7 +161,7 @@ fn about_comments(project: &str) -> String {
     let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
     let settings = Preferences::new();
     let backend_details = if settings.uses_integrated_backend() {
-        "backend: integrated".to_string()
+        format!("backend: ripasso {RIPASSO_VERSION}\nsequoia-openpgp {SEQUOIA_OPENPGP_VERSION}")
     } else {
         get_pass_version(&settings).map_or_else(
             || "backend: host command".to_string(),

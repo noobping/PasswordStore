@@ -1,5 +1,6 @@
 use super::crypto::FlatpakCryptoContext;
 use super::entries::read_password_entry;
+use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::paths::{
     collect_password_entry_files, ensure_store_directory, label_from_entry_path,
     with_updated_recipients_file,
@@ -31,6 +32,10 @@ pub(crate) fn save_store_recipients(
         ensure_store_directory(store_root).map_err(StoreRecipientsError::from_store_message)?;
     let decrypted_entries = decrypted_store_entries(&store_dir, store_root)
         .map_err(StoreRecipientsError::from_store_message)?;
+    let entry_labels = decrypted_entries
+        .iter()
+        .filter_map(|(entry_path, _)| label_from_entry_path(&store_dir, entry_path).ok())
+        .collect::<Vec<_>>();
     let recipients_contents = format!("{}\n", recipients.join("\n"));
     let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)
         .map_err(StoreRecipientsError::from_store_message)?;
@@ -43,5 +48,17 @@ pub(crate) fn save_store_recipients(
         }
         Ok(())
     })
-    .map_err(StoreRecipientsError::from_store_message)
+    .map_err(StoreRecipientsError::from_store_message)?;
+
+    maybe_commit_git_paths(
+        store_root,
+        "Update password store recipients",
+        std::iter::once(".gpg-id".to_string()).chain(
+            entry_labels
+                .into_iter()
+                .map(|label| password_entry_git_path(&label)),
+        ),
+    );
+
+    Ok(())
 }

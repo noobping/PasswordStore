@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 #[cfg(feature = "flatpak")]
 const FLATPAK_INFO_PATH: &str = "/.flatpak-info";
 
-pub(crate) fn git_integration_available() -> bool {
+pub(crate) fn git_network_operations_available() -> bool {
     #[cfg(feature = "flatpak")]
     {
         flatpak_has_network_permission()

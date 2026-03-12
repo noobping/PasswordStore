@@ -20,7 +20,7 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
 use crate::support::actions::register_window_action;
-use crate::support::runtime::git_integration_available;
+use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
@@ -147,7 +147,7 @@ pub(crate) fn rebuild_store_list(
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
-    if git_integration_available() {
+    if git_network_operations_available() {
         append_store_clone_row(list, settings, window, overlay, recipients_page);
     }
     #[cfg(not(feature = "flatpak"))]

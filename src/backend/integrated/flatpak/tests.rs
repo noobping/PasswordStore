@@ -18,7 +18,11 @@ use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize}
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -29,6 +33,8 @@ fn test_lock() -> &'static Mutex<()> {
 
 struct TestHome {
     original_home: Option<OsString>,
+    original_gnupg_home: Option<OsString>,
+    original_gpg_agent_info: Option<OsString>,
     path: PathBuf,
 }
 
@@ -40,11 +46,22 @@ impl TestHome {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("passwordstore-flatpak-test-{nanos}"));
         fs::create_dir_all(&path).expect("create temporary HOME");
+        let gnupg = path.join(".gnupg");
+        fs::create_dir_all(&gnupg).expect("create temporary GNUPGHOME");
+        #[cfg(unix)]
+        fs::set_permissions(&gnupg, fs::Permissions::from_mode(0o700))
+            .expect("set temporary GNUPGHOME permissions");
         let original_home = env::var_os("HOME");
+        let original_gnupg_home = env::var_os("GNUPGHOME");
+        let original_gpg_agent_info = env::var_os("GPG_AGENT_INFO");
         env::set_var("HOME", &path);
+        env::set_var("GNUPGHOME", &gnupg);
+        env::remove_var("GPG_AGENT_INFO");
         clear_cached_unlocked_ripasso_private_keys();
         Self {
             original_home,
+            original_gnupg_home,
+            original_gpg_agent_info,
             path,
         }
     }
@@ -57,6 +74,16 @@ impl Drop for TestHome {
             env::set_var("HOME", original_home);
         } else {
             env::remove_var("HOME");
+        }
+        if let Some(original_gnupg_home) = self.original_gnupg_home.as_ref() {
+            env::set_var("GNUPGHOME", original_gnupg_home);
+        } else {
+            env::remove_var("GNUPGHOME");
+        }
+        if let Some(original_gpg_agent_info) = self.original_gpg_agent_info.as_ref() {
+            env::set_var("GPG_AGENT_INFO", original_gpg_agent_info);
+        } else {
+            env::remove_var("GPG_AGENT_INFO");
         }
         let _ = fs::remove_dir_all(&self.path);
     }
@@ -73,7 +100,7 @@ fn cert_bytes(email: &str) -> Vec<u8> {
     bytes
 }
 
-fn protected_cert_bytes(email: &str) -> Vec<u8> {
+fn protected_cert(email: &str) -> (sequoia_openpgp::Cert, Vec<u8>) {
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some(email))
         .set_password(Some(password))
@@ -83,7 +110,128 @@ fn protected_cert_bytes(email: &str) -> Vec<u8> {
     cert.as_tsk()
         .serialize(&mut bytes)
         .expect("failed to serialize protected test certificate");
-    bytes
+    (cert, bytes)
+}
+
+fn protected_cert_bytes(email: &str) -> Vec<u8> {
+    protected_cert(email).1
+}
+
+fn command_error(action: &str, output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stderr.is_empty() {
+        format!("{action} failed: {stderr}")
+    } else if !stdout.is_empty() {
+        format!("{action} failed: {stdout}")
+    } else {
+        format!("{action} failed: {}", output.status)
+    }
+}
+
+fn ensure_success(action: &str, output: Output) -> Result<Output, String> {
+    if output.status.success() {
+        Ok(output)
+    } else {
+        Err(command_error(action, &output))
+    }
+}
+
+fn init_store_git_repository(store: &std::path::Path) -> Result<(), String> {
+    ensure_success(
+        "git init",
+        Command::new("git")
+            .args(["-C"])
+            .arg(store)
+            .arg("init")
+            .output()
+            .map_err(|err| format!("Failed to start git init: {err}"))?,
+    )?;
+    Ok(())
+}
+
+fn import_public_key(bytes: &[u8]) -> Result<(), String> {
+    let mut child = Command::new("gpg")
+        .args(["--batch", "--yes", "--import"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("Failed to start gpg public-key import: {err}"))?;
+
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| "gpg public-key import did not provide stdin".to_string())?;
+        stdin
+            .write_all(bytes)
+            .map_err(|err| format!("Failed to write imported public key bytes: {err}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|err| format!("Failed to wait for gpg public-key import: {err}"))?;
+    if !output.status.success() {
+        return Err(command_error("gpg --import", &output));
+    }
+
+    Ok(())
+}
+
+fn store_git_commit_subjects(store: &std::path::Path) -> Result<Vec<String>, String> {
+    let output = ensure_success(
+        "git log",
+        Command::new("git")
+            .args(["-C"])
+            .arg(store)
+            .args(["log", "--format=%s"])
+            .output()
+            .map_err(|err| format!("Failed to start git log: {err}"))?,
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect())
+}
+
+fn head_author(store: &std::path::Path) -> Result<String, String> {
+    let output = ensure_success(
+        "git log",
+        Command::new("git")
+            .args(["-C"])
+            .arg(store)
+            .args(["log", "-1", "--format=%an <%ae>"])
+            .output()
+            .map_err(|err| format!("Failed to start git log author format: {err}"))?,
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn head_commit_has_signature(store: &std::path::Path) -> Result<bool, String> {
+    let output = ensure_success(
+        "git cat-file",
+        Command::new("git")
+            .args(["-C"])
+            .arg(store)
+            .args(["cat-file", "-p", "HEAD"])
+            .output()
+            .map_err(|err| format!("Failed to start git cat-file: {err}"))?,
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout).contains("\ngpgsig "))
+}
+
+fn verify_head_commit_signature(store: &std::path::Path) -> Result<(), String> {
+    ensure_success(
+        "git verify-commit",
+        Command::new("git")
+            .args(["-C"])
+            .arg(store)
+            .args(["verify-commit", "HEAD"])
+            .output()
+            .map_err(|err| format!("Failed to start git verify-commit: {err}"))?,
+    )?;
+    Ok(())
 }
 
 #[test]
@@ -625,4 +773,103 @@ fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
             .expect("read re-encrypted entry"),
         "supersecret\nusername: alice".to_string()
     );
+}
+
+#[test]
+fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _home = TestHome::new();
+    let (cert, bytes) = protected_cert("Git Signer <git-flatpak@example.com>");
+    let imported =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(Some(&imported.fingerprint))
+        .expect("select signing key");
+
+    let mut public_bytes = Vec::new();
+    cert.serialize(&mut public_bytes)
+        .expect("serialize public certificate");
+    import_public_key(&public_bytes).expect("import public key for signature verification");
+
+    let store = std::env::temp_dir().join(format!(
+        "passwordstore-flatpak-git-store-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&store).expect("create git store");
+    init_store_git_repository(&store).expect("initialize git repository");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&imported.fingerprint),
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    let subjects = store_git_commit_subjects(&store).expect("read commit subjects");
+    assert_eq!(subjects.len(), 2);
+    assert_eq!(subjects[0], "Add password for team/service");
+    assert_eq!(subjects[1], "Update password store recipients");
+    assert_eq!(
+        head_author(&store).expect("read head author"),
+        "Git Signer <git-flatpak@example.com>"
+    );
+    assert!(head_commit_has_signature(&store).expect("inspect commit headers"));
+    verify_head_commit_signature(&store).expect("verify head commit signature");
+
+    let _ = fs::remove_dir_all(&store);
+}
+
+#[test]
+fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _home = TestHome::new();
+    let bytes = protected_cert_bytes("Locked Signer <locked-flatpak@example.com>");
+    let imported =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(Some(&imported.fingerprint))
+        .expect("select signing key");
+    clear_cached_unlocked_ripasso_private_keys();
+
+    let store = std::env::temp_dir().join(format!(
+        "passwordstore-flatpak-git-unsigned-store-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&store).expect("create unsigned git store");
+    init_store_git_repository(&store).expect("initialize git repository");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&imported.fingerprint),
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    let subjects = store_git_commit_subjects(&store).expect("read commit subjects");
+    assert_eq!(subjects.len(), 2);
+    assert_eq!(
+        head_author(&store).expect("read head author"),
+        "Locked Signer <locked-flatpak@example.com>"
+    );
+    assert!(!head_commit_has_signature(&store).expect("inspect commit headers"));
+
+    let _ = fs::remove_dir_all(&store);
 }

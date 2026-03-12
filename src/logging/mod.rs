@@ -1,9 +1,10 @@
 mod command;
 mod store;
 
-pub(crate) use command::{run_command_output, CommandLogOptions};
 #[cfg(not(feature = "flatpak"))]
-pub(crate) use command::{run_command_status, run_command_with_input};
+pub(crate) use command::run_command_status;
+pub(crate) use command::run_command_with_input;
+pub(crate) use command::{run_command_output, CommandLogOptions};
 pub(crate) use store::log_error;
 pub(crate) use store::log_snapshot;
 

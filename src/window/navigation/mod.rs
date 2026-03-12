@@ -3,7 +3,7 @@ use crate::password::opened::get_opened_pass_file;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
-use crate::support::runtime::git_integration_available;
+use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::preferences::PreferencesActionState;
 use adw::gtk::Button;
@@ -124,7 +124,7 @@ pub(crate) fn set_save_button_for_password(save: &Button) {
 }
 
 pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool) {
-    let git_available = git_integration_available();
+    let git_available = git_network_operations_available();
     chrome.back.set_visible(false);
     chrome.save.set_visible(false);
     set_save_button_for_password(chrome.save);

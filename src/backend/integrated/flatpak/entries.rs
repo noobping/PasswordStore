@@ -1,5 +1,6 @@
 use super::super::keys::ensure_ripasso_private_key_is_ready;
 use super::crypto::FlatpakCryptoContext;
+use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
 use super::recipients::decryption_candidate_fingerprints_for_entry;
 use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
@@ -79,6 +80,11 @@ pub(crate) fn save_password_entry(
 ) -> Result<(), PasswordEntryWriteError> {
     let entry_path =
         entry_file_path(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
+    let git_message = if entry_path.exists() {
+        format!("Update password for {label}")
+    } else {
+        format!("Add password for {label}")
+    };
     if entry_path.exists() && !overwrite {
         return Err(PasswordEntryWriteError::already_exists(
             "That password entry already exists.",
@@ -90,8 +96,12 @@ pub(crate) fn save_password_entry(
     let ciphertext = context
         .encrypt_contents(contents)
         .map_err(PasswordEntryWriteError::from_store_message)?;
-    write_entry_ciphertext(&entry_path, &ciphertext)
-        .map_err(PasswordEntryWriteError::from_store_message)
+    let result = write_entry_ciphertext(&entry_path, &ciphertext)
+        .map_err(PasswordEntryWriteError::from_store_message);
+    if result.is_ok() {
+        maybe_commit_git_paths(store_root, &git_message, [password_entry_git_path(label)]);
+    }
+    result
 }
 
 pub(crate) fn rename_password_entry(
@@ -117,8 +127,19 @@ pub(crate) fn rename_password_entry(
     ensure_parent_dir(&new_path).map_err(PasswordEntryWriteError::from_store_message)?;
     fs::rename(&old_path, &new_path)
         .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
-    cleanup_empty_store_dirs(store_root, &old_path)
-        .map_err(PasswordEntryWriteError::from_store_message)
+    let result = cleanup_empty_store_dirs(store_root, &old_path)
+        .map_err(PasswordEntryWriteError::from_store_message);
+    if result.is_ok() {
+        maybe_commit_git_paths(
+            store_root,
+            &format!("Rename password from {old_label} to {new_label}"),
+            [
+                password_entry_git_path(old_label),
+                password_entry_git_path(new_label),
+            ],
+        );
+    }
+    result
 }
 
 pub(crate) fn delete_password_entry(
@@ -129,8 +150,16 @@ pub(crate) fn delete_password_entry(
         entry_file_path(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
     fs::remove_file(&entry_path)
         .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
-    cleanup_empty_store_dirs(store_root, &entry_path)
-        .map_err(PasswordEntryWriteError::from_store_message)
+    let result = cleanup_empty_store_dirs(store_root, &entry_path)
+        .map_err(PasswordEntryWriteError::from_store_message);
+    if result.is_ok() {
+        maybe_commit_git_paths(
+            store_root,
+            &format!("Remove password for {label}"),
+            [password_entry_git_path(label)],
+        );
+    }
+    result
 }
 
 fn write_entry_ciphertext(entry_path: &Path, ciphertext: &[u8]) -> Result<(), String> {

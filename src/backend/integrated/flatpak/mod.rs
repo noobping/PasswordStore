@@ -1,5 +1,6 @@
 mod crypto;
 mod entries;
+mod git;
 mod paths;
 mod recipients;
 mod store;

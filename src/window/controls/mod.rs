@@ -11,7 +11,7 @@ use crate::password::undo::{
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-use crate::support::runtime::git_integration_available;
+use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gtk::{ListBox, SearchEntry};
@@ -133,7 +133,7 @@ fn context_save_target(
         visible_navigation_page_is(&navigation.nav, &navigation.text_page),
         visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page),
         visible_navigation_page_is(&navigation.nav, recipients_page),
-        git_integration_available(),
+        git_network_operations_available(),
     )
 }
 

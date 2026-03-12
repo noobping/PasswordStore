@@ -8,7 +8,7 @@ use crate::password::model::{collect_all_password_items_with_options, CollectIte
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::non_null_to_string_option;
-use crate::support::runtime::git_integration_available;
+use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::clear_list_box;
 use adw::gtk::{Button, ListBox, ListBoxRow, SearchEntry};
 use adw::prelude::*;
@@ -110,7 +110,7 @@ pub(crate) fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
-    let git_available = git_integration_available();
+    let git_available = git_network_operations_available();
 
     actions.git.set_visible(false);
     actions.store.set_visible(false);

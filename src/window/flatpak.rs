@@ -1,11 +1,11 @@
 use super::build::widgets::WindowWidgets;
-use crate::support::runtime::git_integration_available;
+use crate::support::runtime::git_network_operations_available;
 use adw::gio::Menu;
 
 pub(crate) fn configure_flatpak_window(widgets: &WindowWidgets) {
     let menu = Menu::new();
     menu.append(Some("_Find item"), Some("win.toggle-find"));
-    if git_integration_available() {
+    if git_network_operations_available() {
         menu.append(Some("_Synchronize with remote"), Some("win.synchronize"));
     }
     menu.append(Some("_Preferences"), Some("win.open-preferences"));

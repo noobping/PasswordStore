@@ -3,7 +3,6 @@ use super::streams::{join_stream_logger, spawn_stream_logger};
 use super::CommandLogOptions;
 use std::ffi::OsStr;
 use std::io;
-#[cfg(not(feature = "flatpak"))]
 use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -159,7 +158,6 @@ pub(crate) fn run_command_status(
     run_command_output(cmd, context, options).map(|output| output.status)
 }
 
-#[cfg(not(feature = "flatpak"))]
 pub(crate) fn run_command_with_input(
     cmd: &mut Command,
     context: &str,

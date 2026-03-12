@@ -58,6 +58,7 @@ pub(crate) fn save_store_recipients(
                 .into_iter()
                 .map(|label| password_entry_git_path(&label)),
         ),
+        Some(context.fingerprint()),
     );
 
     Ok(())

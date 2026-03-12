@@ -4,6 +4,7 @@ use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
 use super::recipients::decryption_candidate_fingerprints_for_entry;
 use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+use crate::logging::log_error;
 use std::fs;
 use std::path::Path;
 
@@ -99,7 +100,12 @@ pub(crate) fn save_password_entry(
     let result = write_entry_ciphertext(&entry_path, &ciphertext)
         .map_err(PasswordEntryWriteError::from_store_message);
     if result.is_ok() {
-        maybe_commit_git_paths(store_root, &git_message, [password_entry_git_path(label)]);
+        maybe_commit_git_paths(
+            store_root,
+            &git_message,
+            [password_entry_git_path(label)],
+            Some(context.fingerprint()),
+        );
     }
     result
 }
@@ -109,6 +115,7 @@ pub(crate) fn rename_password_entry(
     old_label: &str,
     new_label: &str,
 ) -> Result<(), PasswordEntryWriteError> {
+    let commit_fingerprint = commit_identity_fingerprint_for_label(store_root, old_label);
     let old_path = entry_file_path(store_root, old_label)
         .map_err(PasswordEntryWriteError::from_store_message)?;
     let new_path = entry_file_path(store_root, new_label)
@@ -137,6 +144,7 @@ pub(crate) fn rename_password_entry(
                 password_entry_git_path(old_label),
                 password_entry_git_path(new_label),
             ],
+            commit_fingerprint.as_deref(),
         );
     }
     result
@@ -146,6 +154,7 @@ pub(crate) fn delete_password_entry(
     store_root: &str,
     label: &str,
 ) -> Result<(), PasswordEntryWriteError> {
+    let commit_fingerprint = commit_identity_fingerprint_for_label(store_root, label);
     let entry_path =
         entry_file_path(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
     fs::remove_file(&entry_path)
@@ -157,9 +166,22 @@ pub(crate) fn delete_password_entry(
             store_root,
             &format!("Remove password for {label}"),
             [password_entry_git_path(label)],
+            commit_fingerprint.as_deref(),
         );
     }
     result
+}
+
+fn commit_identity_fingerprint_for_label(store_root: &str, label: &str) -> Option<String> {
+    match FlatpakCryptoContext::fingerprint_for_label(store_root, label) {
+        Ok(fingerprint) => Some(fingerprint),
+        Err(err) => {
+            log_error(format!(
+                "Failed to resolve Flatpak Git commit identity for {store_root}/{label}: {err}"
+            ));
+            None
+        }
+    }
 }
 
 fn write_entry_ciphertext(entry_path: &Path, ciphertext: &[u8]) -> Result<(), String> {

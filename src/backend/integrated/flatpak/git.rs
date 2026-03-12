@@ -133,15 +133,19 @@ fn git_ident(store_root: &str, role: &str, identity: &CommitIdentity) -> Result<
     }
 }
 
-fn preferred_commit_private_key() -> Result<Option<ManagedRipassoPrivateKey>, String> {
+fn preferred_commit_private_key(
+    explicit_fingerprint: Option<&str>,
+) -> Result<Option<ManagedRipassoPrivateKey>, String> {
     let keys = list_ripasso_private_keys()?;
     Ok(preferred_commit_private_key_from_values(
+        explicit_fingerprint,
         selected_ripasso_own_fingerprint()?.as_deref(),
         &keys,
     ))
 }
 
 fn preferred_commit_private_key_from_values(
+    explicit: Option<&str>,
     selected: Option<&str>,
     keys: &[ManagedRipassoPrivateKey],
 ) -> Option<ManagedRipassoPrivateKey> {
@@ -149,10 +153,10 @@ fn preferred_commit_private_key_from_values(
         return None;
     }
 
-    if let Some(selected) = selected {
+    for candidate in [explicit, selected].into_iter().flatten() {
         if let Some(key) = keys
             .iter()
-            .find(|key| key.fingerprint.eq_ignore_ascii_case(selected))
+            .find(|key| key.fingerprint.eq_ignore_ascii_case(candidate))
         {
             return Some(key.clone());
         }
@@ -194,8 +198,8 @@ fn parse_private_key_user_id(user_id: &str, fingerprint: &str) -> (String, Strin
     (name, email)
 }
 
-fn commit_identity() -> Result<CommitIdentity, String> {
-    if let Some(key) = preferred_commit_private_key()? {
+fn commit_identity(explicit_fingerprint: Option<&str>) -> Result<CommitIdentity, String> {
+    if let Some(key) = preferred_commit_private_key(explicit_fingerprint)? {
         return Ok(commit_identity_from_private_key(&key));
     }
 
@@ -349,7 +353,12 @@ fn update_git_head(
     }
 }
 
-fn commit_git_paths(store_root: &str, message: &str, paths: &[String]) -> Result<(), String> {
+fn commit_git_paths(
+    store_root: &str,
+    message: &str,
+    paths: &[String],
+    explicit_fingerprint: Option<&str>,
+) -> Result<(), String> {
     if paths.is_empty() || !has_git_repository(store_root) {
         return Ok(());
     }
@@ -361,7 +370,7 @@ fn commit_git_paths(store_root: &str, message: &str, paths: &[String]) -> Result
 
     let tree_oid = write_git_tree(store_root)?;
     let parent_oid = head_oid(store_root)?;
-    let identity = commit_identity()?;
+    let identity = commit_identity(explicit_fingerprint)?;
     let author_ident = git_ident(store_root, "author", &identity)?;
     let committer_ident = git_ident(store_root, "committer", &identity)?;
     let headers = build_commit_headers(
@@ -402,11 +411,12 @@ pub(super) fn maybe_commit_git_paths(
     store_root: &str,
     message: &str,
     paths: impl IntoIterator<Item = String>,
+    explicit_fingerprint: Option<&str>,
 ) {
     let mut paths = paths.into_iter().collect::<Vec<_>>();
     paths.sort();
     paths.dedup();
-    if let Err(err) = commit_git_paths(store_root, message, &paths) {
+    if let Err(err) = commit_git_paths(store_root, message, &paths, explicit_fingerprint) {
         log_error(format!(
             "Flatpak backend Git commit failed for {store_root}: {err}"
         ));
@@ -463,7 +473,36 @@ mod tests {
     }
 
     #[test]
-    fn commit_identity_prefers_selected_private_key() {
+    fn commit_identity_prefers_explicit_private_key_over_selected_private_key() {
+        let key_a = ManagedRipassoPrivateKey {
+            fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+            user_ids: vec!["Key A <a@example.com>".to_string()],
+        };
+        let key_b = ManagedRipassoPrivateKey {
+            fingerprint: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+            user_ids: vec!["Key B <b@example.com>".to_string()],
+        };
+        let explicit = key_a.fingerprint.clone();
+        let selected_fingerprint = key_b.fingerprint.clone();
+        let selected = preferred_commit_private_key_from_values(
+            Some(&explicit),
+            Some(&selected_fingerprint),
+            &[key_a.clone(), key_b],
+        )
+        .expect("resolve explicit key");
+
+        assert_eq!(
+            commit_identity_from_private_key(&selected),
+            CommitIdentity {
+                name: "Key A".to_string(),
+                email: "a@example.com".to_string(),
+                signing_fingerprint: Some(key_a.fingerprint),
+            }
+        );
+    }
+
+    #[test]
+    fn commit_identity_prefers_selected_private_key_when_no_explicit_key_is_given() {
         let key_a = ManagedRipassoPrivateKey {
             fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             user_ids: vec!["Key A <a@example.com>".to_string()],
@@ -473,6 +512,7 @@ mod tests {
             user_ids: vec!["Key B <b@example.com>".to_string()],
         };
         let selected = preferred_commit_private_key_from_values(
+            None,
             Some(&key_b.fingerprint),
             &[key_a, key_b.clone()],
         )

@@ -829,6 +829,68 @@ fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() 
 }
 
 #[test]
+fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_selected_key() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _home = TestHome::new();
+    let (cert_a, bytes_a) = protected_cert("Entry Key <entry@example.com>");
+    let imported_a =
+        import_ripasso_private_key_bytes(&bytes_a, Some("hunter2")).expect("import entry key");
+    let (cert_b, bytes_b) = protected_cert("Selected Key <selected@example.com>");
+    let imported_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import unrelated selected key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(Some(&imported_b.fingerprint))
+        .expect("select unrelated key");
+
+    let mut public_bytes_a = Vec::new();
+    cert_a
+        .serialize(&mut public_bytes_a)
+        .expect("serialize entry public certificate");
+    import_public_key(&public_bytes_a).expect("import entry public key for signature verification");
+
+    let mut public_bytes_b = Vec::new();
+    cert_b
+        .serialize(&mut public_bytes_b)
+        .expect("serialize selected public certificate");
+    import_public_key(&public_bytes_b)
+        .expect("import unrelated selected public key for signature verification");
+
+    let store = std::env::temp_dir().join(format!(
+        "passwordstore-flatpak-git-entry-key-store-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&store).expect("create git store");
+    init_store_git_repository(&store).expect("initialize git repository");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&imported_a.fingerprint),
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    let subjects = store_git_commit_subjects(&store).expect("read commit subjects");
+    assert_eq!(subjects.len(), 2);
+    assert_eq!(
+        head_author(&store).expect("read head author"),
+        "Entry Key <entry@example.com>"
+    );
+    assert!(head_commit_has_signature(&store).expect("inspect commit headers"));
+    verify_head_commit_signature(&store).expect("verify head commit signature");
+
+    let _ = fs::remove_dir_all(&store);
+}
+
+#[test]
 fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
     let _guard = test_lock().lock().expect("test lock poisoned");
     let _home = TestHome::new();

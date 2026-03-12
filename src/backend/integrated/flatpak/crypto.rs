@@ -13,6 +13,7 @@ use std::path::Path;
 pub(super) struct FlatpakCryptoContext {
     crypto: Sequoia,
     recipients: Vec<Recipient>,
+    fingerprint: String,
 }
 
 impl FlatpakCryptoContext {
@@ -22,6 +23,7 @@ impl FlatpakCryptoContext {
         Ok(Self {
             crypto,
             recipients: Vec::new(),
+            fingerprint: fingerprint.to_string(),
         })
     }
 
@@ -30,9 +32,19 @@ impl FlatpakCryptoContext {
         Self::load_for_recipients_file(&recipients_file)
     }
 
+    pub(super) fn fingerprint_for_label(store_root: &str, label: &str) -> Result<String, String> {
+        let recipients_file = recipients_file_for_label(store_root, label)?;
+        Self::fingerprint_for_recipients_file(&recipients_file)
+    }
+
     fn load_for_recipients_file(recipients_file: &Path) -> Result<Self, String> {
         let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
         Self::load_for_recipient_contents(&contents)
+    }
+
+    fn fingerprint_for_recipients_file(recipients_file: &Path) -> Result<String, String> {
+        let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
+        Self::fingerprint_for_recipient_contents(&contents)
     }
 
     pub(super) fn load_for_recipient_contents(contents: &str) -> Result<Self, String> {
@@ -40,7 +52,20 @@ impl FlatpakCryptoContext {
         let recipients = recipients_for_encryption_from_contents(contents, &key_ring)?;
         let fingerprint = encryption_context_fingerprint_from_contents(contents, &key_ring)?;
         let crypto = build_ripasso_crypto_from_key_ring(&fingerprint, key_ring)?;
-        Ok(Self { crypto, recipients })
+        Ok(Self {
+            crypto,
+            recipients,
+            fingerprint,
+        })
+    }
+
+    pub(super) fn fingerprint_for_recipient_contents(contents: &str) -> Result<String, String> {
+        let key_ring = load_stored_ripasso_key_ring()?;
+        encryption_context_fingerprint_from_contents(contents, &key_ring)
+    }
+
+    pub(super) fn fingerprint(&self) -> &str {
+        &self.fingerprint
     }
 
     pub(super) fn decrypt_entry(&self, entry_path: &Path) -> Result<String, String> {

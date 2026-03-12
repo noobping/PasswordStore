@@ -1,3 +1,8 @@
+mod clone;
+mod dialogs;
+#[cfg(not(feature = "flatpak"))]
+mod import;
+
 use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
 };
@@ -7,41 +12,22 @@ pub(crate) use super::recipients_page::{
     sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsPlatformState,
     StoreRecipientsRequest,
 };
+use self::clone::append_store_clone_row;
+#[cfg(not(feature = "flatpak"))]
+use self::import::schedule_store_import_row;
+pub(crate) use self::clone::prompt_store_clone;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-#[cfg(not(feature = "flatpak"))]
-use crate::store::labels::shortened_store_labels;
 #[cfg(feature = "flatpak")]
 use crate::support::actions::register_window_action;
-use crate::support::background::spawn_result_task;
-#[cfg(not(feature = "flatpak"))]
-use crate::support::object_data::non_null_to_string_option;
-#[cfg(not(feature = "flatpak"))]
-use crate::support::pass_import::{
-    available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
-};
-#[cfg(not(feature = "flatpak"))]
-use crate::support::ui::flat_icon_button_with_tooltip;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
-use crate::window::clone_store_repository;
-use adw::glib::object::IsA;
-#[cfg(not(feature = "flatpak"))]
-use adw::gtk::{Align, Button, DropDown};
-use adw::gtk::{Box as GtkBox, Orientation, Spinner};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
-use adw::{
-    Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, StatusPage, WindowTitle,
-};
-#[cfg(not(feature = "flatpak"))]
-use std::cell::RefCell;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::rc::Rc;
-#[cfg(not(feature = "flatpak"))]
-use std::sync::atomic::{AtomicU64, Ordering};
 
 fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
     if stores.iter().any(|store| store == new_store) {
@@ -79,21 +65,6 @@ fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> 
                 .to_string(),
         );
         overlay.add_toast(Toast::new("Choose a local folder."));
-        None
-    })?;
-
-    Some(path.to_string_lossy().to_string())
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
-    let file = dialog.file()?;
-    let path = file.path().or_else(|| {
-        log_error(
-            "The selected file is not available as a local path. Choose a local file or folder."
-                .to_string(),
-        );
-        overlay.add_toast(Toast::new("Choose a local file or folder."));
         None
     })?;
 
@@ -154,36 +125,6 @@ fn folder_is_empty(path: &str) -> io::Result<bool> {
 
     let mut entries = fs::read_dir(path)?;
     Ok(entries.next().is_none())
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn should_show_pass_import_row(stores: &[String], import_sources: &[String]) -> bool {
-    !stores.is_empty() && !import_sources.is_empty()
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn import_source_subtitle(source_path: Option<&str>) -> &'static str {
-    if source_path.is_some() {
-        ""
-    } else {
-        "Choose a file or folder if the importer needs one."
-    }
-}
-
-#[cfg(not(feature = "flatpak"))]
-const STORE_LIST_REFRESH_ID_KEY: &str = "store-list-refresh-id";
-
-#[cfg(not(feature = "flatpak"))]
-fn next_store_list_refresh_id() -> String {
-    static NEXT_STORE_LIST_REFRESH_ID: AtomicU64 = AtomicU64::new(1);
-    NEXT_STORE_LIST_REFRESH_ID
-        .fetch_add(1, Ordering::Relaxed)
-        .to_string()
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn stores_list_refresh_is_current(list: &ListBox, refresh_id: &str) -> bool {
-    non_null_to_string_option(list, STORE_LIST_REFRESH_ID_KEY).as_deref() == Some(refresh_id)
 }
 
 pub(crate) fn rebuild_store_list(
@@ -278,462 +219,6 @@ fn append_store_picker_row(
     );
 }
 
-fn dialog_content_shell(
-    title: &str,
-    subtitle: Option<&str>,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
-    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
-        window_title.set_subtitle(subtitle);
-    }
-
-    let header = HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-
-    let shell = GtkBox::new(Orientation::Vertical, 0);
-    shell.append(&header);
-    shell.append(child);
-    shell
-}
-
-fn build_progress_dialog(
-    window: &ApplicationWindow,
-    title: &str,
-    subtitle: Option<&str>,
-    description: &str,
-) -> Dialog {
-    let status = StatusPage::builder().description(description).build();
-    status.set_child(Some(&Spinner::builder().spinning(true).build()));
-
-    let dialog = Dialog::builder()
-        .title(title)
-        .content_width(460)
-        .child(&dialog_content_shell(title, subtitle, &status))
-        .build();
-    dialog.set_can_close(false);
-    dialog.present(Some(window));
-    dialog
-}
-
-fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
-    build_progress_dialog(
-        window,
-        "Restoring password store",
-        Some(store),
-        "Please wait.",
-    )
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn build_import_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
-    build_progress_dialog(window, "Importing passwords", Some(store), "Please wait.")
-}
-
-fn present_clone_url_dialog<F>(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    store: &str,
-    on_submit: F,
-) where
-    F: Fn(String) + 'static,
-{
-    let url_row = EntryRow::new();
-    url_row.set_title("Repository URL");
-    url_row.set_show_apply_button(true);
-
-    let group = PreferencesGroup::builder().build();
-    group.add(&url_row);
-
-    let page = PreferencesPage::new();
-    page.add(&group);
-
-    let dialog = Dialog::builder()
-        .title("Restore password store")
-        .content_width(460)
-        .child(&dialog_content_shell(
-            "Restore password store",
-            Some(store),
-            &page,
-        ))
-        .build();
-
-    let dialog_clone = dialog.clone();
-    let overlay_clone = overlay.clone();
-    url_row.connect_apply(move |row| {
-        let url = row.text().trim().to_string();
-        if url.is_empty() {
-            overlay_clone.add_toast(Toast::new("Enter a repository URL."));
-            return;
-        }
-
-        dialog_clone.close();
-        on_submit(url);
-    });
-
-    dialog.present(Some(window));
-}
-
-pub(crate) fn prompt_store_clone<F>(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    on_submit: F,
-) where
-    F: Fn(String, String) + 'static,
-{
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let on_submit = Rc::new(on_submit);
-    let picker_window = window.clone();
-    let picker_overlay = overlay.clone();
-    open_store_folder_picker(
-        &picker_window,
-        "Choose password store folder to restore",
-        "Select",
-        true,
-        &picker_overlay,
-        move |store| {
-            let window_for_dialog = window.clone();
-            let overlay_for_dialog = overlay.clone();
-            let store_for_dialog = store.clone();
-            let on_submit = on_submit.clone();
-            present_clone_url_dialog(
-                &window_for_dialog,
-                &overlay_for_dialog,
-                &store_for_dialog,
-                {
-                    let store = store.clone();
-                    move |url| on_submit(store.clone(), url)
-                },
-            );
-        },
-    );
-}
-
-fn append_store_clone_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-) {
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let recipients_page = recipients_page.clone();
-    let list_for_action = list.clone();
-    append_action_row_with_button(
-        list,
-        "Restore password store",
-        "Choose a folder and restore it from a Git repository.",
-        "git-symbolic",
-        move || {
-            let list_for_clone = list_for_action.clone();
-            let settings_for_clone = settings.clone();
-            let window_for_clone = window.clone();
-            let overlay_for_clone = overlay.clone();
-            let recipients_page_for_clone = recipients_page.clone();
-            prompt_store_clone(&window, &overlay, move |store, url| {
-                start_store_clone(
-                    &window_for_clone,
-                    &list_for_clone,
-                    &settings_for_clone,
-                    &overlay_for_clone,
-                    &recipients_page_for_clone,
-                    store,
-                    url,
-                );
-            });
-        },
-    );
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn present_pass_import_dialog<F>(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    stores: &[String],
-    import_sources: &[String],
-    on_submit: F,
-) where
-    F: Fn(PassImportRequest) + 'static,
-{
-    let store_labels = shortened_store_labels(stores);
-    let store_label_refs = store_labels.iter().map(String::as_str).collect::<Vec<_>>();
-    let source_refs = import_sources
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-
-    let store_dropdown = DropDown::from_strings(&store_label_refs);
-    store_dropdown.set_valign(Align::Center);
-    let store_row = ActionRow::builder().title("Store").build();
-    store_row.add_suffix(&store_dropdown);
-
-    let source_dropdown = DropDown::from_strings(&source_refs);
-    source_dropdown.set_valign(Align::Center);
-    let source_row = ActionRow::builder().title("Importer").build();
-    source_row.add_suffix(&source_dropdown);
-
-    let source_path = Rc::new(RefCell::new(None::<String>));
-    let source_path_row = ActionRow::builder()
-        .title("Import source")
-        .subtitle(import_source_subtitle(None))
-        .build();
-    let source_file_button =
-        flat_icon_button_with_tooltip("paper-symbolic", "Choose source file");
-    let source_folder_button =
-        flat_icon_button_with_tooltip("folder-open-symbolic", "Choose source folder");
-    let source_clear_button =
-        flat_icon_button_with_tooltip("edit-clear-symbolic", "Clear source path");
-    source_path_row.add_suffix(&source_file_button);
-    source_path_row.add_suffix(&source_folder_button);
-    source_path_row.add_suffix(&source_clear_button);
-
-    let target_path_row = EntryRow::new();
-    target_path_row.set_title("Store subfolder");
-
-    let group = PreferencesGroup::builder().build();
-    group.add(&store_row);
-    group.add(&source_row);
-    group.add(&source_path_row);
-    group.add(&target_path_row);
-
-    let page = PreferencesPage::new();
-    page.add(&group);
-
-    let import_button = Button::builder()
-        .label("Import")
-        .halign(Align::End)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_end(12)
-        .css_classes(vec!["suggested-action"])
-        .build();
-
-    let content = GtkBox::new(Orientation::Vertical, 0);
-    content.append(&page);
-    content.append(&import_button);
-
-    let dialog = Dialog::builder()
-        .title("Import passwords")
-        .content_width(460)
-        .child(&dialog_content_shell(
-            "Import passwords",
-            Some("Use pass import to import into an existing store."),
-            &content,
-        ))
-        .build();
-
-    {
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let source_path = source_path.clone();
-        let source_path_row = source_path_row.clone();
-        source_file_button.connect_clicked(move |_| {
-            let dialog = FileChooserNative::new(
-                Some("Choose import source file"),
-                Some(&window),
-                FileChooserAction::Open,
-                Some("Select"),
-                Some("Cancel"),
-            );
-            let overlay = overlay.clone();
-            let source_path = source_path.clone();
-            let source_path_row = source_path_row.clone();
-            dialog.connect_response(move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = selected_local_path(dialog, &overlay) {
-                        *source_path.borrow_mut() = Some(path.clone());
-                        source_path_row.set_subtitle(&path);
-                    }
-                }
-                dialog.hide();
-            });
-            dialog.show();
-        });
-    }
-
-    {
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let source_path = source_path.clone();
-        let source_path_row = source_path_row.clone();
-        source_folder_button.connect_clicked(move |_| {
-            let dialog = FileChooserNative::new(
-                Some("Choose import source folder"),
-                Some(&window),
-                FileChooserAction::SelectFolder,
-                Some("Select"),
-                Some("Cancel"),
-            );
-            let overlay = overlay.clone();
-            let source_path = source_path.clone();
-            let source_path_row = source_path_row.clone();
-            dialog.connect_response(move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = selected_local_path(dialog, &overlay) {
-                        *source_path.borrow_mut() = Some(path.clone());
-                        source_path_row.set_subtitle(&path);
-                    }
-                }
-                dialog.hide();
-            });
-            dialog.show();
-        });
-    }
-
-    {
-        let source_path = source_path.clone();
-        let source_path_row = source_path_row.clone();
-        source_clear_button.connect_clicked(move |_| {
-            *source_path.borrow_mut() = None;
-            source_path_row.set_subtitle(import_source_subtitle(None));
-        });
-    }
-
-    let dialog_clone = dialog.clone();
-    let overlay_clone = overlay.clone();
-    let stores = stores.to_vec();
-    let import_sources = import_sources.to_vec();
-    import_button.connect_clicked(move |_| {
-        let Some(store_root) = stores.get(store_dropdown.selected() as usize).cloned() else {
-            overlay_clone.add_toast(Toast::new("Choose a store."));
-            return;
-        };
-        let Some(source) = import_sources
-            .get(source_dropdown.selected() as usize)
-            .cloned()
-        else {
-            overlay_clone.add_toast(Toast::new("Choose an importer."));
-            return;
-        };
-
-        dialog_clone.close();
-        on_submit(PassImportRequest {
-            store_root,
-            source,
-            source_path: source_path.borrow().clone(),
-            target_path: normalize_optional_text(&target_path_row.text()),
-        });
-    });
-
-    dialog.present(Some(window));
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn start_pass_import(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    request: PassImportRequest,
-) {
-    let progress_dialog = build_import_progress_dialog(window, &request.store_root);
-    let progress_dialog_for_disconnect = progress_dialog.clone();
-    let overlay = overlay.clone();
-    let overlay_for_disconnect = overlay.clone();
-    let store_for_error = request.store_root.clone();
-    let source_for_error = request.source.clone();
-    spawn_result_task(
-        move || run_pass_import(&request),
-        move |result| {
-            progress_dialog.force_close();
-            match result {
-                Ok(()) => overlay.add_toast(Toast::new("Passwords imported.")),
-                Err(err) => {
-                    log_error(format!(
-                        "Failed to import passwords into '{store_for_error}' from '{source_for_error}': {err}"
-                    ));
-                    overlay.add_toast(Toast::new(&err));
-                }
-            }
-        },
-        move || {
-            progress_dialog_for_disconnect.force_close();
-            overlay_for_disconnect.add_toast(Toast::new("Couldn't import passwords."));
-        },
-    );
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn append_store_import_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    import_sources: Vec<String>,
-) {
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    append_action_row_with_button(
-        list,
-        "Import passwords",
-        "Use pass import with an existing store.",
-        "document-open-symbolic",
-        move || {
-            let stores = settings.stores();
-            if stores.is_empty() {
-                overlay.add_toast(Toast::new("Add a store first."));
-                return;
-            }
-
-            if !should_show_pass_import_row(&stores, &import_sources) {
-                overlay.add_toast(Toast::new("pass import is not available."));
-                return;
-            }
-
-            present_pass_import_dialog(&window, &overlay, &stores, &import_sources, {
-                let window = window.clone();
-                let overlay = overlay.clone();
-                move |request| start_pass_import(&window, &overlay, request)
-            });
-        },
-    );
-}
-
-#[cfg(not(feature = "flatpak"))]
-fn schedule_store_import_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    stores: Vec<String>,
-) {
-    let refresh_id = next_store_list_refresh_id();
-    unsafe {
-        list.set_data(STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
-    }
-
-    let list_for_result = list.clone();
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let stores_for_result = stores.clone();
-    let refresh_id_for_result = refresh_id.clone();
-    spawn_result_task(
-        available_pass_import_sources,
-        move |result| {
-            if !stores_list_refresh_is_current(&list_for_result, &refresh_id_for_result) {
-                return;
-            }
-
-            let Ok(import_sources) = result else {
-                return;
-            };
-            if should_show_pass_import_row(&stores_for_result, &import_sources) {
-                append_store_import_row(
-                    &list_for_result,
-                    &settings,
-                    &window,
-                    &overlay,
-                    import_sources,
-                );
-            }
-        },
-        move || {},
-    );
-}
-
 pub(crate) fn prompt_add_or_create_store(
     window: &ApplicationWindow,
     list: &ListBox,
@@ -814,77 +299,14 @@ pub(crate) fn register_open_store_picker_action(
     });
 }
 
-fn start_store_clone(
-    window: &ApplicationWindow,
-    list: &ListBox,
-    settings: &Preferences,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-    store: String,
-    url: String,
-) {
-    let progress_dialog = build_clone_progress_dialog(window, &store);
-    let progress_dialog_for_disconnect = progress_dialog.clone();
-    let list = list.clone();
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let recipients_page = recipients_page.clone();
-    let store_for_thread = store.clone();
-    let store_for_result = store.clone();
-    let store_for_disconnect = store;
-    let window_for_result = window.clone();
-    let overlay_for_disconnect = overlay.clone();
-    let settings_for_result = settings.clone();
-    let list_for_result = list.clone();
-    let recipients_page_for_result = recipients_page.clone();
-    spawn_result_task(
-        move || clone_store_repository(&url, &store_for_thread),
-        move |result| match result {
-            Ok(()) => {
-                progress_dialog.force_close();
-                if let Some(stores) =
-                    updated_stores_after_add(&settings_for_result.stores(), &store_for_result)
-                {
-                    if let Err(err) = settings_for_result.set_stores(stores) {
-                        log_error(format!("Failed to save stores: {err}"));
-                        overlay.add_toast(Toast::new("Couldn't add that folder."));
-                        return;
-                    }
-                }
-                rebuild_store_list(
-                    &list_for_result,
-                    &settings_for_result,
-                    &window_for_result,
-                    &overlay,
-                    &recipients_page_for_result,
-                );
-                overlay.add_toast(Toast::new("Store restored."));
-            }
-            Err(message) => {
-                progress_dialog.force_close();
-                overlay.add_toast(Toast::new(&message));
-            }
-        },
-        move || {
-            progress_dialog_for_disconnect.force_close();
-            log_error(format!(
-                "Restore stopped unexpectedly for store '{}'.",
-                store_for_disconnect
-            ));
-            overlay_for_disconnect.add_toast(Toast::new("Restore stopped unexpectedly."));
-        },
-    );
-}
-
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "flatpak"))]
-    use super::should_show_pass_import_row;
     use super::{
         initial_recipients_for_store_creation, selected_store_folder_mode,
         updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
     };
+    #[cfg(not(feature = "flatpak"))]
+    use super::import::should_show_pass_import_row;
 
     #[test]
     fn adding_a_new_store_appends_it_once() {

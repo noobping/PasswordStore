@@ -1,8 +1,7 @@
 use crate::password::generation::PasswordGenerationSettings;
 use adw::gio::{self, prelude::*, Settings};
-use adw::glib::{bool_error, BoolError};
+use adw::glib::BoolError;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -10,9 +9,11 @@ use std::process::Command;
 mod flatpak;
 #[cfg(not(feature = "flatpak"))]
 mod standard;
+mod storage;
 
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform_defaults;
+use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 use self::platform_defaults::default_store_dirs;
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform_defaults;
@@ -55,17 +56,6 @@ impl UsernameFallbackMode {
             _ => Self::Folder,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct PreferenceFile {
-    backend: Option<String>,
-    pass_command: Option<String>,
-    password_store_dirs: Option<Vec<String>>,
-    new_pass_file_template: Option<String>,
-    password_generation: Option<PasswordGenerationSettings>,
-    username_fallback_mode: Option<UsernameFallbackMode>,
-    ripasso_own_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -258,38 +248,6 @@ impl Preferences {
         let path = PathBuf::from(Self::expand_path(store));
         path.exists() && path.is_dir()
     }
-}
-
-fn config_path() -> PathBuf {
-    if let Some(dir) = dirs_next::config_dir() {
-        dir.join(format!("{}.toml", env!("CARGO_PKG_NAME")))
-    } else {
-        PathBuf::from(format!("{}.toml", env!("CARGO_PKG_NAME")))
-    }
-}
-
-fn load_file_prefs() -> PreferenceFile {
-    let path = config_path();
-    if let Ok(data) = fs::read_to_string(&path) {
-        toml::from_str(&data).unwrap_or_default()
-    } else {
-        PreferenceFile::default()
-    }
-}
-
-fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {
-    let path = config_path();
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| bool_error!("Failed to create config dir: {e}"))?;
-    }
-
-    let toml =
-        toml::to_string_pretty(cfg).map_err(|e| bool_error!("Failed to serialize config: {e}"))?;
-
-    fs::write(&path, toml).map_err(|e| bool_error!("Failed to write config file: {e}"))?;
-
-    Ok(())
 }
 
 #[cfg(test)]

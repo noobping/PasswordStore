@@ -9,6 +9,7 @@ use crate::password::undo::{
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
+use crate::support::object_data::set_string_data;
 use crate::support::ui::{flat_icon_button, flat_icon_button_with_tooltip};
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{
@@ -396,10 +397,8 @@ fn sync_password_row_display(state: &PasswordRowState) {
     state.action_row.set_title(&item.basename);
     state.action_row.set_subtitle(&item.relative_path);
 
-    unsafe {
-        state.row.set_data("root", item.store_path.clone());
-        state.row.set_data("label", item.label());
-    }
+    set_string_data(&state.row, "root", item.store_path.clone());
+    set_string_data(&state.row, "label", item.label());
 }
 
 fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {

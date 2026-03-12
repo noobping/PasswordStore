@@ -17,7 +17,7 @@ mod window;
 use crate::logging::{run_command_output, CommandLogOptions};
 #[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
-use crate::support::object_data::non_null_to_string_option;
+use crate::support::object_data::{non_null_to_string_option, set_string_data};
 
 use adw::gio::SimpleAction;
 use adw::gtk::{
@@ -82,7 +82,7 @@ fn main() -> ExitCode {
                 let query = args[1..].join(&OsString::from(" ")).into_string();
                 if let Ok(query) = query {
                     // Stash it on the Application so we can read it in activate
-                    unsafe { app.set_data("query", query) };
+                    set_string_data(app, "query", query);
                 }
             }
             app.activate(); // continue normal startup path

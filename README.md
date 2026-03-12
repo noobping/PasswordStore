@@ -22,15 +22,11 @@ Keycord reads and writes standard `pass` stores. On a normal build, it can work 
 
 ## Screenshots
 
-### Password entry editor
+![import](screenshots/import.png)
 
-![list](screenshots/demo1.png)
+![list](screenshots/list.png)
 
-![Password entry editor](screenshots/demo2.png)
-
-### Preferences
-
-![Preferences in a standard build](screenshots/preferences2.png)
+![Password entry editor](screenshots/file.png)
 
 ## Development
 

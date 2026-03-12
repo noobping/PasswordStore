@@ -49,7 +49,8 @@ use super::preferences::{
 };
 #[cfg(not(feature = "flatpak"))]
 use super::standard::{configure_standard_window, register_standard_window_actions};
-use crate::support::runtime::git_network_operations_available;
+use crate::logging::log_info;
+use crate::support::runtime::{git_network_operations_available, log_runtime_capabilities_once};
 
 const UI_SRC: &str = include_str!("../../../data/window.ui");
 
@@ -113,6 +114,7 @@ pub(crate) fn create_main_window(
     let builder = Builder::from_string(UI_SRC);
     let widgets = WindowWidgets::load(&builder);
     widgets.window.set_application(Some(app));
+    log_runtime_capabilities_once();
 
     #[cfg(feature = "setup")]
     if can_install_locally() {
@@ -193,7 +195,12 @@ pub(crate) fn create_main_window(
     );
     register_open_git_action(&git_action_state);
     register_synchronize_action(&git_action_state);
-    set_git_action_availability(&widgets.window, git_network_operations_available());
+    let git_available = git_network_operations_available();
+    set_git_action_availability(&widgets.window, git_available);
+    log_info(format!(
+        "Window Git actions: open-git, git-clone, and synchronize are {}.",
+        if git_available { "enabled" } else { "disabled" }
+    ));
     register_open_log_action(&widgets.window, &window_navigation_state);
     start_log_poller(&widgets.log_view, &window_navigation_state);
     #[cfg(feature = "flatpak")]

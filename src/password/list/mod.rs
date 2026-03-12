@@ -3,10 +3,11 @@ mod row;
 
 use self::placeholder::{loading_placeholder, resolved_placeholder};
 use self::row::append_password_row;
-use crate::logging::log_error;
+use crate::logging::{log_error, log_info};
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
+use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::non_null_to_string_option;
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::clear_list_box;
@@ -15,6 +16,7 @@ use adw::prelude::*;
 use adw::ToastOverlay;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ListActionVisibility {
@@ -111,6 +113,7 @@ pub(crate) fn load_passwords_async(
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
     let git_available = git_network_operations_available();
+    log_store_git_state(&settings);
 
     actions.git.set_visible(false);
     actions.store.set_visible(false);
@@ -225,6 +228,44 @@ fn prune_missing_store_dirs(settings: &Preferences) {
     if let Err(err) = settings.prune_missing_stores() {
         log_error(format!("Failed to remove missing password stores: {err}"));
     }
+}
+
+fn log_store_git_state(settings: &Preferences) {
+    let stores = settings.store_roots();
+    let summary = if stores.is_empty() {
+        "Password store configuration: no stores are configured.".to_string()
+    } else {
+        let mut lines = Vec::with_capacity(stores.len() + 1);
+        lines.push(format!(
+            "Password store configuration: {} configured store(s).",
+            stores.len()
+        ));
+        for store in stores {
+            lines.push(password_store_git_state_summary(&store));
+        }
+        lines.join("\n")
+    };
+
+    if store_git_state_summary_changed(&summary) {
+        log_info(summary);
+    }
+}
+
+fn store_git_state_summary_changed(summary: &str) -> bool {
+    static LAST_SUMMARY: OnceLock<Mutex<String>> = OnceLock::new();
+    let state = LAST_SUMMARY.get_or_init(|| Mutex::new(String::new()));
+    let mut last_summary = match state.lock() {
+        Ok(summary) => summary,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if last_summary.as_str() == summary {
+        return false;
+    }
+
+    last_summary.clear();
+    last_summary.push_str(summary);
+    true
 }
 
 #[cfg(test)]

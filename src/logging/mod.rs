@@ -6,7 +6,6 @@ pub(crate) use command::run_command_status;
 pub(crate) use command::run_command_with_input;
 pub(crate) use command::{run_command_output, CommandLogOptions};
 pub(crate) use store::log_error;
-#[cfg(feature = "flatpak")]
 pub(crate) use store::log_info;
 pub(crate) use store::log_snapshot;
 

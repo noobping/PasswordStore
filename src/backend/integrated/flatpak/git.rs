@@ -144,13 +144,28 @@ fn head_oid(store_root: &str) -> Result<Option<String>, String> {
         |cmd| {
             cmd.args(["rev-parse", "--verify", "HEAD"]);
         },
-        CommandLogOptions::DEFAULT,
+        CommandLogOptions {
+            accepted_exit_codes: &[128],
+            ..CommandLogOptions::DEFAULT
+        },
     )?;
     if output.status.success() {
         git_output_text(&output).map(Some)
-    } else {
+    } else if git_head_is_missing(&output) {
+        log_info(format!(
+            "Password store Git HEAD is missing for {store_root}; creating an initial commit."
+        ));
         Ok(None)
+    } else {
+        Err(git_command_error("git rev-parse --verify HEAD", &output))
     }
+}
+
+fn git_head_is_missing(output: &Output) -> bool {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    stderr.contains("Needed a single revision")
+        || stderr.contains("unknown revision or path not in the working tree")
+        || stderr.contains("ambiguous argument 'HEAD'")
 }
 
 fn git_ident(store_root: &str, role: &str, identity: &CommitIdentity) -> Result<String, String> {
@@ -490,12 +505,30 @@ fn commit_git_paths(
     paths: &[String],
     explicit_fingerprint: Option<&str>,
 ) -> Result<(), String> {
-    if paths.is_empty() || !has_git_repository(store_root) {
+    if paths.is_empty() {
+        log_info(format!(
+            "Skip password store Git commit for {store_root}: no paths were provided."
+        ));
         return Ok(());
     }
 
+    if !has_git_repository(store_root) {
+        log_info(format!(
+            "Skip password store Git commit for {store_root}: the store is not a Git repository."
+        ));
+        return Ok(());
+    }
+
+    log_info(format!(
+        "Prepare local password store Git commit for {store_root} with {} path(s): {}.",
+        paths.len(),
+        paths.join(", "),
+    ));
     stage_git_paths(store_root, paths)?;
     if !staged_git_paths_have_changes(store_root, paths)? {
+        log_info(format!(
+            "Skip password store Git commit for {store_root}: the staged paths have no changes."
+        ));
         return Ok(());
     }
 
@@ -512,20 +545,27 @@ fn commit_git_paths(
         &committer_ident,
     );
     let unsigned_commit = build_signed_commit_buffer(&headers, message, None);
-    let signature = signature_for_commit(store_root, &identity, &unsigned_commit);
-
-    let commit_buffer = match signature {
-        Ok(signature) => build_signed_commit_buffer(&headers, message, signature.as_deref()),
+    let (signature, signed) = match signature_for_commit(store_root, &identity, &unsigned_commit) {
+        Ok(signature) => {
+            let signed = signature.is_some();
+            (signature, signed)
+        }
         Err(err) => {
             log_error(format!(
                 "Git commit signing unavailable for {store_root}: {err}. Falling back to an unsigned commit."
             ));
-            unsigned_commit
+            (None, false)
         }
     };
+    let commit_buffer = build_signed_commit_buffer(&headers, message, signature.as_deref());
 
     let commit_oid = write_commit_object(store_root, &commit_buffer)?;
-    update_git_head(store_root, &commit_oid, parent_oid.as_deref())
+    update_git_head(store_root, &commit_oid, parent_oid.as_deref())?;
+    log_info(format!(
+        "Created {} password store Git commit {commit_oid} for {store_root}.",
+        if signed { "signed" } else { "unsigned" }
+    ));
+    Ok(())
 }
 
 pub(super) fn password_entry_git_path(label: &str) -> String {

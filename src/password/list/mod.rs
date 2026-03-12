@@ -8,6 +8,7 @@ use crate::password::model::{collect_all_password_items_with_options, CollectIte
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::non_null_to_string_option;
+use crate::support::runtime::git_integration_available;
 use crate::support::ui::clear_list_box;
 use adw::gtk::{Button, ListBox, ListBoxRow, SearchEntry};
 use adw::prelude::*;
@@ -55,6 +56,7 @@ fn list_action_visibility(
     show_list_actions: bool,
     has_store_dirs: bool,
     empty: bool,
+    git_available: bool,
 ) -> ListActionVisibility {
     if !show_list_actions {
         return ListActionVisibility {
@@ -69,14 +71,18 @@ fn list_action_visibility(
     ListActionVisibility {
         add_visible: has_store_dirs,
         find_visible: !empty,
-        git_visible: should_show_root_git_button(show_list_actions, has_store_dirs),
+        git_visible: should_show_root_git_button(show_list_actions, has_store_dirs, git_available),
         store_visible: should_show_root_store_button(show_list_actions, has_store_dirs),
         save_visible: false,
     }
 }
 
-fn should_show_root_git_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
-    show_list_actions && !has_store_dirs
+fn should_show_root_git_button(
+    show_list_actions: bool,
+    has_store_dirs: bool,
+    git_available: bool,
+) -> bool {
+    show_list_actions && !has_store_dirs && git_available
 }
 
 fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
@@ -104,6 +110,7 @@ pub(crate) fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
+    let git_available = git_integration_available();
 
     actions.git.set_visible(false);
     actions.store.set_visible(false);
@@ -133,7 +140,13 @@ pub(crate) fn load_passwords_async(
                 append_password_row(&list_clone, item, &overlay_clone);
             }
 
-            update_list_actions(&actions_clone, show_list_actions, has_store_dirs, empty);
+            update_list_actions(
+                &actions_clone,
+                show_list_actions,
+                has_store_dirs,
+                empty,
+                git_available,
+            );
             list_clone.set_placeholder(Some(&resolved_placeholder(empty, has_store_dirs)));
         },
         move || {
@@ -146,6 +159,7 @@ pub(crate) fn load_passwords_async(
                 .set_visible(should_show_root_git_button(
                     show_list_actions,
                     has_store_dirs,
+                    git_available,
                 ));
             actions_for_disconnect
                 .store
@@ -196,8 +210,10 @@ fn update_list_actions(
     show_list_actions: bool,
     has_store_dirs: bool,
     empty: bool,
+    git_available: bool,
 ) {
-    let visibility = list_action_visibility(show_list_actions, has_store_dirs, empty);
+    let visibility =
+        list_action_visibility(show_list_actions, has_store_dirs, empty, git_available);
     actions.add.set_visible(visibility.add_visible);
     actions.save.set_visible(visibility.save_visible);
     actions.find.set_visible(visibility.find_visible);
@@ -221,9 +237,9 @@ mod tests {
 
     #[test]
     fn root_shortcut_buttons_are_hidden_for_existing_store_setup() {
-        assert!(!should_show_root_git_button(true, true));
+        assert!(!should_show_root_git_button(true, true, true));
         assert!(!should_show_root_store_button(true, true));
-        assert!(!should_show_root_git_button(false, false));
+        assert!(!should_show_root_git_button(false, false, true));
         assert!(!should_show_root_store_button(false, false));
     }
 
@@ -231,21 +247,26 @@ mod tests {
     fn root_shortcut_buttons_match_the_current_build() {
         #[cfg(not(feature = "flatpak"))]
         {
-            assert!(should_show_root_git_button(true, false));
+            assert!(should_show_root_git_button(true, false, true));
             assert!(!should_show_root_store_button(true, false));
         }
 
         #[cfg(feature = "flatpak")]
         {
-            assert!(should_show_root_git_button(true, false));
+            assert!(should_show_root_git_button(true, false, true));
             assert!(should_show_root_store_button(true, false));
         }
     }
 
     #[test]
+    fn root_git_shortcut_button_requires_runtime_git_availability() {
+        assert!(!should_show_root_git_button(true, false, false));
+    }
+
+    #[test]
     fn list_actions_hide_everything_when_list_actions_are_disabled() {
         assert_eq!(
-            list_action_visibility(false, true, false),
+            list_action_visibility(false, true, false, true),
             ListActionVisibility {
                 add_visible: false,
                 find_visible: false,
@@ -259,7 +280,7 @@ mod tests {
     #[test]
     fn list_actions_show_find_only_when_items_exist() {
         assert_eq!(
-            list_action_visibility(true, true, false),
+            list_action_visibility(true, true, false, true),
             ListActionVisibility {
                 add_visible: true,
                 find_visible: true,
@@ -269,7 +290,7 @@ mod tests {
             }
         );
         assert_eq!(
-            list_action_visibility(true, true, true),
+            list_action_visibility(true, true, true, true),
             ListActionVisibility {
                 add_visible: true,
                 find_visible: false,
@@ -284,7 +305,7 @@ mod tests {
     fn list_actions_show_the_build_specific_root_shortcut_for_empty_missing_store_setup() {
         #[cfg(not(feature = "flatpak"))]
         assert_eq!(
-            list_action_visibility(true, false, true),
+            list_action_visibility(true, false, true, true),
             ListActionVisibility {
                 add_visible: false,
                 find_visible: false,
@@ -296,12 +317,29 @@ mod tests {
 
         #[cfg(feature = "flatpak")]
         assert_eq!(
-            list_action_visibility(true, false, true),
+            list_action_visibility(true, false, true, true),
             ListActionVisibility {
                 add_visible: false,
                 find_visible: false,
                 git_visible: true,
                 store_visible: true,
+                save_visible: false,
+            }
+        );
+    }
+
+    #[test]
+    fn list_actions_hide_git_when_runtime_git_is_unavailable() {
+        assert_eq!(
+            list_action_visibility(true, false, true, false),
+            ListActionVisibility {
+                add_visible: false,
+                find_visible: false,
+                git_visible: false,
+                #[cfg(feature = "flatpak")]
+                store_visible: true,
+                #[cfg(not(feature = "flatpak"))]
+                store_visible: false,
                 save_visible: false,
             }
         );

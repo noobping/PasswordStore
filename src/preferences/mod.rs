@@ -13,10 +13,10 @@ mod storage;
 
 #[cfg(feature = "flatpak")]
 use self::flatpak as platform_defaults;
-use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 use self::platform_defaults::default_store_dirs;
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform_defaults;
+use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 const APP_ID: &str = env!("APP_ID");

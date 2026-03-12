@@ -3,8 +3,8 @@ mod state;
 pub(super) mod widgets;
 
 use crate::password::list::{load_passwords_async, setup_search_filter, PasswordListActions};
-use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::new_item::register_open_new_password_action;
+use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
 #[cfg(feature = "setup")]
@@ -12,8 +12,7 @@ use crate::setup::*;
 #[cfg(feature = "flatpak")]
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
-    connect_store_recipients_entry, register_store_recipients_save_action,
-    StoreRecipientsPageState,
+    connect_store_recipients_entry, register_store_recipients_save_action, StoreRecipientsPageState,
 };
 #[cfg(feature = "setup")]
 use adw::gio::MenuItem;
@@ -27,8 +26,7 @@ use self::actions::{
 use self::state::{
     back_action_state, build_git_action_state, context_undo_action_state,
     list_visibility_action_state, new_password_popover_state, password_page_state,
-    preferences_action_state,
-    store_recipients_page_state, window_navigation_state,
+    preferences_action_state, store_recipients_page_state, window_navigation_state,
 };
 use self::widgets::WindowWidgets;
 use super::controls::{
@@ -38,7 +36,9 @@ use super::controls::{
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
-use super::git::{register_open_git_action, register_synchronize_action};
+use super::git::{
+    register_open_git_action, register_synchronize_action, set_git_action_availability,
+};
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::set_save_button_for_password;
 #[cfg(feature = "setup")]
@@ -49,6 +49,7 @@ use super::preferences::{
 };
 #[cfg(not(feature = "flatpak"))]
 use super::standard::{configure_standard_window, register_standard_window_actions};
+use crate::support::runtime::git_integration_available;
 
 const UI_SRC: &str = include_str!("../../../data/window.ui");
 
@@ -192,6 +193,7 @@ pub(crate) fn create_main_window(
     );
     register_open_git_action(&git_action_state);
     register_synchronize_action(&git_action_state);
+    set_git_action_availability(&widgets.window, git_integration_available());
     register_open_log_action(&widgets.window, &window_navigation_state);
     start_log_poller(&widgets.log_view, &window_navigation_state);
     #[cfg(feature = "flatpak")]

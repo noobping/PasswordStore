@@ -11,6 +11,7 @@ use crate::password::undo::{
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
+use crate::support::runtime::git_integration_available;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
 use adw::gtk::{ListBox, SearchEntry};
@@ -106,6 +107,7 @@ fn context_save_target_from_flags(
     text_page_visible: bool,
     raw_page_visible: bool,
     recipients_page_visible: bool,
+    synchronize_available: bool,
 ) -> ContextSaveTarget {
     if text_page_visible || raw_page_visible {
         return ContextSaveTarget::Password;
@@ -115,7 +117,7 @@ fn context_save_target_from_flags(
         return ContextSaveTarget::StoreRecipients;
     }
 
-    if at_root {
+    if at_root && synchronize_available {
         return ContextSaveTarget::Synchronize;
     }
 
@@ -131,6 +133,7 @@ fn context_save_target(
         visible_navigation_page_is(&navigation.nav, &navigation.text_page),
         visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page),
         visible_navigation_page_is(&navigation.nav, recipients_page),
+        git_integration_available(),
     )
 }
 
@@ -348,11 +351,11 @@ mod tests {
     #[test]
     fn context_save_prefers_password_pages() {
         assert_eq!(
-            context_save_target_from_flags(false, true, false, false),
+            context_save_target_from_flags(false, true, false, false, true),
             ContextSaveTarget::Password
         );
         assert_eq!(
-            context_save_target_from_flags(false, false, true, true),
+            context_save_target_from_flags(false, false, true, true, true),
             ContextSaveTarget::Password
         );
     }
@@ -360,7 +363,7 @@ mod tests {
     #[test]
     fn context_save_uses_recipients_page_before_list_mode() {
         assert_eq!(
-            context_save_target_from_flags(false, false, false, true),
+            context_save_target_from_flags(false, false, false, true, true),
             ContextSaveTarget::StoreRecipients
         );
     }
@@ -368,15 +371,23 @@ mod tests {
     #[test]
     fn context_save_uses_sync_on_the_root_list_page() {
         assert_eq!(
-            context_save_target_from_flags(true, false, false, false),
+            context_save_target_from_flags(true, false, false, false, true),
             ContextSaveTarget::Synchronize
+        );
+    }
+
+    #[test]
+    fn context_save_skips_sync_when_git_is_unavailable() {
+        assert_eq!(
+            context_save_target_from_flags(true, false, false, false, false),
+            ContextSaveTarget::None
         );
     }
 
     #[test]
     fn context_save_is_disabled_on_other_secondary_pages() {
         assert_eq!(
-            context_save_target_from_flags(false, false, false, false),
+            context_save_target_from_flags(false, false, false, false, true),
             ContextSaveTarget::None
         );
     }

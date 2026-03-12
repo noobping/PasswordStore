@@ -13,8 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
-const EMPTY_OTP_URL: &str =
-    "otpauth://totp/Keycord?issuer=Keycord&secret=&digits=6&period=30";
+const EMPTY_OTP_URL: &str = "otpauth://totp/Keycord?issuer=Keycord&secret=&digits=6&period=30";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OtpMode {

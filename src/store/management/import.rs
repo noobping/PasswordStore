@@ -12,7 +12,10 @@ use adw::gtk::{
     Orientation, ResponseType,
 };
 use adw::prelude::*;
-use adw::{ActionRow, ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast, ToastOverlay};
+use adw::{
+    ActionRow, ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast,
+    ToastOverlay,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -93,8 +96,7 @@ fn present_pass_import_dialog<F>(
         .title("Import source")
         .subtitle(import_source_subtitle(None))
         .build();
-    let source_file_button =
-        flat_icon_button_with_tooltip("paper-symbolic", "Choose source file");
+    let source_file_button = flat_icon_button_with_tooltip("paper-symbolic", "Choose source file");
     let source_folder_button =
         flat_icon_button_with_tooltip("folder-open-symbolic", "Choose source folder");
     let source_clear_button =
@@ -234,7 +236,11 @@ fn present_pass_import_dialog<F>(
     dialog.present(Some(window));
 }
 
-fn start_pass_import(window: &ApplicationWindow, overlay: &ToastOverlay, request: PassImportRequest) {
+fn start_pass_import(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    request: PassImportRequest,
+) {
     let progress_dialog = build_import_progress_dialog(window, &request.store_root);
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let overlay = overlay.clone();

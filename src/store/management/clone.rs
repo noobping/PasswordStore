@@ -10,7 +10,9 @@ use crate::support::ui::append_action_row_with_button;
 use crate::window::clone_store_repository;
 use adw::gtk::ListBox;
 use adw::prelude::*;
-use adw::{ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast, ToastOverlay};
+use adw::{
+    ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast, ToastOverlay,
+};
 use std::rc::Rc;
 
 fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {

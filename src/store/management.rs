@@ -3,6 +3,10 @@ mod dialogs;
 #[cfg(not(feature = "flatpak"))]
 mod import;
 
+use self::clone::append_store_clone_row;
+pub(crate) use self::clone::prompt_store_clone;
+#[cfg(not(feature = "flatpak"))]
+use self::import::schedule_store_import_row;
 use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
 };
@@ -12,14 +16,11 @@ pub(crate) use super::recipients_page::{
     sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsPlatformState,
     StoreRecipientsRequest,
 };
-use self::clone::append_store_clone_row;
-#[cfg(not(feature = "flatpak"))]
-use self::import::schedule_store_import_row;
-pub(crate) use self::clone::prompt_store_clone;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 #[cfg(feature = "flatpak")]
 use crate::support::actions::register_window_action;
+use crate::support::runtime::git_integration_available;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
@@ -146,7 +147,9 @@ pub(crate) fn rebuild_store_list(
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
-    append_store_clone_row(list, settings, window, overlay, recipients_page);
+    if git_integration_available() {
+        append_store_clone_row(list, settings, window, overlay, recipients_page);
+    }
     #[cfg(not(feature = "flatpak"))]
     schedule_store_import_row(list, settings, window, overlay, stores);
 }
@@ -301,12 +304,12 @@ pub(crate) fn register_open_store_picker_action(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "flatpak"))]
+    use super::import::should_show_pass_import_row;
     use super::{
         initial_recipients_for_store_creation, selected_store_folder_mode,
         updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
     };
-    #[cfg(not(feature = "flatpak"))]
-    use super::import::should_show_pass_import_row;
 
     #[test]
     fn adding_a_new_store_appends_it_once() {

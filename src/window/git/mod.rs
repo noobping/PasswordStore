@@ -46,6 +46,12 @@ fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bo
     action.set_enabled(enabled);
 }
 
+pub(crate) fn set_git_action_availability(window: &ApplicationWindow, enabled: bool) {
+    for action in ["git-clone", "open-git", "synchronize"] {
+        set_window_action_enabled(window, action, enabled);
+    }
+}
+
 fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
     for action in [
         "context-save",

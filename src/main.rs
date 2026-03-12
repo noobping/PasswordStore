@@ -24,7 +24,7 @@ use adw::gtk::{
     gdk::Display,
     gio::{resources_register_include, ApplicationFlags},
     glib::ExitCode,
-    Builder, IconTheme, ShortcutsWindow,
+    Builder, IconTheme, License, ShortcutsWindow,
 };
 use adw::prelude::*;
 use adw::Application;
@@ -33,6 +33,7 @@ use std::result::Result::Ok;
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
+const ISSUE_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
 #[cfg(not(feature = "flatpak"))]
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-standard.ui");
 #[cfg(feature = "flatpak")]
@@ -107,35 +108,7 @@ fn register_app_actions(app: &Application) {
     let about_action = SimpleAction::new("about", None);
     let app_for_about = app.clone();
     about_action.connect_activate(move |_, _| {
-        let project = env!("CARGO_PKG_NAME");
-        let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
-        let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
-        #[cfg(not(feature = "flatpak"))]
-        let settings = Preferences::new();
-        #[cfg(not(feature = "flatpak"))]
-        let backend_details = if settings.uses_integrated_backend() {
-            "backend: integrated".to_string()
-        } else {
-            get_pass_version(&settings).map_or_else(
-                || "backend: host command".to_string(),
-                |version| format!("backend: host command\n{version}"),
-            )
-        };
-        #[cfg(not(feature = "flatpak"))]
-        let full_comments = if comments.is_empty() {
-            backend_details
-        } else {
-            format!("{project}: {comments}\n\n{backend_details}")
-        };
-        #[cfg(feature = "flatpak")]
-        let full_comments = comments;
-        let about = adw::AboutDialog::builder()
-            .application_name(project)
-            .application_icon(APP_ID)
-            .version(env!("CARGO_PKG_VERSION"))
-            .developers(&authors[..])
-            .comments(full_comments)
-            .build();
+        let about = build_about_dialog();
         let active_window = app_for_about.active_window();
         about.present(active_window.as_ref());
     });
@@ -160,6 +133,52 @@ fn build_shortcuts_window() -> ShortcutsWindow {
         .expect("Failed to build shortcuts window")
 }
 
+fn build_about_dialog() -> adw::AboutDialog {
+    let project = env!("CARGO_PKG_NAME");
+    let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
+    let about = adw::AboutDialog::builder()
+        .application_name(project)
+        .application_icon(APP_ID)
+        .version(env!("CARGO_PKG_VERSION"))
+        .developer_name(authors.first().copied().unwrap_or(project))
+        .developers(&authors[..])
+        .comments(about_comments(project))
+        .license_type(License::Gpl30Only)
+        .website(env!("CARGO_PKG_HOMEPAGE"))
+        .issue_url(ISSUE_URL)
+        .support_url(ISSUE_URL)
+        .build();
+    about.add_link("Repository", env!("CARGO_PKG_REPOSITORY"));
+    about
+}
+
+#[cfg(not(feature = "flatpak"))]
+fn about_comments(project: &str) -> String {
+    let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
+    let settings = Preferences::new();
+    let backend_details = if settings.uses_integrated_backend() {
+        "backend: integrated".to_string()
+    } else {
+        get_pass_version(&settings).map_or_else(
+            || "backend: host command".to_string(),
+            |version| format!("backend: host command\n{version}"),
+        )
+    };
+
+    if comments.is_empty() {
+        backend_details
+    } else {
+        format!("{project}: {comments}\n\n{backend_details}")
+    }
+}
+
+#[cfg(feature = "flatpak")]
+fn about_comments(_project: &str) -> String {
+    option_env!("CARGO_PKG_DESCRIPTION")
+        .unwrap_or("")
+        .to_string()
+}
+
 #[cfg(not(feature = "flatpak"))]
 fn get_pass_version(settings: &Preferences) -> Option<String> {
     let mut cmd = settings.command();
@@ -172,10 +191,10 @@ fn get_pass_version(settings: &Preferences) -> Option<String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<String> = stdout
         .lines()
-        .map(str::trim) // trim whitespace
-        .map(|line| line.trim_matches('=')) // remove leading/trailing '='
-        .map(str::trim) // trim again after removing '='
-        .filter(|line| !line.is_empty()) // skip borders/empty lines
+        .map(str::trim)
+        .map(|line| line.trim_matches('='))
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
         .map(|s| s.to_string())
         .collect();
     if lines.is_empty() {

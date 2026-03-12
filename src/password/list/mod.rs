@@ -76,15 +76,7 @@ fn list_action_visibility(
 }
 
 fn should_show_root_git_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
-    #[cfg(not(feature = "flatpak"))]
-    {
-        show_list_actions && !has_store_dirs
-    }
-    #[cfg(feature = "flatpak")]
-    {
-        let _ = (show_list_actions, has_store_dirs);
-        false
-    }
+    show_list_actions && !has_store_dirs
 }
 
 fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
@@ -245,7 +237,7 @@ mod tests {
 
         #[cfg(feature = "flatpak")]
         {
-            assert!(!should_show_root_git_button(true, false));
+            assert!(should_show_root_git_button(true, false));
             assert!(should_show_root_store_button(true, false));
         }
     }
@@ -308,7 +300,7 @@ mod tests {
             ListActionVisibility {
                 add_visible: false,
                 find_visible: false,
-                git_visible: false,
+                git_visible: true,
                 store_visible: true,
                 save_visible: false,
             }

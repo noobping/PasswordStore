@@ -2,9 +2,7 @@ mod build;
 mod controls;
 #[cfg(feature = "flatpak")]
 mod flatpak;
-#[cfg(not(feature = "flatpak"))]
 mod git;
-#[cfg(not(feature = "flatpak"))]
 mod logs;
 pub(crate) mod navigation;
 mod preferences;
@@ -12,7 +10,6 @@ mod preferences;
 mod standard;
 
 pub(crate) use self::build::create_main_window;
-#[cfg(not(feature = "flatpak"))]
 pub(crate) use self::git::clone_store_repository;
 
 #[cfg(test)]

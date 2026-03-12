@@ -34,6 +34,8 @@ use super::controls::{
 };
 #[cfg(feature = "flatpak")]
 use super::flatpak::configure_flatpak_window;
+use super::git::{register_open_git_action, register_synchronize_action, GitActionState};
+use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::set_save_button_for_password;
 #[cfg(feature = "setup")]
 use super::preferences::register_install_locally_action;
@@ -42,9 +44,7 @@ use super::preferences::{
     connect_username_fallback_autosave, register_open_preferences_action,
 };
 #[cfg(not(feature = "flatpak"))]
-use super::standard::{
-    configure_standard_window, create_git_action_state, register_standard_window_actions,
-};
+use super::standard::{configure_standard_window, register_standard_window_actions};
 
 const UI_SRC: &str = include_str!("../../../data/window.ui");
 
@@ -97,22 +97,21 @@ pub(crate) fn create_main_window(
     );
     let window_navigation_state = window_navigation_state(&widgets);
     let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);
-    #[cfg(not(feature = "flatpak"))]
-    let git_action_state = create_git_action_state(
-        &widgets,
-        &widgets.window,
-        &widgets.toast_overlay,
-        &widgets.list,
-        &window_navigation_state,
-        &store_recipients_page_state,
-        &list_visibility,
-    );
+    let git_action_state = GitActionState {
+        window: widgets.window.clone(),
+        overlay: widgets.toast_overlay.clone(),
+        list: widgets.list.clone(),
+        navigation: window_navigation_state.clone(),
+        recipients_page: store_recipients_page_state.clone(),
+        busy_page: widgets.git_busy_page.clone(),
+        busy_status: widgets.git_busy_status.clone(),
+        visibility: list_visibility.clone(),
+    };
     let back_action_state = back_action_state(
         &password_list_state,
         &store_recipients_page_state,
         &window_navigation_state,
         &list_visibility,
-        #[cfg(not(feature = "flatpak"))]
         &git_action_state,
     );
     let list_visibility_action_state =
@@ -176,6 +175,10 @@ pub(crate) fn create_main_window(
         &widgets.password_stores,
         &store_recipients_page_state,
     );
+    register_open_git_action(&git_action_state);
+    register_synchronize_action(&git_action_state);
+    register_open_log_action(&widgets.window, &window_navigation_state);
+    start_log_poller(&widgets.log_view, &window_navigation_state);
     #[cfg(feature = "flatpak")]
     register_open_store_picker_action(
         &widgets.window,
@@ -186,14 +189,7 @@ pub(crate) fn create_main_window(
     register_open_preferences_action(&widgets.window, &preferences_action_state);
 
     #[cfg(not(feature = "flatpak"))]
-    register_standard_window_actions(
-        &standard_window,
-        &widgets,
-        &widgets.window,
-        &widgets.toast_overlay,
-        &window_navigation_state,
-        &git_action_state,
-    );
+    register_standard_window_actions(&standard_window, &widgets, &widgets.toast_overlay);
 
     #[cfg(feature = "setup")]
     register_install_locally_action(

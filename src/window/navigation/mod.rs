@@ -9,9 +9,7 @@ use adw::gtk::Button;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, NavigationView, WindowTitle};
 
-#[cfg(not(feature = "flatpak"))]
 mod standard;
-#[cfg(not(feature = "flatpak"))]
 pub(crate) use self::standard::{finish_git_busy_page, show_git_busy_page, show_log_page};
 
 #[derive(Clone)]
@@ -130,15 +128,14 @@ pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs
     set_save_button_for_password(chrome.save);
     chrome.add.set_visible(has_store_dirs);
     chrome.find.set_visible(true);
-    #[cfg(not(feature = "flatpak"))]
-    {
-        chrome.git.set_visible(!has_store_dirs);
-        chrome.store.set_visible(false);
-    }
+    chrome.git.set_visible(!has_store_dirs);
     #[cfg(feature = "flatpak")]
     {
-        chrome.git.set_visible(false);
         chrome.store.set_visible(!has_store_dirs);
+    }
+    #[cfg(not(feature = "flatpak"))]
+    {
+        chrome.store.set_visible(false);
     }
     chrome.win.set_title(APP_WINDOW_TITLE);
     chrome.win.set_subtitle(APP_WINDOW_SUBTITLE);

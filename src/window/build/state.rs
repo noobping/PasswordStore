@@ -11,13 +11,12 @@ use crate::window::controls::{
     BackActionState, ContextUndoActionState, ListVisibilityActionState, ListVisibilityState,
     PlatformBackActionState,
 };
+use crate::window::git::GitActionState;
 use crate::window::navigation::WindowNavigationState;
 use crate::window::preferences::PreferencesActionState;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-#[cfg(not(feature = "flatpak"))]
-use crate::window::git::GitActionState;
 #[cfg(not(feature = "flatpak"))]
 use adw::EntryRow;
 #[cfg(feature = "flatpak")]
@@ -179,12 +178,6 @@ pub(super) fn preferences_action_state(
     }
 }
 
-#[cfg(feature = "flatpak")]
-fn build_back_action_platform_state() -> PlatformBackActionState {
-    PlatformBackActionState
-}
-
-#[cfg(not(feature = "flatpak"))]
 fn build_back_action_platform_state(git_action_state: &GitActionState) -> PlatformBackActionState {
     PlatformBackActionState {
         git_actions: git_action_state.clone(),
@@ -196,11 +189,8 @@ pub(super) fn back_action_state(
     recipients_page: &StoreRecipientsPageState,
     navigation: &WindowNavigationState,
     visibility: &ListVisibilityState,
-    #[cfg(not(feature = "flatpak"))] git_action_state: &GitActionState,
+    git_action_state: &GitActionState,
 ) -> BackActionState {
-    #[cfg(feature = "flatpak")]
-    let platform = build_back_action_platform_state();
-    #[cfg(not(feature = "flatpak"))]
     let platform = build_back_action_platform_state(git_action_state);
 
     BackActionState {

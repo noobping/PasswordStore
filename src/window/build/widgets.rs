@@ -73,11 +73,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) backend_row: adw::ComboRow,
     #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) pass_command_row: EntryRow,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) git_busy_page: NavigationPage,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) git_busy_status: StatusPage,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) log_view: TextView,
 }
 
@@ -184,11 +181,8 @@ impl WindowWidgets {
             backend_row: required_object(builder, "backend_row"),
             #[cfg(not(feature = "flatpak"))]
             pass_command_row: required_object(builder, "pass_command_row"),
-            #[cfg(not(feature = "flatpak"))]
             git_busy_page: required_object(builder, "git_busy_page"),
-            #[cfg(not(feature = "flatpak"))]
             git_busy_status: required_object(builder, "git_busy_status"),
-            #[cfg(not(feature = "flatpak"))]
             log_view: required_object(builder, "log_view"),
         }
     }

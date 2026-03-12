@@ -13,7 +13,6 @@ use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 #[cfg(feature = "flatpak")]
 use crate::support::actions::register_window_action;
-#[cfg(not(feature = "flatpak"))]
 use crate::support::background::spawn_result_task;
 #[cfg(not(feature = "flatpak"))]
 use crate::support::object_data::non_null_to_string_option;
@@ -24,16 +23,14 @@ use crate::support::pass_import::{
 #[cfg(not(feature = "flatpak"))]
 use crate::support::ui::flat_icon_button_with_tooltip;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
-#[cfg(not(feature = "flatpak"))]
 use crate::window::clone_store_repository;
-#[cfg(not(feature = "flatpak"))]
 use adw::glib::object::IsA;
 #[cfg(not(feature = "flatpak"))]
-use adw::gtk::{Align, Box as GtkBox, Button, DropDown, Orientation, Spinner};
+use adw::gtk::{Align, Button, DropDown};
+use adw::gtk::{Box as GtkBox, Orientation, Spinner};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
-#[cfg(not(feature = "flatpak"))]
 use adw::{
     Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, StatusPage, WindowTitle,
 };
@@ -208,11 +205,9 @@ pub(crate) fn rebuild_store_list(
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
+    append_store_clone_row(list, settings, window, overlay, recipients_page);
     #[cfg(not(feature = "flatpak"))]
-    {
-        append_store_clone_row(list, settings, window, overlay, recipients_page);
-        schedule_store_import_row(list, settings, window, overlay, stores);
-    }
+    schedule_store_import_row(list, settings, window, overlay, stores);
 }
 
 fn append_store_row(
@@ -283,7 +278,6 @@ fn append_store_picker_row(
     );
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn dialog_content_shell(
     title: &str,
     subtitle: Option<&str>,
@@ -303,7 +297,6 @@ fn dialog_content_shell(
     shell
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn build_progress_dialog(
     window: &ApplicationWindow,
     title: &str,
@@ -323,7 +316,6 @@ fn build_progress_dialog(
     dialog
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
     build_progress_dialog(
         window,
@@ -338,7 +330,6 @@ fn build_import_progress_dialog(window: &ApplicationWindow, store: &str) -> Dial
     build_progress_dialog(window, "Importing passwords", Some(store), "Please wait.")
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn present_clone_url_dialog<F>(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -383,7 +374,6 @@ fn present_clone_url_dialog<F>(
     dialog.present(Some(window));
 }
 
-#[cfg(not(feature = "flatpak"))]
 pub(crate) fn prompt_store_clone<F>(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -420,7 +410,6 @@ pub(crate) fn prompt_store_clone<F>(
     );
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn append_store_clone_row(
     list: &ListBox,
     settings: &Preferences,
@@ -825,7 +814,6 @@ pub(crate) fn register_open_store_picker_action(
     });
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn start_store_clone(
     window: &ApplicationWindow,
     list: &ListBox,

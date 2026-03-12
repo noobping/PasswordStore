@@ -97,7 +97,6 @@ pub(crate) struct ContextUndoActionState {
 enum ContextSaveTarget {
     Password,
     StoreRecipients,
-    #[cfg(not(feature = "flatpak"))]
     Synchronize,
     None,
 }
@@ -117,10 +116,7 @@ fn context_save_target_from_flags(
     }
 
     if at_root {
-        #[cfg(not(feature = "flatpak"))]
         return ContextSaveTarget::Synchronize;
-        #[cfg(feature = "flatpak")]
-        return ContextSaveTarget::None;
     }
 
     ContextSaveTarget::None
@@ -157,7 +153,6 @@ pub(crate) fn register_context_save_action(
             ContextSaveTarget::StoreRecipients => {
                 activate_widget_action(&dispatch_window, "win.save-store-recipients")
             }
-            #[cfg(not(feature = "flatpak"))]
             ContextSaveTarget::Synchronize => {
                 activate_widget_action(&dispatch_window, "win.synchronize")
             }
@@ -372,15 +367,9 @@ mod tests {
 
     #[test]
     fn context_save_uses_sync_on_the_root_list_page() {
-        #[cfg(not(feature = "flatpak"))]
         assert_eq!(
             context_save_target_from_flags(true, false, false, false),
             ContextSaveTarget::Synchronize
-        );
-        #[cfg(feature = "flatpak")]
-        assert_eq!(
-            context_save_target_from_flags(true, false, false, false),
-            ContextSaveTarget::None
         );
     }
 

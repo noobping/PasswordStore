@@ -4,6 +4,7 @@ use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[cfg(feature = "flatpak")]
 mod flatpak;
@@ -126,6 +127,10 @@ impl Preferences {
 
     pub fn store(&self) -> String {
         self.store_roots().into_iter().next().unwrap_or_default()
+    }
+
+    pub fn git_command(&self) -> Command {
+        Command::new("git")
     }
 
     pub fn new_pass_file_template(&self) -> String {

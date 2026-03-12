@@ -86,10 +86,6 @@ impl Preferences {
         cmd
     }
 
-    pub fn git_command(&self) -> Command {
-        Command::new("git")
-    }
-
     fn command_parts(&self) -> (String, Vec<String>) {
         let cmdline = self.command_value();
         if let Some(mut parts) = shlex::split(&cmdline) {

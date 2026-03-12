@@ -17,6 +17,16 @@
     <color type="primary" scheme_preference="dark">#613583</color>
   </branding>
 
+  <recommends>
+    <display_length compare="ge">360</display_length>
+  </recommends>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
   <description>
     <p>Works with password stores that use the standard pass layout, so existing data can stay in place and remain compatible with established workflows.</p>
     <ul>

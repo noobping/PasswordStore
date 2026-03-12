@@ -4,10 +4,14 @@ use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRe
 use crate::backend::save_store_recipients;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+#[cfg(feature = "flatpak")]
+use crate::private_key::git::prompt_private_key_unlock_for_store_git_commit_if_needed;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
+#[cfg(feature = "flatpak")]
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AutosaveAction {
@@ -68,6 +72,18 @@ fn save_store_recipients_async(
     if !state.recipients_are_dirty() {
         state.save_queued.set(false);
         return;
+    }
+    #[cfg(feature = "flatpak")]
+    {
+        let action_window = state.window.clone();
+        if prompt_private_key_unlock_for_store_git_commit_if_needed(
+            &state.platform.overlay,
+            &request.store,
+            &recipients,
+            Rc::new(move || activate_widget_action(&action_window, "win.save-store-recipients")),
+        ) {
+            return;
+        }
     }
     if state.save_in_flight.replace(true) {
         state.save_queued.set(true);

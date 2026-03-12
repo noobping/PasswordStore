@@ -37,6 +37,13 @@ pub(super) fn handle_open_password_entry_error(
     true
 }
 
+pub(super) fn prompt_unlock_for_git_commit_if_needed(
+    _state: &PasswordPageState,
+    _pass_file: &OpenPassFile,
+) -> bool {
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::should_switch_to_integrated_backend;

@@ -8,6 +8,10 @@ use super::super::keys::{
 use super::entries::{
     delete_password_entry, read_password_entry, rename_password_entry, save_password_entry,
 };
+use super::git::{
+    git_commit_private_key_requiring_unlock_for_entry,
+    git_commit_private_key_requiring_unlock_for_store_recipients,
+};
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients;
 use crate::backend::{
@@ -932,6 +936,81 @@ fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
         "Locked Signer <locked-flatpak@example.com>"
     );
     assert!(!head_commit_has_signature(&store).expect("inspect commit headers"));
+
+    let _ = fs::remove_dir_all(&store);
+}
+
+#[test]
+fn git_commit_unlock_helper_detects_a_locked_entry_signing_key() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _home = TestHome::new();
+    let bytes = protected_cert_bytes("Locked Signer <locked-entry@example.com>");
+    let imported =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+
+    let store = std::env::temp_dir().join(format!(
+        "passwordstore-flatpak-git-lock-helper-entry-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&store).expect("create git store");
+    init_store_git_repository(&store).expect("initialize git repository");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&imported.fingerprint),
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+    clear_cached_unlocked_ripasso_private_keys();
+
+    assert_eq!(
+        git_commit_private_key_requiring_unlock_for_entry(
+            store.to_string_lossy().as_ref(),
+            "team/service",
+        )
+        .expect("resolve locked signing key"),
+        Some(imported.fingerprint)
+    );
+
+    let _ = fs::remove_dir_all(&store);
+}
+
+#[test]
+fn git_commit_unlock_helper_detects_a_locked_recipients_signing_key() {
+    let _guard = test_lock().lock().expect("test lock poisoned");
+    let _home = TestHome::new();
+    let bytes = protected_cert_bytes("Locked Signer <locked-store@example.com>");
+    let imported =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+
+    let store = std::env::temp_dir().join(format!(
+        "passwordstore-flatpak-git-lock-helper-store-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&store).expect("create git store");
+    init_store_git_repository(&store).expect("initialize git repository");
+    clear_cached_unlocked_ripasso_private_keys();
+
+    assert_eq!(
+        git_commit_private_key_requiring_unlock_for_store_recipients(
+            store.to_string_lossy().as_ref(),
+            std::slice::from_ref(&imported.fingerprint),
+        )
+        .expect("resolve locked signing key"),
+        Some(imported.fingerprint)
+    );
 
     let _ = fs::remove_dir_all(&store);
 }

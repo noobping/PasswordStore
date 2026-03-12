@@ -263,6 +263,9 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
             return;
         }
     };
+    if platform::prompt_unlock_for_git_commit_if_needed(state, &pass_file) {
+        return;
+    }
     let label = pass_file.label();
     match save_password_entry(pass_file.store_path(), &label, &contents, true) {
         Ok(()) => {

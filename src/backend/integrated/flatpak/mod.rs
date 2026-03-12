@@ -11,6 +11,10 @@ pub(crate) use self::entries::{
     delete_password_entry, read_password_entry, read_password_line, rename_password_entry,
     save_password_entry,
 };
+pub(crate) use self::git::{
+    git_commit_private_key_requiring_unlock_for_entry,
+    git_commit_private_key_requiring_unlock_for_store_recipients,
+};
 pub(crate) use self::recipients::preferred_ripasso_private_key_fingerprint_for_entry;
 pub(crate) use self::store::save_store_recipients;
 

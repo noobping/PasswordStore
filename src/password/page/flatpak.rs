@@ -1,8 +1,9 @@
 use super::state::show_password_status_message;
-use super::{open_password_entry_page, PasswordPageState};
+use super::{open_password_entry_page, save_current_password_entry, PasswordPageState};
 use crate::backend::{preferred_ripasso_private_key_fingerprint_for_entry, PasswordEntryError};
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
+use crate::private_key::git::prompt_private_key_unlock_for_entry_git_commit_if_needed;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::actions::activate_widget_action;
 use std::rc::Rc;
@@ -62,6 +63,19 @@ pub(super) fn handle_open_password_entry_error(
     }
 
     false
+}
+
+pub(super) fn prompt_unlock_for_git_commit_if_needed(
+    state: &PasswordPageState,
+    pass_file: &OpenPassFile,
+) -> bool {
+    let retry_state = state.clone();
+    prompt_private_key_unlock_for_entry_git_commit_if_needed(
+        &state.overlay,
+        pass_file.store_path(),
+        &pass_file.label(),
+        Rc::new(move || save_current_password_entry(&retry_state)),
+    )
 }
 
 #[cfg(test)]

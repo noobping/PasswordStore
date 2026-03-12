@@ -1,6 +1,8 @@
 use super::super::keys::{
-    cached_unlocked_ripasso_private_key, list_ripasso_private_keys, ManagedRipassoPrivateKey,
+    cached_unlocked_ripasso_private_key, list_ripasso_private_keys,
+    ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
 };
+use super::crypto::FlatpakCryptoContext;
 use crate::logging::{
     log_error, log_info, run_command_output, run_command_with_input, CommandLogOptions,
 };
@@ -191,6 +193,39 @@ fn preferred_commit_private_key_from_values(
     keys.iter()
         .find(|key| key.fingerprint.eq_ignore_ascii_case(explicit))
         .cloned()
+}
+
+fn commit_signing_key_requiring_unlock(
+    store_root: &str,
+    fingerprint: String,
+) -> Result<Option<String>, String> {
+    if !has_git_repository(store_root) {
+        return Ok(None);
+    }
+
+    if ripasso_private_key_requires_session_unlock(&fingerprint)? {
+        return Ok(Some(fingerprint));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn git_commit_private_key_requiring_unlock_for_entry(
+    store_root: &str,
+    label: &str,
+) -> Result<Option<String>, String> {
+    let fingerprint = FlatpakCryptoContext::fingerprint_for_label(store_root, label)?;
+    commit_signing_key_requiring_unlock(store_root, fingerprint)
+}
+
+pub(crate) fn git_commit_private_key_requiring_unlock_for_store_recipients(
+    store_root: &str,
+    recipients: &[String],
+) -> Result<Option<String>, String> {
+    let recipients_contents = format!("{}\n", recipients.join("\n"));
+    let fingerprint =
+        FlatpakCryptoContext::fingerprint_for_recipient_contents(&recipients_contents)?;
+    commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 
 fn synthetic_commit_email(fingerprint: &str) -> String {

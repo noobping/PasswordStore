@@ -69,7 +69,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/noobping/keycord.git
-        commit: e589db08dd4376dcf3b722ccd75eeabeaed0953c
+        commit: ecb325920bc45789bf238e5960e27e2ca5292f90
       - type: file
         path: cargo-sources.yml
       - cargo-sources.yml

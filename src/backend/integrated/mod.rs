@@ -19,6 +19,8 @@ pub(crate) use self::imp::{
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
+#[cfg(all(feature = "flatpak", test))]
+pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_keys;
 
 pub(crate) use self::imp::{
     delete_password_entry, read_password_entry, read_password_line, rename_password_entry,

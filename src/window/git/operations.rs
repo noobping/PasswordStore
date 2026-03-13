@@ -1,6 +1,7 @@
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
 use crate::support::git::has_git_repository;
+use std::process::Command;
 
 pub(super) enum GitOperationResult {
     Success,
@@ -19,9 +20,23 @@ fn syncable_store_roots(stores: &[String]) -> Vec<&str> {
         .collect()
 }
 
+#[cfg(not(feature = "flatpak"))]
+fn sync_store_command(settings: &Preferences, store_root: &str) -> Command {
+    let mut cmd = settings.remote_git_command();
+    cmd.arg("-C").arg(store_root);
+    cmd
+}
+
+#[cfg(feature = "flatpak")]
+fn sync_store_command(settings: &Preferences, store_root: &str) -> Command {
+    let mut cmd = settings.command_with_envs(&[("PASSWORD_STORE_DIR", store_root)]);
+    cmd.arg("git");
+    cmd
+}
+
 pub(super) fn run_clone_operation_at_root(url: &str, store_root: &str) -> GitOperationResult {
     let settings = Preferences::new();
-    let mut cmd = settings.git_command();
+    let mut cmd = settings.remote_git_command();
     cmd.arg("clone").arg(url).arg(store_root);
     match run_command_output(
         &mut cmd,
@@ -42,8 +57,8 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
     let stores = settings.stores();
     for root in syncable_store_roots(&stores) {
         for args in [&["fetch", "--all"][..], &["pull"][..], &["push"][..]] {
-            let mut cmd = settings.git_command();
-            cmd.arg("-C").arg(root).args(args);
+            let mut cmd = sync_store_command(&settings, root);
+            cmd.args(args);
             match run_command_output(
                 &mut cmd,
                 &format!("Synchronize password store {root}"),
@@ -75,7 +90,8 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
 
 #[cfg(test)]
 mod tests {
-    use super::syncable_store_roots;
+    use super::{sync_store_command, syncable_store_roots};
+    use crate::preferences::Preferences;
     use crate::support::git::has_git_repository;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -107,5 +123,42 @@ mod tests {
 
         let _ = fs::remove_dir_all(&git_store);
         let _ = fs::remove_dir_all(&plain_store);
+    }
+
+    #[cfg(feature = "flatpak")]
+    #[test]
+    fn flatpak_sync_uses_pass_git_with_store_environment() {
+        let settings = Preferences::new();
+        let cmd = sync_store_command(&settings, "/tmp/store");
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
+        assert_eq!(
+            cmd.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec![
+                "--host".to_string(),
+                "env".to_string(),
+                "PASSWORD_STORE_DIR=/tmp/store".to_string(),
+                "pass".to_string(),
+                "git".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(not(feature = "flatpak"))]
+    #[test]
+    fn standard_sync_uses_git_at_store_root() {
+        let settings = Preferences::new();
+        let cmd = sync_store_command(&settings, "/tmp/store");
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "git");
+        assert_eq!(
+            cmd.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["-C".to_string(), "/tmp/store".to_string()]
+        );
     }
 }

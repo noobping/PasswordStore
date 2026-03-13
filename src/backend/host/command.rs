@@ -12,10 +12,7 @@ fn command_error(output: &Output, prefix: &str) -> String {
 }
 
 fn store_command(store_root: &str) -> Command {
-    let settings = Preferences::new();
-    let mut cmd = settings.command();
-    cmd.env("PASSWORD_STORE_DIR", store_root);
-    cmd
+    Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)])
 }
 
 pub(super) fn run_store_command_output(

@@ -4,7 +4,7 @@ mod store;
 
 pub(in crate::backend::integrated) use self::cache::cached_unlocked_ripasso_private_key;
 #[cfg(test)]
-pub(in crate::backend::integrated) use self::cache::clear_cached_unlocked_ripasso_private_keys;
+pub(in crate::backend) use self::cache::clear_cached_unlocked_ripasso_private_keys;
 pub(in crate::backend::integrated) use self::cert::fingerprint_from_string;
 pub use self::cert::ManagedRipassoPrivateKey;
 #[cfg(test)]

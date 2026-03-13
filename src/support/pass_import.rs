@@ -38,8 +38,7 @@ fn run_store_pass_command(
     context: &str,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
-    let mut cmd = pass_command();
-    cmd.env("PASSWORD_STORE_DIR", store_root);
+    let mut cmd = Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)]);
     configure(&mut cmd);
     run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
         .map_err(|err| format!("Failed to run the host command: {err}"))
@@ -107,7 +106,7 @@ pub(crate) fn run_pass_import(request: &PassImportRequest) -> Result<(), String>
         &request.store_root,
         "Import passwords with pass import",
         |cmd| {
-            cmd.arg("import").arg("--convert");
+            cmd.arg("import");
             if let Some(target_path) = &request.target_path {
                 cmd.arg("--path").arg(target_path);
             }

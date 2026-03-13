@@ -7,6 +7,7 @@ use crate::password::new_item::register_open_new_password_action;
 use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
+use crate::preferences::Preferences;
 #[cfg(feature = "setup")]
 use crate::setup::*;
 #[cfg(feature = "flatpak")]
@@ -44,13 +45,17 @@ use super::navigation::set_save_button_for_password;
 #[cfg(feature = "setup")]
 use super::preferences::register_install_locally_action;
 use super::preferences::{
-    connect_new_password_template_autosave, connect_password_generation_autosave,
-    connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
+    connect_backend_row, connect_new_password_template_autosave, connect_pass_command_row,
+    connect_password_generation_autosave, connect_username_fallback_autosave,
+    initialize_backend_row, register_open_preferences_action, PreferencesActionState,
 };
 #[cfg(not(feature = "flatpak"))]
-use super::standard::{configure_standard_window, register_standard_window_actions};
+use super::standard::configure_standard_window;
 use crate::logging::log_info;
-use crate::support::runtime::{git_network_operations_available, log_runtime_capabilities_once};
+use crate::support::runtime::{
+    git_network_operations_available, host_command_execution_available,
+    log_runtime_capabilities_once,
+};
 
 const UI_SRC: &str = include_str!("../../../data/window.ui");
 
@@ -81,6 +86,18 @@ fn connect_window_behaviors(
         &preferences_action_state.generator_controls,
         std::slice::from_ref(&password_list_state.generator_controls),
         &widgets.toast_overlay,
+    );
+    let backend_preferences = Preferences::new();
+    connect_pass_command_row(
+        &widgets.pass_command_row,
+        &widgets.toast_overlay,
+        &backend_preferences,
+    );
+    connect_backend_row(
+        &widgets.backend_row,
+        &widgets.pass_command_row,
+        &widgets.toast_overlay,
+        &backend_preferences,
     );
     connect_store_recipients_entry(store_recipients_page_state);
     connect_password_copy_buttons(
@@ -126,6 +143,15 @@ pub(crate) fn create_main_window(
     }
     #[cfg(feature = "flatpak")]
     configure_flatpak_window(&widgets);
+    let backend_preferences = Preferences::new();
+    widgets
+        .backend_preferences
+        .set_visible(host_command_execution_available());
+    initialize_backend_row(
+        &widgets.backend_row,
+        &widgets.pass_command_row,
+        &backend_preferences,
+    );
     set_save_button_for_password(&widgets.save_button);
 
     #[cfg(not(feature = "flatpak"))]
@@ -211,9 +237,6 @@ pub(crate) fn create_main_window(
         &store_recipients_page_state,
     );
     register_open_preferences_action(&widgets.window, &preferences_action_state);
-
-    #[cfg(not(feature = "flatpak"))]
-    register_standard_window_actions(&standard_window, &widgets, &widgets.toast_overlay);
 
     #[cfg(feature = "setup")]
     register_install_locally_action(

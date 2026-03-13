@@ -38,7 +38,6 @@ fn store_message_is_invalid_store_path(lowered: &str) -> bool {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PasswordEntryError {
-    #[cfg(not(feature = "flatpak"))]
     EntryNotFound(String),
     #[cfg(feature = "flatpak")]
     MissingPrivateKey(String),
@@ -69,7 +68,6 @@ impl PasswordEntryError {
         Self::Other(message.into())
     }
 
-    #[cfg(not(feature = "flatpak"))]
     pub(crate) fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
         let lowered = message.to_ascii_lowercase();
@@ -92,14 +90,11 @@ impl PasswordEntryError {
 
     pub(crate) fn detail(&self) -> &str {
         match self {
-            #[cfg(not(feature = "flatpak"))]
             Self::EntryNotFound(message) => message,
             #[cfg(feature = "flatpak")]
             Self::MissingPrivateKey(message)
             | Self::LockedPrivateKey(message)
-            | Self::IncompatiblePrivateKey(message)
-            | Self::Other(message) => message,
-            #[cfg(not(feature = "flatpak"))]
+            | Self::IncompatiblePrivateKey(message) => message,
             Self::Other(message) => message,
         }
     }

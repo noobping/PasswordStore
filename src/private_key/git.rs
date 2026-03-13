@@ -8,7 +8,6 @@ use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog_with_close_handler,
 };
 use crate::support::background::spawn_result_task;
-use crate::support::runtime::git_network_operations_available;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
 
@@ -85,9 +84,6 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
     context: &str,
     after_unlock_attempt: Rc<dyn Fn()>,
 ) -> bool {
-    if !git_network_operations_available() {
-        return false;
-    }
     let context = context.to_string();
 
     match fingerprint {

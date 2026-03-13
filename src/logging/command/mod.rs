@@ -20,7 +20,6 @@ impl CommandLogOptions {
         accepted_exit_codes: &[],
     };
 
-    #[cfg(not(feature = "flatpak"))]
     pub const SENSITIVE: Self = Self {
         redact_stdout: true,
         redact_stdin: true,

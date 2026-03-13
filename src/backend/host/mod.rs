@@ -115,7 +115,7 @@ pub(super) fn save_store_recipients(
         .map_err(StoreRecipientsError::from_store_message)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "flatpak")))]
 mod tests {
     use super::{save_password_entry, save_store_recipients};
     use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;

@@ -7,20 +7,19 @@ use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gtk::{Button, CheckButton, ListBox, TextView};
 use adw::prelude::*;
-use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
-#[cfg(not(feature = "flatpak"))]
-use adw::{ComboRow, EntryRow};
+use adw::{
+    ApplicationWindow, ComboRow, EntryRow, NavigationPage, NavigationView, Toast, ToastOverlay,
+    WindowTitle,
+};
 use std::cell::Cell;
 use std::rc::Rc;
 
 #[cfg(feature = "setup")]
 mod setup;
-#[cfg(not(feature = "flatpak"))]
 mod standard;
 
 #[cfg(feature = "setup")]
 pub(crate) use self::setup::register_install_locally_action;
-#[cfg(not(feature = "flatpak"))]
 pub(crate) use self::standard::{
     connect_backend_row, connect_pass_command_row, initialize_backend_row,
 };
@@ -57,9 +56,7 @@ pub(crate) struct PreferencesActionState {
     pub(crate) stores_list: ListBox,
     pub(crate) overlay: ToastOverlay,
     pub(crate) recipients_page: StoreRecipientsPageState,
-    #[cfg(not(feature = "flatpak"))]
     pub(crate) pass_row: EntryRow,
-    #[cfg(not(feature = "flatpak"))]
     pub(crate) backend_row: ComboRow,
 }
 
@@ -216,7 +213,6 @@ pub(crate) fn register_open_preferences_action(
         push_navigation_page_if_needed(&state.nav, &state.page);
 
         let settings = Preferences::new();
-        #[cfg(not(feature = "flatpak"))]
         self::standard::refresh_open_preferences_state(&state, &settings);
         sync_username_fallback_checks(
             &state.username_folder_check,

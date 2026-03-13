@@ -9,3 +9,4 @@ excludelist
 resources.xml
 squashfs*
 target/
+log.txt

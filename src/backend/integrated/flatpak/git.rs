@@ -142,30 +142,26 @@ fn head_oid(store_root: &str) -> Result<Option<String>, String> {
         store_root,
         "Read password store Git HEAD",
         |cmd| {
-            cmd.args(["rev-parse", "--verify", "HEAD"]);
+            cmd.args(["rev-parse", "-q", "--verify", "HEAD^{commit}"]);
         },
         CommandLogOptions {
-            accepted_exit_codes: &[128],
+            accepted_exit_codes: &[1],
             ..CommandLogOptions::DEFAULT
         },
     )?;
-    if output.status.success() {
-        git_output_text(&output).map(Some)
-    } else if git_head_is_missing(&output) {
-        log_info(format!(
-            "Password store Git HEAD is missing for {store_root}; creating an initial commit."
-        ));
-        Ok(None)
-    } else {
-        Err(git_command_error("git rev-parse --verify HEAD", &output))
+    match output.status.code() {
+        Some(0) => git_output_text(&output).map(Some),
+        Some(1) => {
+            log_info(format!(
+                "Password store Git HEAD is missing for {store_root}; creating an initial commit."
+            ));
+            Ok(None)
+        }
+        _ => Err(git_command_error(
+            "git rev-parse -q --verify HEAD^{commit}",
+            &output,
+        )),
     }
-}
-
-fn git_head_is_missing(output: &Output) -> bool {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    stderr.contains("Needed a single revision")
-        || stderr.contains("unknown revision or path not in the working tree")
-        || stderr.contains("ambiguous argument 'HEAD'")
 }
 
 fn git_ident(store_root: &str, role: &str, identity: &CommitIdentity) -> Result<String, String> {

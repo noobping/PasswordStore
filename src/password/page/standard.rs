@@ -37,6 +37,7 @@ pub(super) fn handle_open_password_entry_error(
     true
 }
 
+#[cfg(not(feature = "flatpak"))]
 pub(super) fn prompt_unlock_for_git_commit_if_needed(
     _state: &PasswordPageState,
     _pass_file: &OpenPassFile,

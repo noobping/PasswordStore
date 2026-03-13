@@ -75,7 +75,7 @@ fn save_store_recipients_async(
         return;
     }
     #[cfg(feature = "flatpak")]
-    if _allow_git_unlock_prompt {
+    if _allow_git_unlock_prompt && Preferences::new().uses_integrated_backend() {
         let overlay_for_retry = overlay.clone();
         let stores_list_for_retry = stores_list.clone();
         let state_for_retry = state.clone();

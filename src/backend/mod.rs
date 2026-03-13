@@ -1,8 +1,7 @@
 mod errors;
-#[cfg(not(feature = "flatpak"))]
 mod host;
 mod integrated;
-#[cfg(all(test, not(feature = "flatpak")))]
+#[cfg(test)]
 mod test_support;
 
 pub(crate) use self::errors::PasswordEntryError;
@@ -20,10 +19,8 @@ pub(crate) use integrated::{
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
 
-#[cfg(not(feature = "flatpak"))]
 use crate::preferences::Preferences;
 
-#[cfg(not(feature = "flatpak"))]
 fn dispatch_backend<T, E>(
     integrated: impl FnOnce() -> Result<T, E>,
     host: impl FnOnce() -> Result<T, E>,
@@ -39,18 +36,10 @@ macro_rules! dispatch_backend_call {
     ($(fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $ret:ty;)+) => {
         $(
             pub fn $name($($arg: $arg_ty),*) -> $ret {
-                #[cfg(feature = "flatpak")]
-                {
-                    return integrated::$name($($arg),*);
-                }
-
-                #[cfg(not(feature = "flatpak"))]
-                {
-                    dispatch_backend(
-                        || integrated::$name($($arg),*),
-                        || host::$name($($arg),*),
-                    )
-                }
+                dispatch_backend(
+                    || integrated::$name($($arg),*),
+                    || host::$name($($arg),*),
+                )
             }
         )+
     };

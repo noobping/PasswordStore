@@ -1,4 +1,5 @@
 use super::{default_backend_kind, BackendKind, Preferences};
+use crate::support::runtime::host_command_execution_available;
 use adw::gio::prelude::*;
 use adw::glib::BoolError;
 use std::env;
@@ -50,22 +51,42 @@ impl BackendKind {
     }
 }
 
-impl Preferences {
-    pub fn command_value(&self) -> String {
-        self.read_preference(
-            |settings| settings.string("pass-command").to_string(),
-            |cfg| {
-                cfg.pass_command
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_CMD.to_string())
-            },
-        )
+fn split_command_line(cmdline: &str) -> (String, Vec<String>) {
+    if let Some(mut parts) = shlex::split(cmdline) {
+        if parts.is_empty() {
+            return (DEFAULT_CMD.to_string(), Vec::new());
+        }
+        let program = parts.remove(0);
+        (program, parts)
+    } else {
+        (cmdline.to_string(), Vec::new())
+    }
+}
+
+fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> Command {
+    #[cfg(feature = "flatpak")]
+    {
+        let mut cmd = Command::new("flatpak-spawn");
+        cmd.current_dir("/");
+        cmd.arg("--host");
+        if !envs.is_empty() {
+            cmd.arg("env");
+            for (key, value) in envs {
+                cmd.arg(format!("{key}={value}"));
+            }
+        }
+        cmd.arg(&program);
+        cmd.args(args);
+        cmd
     }
 
-    pub fn command(&self) -> Command {
-        let (program, args) = self.command_parts();
+    #[cfg(not(feature = "flatpak"))]
+    {
         let mut cmd = Command::new(program);
         cmd.args(args);
+        for (key, value) in envs {
+            cmd.env(key, value);
+        }
 
         if let Ok(appdir) = env::var("APPDIR") {
             cmd.env(
@@ -85,21 +106,43 @@ impl Preferences {
 
         cmd
     }
+}
 
-    fn command_parts(&self) -> (String, Vec<String>) {
-        let cmdline = self.command_value();
-        if let Some(mut parts) = shlex::split(&cmdline) {
-            if parts.is_empty() {
-                return (DEFAULT_CMD.to_string(), Vec::new());
-            }
-            let program = parts.remove(0);
-            (program, parts)
-        } else {
-            (cmdline, Vec::new())
-        }
+pub(super) fn remote_git_command() -> Command {
+    #[cfg(feature = "flatpak")]
+    {
+        build_command("git".to_string(), Vec::new(), &[])
     }
 
-    pub fn backend_kind(&self) -> BackendKind {
+    #[cfg(not(feature = "flatpak"))]
+    {
+        Command::new("git")
+    }
+}
+
+impl Preferences {
+    pub fn command_value(&self) -> String {
+        self.read_preference(
+            |settings| settings.string("pass-command").to_string(),
+            |cfg| {
+                cfg.pass_command
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_CMD.to_string())
+            },
+        )
+    }
+
+    #[cfg_attr(feature = "flatpak", allow(dead_code))]
+    pub fn command(&self) -> Command {
+        self.command_with_envs(&[])
+    }
+
+    pub fn command_with_envs(&self, envs: &[(&str, &str)]) -> Command {
+        let (program, args) = split_command_line(&self.command_value());
+        build_command(program, args, envs)
+    }
+
+    fn stored_backend_kind(&self) -> BackendKind {
         self.read_preference(
             |settings| BackendKind::from_stored(&settings.string("backend")),
             |cfg| {
@@ -109,6 +152,15 @@ impl Preferences {
                     .unwrap_or_else(default_backend_kind)
             },
         )
+    }
+
+    pub fn backend_kind(&self) -> BackendKind {
+        let backend = self.stored_backend_kind();
+        if backend.uses_host_command() && !host_command_execution_available() {
+            BackendKind::Integrated
+        } else {
+            backend
+        }
     }
 
     pub fn uses_integrated_backend(&self) -> bool {
@@ -130,10 +182,84 @@ impl Preferences {
     }
 }
 
+#[cfg_attr(feature = "flatpak", allow(dead_code))]
 pub(super) fn default_store_dirs() -> Vec<String> {
-    if let Ok(home) = std::env::var("HOME") {
+    if let Ok(home) = env::var("HOME") {
         vec![format!("{home}/.password-store")]
     } else {
         Vec::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_command;
+    #[cfg(feature = "flatpak")]
+    use super::remote_git_command;
+
+    #[cfg(feature = "flatpak")]
+    #[test]
+    fn flatpak_host_command_uses_flatpak_spawn_with_env_wrapper() {
+        let cmd = build_command(
+            "pass".to_string(),
+            vec!["show".to_string(), "team/demo".to_string()],
+            &[("PASSWORD_STORE_DIR", "/tmp/store")],
+        );
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
+        assert_eq!(
+            cmd.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec![
+                "--host".to_string(),
+                "env".to_string(),
+                "PASSWORD_STORE_DIR=/tmp/store".to_string(),
+                "pass".to_string(),
+                "show".to_string(),
+                "team/demo".to_string(),
+            ]
+        );
+    }
+
+    #[cfg(feature = "flatpak")]
+    #[test]
+    fn flatpak_remote_git_routes_through_host_execution() {
+        let cmd = remote_git_command();
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
+        assert_eq!(
+            cmd.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["--host".to_string(), "git".to_string()]
+        );
+    }
+
+    #[cfg(not(feature = "flatpak"))]
+    #[test]
+    fn standard_host_command_sets_requested_environment_variables() {
+        let cmd = build_command(
+            "pass".to_string(),
+            vec!["show".to_string(), "team/demo".to_string()],
+            &[("PASSWORD_STORE_DIR", "/tmp/store")],
+        );
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "pass");
+        assert_eq!(
+            cmd.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["show".to_string(), "team/demo".to_string()]
+        );
+        assert!(cmd
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key, value)))
+            .any(|(key, value)| {
+                key.to_string_lossy() == "PASSWORD_STORE_DIR"
+                    && value.to_string_lossy() == "/tmp/store"
+            }));
     }
 }

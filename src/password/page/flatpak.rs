@@ -1,11 +1,12 @@
 use super::state::show_password_status_message;
 use super::{
-    open_password_entry_page, save_current_password_entry_without_git_unlock_prompt,
+    open_password_entry_page, save_current_password_entry_without_git_unlock_prompt, standard,
     PasswordPageState,
 };
 use crate::backend::{preferred_ripasso_private_key_fingerprint_for_entry, PasswordEntryError};
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
+use crate::preferences::Preferences;
 use crate::private_key::git::prompt_private_key_unlock_for_entry_git_commit_if_needed;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::actions::activate_widget_action;
@@ -35,6 +36,10 @@ pub(super) fn handle_open_password_entry_error(
     pass_file: &OpenPassFile,
     error: &PasswordEntryError,
 ) -> bool {
+    if !Preferences::new().uses_integrated_backend() {
+        return standard::handle_open_password_entry_error(state, pass_file, error);
+    }
+
     if open_password_error_action(error) == OpenPasswordErrorAction::PromptUnlock {
         show_password_status_message(state, "Unlock key", "Enter your key password to continue.");
         match preferred_ripasso_private_key_fingerprint_for_entry(
@@ -72,6 +77,10 @@ pub(super) fn prompt_unlock_for_git_commit_if_needed(
     state: &PasswordPageState,
     pass_file: &OpenPassFile,
 ) -> bool {
+    if !Preferences::new().uses_integrated_backend() {
+        return false;
+    }
+
     let retry_state = state.clone();
     prompt_private_key_unlock_for_entry_git_commit_if_needed(
         &state.overlay,

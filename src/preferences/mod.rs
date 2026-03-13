@@ -7,7 +7,6 @@ use std::process::Command;
 
 #[cfg(feature = "flatpak")]
 mod flatpak;
-#[cfg(not(feature = "flatpak"))]
 mod standard;
 mod storage;
 
@@ -16,12 +15,12 @@ use self::flatpak as platform_defaults;
 use self::platform_defaults::default_store_dirs;
 #[cfg(not(feature = "flatpak"))]
 use self::standard as platform_defaults;
+use self::standard::remote_git_command;
 use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
 const APP_ID: &str = env!("APP_ID");
 
-#[cfg(not(feature = "flatpak"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackendKind {
@@ -29,7 +28,6 @@ pub enum BackendKind {
     HostCommand,
 }
 
-#[cfg(not(feature = "flatpak"))]
 fn default_backend_kind() -> BackendKind {
     BackendKind::Integrated
 }
@@ -121,6 +119,10 @@ impl Preferences {
 
     pub fn git_command(&self) -> Command {
         Command::new("git")
+    }
+
+    pub fn remote_git_command(&self) -> Command {
+        remote_git_command()
     }
 
     pub fn new_pass_file_template(&self) -> String {
@@ -252,9 +254,9 @@ impl Preferences {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "flatpak"))]
-    use super::{default_backend_kind, BackendKind};
-    use super::{default_store_dirs, Preferences, UsernameFallbackMode};
+    use super::{
+        default_backend_kind, default_store_dirs, BackendKind, Preferences, UsernameFallbackMode,
+    };
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -274,13 +276,11 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "flatpak"))]
     #[test]
     fn default_backend_matches_build_mode() {
         assert_eq!(default_backend_kind(), BackendKind::Integrated);
     }
 
-    #[cfg(not(feature = "flatpak"))]
     #[test]
     fn backend_storage_accepts_current_and_legacy_names() {
         assert_eq!(BackendKind::Integrated.stored_value(), "integrated");

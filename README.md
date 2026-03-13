@@ -15,10 +15,10 @@ Keycord works with password stores that use the standard [`pass`](https://www.pa
 
 ## How It Works
 
-Keycord reads and writes standard `pass` stores. On a normal build, it can work in two ways:
+Keycord reads and writes standard `pass` stores. It can work in two ways:
 
 - `Integrated` backend: the app reads and writes the store directly. This is the default.
-- `Host command` backend (not in the flatpak app): the app runs your chosen `pass` command (wich can come from a Docker container if you want) instead.
+- `Host command` backend: the app runs your chosen `pass` command. In the Flatpak app, this is available when host command execution is permitted.
 
 ## Screenshots
 
@@ -33,11 +33,8 @@ Keycord reads and writes standard `pass` stores. On a normal build, it can work 
 Package names differ by distribution. This project was tested with Fedora packages:
 
 ```sh
-sudo dnf install gpgme-devel clang pkg-config nettle-devel libgpg-error-devel openssl-devel \
-    gtk4-devel gcc pkgconf-pkg-config \
-    glib2-devel cairo-devel pango-devel libadwaita-devel \
-    cargo mold git pass pinentry pinentry-gnome3 python-pass-import \
-    clippy rustfmt
+sudo dnf install gpgme-devel clang pkg-config nettle-devel libgpg-error-devel openssl-devel gtk4-devel gcc pkgconf-pkg-config glib2-devel cairo-devel pango-devel libadwaita-devel cargo mold clippy rustfmt \
+    git pass pass-otp pinentry pinentry-gnome3 python-pass-import
 ```
 
 ### Running And Building
@@ -52,10 +49,4 @@ Build with the optional local installer action:
 
 ```sh
 cargo build --release --features setup
-```
-
-Build the flatpack app:
-
-```sh
-flatpak run org.flatpak.Builder --user --install --force-clean build-dir io.github.noobping.keycord.yml
 ```

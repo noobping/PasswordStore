@@ -17,14 +17,34 @@ pub(crate) fn password_store_git_state_summary(root: &str) -> String {
     }
 
     if network_available {
-        return format!(
-            "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
-        );
+        #[cfg(feature = "flatpak")]
+        {
+            return format!(
+                "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled through host commands."
+            );
+        }
+
+        #[cfg(not(feature = "flatpak"))]
+        {
+            return format!(
+                "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
+            );
+        }
     }
 
-    format!(
-        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled because the Flatpak sandbox has no network permission."
-    )
+    #[cfg(feature = "flatpak")]
+    {
+        format!(
+            "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled because host command execution is unavailable."
+        )
+    }
+
+    #[cfg(not(feature = "flatpak"))]
+    {
+        format!(
+            "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled."
+        )
+    }
 }
 
 #[cfg(test)]

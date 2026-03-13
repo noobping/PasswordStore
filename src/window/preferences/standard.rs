@@ -1,5 +1,6 @@
 use super::{toast_preferences_save_error, PreferencesActionState};
 use crate::preferences::{BackendKind, Preferences};
+use crate::support::runtime::host_command_execution_available;
 use adw::prelude::*;
 use adw::{ComboRow, EntryRow, Toast, ToastOverlay};
 
@@ -24,11 +25,18 @@ pub(crate) fn initialize_backend_row(
     pass_row: &EntryRow,
     preferences: &Preferences,
 ) {
-    backend_row.set_model(Some(&adw::gtk::StringList::new(&[
-        BackendKind::Integrated.label(),
-        BackendKind::HostCommand.label(),
-    ])));
-    backend_row.set_visible(true);
+    let host_command_available = host_command_execution_available();
+    let model = if host_command_available {
+        adw::gtk::StringList::new(&[
+            BackendKind::Integrated.label(),
+            BackendKind::HostCommand.label(),
+        ])
+    } else {
+        adw::gtk::StringList::new(&[BackendKind::Integrated.label()])
+    };
+
+    backend_row.set_model(Some(&model));
+    backend_row.set_visible(host_command_available);
     sync_backend_preferences_rows(backend_row, pass_row, preferences);
 }
 

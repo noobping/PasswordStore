@@ -7,7 +7,6 @@ use adw::gtk::{
     Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer, SearchEntry,
     SpinButton, TextView, ToggleButton,
 };
-#[cfg(not(feature = "flatpak"))]
 use adw::PreferencesGroup;
 use adw::{
     ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
@@ -67,11 +66,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) preferences_password_generator_min_uppercase_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_numbers_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_symbols_spin: SpinButton,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) backend_preferences: PreferencesGroup,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) backend_row: adw::ComboRow,
-    #[cfg(not(feature = "flatpak"))]
     pub(in crate::window) pass_command_row: EntryRow,
     pub(in crate::window) git_busy_page: NavigationPage,
     pub(in crate::window) git_busy_status: StatusPage,
@@ -175,11 +171,8 @@ impl WindowWidgets {
                 builder,
                 "preferences_password_generator_min_symbols_spin",
             ),
-            #[cfg(not(feature = "flatpak"))]
             backend_preferences: required_object(builder, "backend_preferences"),
-            #[cfg(not(feature = "flatpak"))]
             backend_row: required_object(builder, "backend_row"),
-            #[cfg(not(feature = "flatpak"))]
             pass_command_row: required_object(builder, "pass_command_row"),
             git_busy_page: required_object(builder, "git_busy_page"),
             git_busy_status: required_object(builder, "git_busy_status"),

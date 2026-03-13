@@ -15,83 +15,13 @@ use super::git::{
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients;
 use crate::backend::{
-    PasswordEntryError, PasswordEntryWriteError, PrivateKeyError, StoreRecipientsError,
+    test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryWriteError,
+    PrivateKeyError, StoreRecipientsError,
 };
 use crate::preferences::Preferences;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
-use std::env;
-use std::ffi::OsString;
 use std::fs;
-use std::io::Write;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::process::{Command, Output, Stdio};
-use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn test_lock() -> &'static Mutex<()> {
-    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    TEST_LOCK.get_or_init(|| Mutex::new(()))
-}
-
-struct TestHome {
-    original_home: Option<OsString>,
-    original_gnupg_home: Option<OsString>,
-    original_gpg_agent_info: Option<OsString>,
-    path: PathBuf,
-}
-
-impl TestHome {
-    fn new() -> Self {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("passwordstore-flatpak-test-{nanos}"));
-        fs::create_dir_all(&path).expect("create temporary HOME");
-        let gnupg = path.join(".gnupg");
-        fs::create_dir_all(&gnupg).expect("create temporary GNUPGHOME");
-        #[cfg(unix)]
-        fs::set_permissions(&gnupg, fs::Permissions::from_mode(0o700))
-            .expect("set temporary GNUPGHOME permissions");
-        let original_home = env::var_os("HOME");
-        let original_gnupg_home = env::var_os("GNUPGHOME");
-        let original_gpg_agent_info = env::var_os("GPG_AGENT_INFO");
-        env::set_var("HOME", &path);
-        env::set_var("GNUPGHOME", &gnupg);
-        env::remove_var("GPG_AGENT_INFO");
-        clear_cached_unlocked_ripasso_private_keys();
-        Self {
-            original_home,
-            original_gnupg_home,
-            original_gpg_agent_info,
-            path,
-        }
-    }
-}
-
-impl Drop for TestHome {
-    fn drop(&mut self) {
-        clear_cached_unlocked_ripasso_private_keys();
-        if let Some(original_home) = self.original_home.as_ref() {
-            env::set_var("HOME", original_home);
-        } else {
-            env::remove_var("HOME");
-        }
-        if let Some(original_gnupg_home) = self.original_gnupg_home.as_ref() {
-            env::set_var("GNUPGHOME", original_gnupg_home);
-        } else {
-            env::remove_var("GNUPGHOME");
-        }
-        if let Some(original_gpg_agent_info) = self.original_gpg_agent_info.as_ref() {
-            env::set_var("GPG_AGENT_INFO", original_gpg_agent_info);
-        } else {
-            env::remove_var("GPG_AGENT_INFO");
-        }
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
 
 fn cert_bytes(email: &str) -> Vec<u8> {
     let (cert, _) = CertBuilder::general_purpose(Some(email))
@@ -119,123 +49,6 @@ fn protected_cert(email: &str) -> (sequoia_openpgp::Cert, Vec<u8>) {
 
 fn protected_cert_bytes(email: &str) -> Vec<u8> {
     protected_cert(email).1
-}
-
-fn command_error(action: &str, output: &Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !stderr.is_empty() {
-        format!("{action} failed: {stderr}")
-    } else if !stdout.is_empty() {
-        format!("{action} failed: {stdout}")
-    } else {
-        format!("{action} failed: {}", output.status)
-    }
-}
-
-fn ensure_success(action: &str, output: Output) -> Result<Output, String> {
-    if output.status.success() {
-        Ok(output)
-    } else {
-        Err(command_error(action, &output))
-    }
-}
-
-fn init_store_git_repository(store: &std::path::Path) -> Result<(), String> {
-    ensure_success(
-        "git init",
-        Command::new("git")
-            .args(["-C"])
-            .arg(store)
-            .arg("init")
-            .output()
-            .map_err(|err| format!("Failed to start git init: {err}"))?,
-    )?;
-    Ok(())
-}
-
-fn import_public_key(bytes: &[u8]) -> Result<(), String> {
-    let mut child = Command::new("gpg")
-        .args(["--batch", "--yes", "--import"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| format!("Failed to start gpg public-key import: {err}"))?;
-
-    {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| "gpg public-key import did not provide stdin".to_string())?;
-        stdin
-            .write_all(bytes)
-            .map_err(|err| format!("Failed to write imported public key bytes: {err}"))?;
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|err| format!("Failed to wait for gpg public-key import: {err}"))?;
-    if !output.status.success() {
-        return Err(command_error("gpg --import", &output));
-    }
-
-    Ok(())
-}
-
-fn store_git_commit_subjects(store: &std::path::Path) -> Result<Vec<String>, String> {
-    let output = ensure_success(
-        "git log",
-        Command::new("git")
-            .args(["-C"])
-            .arg(store)
-            .args(["log", "--format=%s"])
-            .output()
-            .map_err(|err| format!("Failed to start git log: {err}"))?,
-    )?;
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::to_string)
-        .collect())
-}
-
-fn head_author(store: &std::path::Path) -> Result<String, String> {
-    let output = ensure_success(
-        "git log",
-        Command::new("git")
-            .args(["-C"])
-            .arg(store)
-            .args(["log", "-1", "--format=%an <%ae>"])
-            .output()
-            .map_err(|err| format!("Failed to start git log author format: {err}"))?,
-    )?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn head_commit_has_signature(store: &std::path::Path) -> Result<bool, String> {
-    let output = ensure_success(
-        "git cat-file",
-        Command::new("git")
-            .args(["-C"])
-            .arg(store)
-            .args(["cat-file", "-p", "HEAD"])
-            .output()
-            .map_err(|err| format!("Failed to start git cat-file: {err}"))?,
-    )?;
-    Ok(String::from_utf8_lossy(&output.stdout).contains("\ngpgsig "))
-}
-
-fn verify_head_commit_signature(store: &std::path::Path) -> Result<(), String> {
-    ensure_success(
-        "git verify-commit",
-        Command::new("git")
-            .args(["-C"])
-            .arg(store)
-            .args(["verify-commit", "HEAD"])
-            .output()
-            .map_err(|err| format!("Failed to start git verify-commit: {err}"))?,
-    )?;
-    Ok(())
 }
 
 #[test]
@@ -307,8 +120,7 @@ fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
 
 #[test]
 fn imported_private_keys_stay_encrypted_on_disk() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let _env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Eve Example <eve@example.com>"))
         .set_password(Some(password.clone()))
@@ -337,8 +149,7 @@ fn imported_private_keys_stay_encrypted_on_disk() {
 
 #[test]
 fn encrypted_private_keys_unlock_for_the_current_session_only() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let _env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Frank Example <frank@example.com>"))
         .set_password(Some(password.clone()))
@@ -369,8 +180,7 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
 
 #[test]
 fn unprotected_private_keys_are_rejected_for_secure_import() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let _env = SystemBackendTestEnv::new();
     let bytes = cert_bytes("Grace Example <grace@example.com>");
 
     let err = import_ripasso_private_key_bytes(&bytes, None)
@@ -392,10 +202,9 @@ fn dotted_entry_labels_keep_their_full_name() {
 
 #[test]
 fn recipients_file_lookup_stays_inside_the_selected_store() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
-    let primary_store = PathBuf::from("/tmp/primary-store");
-    let secondary_store = PathBuf::from("/tmp/secondary-store");
+    let env = SystemBackendTestEnv::new();
+    let primary_store = env.root_dir().join("primary-store");
+    let secondary_store = env.root_dir().join("secondary-store");
 
     fs::create_dir_all(primary_store.join("team")).expect("create primary store");
     fs::create_dir_all(secondary_store.join("team")).expect("create secondary store");
@@ -413,8 +222,7 @@ fn recipients_file_lookup_stays_inside_the_selected_store() {
 
 #[test]
 fn new_entries_can_be_saved_in_a_secondary_store() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
         .set_password(Some(password.clone()))
@@ -427,8 +235,8 @@ fn new_entries_can_be_saved_in_a_secondary_store() {
     let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
         .expect("expected private key import to succeed");
 
-    let primary_store = home.path.join("primary-store");
-    let secondary_store = home.path.join("secondary-store");
+    let primary_store = env.root_dir().join("primary-store");
+    let secondary_store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&primary_store).expect("create primary store");
     fs::create_dir_all(&secondary_store).expect("create secondary store");
     fs::write(
@@ -460,13 +268,12 @@ fn new_entries_can_be_saved_in_a_secondary_store() {
 
 #[test]
 fn duplicate_entry_saves_are_classified_as_already_existing() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let bytes = protected_cert_bytes("Store Example <store@example.com>");
     let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
         .expect("expected private key import to succeed");
 
-    let store = home.path.join("secondary-store");
+    let store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&store).expect("create secondary store");
     fs::write(store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
         .expect("write recipients");
@@ -495,8 +302,7 @@ fn duplicate_entry_saves_are_classified_as_already_existing() {
 
 #[test]
 fn entries_are_encrypted_for_all_selected_private_keys() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let bytes_a = protected_cert_bytes("Key A <a@example.com>");
     let bytes_b = protected_cert_bytes("Key B <b@example.com>");
     let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
@@ -504,7 +310,7 @@ fn entries_are_encrypted_for_all_selected_private_keys() {
     let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
         .expect("import second private key");
 
-    let store = home.path.join("secondary-store");
+    let store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&store).expect("create secondary store");
     fs::write(
         store.join(".gpg-id"),
@@ -538,9 +344,8 @@ fn entries_are_encrypted_for_all_selected_private_keys() {
 
 #[test]
 fn missing_entry_renames_and_deletes_are_classified() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
-    let store = home.path.join("secondary-store");
+    let env = SystemBackendTestEnv::new();
+    let store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&store).expect("create secondary store");
 
     let rename_err = rename_password_entry(
@@ -564,9 +369,8 @@ fn missing_entry_renames_and_deletes_are_classified() {
 
 #[test]
 fn recipient_saves_reject_non_directory_store_paths() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
-    let file_path = home.path.join("store-file");
+    let env = SystemBackendTestEnv::new();
+    let file_path = env.root_dir().join("store-file");
     fs::write(&file_path, "not a directory").expect("write store placeholder file");
 
     let err = save_store_recipients(
@@ -580,8 +384,7 @@ fn recipient_saves_reject_non_directory_store_paths() {
 
 #[test]
 fn new_entries_can_use_email_recipients() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
         .set_password(Some(password.clone()))
@@ -594,7 +397,7 @@ fn new_entries_can_use_email_recipients() {
     let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
         .expect("expected private key import to succeed");
 
-    let secondary_store = home.path.join("secondary-store");
+    let secondary_store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&secondary_store).expect("create secondary store");
     fs::write(secondary_store.join(".gpg-id"), "store@example.com\n").expect("write recipients");
 
@@ -617,8 +420,7 @@ fn new_entries_can_use_email_recipients() {
 
 #[test]
 fn store_recipients_work_without_a_selected_default_key() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
         .set_password(Some(password.clone()))
@@ -631,7 +433,7 @@ fn store_recipients_work_without_a_selected_default_key() {
     let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
         .expect("expected private key import to succeed");
 
-    let store = home.path.join("secondary-store");
+    let store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&store).expect("create store");
     fs::write(store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
         .expect("write recipients");
@@ -658,8 +460,7 @@ fn store_recipients_work_without_a_selected_default_key() {
 
 #[test]
 fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
 
     let (cert_a, _) = CertBuilder::general_purpose(Some("Key A <a@example.com>"))
@@ -686,7 +487,7 @@ fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
     let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
         .expect("import second private key");
 
-    let store = home.path.join("secondary-store");
+    let store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&store).expect("create store");
     fs::write(store.join(".gpg-id"), format!("{}\n", key_a.fingerprint))
         .expect("write initial recipients");
@@ -718,8 +519,7 @@ fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
 
 #[test]
 fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
 
     let (cert_a, _) = CertBuilder::general_purpose(Some("Key A <a@example.com>"))
@@ -746,7 +546,7 @@ fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
     let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
         .expect("import second private key");
 
-    let store = home.path.join("secondary-store");
+    let store = env.root_dir().join("secondary-store");
     fs::create_dir_all(&store).expect("create store");
     fs::write(
         store.join(".gpg-id"),
@@ -781,8 +581,7 @@ fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
 
 #[test]
 fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let (cert, bytes) = protected_cert("Git Signer <git-flatpak@example.com>");
     let imported =
         import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
@@ -793,49 +592,42 @@ fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() 
     let mut public_bytes = Vec::new();
     cert.serialize(&mut public_bytes)
         .expect("serialize public certificate");
-    import_public_key(&public_bytes).expect("import public key for signature verification");
+    env.import_public_key(&public_bytes)
+        .expect("import public key for signature verification");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
 
-    let store = std::env::temp_dir().join(format!(
-        "passwordstore-flatpak-git-store-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&store).expect("create git store");
-    init_store_git_repository(&store).expect("initialize git repository");
-
-    save_store_recipients(
-        store.to_string_lossy().as_ref(),
-        std::slice::from_ref(&imported.fingerprint),
-    )
-    .expect("save store recipients");
+    save_store_recipients(&store_root, std::slice::from_ref(&imported.fingerprint))
+        .expect("save store recipients");
     save_password_entry(
-        store.to_string_lossy().as_ref(),
+        &store_root,
         "team/service",
         "secret-value\nusername: alice",
         true,
     )
     .expect("save password entry");
 
-    let subjects = store_git_commit_subjects(&store).expect("read commit subjects");
+    let subjects = env
+        .store_git_commit_subjects()
+        .expect("read commit subjects");
     assert_eq!(subjects.len(), 2);
     assert_eq!(subjects[0], "Add password for team/service");
     assert_eq!(subjects[1], "Update password store recipients");
     assert_eq!(
-        head_author(&store).expect("read head author"),
+        env.store_git_head_author().expect("read head author"),
         "Git Signer <git-flatpak@example.com>"
     );
-    assert!(head_commit_has_signature(&store).expect("inspect commit headers"));
-    verify_head_commit_signature(&store).expect("verify head commit signature");
-
-    let _ = fs::remove_dir_all(&store);
+    assert!(env
+        .store_head_commit_has_signature()
+        .expect("inspect commit headers"));
+    env.verify_store_head_commit_signature()
+        .expect("verify head commit signature");
 }
 
 #[test]
 fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_selected_key() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let (cert_a, bytes_a) = protected_cert("Entry Key <entry@example.com>");
     let imported_a =
         import_ripasso_private_key_bytes(&bytes_a, Some("hunter2")).expect("import entry key");
@@ -850,54 +642,47 @@ fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_se
     cert_a
         .serialize(&mut public_bytes_a)
         .expect("serialize entry public certificate");
-    import_public_key(&public_bytes_a).expect("import entry public key for signature verification");
+    env.import_public_key(&public_bytes_a)
+        .expect("import entry public key for signature verification");
 
     let mut public_bytes_b = Vec::new();
     cert_b
         .serialize(&mut public_bytes_b)
         .expect("serialize selected public certificate");
-    import_public_key(&public_bytes_b)
+    env.import_public_key(&public_bytes_b)
         .expect("import unrelated selected public key for signature verification");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
 
-    let store = std::env::temp_dir().join(format!(
-        "passwordstore-flatpak-git-entry-key-store-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&store).expect("create git store");
-    init_store_git_repository(&store).expect("initialize git repository");
-
-    save_store_recipients(
-        store.to_string_lossy().as_ref(),
-        std::slice::from_ref(&imported_a.fingerprint),
-    )
-    .expect("save store recipients");
+    save_store_recipients(&store_root, std::slice::from_ref(&imported_a.fingerprint))
+        .expect("save store recipients");
     save_password_entry(
-        store.to_string_lossy().as_ref(),
+        &store_root,
         "team/service",
         "secret-value\nusername: alice",
         true,
     )
     .expect("save password entry");
 
-    let subjects = store_git_commit_subjects(&store).expect("read commit subjects");
+    let subjects = env
+        .store_git_commit_subjects()
+        .expect("read commit subjects");
     assert_eq!(subjects.len(), 2);
     assert_eq!(
-        head_author(&store).expect("read head author"),
+        env.store_git_head_author().expect("read head author"),
         "Entry Key <entry@example.com>"
     );
-    assert!(head_commit_has_signature(&store).expect("inspect commit headers"));
-    verify_head_commit_signature(&store).expect("verify head commit signature");
-
-    let _ = fs::remove_dir_all(&store);
+    assert!(env
+        .store_head_commit_has_signature()
+        .expect("inspect commit headers"));
+    env.verify_store_head_commit_signature()
+        .expect("verify head commit signature");
 }
 
 #[test]
 fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let bytes = protected_cert_bytes("Locked Signer <locked-flatpak@example.com>");
     let imported =
         import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
@@ -905,66 +690,47 @@ fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
         .set_ripasso_own_fingerprint(Some(&imported.fingerprint))
         .expect("select signing key");
     clear_cached_unlocked_ripasso_private_keys();
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
 
-    let store = std::env::temp_dir().join(format!(
-        "passwordstore-flatpak-git-unsigned-store-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&store).expect("create unsigned git store");
-    init_store_git_repository(&store).expect("initialize git repository");
-
-    save_store_recipients(
-        store.to_string_lossy().as_ref(),
-        std::slice::from_ref(&imported.fingerprint),
-    )
-    .expect("save store recipients");
+    save_store_recipients(&store_root, std::slice::from_ref(&imported.fingerprint))
+        .expect("save store recipients");
     save_password_entry(
-        store.to_string_lossy().as_ref(),
+        &store_root,
         "team/service",
         "secret-value\nusername: alice",
         true,
     )
     .expect("save password entry");
 
-    let subjects = store_git_commit_subjects(&store).expect("read commit subjects");
+    let subjects = env
+        .store_git_commit_subjects()
+        .expect("read commit subjects");
     assert_eq!(subjects.len(), 2);
     assert_eq!(
-        head_author(&store).expect("read head author"),
+        env.store_git_head_author().expect("read head author"),
         "Locked Signer <locked-flatpak@example.com>"
     );
-    assert!(!head_commit_has_signature(&store).expect("inspect commit headers"));
-
-    let _ = fs::remove_dir_all(&store);
+    assert!(!env
+        .store_head_commit_has_signature()
+        .expect("inspect commit headers"));
 }
 
 #[test]
 fn git_commit_unlock_helper_detects_a_locked_entry_signing_key() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let bytes = protected_cert_bytes("Locked Signer <locked-entry@example.com>");
     let imported =
         import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
 
-    let store = std::env::temp_dir().join(format!(
-        "passwordstore-flatpak-git-lock-helper-entry-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&store).expect("create git store");
-    init_store_git_repository(&store).expect("initialize git repository");
-
-    save_store_recipients(
-        store.to_string_lossy().as_ref(),
-        std::slice::from_ref(&imported.fingerprint),
-    )
-    .expect("save store recipients");
+    save_store_recipients(&store_root, std::slice::from_ref(&imported.fingerprint))
+        .expect("save store recipients");
     save_password_entry(
-        store.to_string_lossy().as_ref(),
+        &store_root,
         "team/service",
         "secret-value\nusername: alice",
         true,
@@ -973,44 +739,29 @@ fn git_commit_unlock_helper_detects_a_locked_entry_signing_key() {
     clear_cached_unlocked_ripasso_private_keys();
 
     assert_eq!(
-        git_commit_private_key_requiring_unlock_for_entry(
-            store.to_string_lossy().as_ref(),
-            "team/service",
-        )
-        .expect("resolve locked signing key"),
+        git_commit_private_key_requiring_unlock_for_entry(&store_root, "team/service",)
+            .expect("resolve locked signing key"),
         Some(imported.fingerprint)
     );
-
-    let _ = fs::remove_dir_all(&store);
 }
 
 #[test]
 fn git_commit_unlock_helper_detects_a_locked_recipients_signing_key() {
-    let _guard = test_lock().lock().expect("test lock poisoned");
-    let _home = TestHome::new();
+    let env = SystemBackendTestEnv::new();
     let bytes = protected_cert_bytes("Locked Signer <locked-store@example.com>");
     let imported =
         import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
-
-    let store = std::env::temp_dir().join(format!(
-        "passwordstore-flatpak-git-lock-helper-store-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&store).expect("create git store");
-    init_store_git_repository(&store).expect("initialize git repository");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
     clear_cached_unlocked_ripasso_private_keys();
+    let store_root = env.store_root().to_string_lossy().to_string();
 
     assert_eq!(
         git_commit_private_key_requiring_unlock_for_store_recipients(
-            store.to_string_lossy().as_ref(),
+            &store_root,
             std::slice::from_ref(&imported.fingerprint),
         )
         .expect("resolve locked signing key"),
         Some(imported.fingerprint)
     );
-
-    let _ = fs::remove_dir_all(&store);
 }

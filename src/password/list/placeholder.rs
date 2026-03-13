@@ -8,14 +8,14 @@ pub(super) fn loading_placeholder() -> StatusPage {
     spinner.start();
 
     StatusPage::builder()
-        .icon_name(format!("{APP_ID}"))
+        .icon_name(APP_ID)
         .child(&spinner)
         .build()
 }
 
 pub(super) fn resolved_placeholder(empty: bool, has_store_dirs: bool) -> StatusPage {
     if empty {
-        build_empty_password_list_placeholder(&format!("{APP_ID}"), has_store_dirs)
+        build_empty_password_list_placeholder(APP_ID, has_store_dirs)
     } else {
         StatusPage::builder()
             .icon_name("edit-find-symbolic")

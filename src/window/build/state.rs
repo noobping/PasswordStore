@@ -171,9 +171,7 @@ pub(super) fn preferences_action_state(
         stores_list: widgets.password_stores.clone(),
         overlay: widgets.toast_overlay.clone(),
         recipients_page: recipients_page.clone(),
-        #[cfg(not(feature = "flatpak"))]
         pass_row: widgets.pass_command_row.clone(),
-        #[cfg(not(feature = "flatpak"))]
         backend_row: widgets.backend_row.clone(),
     }
 }

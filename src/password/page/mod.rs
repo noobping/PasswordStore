@@ -1,7 +1,6 @@
 mod editor;
 #[cfg(feature = "flatpak")]
 mod flatpak;
-#[cfg(not(feature = "flatpak"))]
 mod standard;
 mod state;
 

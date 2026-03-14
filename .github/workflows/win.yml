@@ -11,32 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  locales:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      APP_ID: io.github.noobping.keycord
-    steps:
-      - uses: actions/checkout@v4
-      - name: Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gettext zip tree
-      - name: Locales
-        run: |
-          for f in po/*.po; do
-              lang=$(basename "$f" .po)
-              mkdir -p "locale/$lang/LC_MESSAGES"
-              msgfmt "$f" -o "locale/$lang/LC_MESSAGES/${APP_ID}.mo"
-          done
-      - run: zip -r locales.zip locale
-      - run: tree -a locale || true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: locales
-          path: locales.zip
-
   build:
     runs-on: windows-latest
     permissions:
@@ -124,7 +98,6 @@ jobs:
     runs-on: windows-latest
     needs:
       - build
-      - locales
     permissions:
       contents: write
 

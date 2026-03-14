@@ -33,7 +33,7 @@ use self::widgets::WindowWidgets;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, register_back_action,
     register_context_save_action, register_context_undo_action, register_list_visibility_action,
-    register_toggle_find_action, ListVisibilityState,
+    register_reload_password_list_action, register_toggle_find_action, ListVisibilityState,
 };
 #[cfg(keycord_flatpak)]
 use super::flatpak::configure_flatpak_window;
@@ -361,6 +361,7 @@ pub(crate) fn create_main_window(
     register_context_undo_action(&widgets.window, &context_undo_state);
     register_toggle_find_action(&widgets.window, &widgets.search_entry);
     register_list_visibility_action(&widgets.window, &list_visibility_action_state);
+    register_reload_password_list_action(&widgets.window, &list_visibility_action_state);
     register_back_action(&widgets.window, &back_action_state);
 
     configure_window_shortcuts(app);

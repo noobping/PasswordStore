@@ -8,8 +8,8 @@ mod store;
 mod tests;
 
 pub(crate) use self::entries::{
-    delete_password_entry, read_password_entry, read_password_line, rename_password_entry,
-    save_password_entry,
+    delete_password_entry, password_entry_is_readable, read_password_entry, read_password_line,
+    rename_password_entry, save_password_entry,
 };
 pub(crate) use self::git::{
     git_commit_private_key_requiring_unlock_for_entry,

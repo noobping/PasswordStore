@@ -3,6 +3,7 @@ mod row;
 
 use self::placeholder::{loading_placeholder, resolved_placeholder};
 use self::row::append_password_row;
+use crate::backend::password_entry_is_readable;
 use crate::logging::{log_error, log_info};
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
 use crate::preferences::Preferences;
@@ -147,7 +148,14 @@ pub(crate) fn load_passwords_async(
             show_hidden,
             show_duplicates,
         )) {
-            Ok(items) => items,
+            Ok(items) => items
+                .into_iter()
+                .map(|item| {
+                    let label = item.label();
+                    let readable = password_entry_is_readable(&item.store_path, &label);
+                    (item, readable)
+                })
+                .collect(),
             Err(err) => {
                 log_error(format!("Error scanning pass stores: {err}"));
                 Vec::new()
@@ -155,8 +163,8 @@ pub(crate) fn load_passwords_async(
         },
         move |items| {
             let empty = items.is_empty();
-            for item in items {
-                append_password_row(&list_clone, item, &overlay_clone);
+            for (item, readable) in items {
+                append_password_row(&list_clone, item, readable, &overlay_clone);
             }
 
             update_list_actions(

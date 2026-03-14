@@ -10,10 +10,10 @@ use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::set_string_data;
-use crate::support::ui::{flat_icon_button, flat_icon_button_with_tooltip};
+use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{
-    gdk::Display, Button, DropDown, ListBox, ListBoxRow, MenuButton, Stack, StringList,
+    gdk::Display, Button, DropDown, Image, ListBox, ListBoxRow, MenuButton, Stack, StringList,
     INVALID_LIST_POSITION,
 };
 use adw::prelude::*;
@@ -28,9 +28,30 @@ enum TextEditMode {
     MoveWithinStore,
 }
 
+const UNREADABLE_PASSWORD_ROW_TOOLTIP: &str =
+    "This item can't be opened with the private keys currently available in the app. File actions are still available, but copy and move-to-store are disabled until a compatible private key is available.";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PasswordRowCapabilities {
+    can_open: bool,
+    show_copy_button: bool,
+    allow_move_to_store: bool,
+    show_unreadable_warning: bool,
+}
+
+fn password_row_capabilities(readable: bool) -> PasswordRowCapabilities {
+    PasswordRowCapabilities {
+        can_open: readable,
+        show_copy_button: readable,
+        allow_move_to_store: readable,
+        show_unreadable_warning: !readable,
+    }
+}
+
 #[derive(Clone)]
 struct PasswordRowState {
     item: Rc<RefCell<PassEntry>>,
+    readable: bool,
     row: ListBoxRow,
     stack: Stack,
     action_row: ActionRow,
@@ -41,21 +62,31 @@ struct PasswordRowState {
     text_edit_mode: Rc<RefCell<TextEditMode>>,
 }
 
-pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &ToastOverlay) {
+pub(super) fn append_password_row(
+    list: &ListBox,
+    item: PassEntry,
+    readable: bool,
+    overlay: &ToastOverlay,
+) {
+    let capabilities = password_row_capabilities(readable);
     let row = ListBoxRow::new();
+    row.set_activatable(capabilities.can_open);
     let stack = Stack::new();
 
     let action_row = ActionRow::builder()
         .title(item.basename.clone())
         .subtitle(item.relative_path.clone())
-        .activatable(true)
+        .activatable(capabilities.can_open)
         .build();
+    let unreadable_icon = build_unreadable_password_icon(capabilities.show_unreadable_warning);
     let copy_button = flat_icon_button("edit-copy-symbolic");
+    copy_button.set_visible(capabilities.show_copy_button);
     let menu_button = MenuButton::builder()
         .icon_name("view-more-symbolic")
         .has_frame(false)
         .css_classes(vec!["flat"])
         .build();
+    action_row.add_prefix(&unreadable_icon);
     action_row.add_suffix(&copy_button);
     action_row.add_suffix(&menu_button);
 
@@ -82,6 +113,7 @@ pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &Toa
 
     let state = PasswordRowState {
         item: Rc::new(RefCell::new(item)),
+        readable,
         row: row.clone(),
         stack: stack.clone(),
         action_row: action_row.clone(),
@@ -93,7 +125,13 @@ pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &Toa
     };
     sync_password_row_display(&state);
 
-    configure_password_row_menu(&menu_button, &state, list, overlay);
+    configure_password_row_menu(
+        &menu_button,
+        &state,
+        capabilities.allow_move_to_store,
+        list,
+        overlay,
+    );
     connect_copy_action(&state, &copy_button, overlay);
     connect_text_edit_actions(&state, &text_cancel_button, overlay);
     connect_store_move_actions(
@@ -110,13 +148,16 @@ pub(super) fn append_password_row(list: &ListBox, item: PassEntry, overlay: &Toa
 fn configure_password_row_menu(
     menu_button: &MenuButton,
     state: &PasswordRowState,
+    allow_move_to_store: bool,
     list: &ListBox,
     overlay: &ToastOverlay,
 ) {
     let menu = Menu::new();
     menu.append(Some("Rename pass file"), Some("entry.rename-file"));
     menu.append(Some("Move pass file"), Some("entry.move"));
-    menu.append(Some("Move to store"), Some("entry.move-store"));
+    if allow_move_to_store {
+        menu.append(Some("Move to store"), Some("entry.move-store"));
+    }
     menu.append(
         Some("Open in File Manager"),
         Some("entry.open-in-file-manager"),
@@ -398,11 +439,28 @@ fn show_password_row_display(state: &PasswordRowState) {
 
 fn sync_password_row_display(state: &PasswordRowState) {
     let item = state.item.borrow();
+    let capabilities = password_row_capabilities(state.readable);
     state.action_row.set_title(&item.basename);
     state.action_row.set_subtitle(&item.relative_path);
 
     set_string_data(&state.row, "root", item.store_path.clone());
     set_string_data(&state.row, "label", item.label());
+    set_string_data(
+        &state.row,
+        "openable",
+        if capabilities.can_open {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        },
+    );
+}
+
+fn build_unreadable_password_icon(visible: bool) -> Image {
+    let icon = dim_label_icon("dialog-warning-symbolic");
+    icon.set_tooltip_text(Some(UNREADABLE_PASSWORD_ROW_TOOLTIP));
+    icon.set_visible(visible);
+    icon
 }
 
 fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {
@@ -464,7 +522,9 @@ fn log_undo_error(action: &str, error: &UndoError) {
 
 #[cfg(test)]
 mod tests {
-    use super::{entry_parent_directory, moved_file_label, renamed_file_label};
+    use super::{
+        entry_parent_directory, moved_file_label, password_row_capabilities, renamed_file_label,
+    };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::PassEntry;
     use crate::password::undo::UndoError;
@@ -526,5 +586,18 @@ mod tests {
             let error = UndoError::Read(PasswordEntryError::other("missing"));
             assert_eq!(error.toast_message(), "Couldn't undo the last change.");
         }
+    }
+
+    #[test]
+    fn unreadable_rows_keep_only_file_management_actions() {
+        assert_eq!(
+            password_row_capabilities(false),
+            super::PasswordRowCapabilities {
+                can_open: false,
+                show_copy_button: false,
+                allow_move_to_store: false,
+                show_unreadable_warning: true,
+            }
+        );
     }
 }

@@ -20,6 +20,13 @@ pub(super) fn connect_password_list_activation(
     let overlay = overlay.clone();
     let page_state = page_state.clone();
     list.connect_row_activated(move |_list, row| {
+        if matches!(
+            non_null_to_string_option(row, "openable").as_deref(),
+            Some("false")
+        ) {
+            return;
+        }
+
         let label = non_null_to_string_option(row, "label");
         let root = non_null_to_string_option(row, "root");
 

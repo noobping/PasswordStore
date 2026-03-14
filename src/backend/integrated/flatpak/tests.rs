@@ -8,7 +8,8 @@ use super::super::keys::{
 };
 use super::crypto::FlatpakCryptoContext;
 use super::entries::{
-    delete_password_entry, read_password_entry, rename_password_entry, save_password_entry,
+    delete_password_entry, password_entry_is_readable, read_password_entry, rename_password_entry,
+    save_password_entry,
 };
 use super::git::{
     git_commit_private_key_requiring_unlock_for_entry,
@@ -439,6 +440,10 @@ fn all_keys_mode_requires_every_selected_private_key() {
             .expect_err("missing one required key should fail"),
         PasswordEntryError::MissingPrivateKey(_)
     ));
+    assert!(!password_entry_is_readable(
+        store.to_string_lossy().as_ref(),
+        "team/service"
+    ));
 }
 
 #[test]
@@ -473,6 +478,80 @@ fn all_keys_mode_uses_a_nonstandard_layered_entry_format() {
 
     assert!(outer_layer.starts_with("keycord-require-all-private-keys-v1\n"));
     assert_ne!(outer_layer, "supersecret\nusername: alice");
+}
+
+#[test]
+fn readability_check_requires_at_least_one_ready_key_in_any_mode() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let bytes_b = protected_cert_bytes("Key B <b@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+
+    let store = env.root_dir().join("secondary-store");
+    fs::create_dir_all(&store).expect("create secondary store");
+    fs::write(
+        store.join(".gpg-id"),
+        format!("{}\n{}\n", key_a.fingerprint, key_b.fingerprint),
+    )
+    .expect("write recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry");
+
+    assert!(password_entry_is_readable(
+        store.to_string_lossy().as_ref(),
+        "team/service"
+    ));
+
+    remove_ripasso_private_key(&key_a.fingerprint).expect("remove first key");
+    assert!(password_entry_is_readable(
+        store.to_string_lossy().as_ref(),
+        "team/service"
+    ));
+
+    remove_ripasso_private_key(&key_b.fingerprint).expect("remove second key");
+    assert!(!password_entry_is_readable(
+        store.to_string_lossy().as_ref(),
+        "team/service"
+    ));
+}
+
+#[test]
+fn readability_check_treats_locked_keys_as_openable() {
+    let env = SystemBackendTestEnv::new();
+    let bytes = protected_cert_bytes("Key A <a@example.com>");
+    let key =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+
+    let store = env.root_dir().join("secondary-store");
+    fs::create_dir_all(&store).expect("create secondary store");
+    fs::write(store.join(".gpg-id"), format!("{}\n", key.fingerprint)).expect("write recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry");
+
+    clear_cached_unlocked_ripasso_private_keys();
+
+    assert!(password_entry_is_readable(
+        store.to_string_lossy().as_ref(),
+        "team/service"
+    ));
+    assert!(matches!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect_err("locked key should still block the actual read"),
+        PasswordEntryError::LockedPrivateKey(_)
+    ));
 }
 
 #[test]

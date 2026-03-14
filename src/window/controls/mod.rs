@@ -350,6 +350,21 @@ pub(crate) fn register_list_visibility_action(
     });
 }
 
+pub(crate) fn register_reload_password_list_action(
+    window: &adw::ApplicationWindow,
+    state: &ListVisibilityActionState,
+) {
+    let state = state.clone();
+    register_window_action(window, "reload-password-list", move || {
+        reload_password_list(
+            &state.list,
+            &state.overlay,
+            &state.navigation,
+            &state.visibility,
+        );
+    });
+}
+
 pub(crate) fn apply_startup_query(
     startup_query: Option<String>,
     search_entry: &SearchEntry,

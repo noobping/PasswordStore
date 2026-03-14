@@ -111,6 +111,10 @@ pub(crate) fn read_password_line(
     Ok(secret.lines().next().unwrap_or_default().to_string())
 }
 
+pub(crate) fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+    recipients::password_entry_is_readable(store_root, label)
+}
+
 pub(crate) fn save_password_entry(
     store_root: &str,
     label: &str,

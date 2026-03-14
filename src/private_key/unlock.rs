@@ -6,6 +6,7 @@ use crate::logging::log_error;
 use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,
 };
+use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
@@ -37,6 +38,7 @@ fn start_private_key_unlock_for_action(
     let overlay = overlay.clone();
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let overlay_for_disconnect = overlay.clone();
+    let window_for_result = window.clone();
     let after_unlock = after_unlock.clone();
     spawn_result_task(
         move || unlock_ripasso_private_key_for_session(&fingerprint, &passphrase),
@@ -44,6 +46,7 @@ fn start_private_key_unlock_for_action(
             Ok(_) => {
                 progress_dialog.force_close();
                 after_unlock();
+                activate_widget_action(&window_for_result, "win.reload-password-list");
                 overlay.add_toast(Toast::new("Key unlocked."));
             }
             Err(err) => {

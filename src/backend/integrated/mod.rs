@@ -36,6 +36,6 @@ pub(crate) use self::imp::{
 pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_keys;
 
 pub(crate) use self::imp::{
-    delete_password_entry, read_password_entry, read_password_line, rename_password_entry,
-    save_password_entry, save_store_recipients,
+    delete_password_entry, password_entry_is_readable, read_password_entry, read_password_line,
+    rename_password_entry, save_password_entry, save_store_recipients,
 };

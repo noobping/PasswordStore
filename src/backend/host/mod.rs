@@ -40,6 +40,10 @@ pub(super) fn read_password_line(
         .to_string())
 }
 
+pub(super) fn password_entry_is_readable(_store_root: &str, _label: &str) -> bool {
+    true
+}
+
 pub(super) fn save_password_entry(
     store_root: &str,
     label: &str,

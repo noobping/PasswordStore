@@ -98,3 +98,17 @@ dispatch_backend_call! {
         private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     ) -> Result<(), StoreRecipientsError>;
 }
+
+#[cfg(not(keycord_linux))]
+pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+    integrated::password_entry_is_readable(store_root, label)
+}
+
+#[cfg(keycord_linux)]
+pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+    if Preferences::new().uses_integrated_backend() {
+        integrated::password_entry_is_readable(store_root, label)
+    } else {
+        host::password_entry_is_readable(store_root, label)
+    }
+}

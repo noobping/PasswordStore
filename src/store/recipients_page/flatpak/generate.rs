@@ -3,6 +3,7 @@ use super::StoreRecipientsPageState;
 use crate::backend::{generate_ripasso_private_key, ManagedRipassoPrivateKey, PrivateKeyError};
 use crate::logging::log_error;
 use crate::private_key::dialog::build_private_key_progress_dialog;
+use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::append_action_row_with_button;
 use adw::glib::object::IsA;
@@ -79,6 +80,7 @@ fn finish_private_key_generation(
     match result {
         Ok(_) => {
             rebuild_store_recipients_list(state);
+            activate_widget_action(&state.window, "win.reload-password-list");
             state
                 .platform
                 .overlay

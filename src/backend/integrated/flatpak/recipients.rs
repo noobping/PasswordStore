@@ -1,10 +1,10 @@
 use super::super::keys::{
-    fingerprint_from_string, imported_private_key_fingerprints, load_stored_ripasso_key_ring,
-    missing_private_key_error, ripasso_private_key_requires_session_unlock,
-    selected_ripasso_own_fingerprint,
+    ensure_ripasso_private_key_is_ready, fingerprint_from_string,
+    imported_private_key_fingerprints, load_stored_ripasso_key_ring, missing_private_key_error,
+    ripasso_private_key_requires_session_unlock, selected_ripasso_own_fingerprint,
 };
 use super::paths::recipients_file_for_label;
-use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::backend::{PasswordEntryError, StoreRecipientsPrivateKeyRequirement};
 use ripasso::pass::{Comment, KeyRingStatus, OwnerTrustLevel, Recipient};
 use sequoia_openpgp::{Cert, KeyHandle};
 use std::collections::{HashMap, HashSet};
@@ -68,6 +68,27 @@ fn resolved_recipients_from_contents<'a>(
     let mut recipients = Vec::new();
     let mut seen = HashSet::new();
 
+    for line in recipient_ids_from_contents(contents) {
+        let Some((fingerprint, cert)) = resolve_recipient_cert(&line, key_ring) else {
+            return Err(format!("Recipient '{line}' is not available in the app."));
+        };
+        if !seen.insert(fingerprint) {
+            continue;
+        }
+
+        recipients.push(ResolvedRecipient {
+            fingerprint,
+            cert,
+            requested_id: line,
+        });
+    }
+
+    Ok(recipients)
+}
+
+fn recipient_ids_from_contents(contents: &str) -> Vec<String> {
+    let mut recipients = Vec::new();
+
     for raw_line in contents.lines() {
         let line = raw_line
             .split_once('#')
@@ -78,21 +99,10 @@ fn resolved_recipients_from_contents<'a>(
             continue;
         }
 
-        let Some((fingerprint, cert)) = resolve_recipient_cert(line, key_ring) else {
-            return Err(format!("Recipient '{line}' is not available in the app."));
-        };
-        if !seen.insert(fingerprint) {
-            continue;
-        }
-
-        recipients.push(ResolvedRecipient {
-            fingerprint,
-            cert,
-            requested_id: line.to_string(),
-        });
+        recipients.push(line.to_string());
     }
 
-    Ok(recipients)
+    recipients
 }
 
 fn metadata_line_matches(line: &str, expected: &str) -> bool {
@@ -224,6 +234,58 @@ pub(super) fn required_private_key_fingerprints_for_label(
     label: &str,
 ) -> Result<Vec<String>, String> {
     recipient_fingerprints_for_label(store_root, label)
+}
+
+pub(crate) fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+    let Ok(recipients_file) = recipients_file_for_label(store_root, label) else {
+        return false;
+    };
+    let Ok(contents) = fs::read_to_string(recipients_file) else {
+        return false;
+    };
+    let private_key_requirement = private_key_requirement_from_contents(&contents);
+    let Ok(key_ring) = load_stored_ripasso_key_ring() else {
+        return false;
+    };
+
+    let recipient_ids = recipient_ids_from_contents(&contents);
+    if recipient_ids.is_empty() {
+        return false;
+    }
+
+    match private_key_requirement {
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey => {
+            recipient_ids.into_iter().any(|id| {
+                resolve_recipient_cert(&id, &key_ring)
+                    .map(|(_, cert)| {
+                        private_key_is_openable_with_unlock(&cert.fingerprint().to_hex())
+                    })
+                    .unwrap_or(false)
+            })
+        }
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys => {
+            let mut seen = HashSet::new();
+            for id in recipient_ids {
+                let Some((fingerprint, cert)) = resolve_recipient_cert(&id, &key_ring) else {
+                    return false;
+                };
+                if !seen.insert(fingerprint) {
+                    continue;
+                }
+                if !private_key_is_openable_with_unlock(&cert.fingerprint().to_hex()) {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
+fn private_key_is_openable_with_unlock(fingerprint: &str) -> bool {
+    matches!(
+        ensure_ripasso_private_key_is_ready(fingerprint),
+        Ok(()) | Err(PasswordEntryError::LockedPrivateKey(_))
+    )
 }
 
 pub(super) fn decryption_candidate_fingerprints_for_entry(

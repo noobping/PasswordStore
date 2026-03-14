@@ -3,8 +3,9 @@ use super::crypto::FlatpakCryptoContext;
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
 use super::recipients::{
-    decryption_candidate_fingerprints_for_entry, private_key_requirement_for_label,
-    required_private_key_fingerprints_for_label,
+    decryption_candidate_fingerprints_for_entry,
+    password_entry_is_readable as recipients_password_entry_is_readable,
+    private_key_requirement_for_label, required_private_key_fingerprints_for_label,
 };
 use crate::backend::{
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsPrivateKeyRequirement,
@@ -94,6 +95,10 @@ pub(crate) fn read_password_line(
 ) -> Result<String, PasswordEntryError> {
     let secret = read_password_entry(store_root, label)?;
     Ok(secret.lines().next().unwrap_or_default().to_string())
+}
+
+pub(crate) fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+    recipients_password_entry_is_readable(store_root, label)
 }
 
 pub(crate) fn save_password_entry(

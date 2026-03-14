@@ -10,6 +10,7 @@ use crate::backend::{
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
+use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
     append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
 };
@@ -83,6 +84,17 @@ fn set_private_key_recipient_values(
         recipients.push(key.fingerprint.clone());
     }
     *recipients != before
+}
+
+fn private_key_delete_block_message(active: bool) -> Option<&'static str> {
+    active.then_some("Uncheck this private key before removing it.")
+}
+
+fn sync_private_key_delete_button(delete_button: &adw::gtk::Button, active: bool) {
+    delete_button.set_sensitive(!active);
+    delete_button.set_tooltip_text(Some(
+        private_key_delete_block_message(active).unwrap_or("Remove key"),
+    ));
 }
 
 fn unresolved_private_key_recipients(
@@ -250,7 +262,10 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
                 prompt_private_key_unlock_for_action(
                     &unlock_state.platform.overlay,
                     fingerprint.clone(),
-                    Rc::new(move || super::rebuild_store_recipients_list(&refresh_state)),
+                    Rc::new(move || {
+                        super::rebuild_store_recipients_list(&refresh_state);
+                        activate_widget_action(&refresh_state.window, "win.reload-password-list");
+                    }),
                 );
             });
         } else if unlocked {
@@ -264,6 +279,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         row.add_suffix(&copy_button);
 
         let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove key");
+        sync_private_key_delete_button(&delete_button, active);
         row.add_suffix(&delete_button);
         state.list.append(&row);
 
@@ -274,7 +290,9 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
         let page_state = state.clone();
         let key_for_toggle = key.clone();
+        let delete_button_for_toggle = delete_button.clone();
         toggle.connect_toggled(move |button| {
+            sync_private_key_delete_button(&delete_button_for_toggle, button.is_active());
             if set_private_key_recipient_enabled(&page_state, &key_for_toggle, button.is_active()) {
                 queue_store_recipients_autosave(&page_state);
             }
@@ -293,7 +311,16 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
         let page_state = state.clone();
         let key_for_delete = key.clone();
+        let toggle_for_delete = toggle.clone();
         delete_button.connect_clicked(move |_| {
+            if toggle_for_delete.is_active() {
+                page_state.platform.overlay.add_toast(Toast::new(
+                    private_key_delete_block_message(true)
+                        .expect("active delete block message should exist"),
+                ));
+                return;
+            }
+
             if let Err(err) = remove_ripasso_private_key(&key_for_delete.fingerprint) {
                 log_error(format!(
                     "Failed to remove private key '{}': {err}",
@@ -311,12 +338,8 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             {
                 let _ = Preferences::new().set_ripasso_own_fingerprint(None);
             }
-            let recipients_changed =
-                set_private_key_recipient_enabled(&page_state, &key_for_delete, false);
             super::rebuild_store_recipients_list(&page_state);
-            if recipients_changed {
-                queue_store_recipients_autosave(&page_state);
-            }
+            activate_widget_action(&page_state.window, "win.reload-password-list");
         });
     }
 
@@ -328,8 +351,8 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 #[cfg(test)]
 mod tests {
     use super::{
-        recipient_matches_private_key, set_private_key_recipient_values,
-        unresolved_private_key_recipients,
+        private_key_delete_block_message, recipient_matches_private_key,
+        set_private_key_recipient_values, unresolved_private_key_recipients,
     };
     use crate::backend::ManagedRipassoPrivateKey;
 
@@ -412,5 +435,14 @@ mod tests {
             unresolved_private_key_recipients(&recipients, &keys),
             vec!["missing@example.com".to_string()]
         );
+    }
+
+    #[test]
+    fn checked_private_keys_must_be_unchecked_before_delete() {
+        assert_eq!(
+            private_key_delete_block_message(true),
+            Some("Uncheck this private key before removing it.")
+        );
+        assert_eq!(private_key_delete_block_message(false), None);
     }
 }

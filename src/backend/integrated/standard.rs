@@ -33,6 +33,10 @@ pub(crate) fn read_password_line(
         .map_err(|err| PasswordEntryError::from_store_message(err.to_string()))
 }
 
+pub(crate) fn password_entry_is_readable(_store_root: &str, _label: &str) -> bool {
+    true
+}
+
 pub(crate) fn save_password_entry(
     store_root: &str,
     label: &str,

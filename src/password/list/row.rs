@@ -3,7 +3,7 @@ use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::logging::log_error;
 use crate::password::model::PassEntry;
 use crate::password::undo::{
-    delete_entry_and_capture_undo, move_entry_between_stores_action, move_entry_to_store,
+    delete_entry_with_optional_undo, move_entry_between_stores_action, move_entry_to_store,
     push_undo_action, rename_entry_action, UndoError,
 };
 use crate::preferences::Preferences;
@@ -343,10 +343,14 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
     let overlay = overlay.clone();
     let overlay_for_disconnect = overlay.clone();
     spawn_result_task(
-        move || delete_entry_and_capture_undo(&entry),
+        move || delete_entry_with_optional_undo(&entry),
         move |result| match result {
             Ok(undo_action) => {
-                push_undo_action(undo_action);
+                if let Some(undo_action) = undo_action {
+                    push_undo_action(undo_action);
+                } else {
+                    overlay.add_toast(Toast::new("Deleted. Undo unavailable."));
+                }
                 list.remove(&row);
             }
             Err(err) => {

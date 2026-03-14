@@ -695,8 +695,6 @@
                           <object class="AdwPreferencesPage">
                             <child>
                               <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">Recipients</property>
-                                <property name="description" translatable="yes">Choose who can open this store.</property>
                                 <child>
                                   <object class="GtkScrolledWindow">
                                     <property name="hscrollbar-policy">never</property>

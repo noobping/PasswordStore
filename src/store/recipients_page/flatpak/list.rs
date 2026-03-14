@@ -85,6 +85,62 @@ fn set_private_key_recipient_values(
     *recipients != before
 }
 
+fn unresolved_private_key_recipients(
+    recipients: &[String],
+    keys: &[ManagedRipassoPrivateKey],
+) -> Vec<String> {
+    let mut unresolved = Vec::new();
+
+    for recipient in recipients {
+        if keys
+            .iter()
+            .any(|key| recipient_matches_private_key(recipient, key))
+        {
+            continue;
+        }
+        if unresolved.iter().any(|existing| existing == recipient) {
+            continue;
+        }
+        unresolved.push(recipient.clone());
+    }
+
+    unresolved
+}
+
+fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipients: &[String]) {
+    if recipients.is_empty() {
+        return;
+    }
+
+    for recipient in recipients {
+        let row = ActionRow::builder()
+            .title(recipient)
+            .subtitle("This recipient is not available in the app.")
+            .build();
+        row.set_activatable(false);
+        row.add_prefix(&dim_label_icon("dialog-warning-symbolic"));
+
+        let delete_button =
+            flat_icon_button_with_tooltip("user-trash-symbolic", "Remove recipient");
+        row.add_suffix(&delete_button);
+        state.list.append(&row);
+
+        let page_state = state.clone();
+        let recipient = recipient.clone();
+        delete_button.connect_clicked(move |_| {
+            let before = page_state.recipients.borrow().clone();
+            page_state
+                .recipients
+                .borrow_mut()
+                .retain(|value| value != &recipient);
+            super::rebuild_store_recipients_list(&page_state);
+            if *page_state.recipients.borrow() != before {
+                queue_store_recipients_autosave(&page_state);
+            }
+        });
+    }
+}
+
 fn append_private_key_requirement_row(state: &StoreRecipientsPageState) {
     let row = ActionRow::builder()
         .title("Require all selected private keys")
@@ -139,12 +195,19 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         }
     };
 
+    let current_recipients = state.recipients.borrow().clone();
+    let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
+
     if keys.is_empty() {
-        append_info_row(
-            &state.list,
-            "No private keys yet",
-            "Generate or import a private key first.",
-        );
+        if unresolved_recipients.is_empty() {
+            append_info_row(
+                &state.list,
+                "No private keys yet",
+                "Generate or import a private key first.",
+            );
+        } else {
+            append_unresolved_private_key_rows(state, &unresolved_recipients);
+        }
         append_private_key_generate_row(state);
         append_private_key_clipboard_import_row(state);
         append_private_key_import_row(state);
@@ -152,6 +215,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     }
 
     append_private_key_requirement_row(state);
+    append_unresolved_private_key_rows(state, &unresolved_recipients);
 
     for key in keys {
         let active = state
@@ -263,7 +327,10 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
 #[cfg(test)]
 mod tests {
-    use super::{recipient_matches_private_key, set_private_key_recipient_values};
+    use super::{
+        recipient_matches_private_key, set_private_key_recipient_values,
+        unresolved_private_key_recipients,
+    };
     use crate::backend::ManagedRipassoPrivateKey;
 
     #[test]
@@ -327,5 +394,23 @@ mod tests {
             false
         ));
         assert_eq!(recipients, vec!["other@example.com".to_string()]);
+    }
+
+    #[test]
+    fn unresolved_private_key_recipients_keep_values_not_available_in_the_app() {
+        let recipients = vec![
+            "pass@store.local".to_string(),
+            "missing@example.com".to_string(),
+            "10F4487A3768155709168A8E3D00743E10EA9232".to_string(),
+        ];
+        let keys = vec![ManagedRipassoPrivateKey {
+            fingerprint: "10F4487A3768155709168A8E3D00743E10EA9232".to_string(),
+            user_ids: vec!["pass@store.local".to_string()],
+        }];
+
+        assert_eq!(
+            unresolved_private_key_recipients(&recipients, &keys),
+            vec!["missing@example.com".to_string()]
+        );
     }
 }

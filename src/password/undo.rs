@@ -167,11 +167,36 @@ pub(crate) fn move_entry_between_stores_action(
     }
 }
 
-pub(crate) fn delete_entry_and_capture_undo(entry: &PassEntry) -> Result<UndoAction, UndoError> {
-    let contents =
-        read_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Read)?;
-    delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
-    Ok(restore_deleted_entry_action(entry, contents))
+pub(crate) fn delete_entry_with_optional_undo(
+    entry: &PassEntry,
+) -> Result<Option<UndoAction>, UndoError> {
+    match read_password_entry(&entry.store_path, &entry.label()) {
+        Ok(contents) => {
+            delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
+            Ok(Some(restore_deleted_entry_action(entry, contents)))
+        }
+        Err(err) if can_delete_without_undo_after_read_error(&err) => {
+            delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
+            Ok(None)
+        }
+        Err(err) => Err(UndoError::Read(err)),
+    }
+}
+
+#[cfg(keycord_restricted)]
+fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
+    matches!(
+        error,
+        PasswordEntryError::MissingPrivateKey(_)
+            | PasswordEntryError::LockedPrivateKey(_)
+            | PasswordEntryError::IncompatiblePrivateKey(_)
+    )
+}
+
+#[cfg(keycord_standard_linux)]
+fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
+    let _ = error;
+    false
 }
 
 pub(crate) fn move_entry_to_store(
@@ -296,10 +321,12 @@ fn move_entry_between_stores(
 #[cfg(test)]
 mod tests {
     use super::{
-        clear_undo_actions, has_undo_actions, move_entry_between_stores_action, pop_undo_action,
-        push_undo_action, rename_entry_action, restore_deleted_entry_action,
-        restore_saved_entry_action, undo_action_restored_entry, UndoAction,
+        can_delete_without_undo_after_read_error, clear_undo_actions, has_undo_actions,
+        move_entry_between_stores_action, pop_undo_action, push_undo_action, rename_entry_action,
+        restore_deleted_entry_action, restore_saved_entry_action, undo_action_restored_entry,
+        UndoAction,
     };
+    use crate::backend::PasswordEntryError;
     use crate::password::model::PassEntry;
     use std::sync::{Mutex, OnceLock};
 
@@ -363,6 +390,26 @@ mod tests {
                 "work/gitlab"
             ),
             UndoAction::RestoreSavedEntry { .. }
+        ));
+    }
+
+    #[test]
+    fn delete_without_undo_is_allowed_only_for_private_key_read_failures() {
+        #[cfg(keycord_restricted)]
+        {
+            assert!(can_delete_without_undo_after_read_error(
+                &PasswordEntryError::missing_private_key("missing"),
+            ));
+            assert!(can_delete_without_undo_after_read_error(
+                &PasswordEntryError::locked_private_key("locked"),
+            ));
+            assert!(can_delete_without_undo_after_read_error(
+                &PasswordEntryError::incompatible_private_key("incompatible"),
+            ));
+        }
+
+        assert!(!can_delete_without_undo_after_read_error(
+            &PasswordEntryError::other("other"),
         ));
     }
 }

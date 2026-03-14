@@ -238,7 +238,16 @@ pub(crate) fn git_commit_private_key_requiring_unlock_for_store_recipients(
 ) -> Result<Option<String>, String> {
     let recipients_contents = recipient_contents(recipients, private_key_requirement);
     let fingerprint =
-        FlatpakCryptoContext::fingerprint_for_recipient_contents(&recipients_contents)?;
+        match FlatpakCryptoContext::fingerprint_for_recipient_contents(&recipients_contents) {
+            Ok(fingerprint) => fingerprint,
+            Err(err)
+                if err.contains("is not available in the app.")
+                    || err.contains("No recipients were found") =>
+            {
+                return Ok(None);
+            }
+            Err(err) => return Err(err),
+        };
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 

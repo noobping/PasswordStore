@@ -39,6 +39,10 @@ impl Preferences {
         remote_git_command()
     }
 
+    pub fn command(&self) -> Command {
+        self.command_with_envs(&[])
+    }
+
     pub fn command_with_envs(&self, envs: &[(&str, &str)]) -> Command {
         let (program, args) = split_command_line(&self.command_value());
         build_command(program, args, envs)

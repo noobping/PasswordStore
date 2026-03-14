@@ -1,11 +1,11 @@
 mod clone;
 mod dialogs;
-#[cfg(keycord_standard_linux)]
+#[cfg(keycord_linux)]
 mod import;
 
 use self::clone::append_store_clone_row;
 pub(crate) use self::clone::prompt_store_clone;
-#[cfg(keycord_standard_linux)]
+#[cfg(keycord_linux)]
 use self::import::schedule_store_import_row;
 use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
@@ -137,10 +137,27 @@ fn append_optional_store_import_row(
     overlay: &ToastOverlay,
     stores: Vec<String>,
 ) {
-    schedule_store_import_row(list, settings, window, overlay, stores);
+    if settings.backend_kind().uses_host_command() {
+        schedule_store_import_row(list, settings, window, overlay, stores);
+    }
 }
 
-#[cfg(keycord_restricted)]
+#[cfg(keycord_flatpak)]
+fn append_optional_store_import_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    stores: Vec<String>,
+) {
+    if crate::support::runtime::host_command_execution_available()
+        && settings.backend_kind().uses_host_command()
+    {
+        schedule_store_import_row(list, settings, window, overlay, stores);
+    }
+}
+
+#[cfg(not(keycord_linux))]
 fn append_optional_store_import_row(
     _list: &ListBox,
     _settings: &Preferences,
@@ -357,7 +374,7 @@ pub(crate) fn register_open_store_picker_action(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(keycord_standard_linux)]
+    #[cfg(keycord_linux)]
     use super::import::should_show_pass_import_row;
     use super::{
         initial_recipients_for_store_creation, selected_store_folder_mode,
@@ -420,7 +437,7 @@ mod tests {
         );
     }
 
-    #[cfg(keycord_standard_linux)]
+    #[cfg(keycord_linux)]
     #[test]
     fn pass_import_row_requires_an_existing_store_and_available_sources() {
         assert!(!should_show_pass_import_row(

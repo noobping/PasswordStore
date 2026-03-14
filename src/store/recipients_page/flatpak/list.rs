@@ -1,3 +1,4 @@
+use super::generate::append_private_key_generate_row;
 use super::import::append_private_key_import_row;
 use super::{super::queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::backend::{
@@ -83,6 +84,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
                 "Couldn't load private keys",
                 "Try again from Preferences.",
             );
+            append_private_key_generate_row(state);
             append_private_key_import_row(state);
             return;
         }
@@ -92,8 +94,9 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         append_info_row(
             &state.list,
             "No private keys yet",
-            "Import a private key first.",
+            "Generate or import a private key first.",
         );
+        append_private_key_generate_row(state);
         append_private_key_import_row(state);
         return;
     }
@@ -186,6 +189,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         });
     }
 
+    append_private_key_generate_row(state);
     append_private_key_import_row(state);
 }
 

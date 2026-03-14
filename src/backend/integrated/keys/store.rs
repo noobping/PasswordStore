@@ -11,7 +11,7 @@ use crate::backend::{PasswordEntryError, PrivateKeyError};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
-use sequoia_openpgp::{serialize::Serialize, Cert};
+use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize, Cert};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -304,6 +304,45 @@ pub fn import_ripasso_private_key_bytes(
     cache_unlocked_ripasso_private_key(unlocked_cert);
 
     Ok(key)
+}
+
+pub fn generate_ripasso_private_key(
+    name: &str,
+    email: &str,
+    passphrase: &str,
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(PrivateKeyError::other("Enter a name for the private key."));
+    }
+
+    let email = email.trim();
+    if email.is_empty() {
+        return Err(PrivateKeyError::other(
+            "Enter an email address for the private key.",
+        ));
+    }
+
+    let trimmed_passphrase = passphrase.trim();
+    if trimmed_passphrase.is_empty() {
+        return Err(PrivateKeyError::passphrase_required(
+            "Enter the private key password.",
+        ));
+    }
+
+    let password: Password = trimmed_passphrase.into();
+    let user_id = format!("{name} <{email}>");
+    let (cert, _) = CertBuilder::general_purpose(Some(user_id.as_str()))
+        .set_password(Some(password))
+        .generate()
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+
+    let mut bytes = Vec::new();
+    cert.as_tsk()
+        .serialize(&mut bytes)
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+
+    import_ripasso_private_key_bytes(&bytes, Some(trimmed_passphrase))
 }
 
 pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {

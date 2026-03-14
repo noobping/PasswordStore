@@ -1,7 +1,8 @@
 use super::super::keys::{
     clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
-    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
+    generate_ripasso_private_key, import_ripasso_private_key_bytes,
+    is_ripasso_private_key_unlocked, list_ripasso_private_keys, parse_managed_private_key_bytes,
+    prepare_managed_private_key_bytes, remove_ripasso_private_key,
     resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
@@ -117,6 +118,25 @@ fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
     assert!(unlocked
         .keys()
         .all(|key| key.key().has_unencrypted_secret()));
+}
+
+#[test]
+fn generated_private_keys_are_stored_and_listed() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("generated-key");
+
+    let key = generate_ripasso_private_key("Generated User", "generated@example.com", "hunter2")
+        .expect("generate private key");
+
+    assert!(is_ripasso_private_key_unlocked(&key.fingerprint).expect("inspect unlocked state"));
+    assert!(key
+        .user_ids
+        .iter()
+        .any(|user_id| user_id.contains("Generated User <generated@example.com>")));
+    assert!(list_ripasso_private_keys()
+        .expect("list generated keys")
+        .into_iter()
+        .any(|stored| stored.fingerprint == key.fingerprint));
 }
 
 #[test]

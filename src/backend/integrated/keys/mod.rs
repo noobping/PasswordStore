@@ -21,8 +21,8 @@ pub(in crate::backend::integrated) use self::store::{
     missing_private_key_error, selected_ripasso_own_fingerprint,
 };
 pub use self::store::{
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    remove_ripasso_private_key, ripasso_private_key_requires_passphrase,
-    ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
-    unlock_ripasso_private_key_for_session,
+    generate_ripasso_private_key, import_ripasso_private_key_bytes,
+    is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
+    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
+    ripasso_private_key_title, unlock_ripasso_private_key_for_session,
 };

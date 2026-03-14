@@ -13,7 +13,8 @@ use crate::setup::*;
 #[cfg(keycord_restricted)]
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
-    connect_store_recipients_entry, register_store_recipients_save_action, StoreRecipientsPageState,
+    connect_store_recipients_entry, rebuild_store_list, register_store_recipients_save_action,
+    StoreRecipientsPageState,
 };
 #[cfg(keycord_setup)]
 use adw::gio::MenuItem;
@@ -202,22 +203,61 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
 fn initialize_backend_preferences(_widgets: &WindowWidgets, _preferences: &Preferences) {}
 
 #[cfg(keycord_linux)]
-fn connect_backend_preferences(widgets: &WindowWidgets, preferences: &Preferences) {
+fn connect_backend_preferences(
+    widgets: &WindowWidgets,
+    preferences: &Preferences,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let stores_list = widgets.password_stores.clone();
+    let window = widgets.window.clone();
+    let overlay = widgets.toast_overlay.clone();
+    let recipients_page = recipients_page.clone();
+    let preferences_for_rebuild = preferences.clone();
     connect_pass_command_row(
         &widgets.pass_command_row,
         &widgets.toast_overlay,
         preferences,
+        {
+            let stores_list = stores_list.clone();
+            let window = window.clone();
+            let overlay = overlay.clone();
+            let recipients_page = recipients_page.clone();
+            let preferences_for_rebuild = preferences_for_rebuild.clone();
+            move || {
+                rebuild_store_list(
+                    &stores_list,
+                    &preferences_for_rebuild,
+                    &window,
+                    &overlay,
+                    &recipients_page,
+                );
+            }
+        },
     );
     connect_backend_row(
         &widgets.backend_row,
         &widgets.pass_command_row,
         &widgets.toast_overlay,
         preferences,
+        move || {
+            rebuild_store_list(
+                &stores_list,
+                &preferences_for_rebuild,
+                &window,
+                &overlay,
+                &recipients_page,
+            );
+        },
     );
 }
 
 #[cfg(not(keycord_linux))]
-fn connect_backend_preferences(_widgets: &WindowWidgets, _preferences: &Preferences) {}
+fn connect_backend_preferences(
+    _widgets: &WindowWidgets,
+    _preferences: &Preferences,
+    _recipients_page: &StoreRecipientsPageState,
+) {
+}
 
 fn connect_window_behaviors(
     widgets: &WindowWidgets,
@@ -248,7 +288,7 @@ fn connect_window_behaviors(
         &widgets.toast_overlay,
     );
     let backend_preferences = Preferences::new();
-    connect_backend_preferences(widgets, &backend_preferences);
+    connect_backend_preferences(widgets, &backend_preferences, store_recipients_page_state);
     connect_store_recipients_entry(store_recipients_page_state);
     connect_password_copy_buttons(
         &widgets.toast_overlay,

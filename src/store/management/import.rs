@@ -2,7 +2,6 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
-use crate::support::object_data::{non_null_to_string_option, set_string_data};
 use crate::support::pass_import::{
     available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
 };
@@ -18,11 +17,8 @@ use adw::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::dialogs::{build_progress_dialog, dialog_content_shell};
-
-const STORE_LIST_REFRESH_ID_KEY: &str = "store-list-refresh-id";
 
 fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
     let file = dialog.file()?;
@@ -48,17 +44,6 @@ fn import_source_subtitle(source_path: Option<&str>) -> &'static str {
     } else {
         "Choose a file or folder if the importer needs one."
     }
-}
-
-fn next_store_list_refresh_id() -> String {
-    static NEXT_STORE_LIST_REFRESH_ID: AtomicU64 = AtomicU64::new(1);
-    NEXT_STORE_LIST_REFRESH_ID
-        .fetch_add(1, Ordering::Relaxed)
-        .to_string()
-}
-
-fn stores_list_refresh_is_current(list: &ListBox, refresh_id: &str) -> bool {
-    non_null_to_string_option(list, STORE_LIST_REFRESH_ID_KEY).as_deref() == Some(refresh_id)
 }
 
 fn build_import_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
@@ -268,42 +253,6 @@ fn start_pass_import(
     );
 }
 
-fn append_store_import_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    import_sources: Vec<String>,
-) {
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    append_action_row_with_button(
-        list,
-        "Import passwords",
-        "Use pass import with an existing store.",
-        "document-open-symbolic",
-        move || {
-            let stores = settings.stores();
-            if stores.is_empty() {
-                overlay.add_toast(Toast::new("Add a store first."));
-                return;
-            }
-
-            if !should_show_pass_import_row(&stores, &import_sources) {
-                overlay.add_toast(Toast::new("pass import is not available."));
-                return;
-            }
-
-            present_pass_import_dialog(&window, &overlay, &stores, &import_sources, {
-                let window = window.clone();
-                let overlay = overlay.clone();
-                move |request| start_pass_import(&window, &overlay, request)
-            });
-        },
-    );
-}
-
 pub(super) fn schedule_store_import_row(
     list: &ListBox,
     settings: &Preferences,
@@ -311,35 +260,62 @@ pub(super) fn schedule_store_import_row(
     overlay: &ToastOverlay,
     stores: Vec<String>,
 ) {
-    let refresh_id = next_store_list_refresh_id();
-    set_string_data(list, STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
+    if stores.is_empty() {
+        return;
+    }
 
-    let list_for_result = list.clone();
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let stores_for_result = stores.clone();
-    let refresh_id_for_result = refresh_id.clone();
-    spawn_result_task(
-        available_pass_import_sources,
-        move |result| {
-            if !stores_list_refresh_is_current(&list_for_result, &refresh_id_for_result) {
-                return;
-            }
+    append_action_row_with_button(
+        list,
+        "Import passwords",
+        "Use pass import with an existing store.",
+        "document-open-symbolic",
+        {
+            let settings = settings.clone();
+            let window = window.clone();
+            let overlay = overlay.clone();
+            move || {
+                let stores = settings.stores();
+                if stores.is_empty() {
+                    overlay.add_toast(Toast::new("Add a store first."));
+                    return;
+                }
 
-            let Ok(import_sources) = result else {
-                return;
-            };
-            if should_show_pass_import_row(&stores_for_result, &import_sources) {
-                append_store_import_row(
-                    &list_for_result,
-                    &settings,
-                    &window,
-                    &overlay,
-                    import_sources,
+                let window_for_result = window.clone();
+                let overlay_for_result = overlay.clone();
+                let stores_for_result = stores.clone();
+                let overlay_for_disconnect = overlay.clone();
+                spawn_result_task(
+                    available_pass_import_sources,
+                    move |result| match result {
+                        Ok(import_sources) => {
+                            if !should_show_pass_import_row(&stores_for_result, &import_sources) {
+                                overlay_for_result
+                                    .add_toast(Toast::new("pass import is not available."));
+                                return;
+                            }
+
+                            present_pass_import_dialog(
+                                &window_for_result,
+                                &overlay_for_result,
+                                &stores_for_result,
+                                &import_sources,
+                                {
+                                    let window = window_for_result.clone();
+                                    let overlay = overlay_for_result.clone();
+                                    move |request| start_pass_import(&window, &overlay, request)
+                                },
+                            );
+                        }
+                        Err(err) => {
+                            log_error(format!("Failed to read pass import sources: {err}"));
+                            overlay_for_result.add_toast(Toast::new(&err));
+                        }
+                    },
+                    move || {
+                        overlay_for_disconnect.add_toast(Toast::new("Couldn't read importers."));
+                    },
                 );
             }
         },
-        move || {},
     );
 }

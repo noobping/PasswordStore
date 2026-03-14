@@ -2,6 +2,7 @@ use super::{toast_preferences_save_error, PreferencesActionState};
 use crate::preferences::{BackendKind, Preferences};
 use adw::prelude::*;
 use adw::{ComboRow, EntryRow, Toast, ToastOverlay};
+use std::rc::Rc;
 
 fn backend_pass_row_visible(backend: BackendKind) -> bool {
     backend.uses_host_command()
@@ -37,13 +38,17 @@ pub(crate) fn initialize_backend_row(
     sync_backend_preferences_rows(backend_row, pass_row, preferences);
 }
 
-pub(crate) fn connect_pass_command_row(
+pub(crate) fn connect_pass_command_row<F>(
     pass_row: &EntryRow,
     overlay: &ToastOverlay,
     preferences: &Preferences,
-) {
+    on_changed: F,
+) where
+    F: Fn() + 'static,
+{
     let overlay = overlay.clone();
     let preferences = preferences.clone();
+    let on_changed = Rc::new(on_changed);
     pass_row.connect_apply(move |row| {
         let text = row.text().to_string();
         let text = text.trim();
@@ -53,19 +58,25 @@ pub(crate) fn connect_pass_command_row(
         }
         if let Err(err) = preferences.set_command(text) {
             toast_preferences_save_error(&overlay, "host command", &err);
+        } else {
+            on_changed();
         }
     });
 }
 
-pub(crate) fn connect_backend_row(
+pub(crate) fn connect_backend_row<F>(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
     overlay: &ToastOverlay,
     preferences: &Preferences,
-) {
+    on_changed: F,
+) where
+    F: Fn() + 'static,
+{
     let overlay = overlay.clone();
     let preferences = preferences.clone();
     let pass_row = pass_row.clone();
+    let on_changed = Rc::new(on_changed);
     backend_row.connect_selected_notify(move |row| {
         let selected_backend = BackendKind::from_combo_position(row.selected());
         let current_backend = preferences.backend_kind();
@@ -82,6 +93,7 @@ pub(crate) fn connect_backend_row(
         }
 
         pass_row.set_visible(backend_pass_row_visible(selected_backend));
+        on_changed();
     });
 }
 

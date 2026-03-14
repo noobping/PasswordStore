@@ -1,6 +1,6 @@
 use super::export::copy_armored_private_key;
 use super::generate::append_private_key_generate_row;
-use super::import::append_private_key_import_row;
+use super::import::{append_private_key_clipboard_import_row, append_private_key_import_row};
 use super::{super::queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::backend::{
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
@@ -86,6 +86,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
                 "Try again from Preferences.",
             );
             append_private_key_generate_row(state);
+            append_private_key_clipboard_import_row(state);
             append_private_key_import_row(state);
             return;
         }
@@ -98,6 +99,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             "Generate or import a private key first.",
         );
         append_private_key_generate_row(state);
+        append_private_key_clipboard_import_row(state);
         append_private_key_import_row(state);
         return;
     }
@@ -206,6 +208,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     }
 
     append_private_key_generate_row(state);
+    append_private_key_clipboard_import_row(state);
     append_private_key_import_row(state);
 }
 

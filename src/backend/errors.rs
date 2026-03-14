@@ -321,7 +321,7 @@ impl PrivateKeyError {
 
     pub(crate) fn inspection_message(&self) -> &'static str {
         match self {
-            Self::MissingPrivateKeyMaterial(_) => "That file does not contain a private key.",
+            Self::MissingPrivateKeyMaterial(_) => "That data does not contain a private key.",
             _ => "Couldn't read that key.",
         }
     }

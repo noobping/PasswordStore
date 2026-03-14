@@ -11,7 +11,7 @@ use crate::private_key::dialog::{
 use crate::support::background::spawn_result_task;
 use crate::support::ui::append_action_row_with_button;
 use adw::gio;
-use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
+use adw::gtk::{gdk::Display, FileChooserAction, FileChooserNative, ResponseType};
 use adw::prelude::*;
 use adw::Toast;
 use std::rc::Rc;
@@ -75,6 +75,20 @@ fn prompt_private_key_passphrase(state: &StoreRecipientsPageState, bytes: Vec<u8
     });
 }
 
+fn import_private_key_bytes(state: &StoreRecipientsPageState, bytes: Vec<u8>) {
+    match ripasso_private_key_requires_passphrase(&bytes) {
+        Ok(true) => prompt_private_key_passphrase(state, bytes),
+        Ok(false) => start_private_key_import(state, bytes, None),
+        Err(err) => {
+            log_error(format!("Failed to inspect private key: {err}"));
+            state
+                .platform
+                .overlay
+                .add_toast(Toast::new(err.inspection_message()));
+        }
+    }
+}
+
 fn open_private_key_picker(state: &StoreRecipientsPageState) {
     let dialog = FileChooserNative::new(
         Some("Import private key"),
@@ -97,18 +111,7 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
 
         match file.load_bytes(None::<&gio::Cancellable>) {
             Ok((bytes, _)) => {
-                let bytes = bytes.as_ref().to_vec();
-                match ripasso_private_key_requires_passphrase(&bytes) {
-                    Ok(true) => prompt_private_key_passphrase(&state_for_response, bytes),
-                    Ok(false) => start_private_key_import(&state_for_response, bytes, None),
-                    Err(err) => {
-                        log_error(format!("Failed to inspect private key: {err}"));
-                        state_for_response
-                            .platform
-                            .overlay
-                            .add_toast(Toast::new(err.inspection_message()));
-                    }
-                }
+                import_private_key_bytes(&state_for_response, bytes.as_ref().to_vec());
             }
             Err(err) => {
                 log_error(format!(
@@ -125,6 +128,49 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
     });
 
     dialog.show();
+}
+
+fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
+    let Some(display) = Display::default() else {
+        state
+            .platform
+            .overlay
+            .add_toast(Toast::new("Clipboard unavailable."));
+        return;
+    };
+
+    let clipboard = display.clipboard();
+    let state_for_response = state.clone();
+    clipboard.read_text_async(None::<&gio::Cancellable>, move |result| match result {
+        Ok(Some(text)) if !text.trim().is_empty() => {
+            import_private_key_bytes(&state_for_response, text.as_bytes().to_vec());
+        }
+        Ok(_) => {
+            state_for_response
+                .platform
+                .overlay
+                .add_toast(Toast::new("Clipboard does not contain a key."));
+        }
+        Err(err) => {
+            log_error(format!("Failed to read private key from clipboard: {err}"));
+            state_for_response
+                .platform
+                .overlay
+                .add_toast(Toast::new("Couldn't read the clipboard."));
+        }
+    });
+}
+
+pub(super) fn append_private_key_clipboard_import_row(state: &StoreRecipientsPageState) {
+    let list = state.list.clone();
+    let state = state.clone();
+    append_action_row_with_button(
+        &list,
+        "Import private key from clipboard",
+        "Read an armored private key from the clipboard.",
+        "edit-paste-symbolic",
+        move || import_private_key_from_clipboard(&state),
+    );
 }
 
 pub(super) fn append_private_key_import_row(state: &StoreRecipientsPageState) {

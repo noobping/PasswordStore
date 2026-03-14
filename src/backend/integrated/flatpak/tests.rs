@@ -154,6 +154,22 @@ fn armored_private_keys_can_be_exported() {
 }
 
 #[test]
+fn armored_private_keys_can_be_reimported_from_text_bytes() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("clipboard-import");
+
+    let key = generate_ripasso_private_key("Clipboard User", "clipboard@example.com", "hunter2")
+        .expect("generate private key");
+    let armored = armored_ripasso_private_key(&key.fingerprint).expect("export armored key");
+
+    remove_ripasso_private_key(&key.fingerprint).expect("remove generated key");
+    let imported = import_ripasso_private_key_bytes(armored.as_bytes(), Some("hunter2"))
+        .expect("re-import armored private key");
+
+    assert_eq!(imported.fingerprint, key.fingerprint);
+}
+
+#[test]
 fn imported_private_keys_stay_encrypted_on_disk() {
     let _env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();

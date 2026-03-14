@@ -46,20 +46,24 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/noobping/keycord/cd16651577e55e5e209ee40db01102342f9fdeea/screenshots/list.png</image>
+      <image>https://raw.githubusercontent.com/noobping/keycord/747bbab18b145facbef736edd5a9e5f70d1b33bc/screenshots/list.png</image>
       <caption>Password list</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/cd16651577e55e5e209ee40db01102342f9fdeea/screenshots/unlock.png</image>
+      <image>https://raw.githubusercontent.com/noobping/keycord/747bbab18b145facbef736edd5a9e5f70d1b33bc/screenshots/unlock.png</image>
       <caption>Unlock a pass file</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/cd16651577e55e5e209ee40db01102342f9fdeea/screenshots/file.png</image>
+      <image>https://raw.githubusercontent.com/noobping/keycord/747bbab18b145facbef736edd5a9e5f70d1b33bc/screenshots/file.png</image>
       <caption>Edit a password entry</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/cd16651577e55e5e209ee40db01102342f9fdeea/screenshots/preferences.png</image>
-      <caption>Manage stores and private keys</caption>
+      <image>https://raw.githubusercontent.com/noobping/keycord/747bbab18b145facbef736edd5a9e5f70d1b33bc/screenshots/preferences.png</image>
+      <caption>Manage stores</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/noobping/keycord/747bbab18b145facbef736edd5a9e5f70d1b33bc/screenshots/recipients.png</image>
+      <caption>Manage private keys</caption>
     </screenshot>
   </screenshots>
 

@@ -6,6 +6,7 @@ use super::super::keys::{
     resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
+use super::crypto::FlatpakCryptoContext;
 use super::entries::{
     delete_password_entry, read_password_entry, rename_password_entry, save_password_entry,
 };
@@ -17,7 +18,7 @@ use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients;
 use crate::backend::{
     test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryWriteError,
-    PrivateKeyError, StoreRecipientsError,
+    PrivateKeyError, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
 };
 use crate::preferences::Preferences;
 use crate::support::git::has_git_repository;
@@ -394,6 +395,87 @@ fn entries_are_encrypted_for_all_selected_private_keys() {
 }
 
 #[test]
+fn all_keys_mode_requires_every_selected_private_key() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let bytes_b = protected_cert_bytes("Key B <b@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+
+    let store = env.root_dir().join("secondary-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[key_a.fingerprint.clone(), key_b.fingerprint.clone()],
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
+    )
+    .expect("save all-keys recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save all-keys entry");
+
+    assert_eq!(
+        fs::read_to_string(store.join(".gpg-id")).expect("read recipients"),
+        format!(
+            "# keycord-private-key-requirement=all\n{}\n{}\n",
+            key_a.fingerprint, key_b.fingerprint
+        )
+    );
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read all-keys entry"),
+        "supersecret\nusername: alice".to_string()
+    );
+
+    remove_ripasso_private_key(&key_b.fingerprint).expect("remove second key");
+    assert!(matches!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect_err("missing one required key should fail"),
+        PasswordEntryError::MissingPrivateKey(_)
+    ));
+}
+
+#[test]
+fn all_keys_mode_uses_a_nonstandard_layered_entry_format() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let bytes_b = protected_cert_bytes("Key B <b@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let key_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+
+    let store = env.root_dir().join("secondary-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[key_a.fingerprint.clone(), key_b.fingerprint.clone()],
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
+    )
+    .expect("save all-keys recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save all-keys entry");
+
+    let outer_layer = FlatpakCryptoContext::load_for_fingerprint(&key_a.fingerprint)
+        .expect("load first-layer decrypt context")
+        .decrypt_entry(&store.join("team/service.gpg"))
+        .expect("decrypt only the first layer");
+
+    assert!(outer_layer.starts_with("keycord-require-all-private-keys-v1\n"));
+    assert_ne!(outer_layer, "supersecret\nusername: alice");
+}
+
+#[test]
 fn missing_entry_renames_and_deletes_are_classified() {
     let env = SystemBackendTestEnv::new();
     let store = env.root_dir().join("secondary-store");
@@ -427,6 +509,7 @@ fn recipient_saves_reject_non_directory_store_paths() {
     let err = save_store_recipients(
         file_path.to_string_lossy().as_ref(),
         &[String::from("alice@example.com")],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     )
     .expect_err("non-directory store paths should fail");
 
@@ -444,6 +527,7 @@ fn recipient_saves_initialize_git_for_new_stores() {
     save_store_recipients(
         store.to_string_lossy().as_ref(),
         std::slice::from_ref(&imported.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     )
     .expect("save recipients for a new store");
 
@@ -575,6 +659,7 @@ fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
     save_store_recipients(
         store.to_string_lossy().as_ref(),
         std::slice::from_ref(&key_b.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     )
     .expect("re-encrypt store with second key");
 
@@ -637,6 +722,7 @@ fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
     save_store_recipients(
         store.to_string_lossy().as_ref(),
         std::slice::from_ref(&key_b.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     )
     .expect("re-encrypt store without the selected key");
 
@@ -666,8 +752,12 @@ fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() 
         .expect("initialize git repository");
     let store_root = env.store_root().to_string_lossy().to_string();
 
-    save_store_recipients(&store_root, std::slice::from_ref(&imported.fingerprint))
-        .expect("save store recipients");
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&imported.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save store recipients");
     save_password_entry(
         &store_root,
         "team/service",
@@ -723,8 +813,12 @@ fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_se
         .expect("initialize git repository");
     let store_root = env.store_root().to_string_lossy().to_string();
 
-    save_store_recipients(&store_root, std::slice::from_ref(&imported_a.fingerprint))
-        .expect("save store recipients");
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&imported_a.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save store recipients");
     save_password_entry(
         &store_root,
         "team/service",
@@ -762,8 +856,12 @@ fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
         .expect("initialize git repository");
     let store_root = env.store_root().to_string_lossy().to_string();
 
-    save_store_recipients(&store_root, std::slice::from_ref(&imported.fingerprint))
-        .expect("save store recipients");
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&imported.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save store recipients");
     save_password_entry(
         &store_root,
         "team/service",
@@ -795,8 +893,12 @@ fn git_commit_unlock_helper_detects_a_locked_entry_signing_key() {
         .expect("initialize git repository");
     let store_root = env.store_root().to_string_lossy().to_string();
 
-    save_store_recipients(&store_root, std::slice::from_ref(&imported.fingerprint))
-        .expect("save store recipients");
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&imported.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save store recipients");
     save_password_entry(
         &store_root,
         "team/service",
@@ -828,6 +930,7 @@ fn git_commit_unlock_helper_detects_a_locked_recipients_signing_key() {
         git_commit_private_key_requiring_unlock_for_store_recipients(
             &store_root,
             std::slice::from_ref(&imported.fingerprint),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
         )
         .expect("resolve locked signing key"),
         Some(imported.fingerprint)

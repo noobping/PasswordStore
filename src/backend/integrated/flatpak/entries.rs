@@ -2,8 +2,13 @@ use super::super::keys::ensure_ripasso_private_key_is_ready;
 use super::crypto::FlatpakCryptoContext;
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
-use super::recipients::decryption_candidate_fingerprints_for_entry;
-use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+use super::recipients::{
+    decryption_candidate_fingerprints_for_entry, private_key_requirement_for_label,
+    required_private_key_fingerprints_for_label,
+};
+use crate::backend::{
+    PasswordEntryError, PasswordEntryWriteError, StoreRecipientsPrivateKeyRequirement,
+};
 use crate::logging::log_error;
 use std::fs;
 use std::path::Path;
@@ -13,6 +18,24 @@ pub(crate) fn read_password_entry(
     label: &str,
 ) -> Result<String, PasswordEntryError> {
     let entry_path = entry_file_path(store_root, label).map_err(PasswordEntryError::other)?;
+    if matches!(
+        private_key_requirement_for_label(store_root, label),
+        Ok(StoreRecipientsPrivateKeyRequirement::AllManagedKeys)
+    ) {
+        let required_private_key_fingerprints =
+            required_private_key_fingerprints_for_label(store_root, label).map_err(|_| {
+                PasswordEntryError::missing_private_key(
+                    "Import a private key in Preferences before using the password store.",
+                )
+            })?;
+        ensure_required_private_keys_are_ready(&required_private_key_fingerprints)?;
+        let context = FlatpakCryptoContext::load_for_label(store_root, label)
+            .map_err(PasswordEntryError::other)?;
+        return context
+            .decrypt_entry(&entry_path)
+            .map_err(PasswordEntryError::other);
+    }
+
     let mut saw_locked_key = false;
     let mut saw_incompatible_key = false;
     let mut last_error = None;
@@ -182,6 +205,16 @@ fn commit_identity_fingerprint_for_label(store_root: &str, label: &str) -> Optio
             None
         }
     }
+}
+
+fn ensure_required_private_keys_are_ready(
+    fingerprints: &[String],
+) -> Result<(), PasswordEntryError> {
+    for fingerprint in fingerprints {
+        ensure_ripasso_private_key_is_ready(fingerprint)?;
+    }
+
+    Ok(())
 }
 
 fn write_entry_ciphertext(entry_path: &Path, ciphertext: &[u8]) -> Result<(), String> {

@@ -1,4 +1,5 @@
-use super::recipients::read_store_gpg_recipients;
+use super::recipients::{read_store_gpg_recipients, read_store_private_key_requirement};
+use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::support::ui::reveal_navigation_page;
 use crate::window::navigation::{
     set_save_button_for_password, show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE,
@@ -99,6 +100,8 @@ pub(crate) struct StoreRecipientsPageState {
     pub(crate) request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
     pub(crate) recipients: Rc<RefCell<Vec<String>>>,
     pub(crate) saved_recipients: Rc<RefCell<Vec<String>>>,
+    pub(crate) private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
+    pub(crate) saved_private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
     pub(crate) save_in_flight: Rc<Cell<bool>>,
     pub(crate) save_queued: Rc<Cell<bool>>,
 }
@@ -110,6 +113,7 @@ impl StoreRecipientsPageState {
 
     pub(crate) fn recipients_are_dirty(&self) -> bool {
         *self.recipients.borrow() != *self.saved_recipients.borrow()
+            || self.private_key_requirement.get() != self.saved_private_key_requirement.get()
     }
 }
 
@@ -139,12 +143,17 @@ fn show_store_recipients_page(
     state: &StoreRecipientsPageState,
     request: StoreRecipientsRequest,
     initial_recipients: Vec<String>,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) {
     let saved_recipients = read_store_gpg_recipients(&request.store);
     let mode = request.mode;
     *state.request.borrow_mut() = Some(request);
     *state.recipients.borrow_mut() = initial_recipients;
     *state.saved_recipients.borrow_mut() = saved_recipients;
+    state.private_key_requirement.set(private_key_requirement);
+    state
+        .saved_private_key_requirement
+        .set(private_key_requirement);
     state.save_in_flight.set(false);
     state.save_queued.set(false);
     platform::prepare_store_recipients_page(state);
@@ -169,6 +178,7 @@ pub(crate) fn show_store_recipients_create_page(
         state,
         StoreRecipientsRequest::create(store),
         initial_recipients,
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     );
 }
 
@@ -181,6 +191,7 @@ pub(crate) fn show_store_recipients_edit_page(
         state,
         StoreRecipientsRequest::edit(store.clone()),
         read_store_gpg_recipients(&store),
+        read_store_private_key_requirement(&store),
     );
 }
 

@@ -3,6 +3,8 @@ use super::super::keys::{
     ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
 };
 use super::crypto::FlatpakCryptoContext;
+use super::recipients::recipient_contents;
+use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::logging::{
     log_error, log_info, run_command_output, run_command_with_input, CommandLogOptions,
 };
@@ -232,8 +234,9 @@ pub(crate) fn git_commit_private_key_requiring_unlock_for_entry(
 pub(crate) fn git_commit_private_key_requiring_unlock_for_store_recipients(
     store_root: &str,
     recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<Option<String>, String> {
-    let recipients_contents = format!("{}\n", recipients.join("\n"));
+    let recipients_contents = recipient_contents(recipients, private_key_requirement);
     let fingerprint =
         FlatpakCryptoContext::fingerprint_for_recipient_contents(&recipients_contents)?;
     commit_signing_key_requiring_unlock(store_root, fingerprint)

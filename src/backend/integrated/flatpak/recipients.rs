@@ -1,13 +1,17 @@
 use super::super::keys::{
     fingerprint_from_string, imported_private_key_fingerprints, load_stored_ripasso_key_ring,
-    missing_private_key_error, selected_ripasso_own_fingerprint,
+    missing_private_key_error, ripasso_private_key_requires_session_unlock,
+    selected_ripasso_own_fingerprint,
 };
 use super::paths::recipients_file_for_label;
+use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use ripasso::pass::{Comment, KeyRingStatus, OwnerTrustLevel, Recipient};
 use sequoia_openpgp::{Cert, KeyHandle};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::sync::Arc;
+
+const REQUIRE_ALL_PRIVATE_KEYS_METADATA: &str = "keycord-private-key-requirement=all";
 
 pub(super) struct ResolvedRecipient<'a> {
     pub(super) fingerprint: [u8; 20],
@@ -91,6 +95,50 @@ fn resolved_recipients_from_contents<'a>(
     Ok(recipients)
 }
 
+fn metadata_line_matches(line: &str, expected: &str) -> bool {
+    line.trim()
+        .strip_prefix('#')
+        .map(str::trim)
+        .is_some_and(|value| value.eq_ignore_ascii_case(expected))
+}
+
+pub(super) fn private_key_requirement_from_contents(
+    contents: &str,
+) -> StoreRecipientsPrivateKeyRequirement {
+    for line in contents.lines() {
+        if metadata_line_matches(line, REQUIRE_ALL_PRIVATE_KEYS_METADATA) {
+            return StoreRecipientsPrivateKeyRequirement::AllManagedKeys;
+        }
+    }
+
+    StoreRecipientsPrivateKeyRequirement::AnyManagedKey
+}
+
+pub(super) fn recipient_contents(
+    recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> String {
+    let mut lines = Vec::with_capacity(recipients.len() + 1);
+    if matches!(
+        private_key_requirement,
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys
+    ) {
+        lines.push(format!("# {REQUIRE_ALL_PRIVATE_KEYS_METADATA}"));
+    }
+    lines.extend(recipients.iter().cloned());
+    format!("{}\n", lines.join("\n"))
+}
+
+pub(super) fn required_private_key_fingerprints_from_contents(
+    contents: &str,
+    key_ring: &HashMap<[u8; 20], Arc<Cert>>,
+) -> Result<Vec<String>, String> {
+    Ok(resolved_recipients_from_contents(contents, key_ring)?
+        .into_iter()
+        .map(|recipient| recipient.fingerprint_hex())
+        .collect())
+}
+
 pub(super) fn encryption_context_fingerprint_from_contents(
     contents: &str,
     key_ring: &HashMap<[u8; 20], Arc<Cert>>,
@@ -159,16 +207,36 @@ fn recipient_fingerprints_for_label(store_root: &str, label: &str) -> Result<Vec
     let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
     let key_ring = load_stored_ripasso_key_ring()?;
 
-    Ok(resolved_recipients_from_contents(&contents, &key_ring)?
-        .into_iter()
-        .map(|recipient| recipient.fingerprint_hex())
-        .collect())
+    required_private_key_fingerprints_from_contents(&contents, &key_ring)
+}
+
+pub(super) fn private_key_requirement_for_label(
+    store_root: &str,
+    label: &str,
+) -> Result<StoreRecipientsPrivateKeyRequirement, String> {
+    let recipients_file = recipients_file_for_label(store_root, label)?;
+    let contents = fs::read_to_string(recipients_file).map_err(|err| err.to_string())?;
+    Ok(private_key_requirement_from_contents(&contents))
+}
+
+pub(super) fn required_private_key_fingerprints_for_label(
+    store_root: &str,
+    label: &str,
+) -> Result<Vec<String>, String> {
+    recipient_fingerprints_for_label(store_root, label)
 }
 
 pub(super) fn decryption_candidate_fingerprints_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<Vec<String>, String> {
+    if matches!(
+        private_key_requirement_for_label(store_root, label),
+        Ok(StoreRecipientsPrivateKeyRequirement::AllManagedKeys)
+    ) {
+        return required_private_key_fingerprints_for_label(store_root, label);
+    }
+
     let mut candidates = Vec::new();
 
     if let Ok(fingerprints) = recipient_fingerprints_for_label(store_root, label) {
@@ -192,7 +260,17 @@ pub(crate) fn preferred_ripasso_private_key_fingerprint_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<String, String> {
-    decryption_candidate_fingerprints_for_entry(store_root, label)?
+    let candidates = decryption_candidate_fingerprints_for_entry(store_root, label)?;
+    for fingerprint in &candidates {
+        if matches!(
+            ripasso_private_key_requires_session_unlock(fingerprint),
+            Ok(true)
+        ) {
+            return Ok(fingerprint.clone());
+        }
+    }
+
+    candidates
         .into_iter()
         .next()
         .ok_or_else(missing_private_key_error)

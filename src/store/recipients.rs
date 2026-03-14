@@ -1,7 +1,10 @@
+use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::preferences::Preferences;
 use std::fs;
 #[cfg(any(test, keycord_standard_linux))]
 use std::{cell::RefCell, rc::Rc};
+
+const REQUIRE_ALL_PRIVATE_KEYS_METADATA: &str = "keycord-private-key-requirement=all";
 
 pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
     let path = std::path::Path::new(store_root).join(".gpg-id");
@@ -10,6 +13,28 @@ pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
     };
 
     parse_gpg_recipients(&contents)
+}
+
+pub(crate) fn read_store_private_key_requirement(
+    store_root: &str,
+) -> StoreRecipientsPrivateKeyRequirement {
+    let path = std::path::Path::new(store_root).join(".gpg-id");
+    let Ok(contents) = fs::read_to_string(path) else {
+        return StoreRecipientsPrivateKeyRequirement::AnyManagedKey;
+    };
+
+    for line in contents.lines() {
+        if line
+            .trim()
+            .strip_prefix('#')
+            .map(str::trim)
+            .is_some_and(|value| value.eq_ignore_ascii_case(REQUIRE_ALL_PRIVATE_KEYS_METADATA))
+        {
+            return StoreRecipientsPrivateKeyRequirement::AllManagedKeys;
+        }
+    }
+
+    StoreRecipientsPrivateKeyRequirement::AnyManagedKey
 }
 
 pub(crate) fn store_gpg_recipients_subtitle(store_root: &str) -> String {
@@ -53,6 +78,10 @@ pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input
 pub(crate) fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
     for recipient in value.split([',', ';', '\n']) {
+        let recipient = recipient
+            .split_once('#')
+            .map(|(value, _)| value)
+            .unwrap_or(recipient);
         let recipient = normalize_gpg_recipient(recipient);
         if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
             continue;
@@ -121,6 +150,19 @@ mod tests {
         assert_eq!(
             normalize_gpg_recipient("Alice Example <alice@example.com>"),
             "Alice Example <alice@example.com>".to_string()
+        );
+    }
+
+    #[test]
+    fn gpg_recipient_comments_are_ignored() {
+        assert_eq!(
+            parse_gpg_recipients(
+                "# keycord-private-key-requirement=all\nalice@example.com # preferred\nbob@example.com"
+            ),
+            vec![
+                "alice@example.com".to_string(),
+                "bob@example.com".to_string()
+            ]
         );
     }
 

@@ -10,6 +10,13 @@ pub(crate) use self::errors::PasswordEntryError;
 pub(crate) use self::errors::PrivateKeyError;
 pub(crate) use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum StoreRecipientsPrivateKeyRequirement {
+    #[default]
+    AnyManagedKey,
+    AllManagedKeys,
+}
+
 #[cfg(keycord_flatpak)]
 pub(crate) use integrated::{
     armored_ripasso_private_key, generate_ripasso_private_key,
@@ -88,5 +95,6 @@ dispatch_backend_call! {
     fn save_store_recipients(
         store_root: &str,
         recipients: &[String],
+        private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     ) -> Result<(), StoreRecipientsError>;
 }

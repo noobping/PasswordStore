@@ -5,6 +5,7 @@ use super::{super::queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::backend::{
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
+    StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
@@ -60,6 +61,17 @@ fn set_private_key_recipient_enabled(
     set_private_key_recipient_values(&mut state.recipients.borrow_mut(), key, enabled)
 }
 
+fn set_private_key_requirement(
+    state: &StoreRecipientsPageState,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> bool {
+    let changed = state.private_key_requirement.get() != private_key_requirement;
+    if changed {
+        state.private_key_requirement.set(private_key_requirement);
+    }
+    changed
+}
+
 fn set_private_key_recipient_values(
     recipients: &mut Vec<String>,
     key: &ManagedRipassoPrivateKey,
@@ -71,6 +83,41 @@ fn set_private_key_recipient_values(
         recipients.push(key.fingerprint.clone());
     }
     *recipients != before
+}
+
+fn append_private_key_requirement_row(state: &StoreRecipientsPageState) {
+    let row = ActionRow::builder()
+        .title("Require all selected private keys")
+        .subtitle(
+            "Uses layered encryption so every selected key must be unlocked. Other pass apps will not be able to read these items.",
+        )
+        .build();
+    row.set_activatable(true);
+
+    let toggle = CheckButton::new();
+    toggle.set_active(matches!(
+        state.private_key_requirement.get(),
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys
+    ));
+    row.add_suffix(&toggle);
+    state.list.append(&row);
+
+    let toggle_for_row = toggle.clone();
+    row.connect_activated(move |_| {
+        toggle_for_row.set_active(!toggle_for_row.is_active());
+    });
+
+    let page_state = state.clone();
+    toggle.connect_toggled(move |button| {
+        let private_key_requirement = if button.is_active() {
+            StoreRecipientsPrivateKeyRequirement::AllManagedKeys
+        } else {
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey
+        };
+        if set_private_key_requirement(&page_state, private_key_requirement) {
+            queue_store_recipients_autosave(&page_state);
+        }
+    });
 }
 
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
@@ -103,6 +150,8 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         append_private_key_import_row(state);
         return;
     }
+
+    append_private_key_requirement_row(state);
 
     for key in keys {
         let active = state

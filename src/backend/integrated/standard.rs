@@ -3,7 +3,10 @@ mod store;
 
 use self::git::maybe_commit_git_paths;
 use self::store::{load_store_entry, open_store, password_entry_git_path};
-use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
+use crate::backend::{
+    PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
+    StoreRecipientsPrivateKeyRequirement,
+};
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::fs;
 use std::path::PathBuf;
@@ -117,6 +120,7 @@ pub(crate) fn delete_password_entry(
 pub(crate) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
+    _private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     let store_dir = PathBuf::from(store_root);
     if store_dir.exists() {
@@ -197,13 +201,19 @@ mod tests {
     use crate::backend::test_support::{
         assert_entry_is_encrypted_for_each_recipient, SystemBackendTestEnv,
     };
+    use crate::backend::StoreRecipientsPrivateKeyRequirement;
     use crate::support::git::has_git_repository;
 
     #[test]
     fn integrated_standard_backend_encrypts_entries_for_all_store_recipients() {
         assert_entry_is_encrypted_for_each_recipient(
             |store_root, recipients| {
-                save_store_recipients(store_root, recipients).map_err(|err| err.to_string())
+                save_store_recipients(
+                    store_root,
+                    recipients,
+                    StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+                )
+                .map_err(|err| err.to_string())
             },
             |store_root, label, contents| {
                 save_password_entry(store_root, label, contents, true)
@@ -227,8 +237,12 @@ mod tests {
             .expect("trust git recipient key");
 
         let store_root = env.store_root().to_string_lossy().to_string();
-        save_store_recipients(&store_root, std::slice::from_ref(&key.fingerprint_hex))
-            .expect("save store recipients");
+        save_store_recipients(
+            &store_root,
+            std::slice::from_ref(&key.fingerprint_hex),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        )
+        .expect("save store recipients");
         save_password_entry(
             &store_root,
             "team/service",
@@ -258,8 +272,12 @@ mod tests {
             .expect("trust git recipient key");
 
         let store_root = env.store_root().to_string_lossy().to_string();
-        save_store_recipients(&store_root, std::slice::from_ref(&key.fingerprint_hex))
-            .expect("save store recipients");
+        save_store_recipients(
+            &store_root,
+            std::slice::from_ref(&key.fingerprint_hex),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        )
+        .expect("save store recipients");
 
         assert!(has_git_repository(&store_root));
     }

@@ -1,7 +1,10 @@
 mod command;
 
 use self::command::{ensure_success, run_store_command_output, run_store_command_with_input};
-use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
+use crate::backend::{
+    PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
+    StoreRecipientsPrivateKeyRequirement,
+};
 use crate::logging::CommandLogOptions;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::path::Path;
@@ -102,6 +105,7 @@ pub(super) fn delete_password_entry(
 pub(super) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
+    _private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     let should_initialize_git =
         !Path::new(store_root).join(".gpg-id").exists() && !has_git_repository(store_root);
@@ -127,13 +131,19 @@ mod tests {
     use super::{save_password_entry, save_store_recipients};
     use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
     use crate::backend::test_support::SystemBackendTestEnv;
+    use crate::backend::StoreRecipientsPrivateKeyRequirement;
     use crate::support::git::has_git_repository;
 
     #[test]
     fn host_backend_encrypts_entries_for_all_store_recipients() {
         assert_entry_is_encrypted_for_each_recipient(
             |store_root, recipients| {
-                save_store_recipients(store_root, recipients).map_err(|err| err.to_string())
+                save_store_recipients(
+                    store_root,
+                    recipients,
+                    StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+                )
+                .map_err(|err| err.to_string())
             },
             |store_root, label, contents| {
                 save_password_entry(store_root, label, contents, true)
@@ -155,8 +165,12 @@ mod tests {
             .expect("trust host recipient key");
 
         let store_root = env.store_root().to_string_lossy().to_string();
-        save_store_recipients(&store_root, std::slice::from_ref(&key.fingerprint_hex))
-            .expect("save store recipients");
+        save_store_recipients(
+            &store_root,
+            std::slice::from_ref(&key.fingerprint_hex),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        )
+        .expect("save store recipients");
 
         assert!(has_git_repository(&store_root));
     }

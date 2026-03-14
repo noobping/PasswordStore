@@ -1,7 +1,7 @@
 use super::super::management::rebuild_store_list;
 use super::super::recipients::stores_with_preferred_first;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsRequest};
-use crate::backend::save_store_recipients;
+use crate::backend::{save_store_recipients, StoreRecipientsPrivateKeyRequirement};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 #[cfg(keycord_flatpak)]
@@ -63,6 +63,7 @@ fn maybe_prompt_store_recipients_git_unlock(
     state: &StoreRecipientsPageState,
     store_root: &str,
     recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     allow_git_unlock_prompt: bool,
 ) -> bool {
     if !allow_git_unlock_prompt || !Preferences::new().uses_integrated_backend() {
@@ -76,6 +77,7 @@ fn maybe_prompt_store_recipients_git_unlock(
         &state.platform.overlay,
         store_root,
         recipients,
+        private_key_requirement,
         Rc::new(move || {
             save_store_recipients_async(
                 &overlay_for_retry,
@@ -94,6 +96,7 @@ fn maybe_prompt_store_recipients_git_unlock(
     _state: &StoreRecipientsPageState,
     _store_root: &str,
     _recipients: &[String],
+    _private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     _allow_git_unlock_prompt: bool,
 ) -> bool {
     false
@@ -110,6 +113,7 @@ fn save_store_recipients_async(
     };
 
     let recipients = state.recipients.borrow().clone();
+    let private_key_requirement = state.private_key_requirement.get();
     if recipients.is_empty() {
         return;
     }
@@ -123,6 +127,7 @@ fn save_store_recipients_async(
         state,
         &request.store,
         &recipients,
+        private_key_requirement,
         _allow_git_unlock_prompt,
     ) {
         return;
@@ -143,11 +148,20 @@ fn save_store_recipients_async(
     let state_for_disconnect = state.clone();
     let mode_for_disconnect = request.mode;
     spawn_result_task(
-        move || save_store_recipients(&store_for_thread, &recipients_for_save),
+        move || {
+            save_store_recipients(
+                &store_for_thread,
+                &recipients_for_save,
+                private_key_requirement,
+            )
+        },
         move |result| match result {
             Ok(()) => {
                 let settings = Preferences::new();
                 *state.saved_recipients.borrow_mut() = recipients.clone();
+                state
+                    .saved_private_key_requirement
+                    .set(private_key_requirement);
                 let should_rebuild_store_list = if request.mode.creates_store() {
                     let stores = stores_with_preferred_first(&settings.stores(), &request.store);
                     if let Err(err) = settings.set_stores(stores) {

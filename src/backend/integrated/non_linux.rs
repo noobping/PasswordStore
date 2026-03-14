@@ -10,7 +10,10 @@ use self::paths::{
     cleanup_empty_store_dirs, collect_password_entry_files, ensure_store_directory,
     entry_file_path, label_from_entry_path, with_updated_recipients_file,
 };
-use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
+use crate::backend::{
+    PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
+    StoreRecipientsPrivateKeyRequirement,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -28,6 +31,26 @@ pub(crate) fn read_password_entry(
     label: &str,
 ) -> Result<String, PasswordEntryError> {
     let entry_path = entry_file_path(store_root, label).map_err(PasswordEntryError::other)?;
+    if matches!(
+        recipients::private_key_requirement_for_label(store_root, label),
+        Ok(StoreRecipientsPrivateKeyRequirement::AllManagedKeys)
+    ) {
+        let required_private_key_fingerprints =
+            recipients::required_private_key_fingerprints_for_label(store_root, label).map_err(
+                |_| {
+                    PasswordEntryError::missing_private_key(
+                        "Import a private key in Preferences before using the password store.",
+                    )
+                },
+            )?;
+        ensure_required_private_keys_are_ready(&required_private_key_fingerprints)?;
+        let context = FlatpakCryptoContext::load_for_label(store_root, label)
+            .map_err(PasswordEntryError::other)?;
+        return context
+            .decrypt_entry(&entry_path)
+            .map_err(PasswordEntryError::other);
+    }
+
     let mut saw_locked_key = false;
     let mut saw_incompatible_key = false;
     let mut last_error = None;
@@ -168,17 +191,18 @@ fn decrypted_store_entries(
 pub(crate) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     let store_dir =
         ensure_store_directory(store_root).map_err(StoreRecipientsError::from_store_message)?;
     let decrypted_entries = decrypted_store_entries(&store_dir, store_root)
         .map_err(StoreRecipientsError::from_store_message)?;
-    let recipients_contents = format!("{}\n", recipients.join("\n"));
+    let recipients_contents = recipients::recipient_contents(recipients, private_key_requirement);
     let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)
         .map_err(StoreRecipientsError::from_store_message)?;
     let recipients_path = store_dir.join(".gpg-id");
 
-    with_updated_recipients_file(&recipients_path, recipients, || {
+    with_updated_recipients_file(&recipients_path, &recipients_contents, || {
         for (entry_path, secret) in &decrypted_entries {
             let ciphertext = context.encrypt_contents(secret)?;
             fs::write(entry_path, ciphertext).map_err(|err| err.to_string())?;
@@ -199,5 +223,15 @@ fn ensure_parent_dir(entry_path: &Path) -> Result<(), String> {
     if let Some(parent) = entry_path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
+    Ok(())
+}
+
+fn ensure_required_private_keys_are_ready(
+    fingerprints: &[String],
+) -> Result<(), PasswordEntryError> {
+    for fingerprint in fingerprints {
+        super::keys::ensure_ripasso_private_key_is_ready(fingerprint)?;
+    }
+
     Ok(())
 }

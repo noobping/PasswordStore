@@ -2,6 +2,7 @@ use crate::backend::{
     git_commit_private_key_requiring_unlock_for_entry,
     git_commit_private_key_requiring_unlock_for_store_recipients, ripasso_private_key_title,
     unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey, PrivateKeyError,
+    StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::{log_error, log_info};
 use crate::private_key::dialog::{
@@ -172,11 +173,16 @@ pub(crate) fn prompt_private_key_unlock_for_store_git_commit_if_needed(
     overlay: &ToastOverlay,
     store_root: &str,
     recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     after_unlock: Rc<dyn Fn()>,
 ) -> bool {
     prompt_private_key_unlock_for_git_commit_if_needed(
         overlay,
-        git_commit_private_key_requiring_unlock_for_store_recipients(store_root, recipients),
+        git_commit_private_key_requiring_unlock_for_store_recipients(
+            store_root,
+            recipients,
+            private_key_requirement,
+        ),
         store_root,
         after_unlock,
     )

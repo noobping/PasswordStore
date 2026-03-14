@@ -1,4 +1,5 @@
 use super::widgets::WindowWidgets;
+use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::password::file::{DynamicFieldRow, StructuredPassLine};
 use crate::password::generation::PasswordGenerationControls;
 use crate::password::new_item::NewPasswordPopoverState;
@@ -94,6 +95,12 @@ fn build_store_recipients_page_state(
     let request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let recipients = Rc::new(RefCell::new(Vec::<String>::new()));
     let saved_recipients = Rc::new(RefCell::new(Vec::<String>::new()));
+    let private_key_requirement = Rc::new(Cell::new(
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    ));
+    let saved_private_key_requirement = Rc::new(Cell::new(
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    ));
     let save_in_flight = Rc::new(Cell::new(false));
     let save_queued = Rc::new(Cell::new(false));
 
@@ -114,6 +121,8 @@ fn build_store_recipients_page_state(
         request,
         recipients,
         saved_recipients,
+        private_key_requirement,
+        saved_private_key_requirement,
         save_in_flight,
         save_queued,
     }

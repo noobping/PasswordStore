@@ -5,7 +5,8 @@ use super::paths::{
     collect_password_entry_files, ensure_store_directory, label_from_entry_path,
     with_updated_recipients_file,
 };
-use crate::backend::StoreRecipientsError;
+use super::recipients::recipient_contents;
+use crate::backend::{StoreRecipientsError, StoreRecipientsPrivateKeyRequirement};
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,6 +29,7 @@ fn decrypted_store_entries(
 pub(crate) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     let store_dir =
         ensure_store_directory(store_root).map_err(StoreRecipientsError::from_store_message)?;
@@ -37,13 +39,13 @@ pub(crate) fn save_store_recipients(
         .iter()
         .filter_map(|(entry_path, _)| label_from_entry_path(&store_dir, entry_path).ok())
         .collect::<Vec<_>>();
-    let recipients_contents = format!("{}\n", recipients.join("\n"));
+    let recipients_contents = recipient_contents(recipients, private_key_requirement);
     let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)
         .map_err(StoreRecipientsError::from_store_message)?;
     let recipients_path = store_dir.join(".gpg-id");
     let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
 
-    with_updated_recipients_file(&recipients_path, recipients, || {
+    with_updated_recipients_file(&recipients_path, &recipients_contents, || {
         for (entry_path, secret) in &decrypted_entries {
             let ciphertext = context.encrypt_contents(secret)?;
             fs::write(entry_path, ciphertext).map_err(|err| err.to_string())?;

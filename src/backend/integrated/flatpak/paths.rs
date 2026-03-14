@@ -79,11 +79,10 @@ pub(super) fn ensure_store_directory(store_root: &str) -> Result<PathBuf, String
 
 pub(super) fn with_updated_recipients_file<T>(
     recipients_path: &Path,
-    recipients: &[String],
+    contents: &str,
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let previous_contents = fs::read_to_string(recipients_path).ok();
-    let contents = format!("{}\n", recipients.join("\n"));
     fs::write(recipients_path, contents).map_err(|err| err.to_string())?;
 
     match f() {

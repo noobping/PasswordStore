@@ -459,7 +459,7 @@
 
                             <child>
                               <object class="AdwPreferencesGroup">
-                                <property name="title" translatable="yes">Keycords</property>
+                                <property name="title" translatable="yes">Password Stores</property>
                                 <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>
                                 <child>
                                   <object class="GtkListBox" id="password_stores">

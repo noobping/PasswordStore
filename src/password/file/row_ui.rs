@@ -1,5 +1,5 @@
 use super::types::{is_url_field_key, DynamicFieldRow, DynamicFieldTemplate, StructuredPassLine};
-#[cfg(target_os = "linux")]
+#[cfg(keycord_linux)]
 use super::url::add_open_url_suffix;
 use crate::clipboard::add_copy_suffix;
 use adw::gtk::{Box as GtkBox, Widget};
@@ -76,7 +76,7 @@ fn build_dynamic_field_row(
         apply_field_row_style(&row);
         let row_clone = row.clone();
         add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
-        #[cfg(target_os = "linux")]
+        #[cfg(keycord_linux)]
         if is_url_field_key(&template.raw_key) {
             let row_clone = row.clone();
             add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);

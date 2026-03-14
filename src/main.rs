@@ -1,5 +1,4 @@
-#[cfg(target_os = "linux")]
-#[cfg(feature = "setup")]
+#[cfg(keycord_setup)]
 mod setup;
 
 mod backend;
@@ -7,15 +6,15 @@ mod clipboard;
 mod logging;
 mod password;
 mod preferences;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 mod private_key;
 mod store;
 mod support;
 mod window;
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use crate::logging::{run_command_output, CommandLogOptions};
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use crate::preferences::Preferences;
 use crate::support::object_data::{non_null_to_string_option, set_string_data};
 
@@ -34,14 +33,16 @@ use std::result::Result::Ok;
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
 const ISSUE_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 const RIPASSO_VERSION: &str = env!("RIPASSO_VERSION");
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-standard.ui");
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-flatpak.ui");
+#[cfg(not(keycord_linux))]
+const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-non-linux.ui");
 
 fn main() -> ExitCode {
     resources_register_include!("compiled.gresource").expect("Failed to register resources");
@@ -156,7 +157,7 @@ fn build_about_dialog() -> adw::AboutDialog {
     about
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 fn about_comments(project: &str) -> String {
     let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
     let settings = Preferences::new();
@@ -176,14 +177,14 @@ fn about_comments(project: &str) -> String {
     }
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 fn about_comments(_project: &str) -> String {
     option_env!("CARGO_PKG_DESCRIPTION")
         .unwrap_or("")
         .to_string()
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 fn get_pass_version(settings: &Preferences) -> Option<String> {
     let mut cmd = settings.command();
     cmd.arg("--version");

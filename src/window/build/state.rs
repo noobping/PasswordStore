@@ -17,9 +17,9 @@ use crate::window::preferences::PreferencesActionState;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use adw::EntryRow;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use adw::ToastOverlay;
 
 pub(super) fn new_password_popover_state(widgets: &WindowWidgets) -> NewPasswordPopoverState {
@@ -71,14 +71,14 @@ pub(super) fn password_page_state(
     }
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 fn build_store_recipients_platform_state(overlay: &ToastOverlay) -> StoreRecipientsPlatformState {
     StoreRecipientsPlatformState {
         overlay: overlay.clone(),
     }
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 fn build_store_recipients_platform_state(
     store_recipients_entry: &EntryRow,
 ) -> StoreRecipientsPlatformState {
@@ -87,19 +87,15 @@ fn build_store_recipients_platform_state(
     }
 }
 
-pub(super) fn store_recipients_page_state(
+fn build_store_recipients_page_state(
     widgets: &WindowWidgets,
-    #[cfg(not(feature = "flatpak"))] store_recipients_entry: &EntryRow,
+    platform: StoreRecipientsPlatformState,
 ) -> StoreRecipientsPageState {
     let request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let recipients = Rc::new(RefCell::new(Vec::<String>::new()));
     let saved_recipients = Rc::new(RefCell::new(Vec::<String>::new()));
     let save_in_flight = Rc::new(Cell::new(false));
     let save_queued = Rc::new(Cell::new(false));
-    #[cfg(feature = "flatpak")]
-    let platform = build_store_recipients_platform_state(&widgets.toast_overlay);
-    #[cfg(not(feature = "flatpak"))]
-    let platform = build_store_recipients_platform_state(store_recipients_entry);
 
     StoreRecipientsPageState {
         window: widgets.window.clone(),
@@ -123,12 +119,32 @@ pub(super) fn store_recipients_page_state(
     }
 }
 
+#[cfg(keycord_restricted)]
+pub(super) fn store_recipients_page_state(widgets: &WindowWidgets) -> StoreRecipientsPageState {
+    build_store_recipients_page_state(
+        widgets,
+        build_store_recipients_platform_state(&widgets.toast_overlay),
+    )
+}
+
+#[cfg(keycord_standard_linux)]
+pub(super) fn store_recipients_page_state(
+    widgets: &WindowWidgets,
+    store_recipients_entry: &EntryRow,
+) -> StoreRecipientsPageState {
+    build_store_recipients_page_state(
+        widgets,
+        build_store_recipients_platform_state(store_recipients_entry),
+    )
+}
+
 pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigationState {
     WindowNavigationState {
         nav: widgets.navigation_view.clone(),
         text_page: widgets.text_page.clone(),
         raw_text_page: widgets.raw_text_page.clone(),
         settings_page: widgets.settings_page.clone(),
+        #[cfg(keycord_linux)]
         log_page: widgets.log_page.clone(),
         back: widgets.back_button.clone(),
         add: widgets.add_button.clone(),
@@ -171,7 +187,9 @@ pub(super) fn preferences_action_state(
         stores_list: widgets.password_stores.clone(),
         overlay: widgets.toast_overlay.clone(),
         recipients_page: recipients_page.clone(),
+        #[cfg(keycord_linux)]
         pass_row: widgets.pass_command_row.clone(),
+        #[cfg(keycord_linux)]
         backend_row: widgets.backend_row.clone(),
     }
 }
@@ -182,16 +200,7 @@ pub(super) fn build_git_action_state(
     recipients_page: &StoreRecipientsPageState,
     visibility: &ListVisibilityState,
 ) -> GitActionState {
-    GitActionState {
-        window: widgets.window.clone(),
-        overlay: widgets.toast_overlay.clone(),
-        list: widgets.list.clone(),
-        navigation: navigation.clone(),
-        recipients_page: recipients_page.clone(),
-        busy_page: widgets.git_busy_page.clone(),
-        busy_status: widgets.git_busy_status.clone(),
-        visibility: visibility.clone(),
-    }
+    GitActionState::new(widgets, navigation, recipients_page, visibility)
 }
 
 fn build_back_action_platform_state(git_action_state: &GitActionState) -> PlatformBackActionState {

@@ -1,0 +1,300 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  locales:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      APP_ID: io.github.noobping.keycord
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext zip tree
+      - name: Locales
+        run: |
+          for f in po/*.po; do
+              lang=$(basename "$f" .po)
+              mkdir -p "locale/$lang/LC_MESSAGES"
+              msgfmt "$f" -o "locale/$lang/LC_MESSAGES/${APP_ID}.mo"
+          done
+      - run: zip -r locales.zip locale
+      - run: tree -a locale || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: locales
+          path: locales.zip
+
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    env:
+      PKG_CONFIG_ALLOW_CROSS: 1
+      MSYS2_PATH: C:\tools\msys64
+      PKG_CONFIG_PATH: C:\tools\msys64\mingw64\lib\pkgconfig
+      GETTEXT_SYSTEM: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MSYS2
+        run: choco install msys2 --no-progress -y
+
+      - name: Update MSYS2
+        run: C:\tools\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
+
+      - name: Install Libadwaita
+        run: |
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-toolchain"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gtk4"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-libadwaita"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gpgme"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-pkgconf"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-make"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-ntldd"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gettext-tools"
+
+      - name: Add MSYS2 paths
+        run: |
+          echo "C:\tools\msys64\mingw64\bin" >> $env:GITHUB_PATH
+          echo "C:\tools\msys64\usr\bin" >> $env:GITHUB_PATH
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add GNU Windows target
+        run: rustup target add x86_64-pc-windows-gnu
+
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-gnu
+
+      - name: Bundle
+        shell: pwsh
+        run: |
+          $workspace = $env:GITHUB_WORKSPACE
+          Write-Host "Workspace: $workspace"
+          $bundleDir = Join-Path $workspace 'bundle'
+          if (Test-Path $bundleDir) {
+           Remove-Item $bundleDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $bundleDir | Out-Null
+          $exe = Join-Path $workspace 'target\x86_64-pc-windows-gnu\release\keycord.exe'
+          if (-not (Test-Path $exe)) {
+           Write-Error "EXE not found at: $exe"
+          }
+          Write-Host "Copying exe: $exe"
+          Copy-Item $exe $bundleDir -Force
+          $mingwBin = 'C:\tools\msys64\mingw64\bin'
+          if (-not (Test-Path $mingwBin)) {
+           Write-Error "MinGW bin dir not found: $mingwBin"
+          }
+          Write-Host "Copying DLLs from: $mingwBin"
+          Get-ChildItem -Path $mingwBin -Filter '*.dll' |
+          Copy-Item -Destination $bundleDir -Force
+          Write-Host "Bundle contents:"
+          Get-ChildItem $bundleDir
+          $zip = Join-Path $workspace 'keycord-windows.zip'
+          if (Test-Path $zip) {
+           Remove-Item $zip -Force
+          }
+          $src = Join-Path $bundleDir '*'
+          Compress-Archive -Path $src -DestinationPath $zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keycord-windows
+          path: keycord-windows.zip
+
+  bundle:
+    runs-on: windows-latest
+    needs:
+      - build
+      - locales
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Download locale artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: locales
+          path: dist
+
+      - name: Extract locales
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:GITHUB_WORKSPACE 'dist\locales.zip'
+          if (-not (Test-Path $zip)) { throw "locales.zip not found: $zip" }
+
+          if (Test-Path locale) { Remove-Item locale -Recurse -Force }
+          Expand-Archive -Path $zip -DestinationPath $env:GITHUB_WORKSPACE -Force
+
+          Write-Host "Locales extracted:"
+          Get-ChildItem -Recurse -Depth 4 locale | Select-Object FullName
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: keycord-windows
+          path: dist
+
+      - name: Extract artifact
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:GITHUB_WORKSPACE 'dist\keycord-windows.zip'
+          if (-not (Test-Path $zip)) { throw "ZIP not found: $zip" }
+
+          if (Test-Path bundle) { Remove-Item bundle -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path bundle | Out-Null
+          Expand-Archive -Path $zip -DestinationPath bundle -Force
+
+          Write-Host "Extracted files:"
+          Get-ChildItem bundle | Sort-Object Name | Format-Table Name, Length
+
+      - name: Install filter tool
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-ntldd-git
+
+      - name: Filter
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'bundle\keycord.exe'
+          if (-not (Test-Path $exe)) { throw "EXE not found in bundle: $exe" }
+
+          $ntldd = 'C:\msys64\mingw64\bin\ntldd.exe'
+          if (-not (Test-Path $ntldd)) {
+            Write-Host "ntldd not present on this runner; skipping filtering."
+            exit 0
+          }
+
+          $raw = & $ntldd -R $exe 2>$null
+          $needed = $raw |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -match '^[A-Za-z]:\\' -and $_.ToLower().EndsWith('.dll') } |
+            ForEach-Object { Split-Path $_ -Leaf } |
+            Sort-Object -Unique
+
+          $bundleDlls = Get-ChildItem bundle -Filter '*.dll' | Select-Object -ExpandProperty Name
+          $remove = $bundleDlls | Where-Object { $needed -notcontains $_ }
+
+          # Keep it conservative: only remove if ntldd says it's not needed
+          foreach ($name in $remove) {
+            Remove-Item (Join-Path bundle $name) -Force
+          }
+
+          Write-Host "After filtering:"
+          Get-ChildItem bundle | Sort-Object Name | Format-Table Name, Length
+
+      - name: Install WiX Toolset
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Bundle
+        shell: pwsh
+        run: |
+          $heat = (Get-Command heat.exe -ErrorAction Stop).Source
+          Write-Host "Using heat: $heat"
+
+          New-Item -ItemType Directory -Force -Path wix\generated | Out-Null
+          & $heat dir "bundle" `
+            -cg AppFiles `
+            -dr INSTALLDIR `
+            -gg -g1 -srd -sreg -sfrag `
+            -var var.BundleDir `
+            -out "wix\generated\AppFiles.wxs"
+
+      - name: Get latest tag
+        run: |
+          $latest_tag = git describe --tags $(git rev-list --tags --max-count=1)
+          echo "Latest tag: $latest_tag"
+          "LATEST_TAG=$latest_tag" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $candle = (Get-Command candle.exe -ErrorAction Stop).Source
+          $light  = (Get-Command light.exe  -ErrorAction Stop).Source
+
+          Write-Host "Using candle: $candle"
+          Write-Host "Using light : $light"
+
+          $ver = "${{ env.LATEST_TAG }}" -replace '^v',''
+
+          $parts = $ver.Split('.')
+          if ($parts.Count -eq 3) { $ver = "$ver.0" }
+          elseif ($parts.Count -eq 2) { $ver = "$ver.0.0" }
+          elseif ($parts.Count -eq 1) { $ver = "$ver.0.0.0" }
+
+          Write-Host "Using ProductVersion: $ver"
+
+          & $candle `
+            -dBundleDir="$(Resolve-Path bundle)" `
+            -dProductVersion="$ver" `
+            -out wix\generated\ `
+            data\keycord.wxs `
+            wix\generated\AppFiles.wxs
+
+          & $light `
+            -out keycord.msi `
+            wix\generated\keycord.wixobj `
+            wix\generated\AppFiles.wixobj
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keycord-windows-msi
+          path: keycord.msi
+
+  publish:
+    runs-on: windows-latest
+    needs: bundle
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: keycord-windows-msi
+          path: dist
+
+      - name: Get latest tag
+        run: |
+          $latest_tag = git describe --tags $(git rev-list --tags --max-count=1)
+          echo "Latest tag: $latest_tag"
+          "LATEST_TAG=$latest_tag" >> $env:GITHUB_ENV
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.LATEST_TAG }}
+          files: dist/keycord.msi
+          overwrite_files: true

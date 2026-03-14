@@ -4,9 +4,12 @@
 *.sh
 *builder/
 *cache/
+*og.txt
+.cargo*
 AppDir/
 excludelist
 resources.xml
 squashfs*
 target/
-log.txt
+vendor/
+patches/

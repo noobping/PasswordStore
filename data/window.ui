@@ -802,10 +802,6 @@
         <attribute name="action">win.open-preferences</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_Logs</attribute>
-        <attribute name="action">win.open-log</attribute>
-      </item>
-      <item>
         <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
         <attribute name="action">app.shortcuts</attribute>
       </item>

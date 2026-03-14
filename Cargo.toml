@@ -10,7 +10,7 @@ repository = "https://github.com/noobping/keycord"
 
 [features]
 setup = []
-flatpak = ["sequoia-openpgp"]
+flatpak = ["dep:sequoia-openpgp"]
 
 [dependencies]
 anyhow = "^1.0"
@@ -26,6 +26,9 @@ shlex = "^1.3.0"
 shellexpand = "^3.1.1"
 totp-rs = "^5.7.0"
 rand = "^0.8.5"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+sequoia-openpgp = "^2.1.0"
 
 [build-dependencies]
 glib-build-tools = "^0.21.0"

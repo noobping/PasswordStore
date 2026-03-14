@@ -87,12 +87,6 @@
                 <property name="accelerator">F1</property>
               </object>
             </child>
-            <child>
-              <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes">Open logs</property>
-                <property name="accelerator">F12</property>
-              </object>
-            </child>
           </object>
         </child>
       </object>

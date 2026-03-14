@@ -39,27 +39,27 @@ fn store_message_is_invalid_store_path(lowered: &str) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PasswordEntryError {
     EntryNotFound(String),
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     MissingPrivateKey(String),
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     LockedPrivateKey(String),
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     IncompatiblePrivateKey(String),
     Other(String),
 }
 
 impl PasswordEntryError {
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn missing_private_key(message: impl Into<String>) -> Self {
         Self::MissingPrivateKey(message.into())
     }
 
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn locked_private_key(message: impl Into<String>) -> Self {
         Self::LockedPrivateKey(message.into())
     }
 
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn incompatible_private_key(message: impl Into<String>) -> Self {
         Self::IncompatiblePrivateKey(message.into())
     }
@@ -80,9 +80,9 @@ impl PasswordEntryError {
 
     pub(crate) fn toast_message(&self) -> Option<&'static str> {
         match self {
-            #[cfg(feature = "flatpak")]
+            #[cfg(keycord_restricted)]
             Self::MissingPrivateKey(_) => Some("Add a private key in Preferences."),
-            #[cfg(feature = "flatpak")]
+            #[cfg(keycord_restricted)]
             Self::IncompatiblePrivateKey(_) => Some("This key can't open your items."),
             _ => None,
         }
@@ -91,7 +91,7 @@ impl PasswordEntryError {
     pub(crate) fn detail(&self) -> &str {
         match self {
             Self::EntryNotFound(message) => message,
-            #[cfg(feature = "flatpak")]
+            #[cfg(keycord_restricted)]
             Self::MissingPrivateKey(message)
             | Self::LockedPrivateKey(message)
             | Self::IncompatiblePrivateKey(message) => message,
@@ -258,7 +258,7 @@ impl fmt::Display for StoreRecipientsError {
     }
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrivateKeyError {
     NotStored(String),
@@ -270,7 +270,7 @@ pub enum PrivateKeyError {
     Other(String),
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 impl PrivateKeyError {
     pub(crate) fn not_stored(message: impl Into<String>) -> Self {
         Self::NotStored(message.into())
@@ -339,7 +339,7 @@ impl PrivateKeyError {
     }
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 impl fmt::Display for PrivateKeyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.detail())

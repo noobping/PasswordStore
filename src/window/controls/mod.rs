@@ -11,6 +11,7 @@ use crate::password::undo::{
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
+#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
@@ -21,13 +22,17 @@ use adw::{Application, ApplicationWindow, NavigationPage};
 use std::cell::Cell;
 use std::rc::Rc;
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 mod flatpak;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 use self::flatpak as platform;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(not(keycord_linux))]
+mod non_linux;
+#[cfg(not(keycord_linux))]
+use self::non_linux as platform;
+#[cfg(keycord_standard_linux)]
 mod standard;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use self::standard as platform;
 
 pub(crate) use self::platform::PlatformBackActionState;
@@ -133,8 +138,23 @@ fn context_save_target(
         visible_navigation_page_is(&navigation.nav, &navigation.text_page),
         visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page),
         visible_navigation_page_is(&navigation.nav, recipients_page),
-        git_network_operations_available(),
+        synchronize_available(),
     )
+}
+
+#[cfg(keycord_flatpak)]
+fn synchronize_available() -> bool {
+    git_network_operations_available()
+}
+
+#[cfg(not(keycord_linux))]
+fn synchronize_available() -> bool {
+    false
+}
+
+#[cfg(keycord_standard_linux)]
+fn synchronize_available() -> bool {
+    true
 }
 
 pub(crate) fn register_context_save_action(

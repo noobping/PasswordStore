@@ -4,13 +4,13 @@ use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRe
 use crate::backend::save_store_recipients;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 use crate::private_key::git::prompt_private_key_unlock_for_store_git_commit_if_needed;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,6 +56,49 @@ fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty:
     }
 }
 
+#[cfg(keycord_flatpak)]
+fn maybe_prompt_store_recipients_git_unlock(
+    overlay: &ToastOverlay,
+    stores_list: &ListBox,
+    state: &StoreRecipientsPageState,
+    store_root: &str,
+    recipients: &[String],
+    allow_git_unlock_prompt: bool,
+) -> bool {
+    if !allow_git_unlock_prompt || !Preferences::new().uses_integrated_backend() {
+        return false;
+    }
+
+    let overlay_for_retry = overlay.clone();
+    let stores_list_for_retry = stores_list.clone();
+    let state_for_retry = state.clone();
+    prompt_private_key_unlock_for_store_git_commit_if_needed(
+        &state.platform.overlay,
+        store_root,
+        recipients,
+        Rc::new(move || {
+            save_store_recipients_async(
+                &overlay_for_retry,
+                &stores_list_for_retry,
+                &state_for_retry,
+                false,
+            );
+        }),
+    )
+}
+
+#[cfg(keycord_standard_linux)]
+fn maybe_prompt_store_recipients_git_unlock(
+    _overlay: &ToastOverlay,
+    _stores_list: &ListBox,
+    _state: &StoreRecipientsPageState,
+    _store_root: &str,
+    _recipients: &[String],
+    _allow_git_unlock_prompt: bool,
+) -> bool {
+    false
+}
+
 fn save_store_recipients_async(
     overlay: &ToastOverlay,
     stores_list: &ListBox,
@@ -74,26 +117,15 @@ fn save_store_recipients_async(
         state.save_queued.set(false);
         return;
     }
-    #[cfg(feature = "flatpak")]
-    if _allow_git_unlock_prompt && Preferences::new().uses_integrated_backend() {
-        let overlay_for_retry = overlay.clone();
-        let stores_list_for_retry = stores_list.clone();
-        let state_for_retry = state.clone();
-        if prompt_private_key_unlock_for_store_git_commit_if_needed(
-            &state.platform.overlay,
-            &request.store,
-            &recipients,
-            Rc::new(move || {
-                save_store_recipients_async(
-                    &overlay_for_retry,
-                    &stores_list_for_retry,
-                    &state_for_retry,
-                    false,
-                );
-            }),
-        ) {
-            return;
-        }
+    if maybe_prompt_store_recipients_git_unlock(
+        overlay,
+        stores_list,
+        state,
+        &request.store,
+        &recipients,
+        _allow_git_unlock_prompt,
+    ) {
+        return;
     }
     if state.save_in_flight.replace(true) {
         state.save_queued.set(true);

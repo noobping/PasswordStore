@@ -9,15 +9,15 @@ use adw::{ApplicationWindow, NavigationPage, NavigationView, WindowTitle};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 mod flatpak;
 mod save;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 mod standard;
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use self::flatpak as platform;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use self::standard as platform;
 
 pub(crate) use self::platform::StoreRecipientsPlatformState;
@@ -39,7 +39,7 @@ impl StoreRecipientsMode {
         }
     }
 
-    #[cfg(not(feature = "flatpak"))]
+    #[cfg(keycord_standard_linux)]
     pub(crate) fn empty_state_subtitle(&self) -> &'static str {
         match self {
             Self::Create => "Add at least one recipient to create this store.",
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn mode_messages_match_their_behavior() {
-        #[cfg(not(feature = "flatpak"))]
+        #[cfg(keycord_standard_linux)]
         assert_eq!(
             StoreRecipientsMode::Create.empty_state_subtitle(),
             "Add at least one recipient to create this store."

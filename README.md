@@ -37,7 +37,7 @@ sudo dnf install gpgme-devel clang pkg-config nettle-devel libgpg-error-devel op
     git pass pass-otp pinentry pinentry-gnome3 python-pass-import
 ```
 
-### Running And Building
+### Running and Building
 
 Run the default build:
 
@@ -49,4 +49,24 @@ Build with the optional local installer action:
 
 ```sh
 cargo build --release --features setup
+```
+
+### Cross compile
+
+Build the container:
+
+```sh
+podman build -t rust-win -f Containerfile
+```
+
+Enter the container:
+
+```sh
+podman run --rm -it --userns=keep-id -v "$PWD":/work:z -w /work rust-win
+```
+
+Build inside the container:
+
+```sh
+cargo build --release --target x86_64-pc-windows-gnu
 ```

@@ -3,6 +3,7 @@ use crate::password::opened::get_opened_pass_file;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
+#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::preferences::PreferencesActionState;
@@ -10,8 +11,12 @@ use adw::gtk::Button;
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, NavigationView, WindowTitle};
 
+#[cfg(keycord_linux)]
 mod standard;
-pub(crate) use self::standard::{finish_git_busy_page, show_git_busy_page, show_log_page};
+#[cfg(keycord_linux)]
+pub(crate) use self::standard::show_log_page;
+#[cfg(keycord_linux)]
+pub(crate) use self::standard::{finish_git_busy_page, show_git_busy_page};
 
 #[derive(Clone)]
 pub(crate) struct WindowNavigationState {
@@ -19,6 +24,7 @@ pub(crate) struct WindowNavigationState {
     pub(crate) text_page: NavigationPage,
     pub(crate) raw_text_page: NavigationPage,
     pub(crate) settings_page: NavigationPage,
+    #[cfg(keycord_linux)]
     pub(crate) log_page: NavigationPage,
     pub(crate) back: Button,
     pub(crate) add: Button,
@@ -123,22 +129,43 @@ pub(crate) fn set_save_button_for_password(save: &Button) {
     save.set_tooltip_text(Some("Save changes"));
 }
 
+#[cfg(keycord_restricted)]
+fn root_store_button_visible(has_store_dirs: bool) -> bool {
+    !has_store_dirs
+}
+
+#[cfg(keycord_standard_linux)]
+fn root_store_button_visible(_has_store_dirs: bool) -> bool {
+    false
+}
+
+#[cfg(keycord_flatpak)]
+fn root_git_button_visible(has_store_dirs: bool) -> bool {
+    !has_store_dirs && git_network_operations_available()
+}
+
+#[cfg(not(keycord_linux))]
+fn root_git_button_visible(_has_store_dirs: bool) -> bool {
+    false
+}
+
+#[cfg(keycord_standard_linux)]
+fn root_git_button_visible(has_store_dirs: bool) -> bool {
+    !has_store_dirs
+}
+
 pub(crate) fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool) {
-    let git_available = git_network_operations_available();
     chrome.back.set_visible(false);
     chrome.save.set_visible(false);
     set_save_button_for_password(chrome.save);
     chrome.add.set_visible(has_store_dirs);
     chrome.find.set_visible(true);
-    chrome.git.set_visible(!has_store_dirs && git_available);
-    #[cfg(feature = "flatpak")]
-    {
-        chrome.store.set_visible(!has_store_dirs);
-    }
-    #[cfg(not(feature = "flatpak"))]
-    {
-        chrome.store.set_visible(false);
-    }
+    chrome
+        .git
+        .set_visible(root_git_button_visible(has_store_dirs));
+    chrome
+        .store
+        .set_visible(root_store_button_visible(has_store_dirs));
     chrome.win.set_title(APP_WINDOW_TITLE);
     chrome.win.set_subtitle(APP_WINDOW_SUBTITLE);
     chrome.raw.set_visible(false);
@@ -173,7 +200,7 @@ pub(crate) fn restore_window_for_current_page(
         visible_navigation_page_is(&state.nav, &state.raw_text_page),
         visible_navigation_page_is(&state.nav, &state.settings_page),
         visible_navigation_page_is(&state.nav, &recipients_page.page),
-        visible_navigation_page_is(&state.nav, &state.log_page),
+        visible_log_page(state),
     );
 
     if page_kind == RestoredPageKind::Root {
@@ -209,6 +236,16 @@ pub(crate) fn restore_window_for_current_page(
         show_secondary_page_chrome(&chrome, "Logs", "Details", false);
     }
 
+    false
+}
+
+#[cfg(keycord_linux)]
+fn visible_log_page(state: &WindowNavigationState) -> bool {
+    visible_navigation_page_is(&state.nav, &state.log_page)
+}
+
+#[cfg(not(keycord_linux))]
+fn visible_log_page(_state: &WindowNavigationState) -> bool {
     false
 }
 

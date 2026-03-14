@@ -1,15 +1,16 @@
 mod errors;
+#[cfg(keycord_linux)]
 mod host;
 mod integrated;
 #[cfg(test)]
 mod test_support;
 
 pub(crate) use self::errors::PasswordEntryError;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 pub(crate) use self::errors::PrivateKeyError;
 pub(crate) use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 pub(crate) use integrated::{
     git_commit_private_key_requiring_unlock_for_entry,
     git_commit_private_key_requiring_unlock_for_store_recipients, import_ripasso_private_key_bytes,
@@ -19,8 +20,18 @@ pub(crate) use integrated::{
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
 
+#[cfg(not(keycord_linux))]
+pub(crate) use integrated::{
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
+    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
+    ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
+};
+
+#[cfg(keycord_linux)]
 use crate::preferences::Preferences;
 
+#[cfg(keycord_linux)]
 fn dispatch_backend<T, E>(
     integrated: impl FnOnce() -> Result<T, E>,
     host: impl FnOnce() -> Result<T, E>,
@@ -32,6 +43,18 @@ fn dispatch_backend<T, E>(
     }
 }
 
+#[cfg(not(keycord_linux))]
+macro_rules! dispatch_backend_call {
+    ($(fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $ret:ty;)+) => {
+        $(
+            pub fn $name($($arg: $arg_ty),*) -> $ret {
+                integrated::$name($($arg),*)
+            }
+        )+
+    };
+}
+
+#[cfg(keycord_linux)]
 macro_rules! dispatch_backend_call {
     ($(fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $ret:ty;)+) => {
         $(

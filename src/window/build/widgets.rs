@@ -1,12 +1,13 @@
-#[cfg(feature = "setup")]
+#[cfg(keycord_standard_linux)]
 use adw::gio::Menu;
 use adw::glib::{object::IsA, Object};
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use adw::gtk::MenuButton;
 use adw::gtk::{
     Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer, SearchEntry,
     SpinButton, TextView, ToggleButton,
 };
+#[cfg(keycord_linux)]
 use adw::PreferencesGroup;
 use adw::{
     ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
@@ -15,9 +16,9 @@ use adw::{
 
 pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) window: ApplicationWindow,
-    #[cfg(feature = "setup")]
+    #[cfg(keycord_standard_linux)]
     pub(in crate::window) primary_menu: Menu,
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(in crate::window) primary_menu_button: MenuButton,
     pub(in crate::window) back_button: Button,
     pub(in crate::window) add_button: Button,
@@ -33,6 +34,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) settings_page: NavigationPage,
     pub(in crate::window) store_recipients_page: NavigationPage,
     pub(in crate::window) store_recipients_list: ListBox,
+    #[cfg(keycord_linux)]
     pub(in crate::window) log_page: NavigationPage,
     pub(in crate::window) new_pass_file_template_view: TextView,
     pub(in crate::window) preferences_username_folder_check: CheckButton,
@@ -66,11 +68,17 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) preferences_password_generator_min_uppercase_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_numbers_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_symbols_spin: SpinButton,
+    #[cfg(keycord_linux)]
     pub(in crate::window) backend_preferences: PreferencesGroup,
+    #[cfg(keycord_linux)]
     pub(in crate::window) backend_row: adw::ComboRow,
+    #[cfg(keycord_linux)]
     pub(in crate::window) pass_command_row: EntryRow,
+    #[cfg(keycord_linux)]
     pub(in crate::window) git_busy_page: NavigationPage,
+    #[cfg(keycord_linux)]
     pub(in crate::window) git_busy_status: StatusPage,
+    #[cfg(keycord_linux)]
     pub(in crate::window) log_view: TextView,
 }
 
@@ -78,9 +86,9 @@ impl WindowWidgets {
     pub(in crate::window) fn load(builder: &Builder) -> Self {
         Self {
             window: required_object(builder, "main_window"),
-            #[cfg(feature = "setup")]
+            #[cfg(keycord_standard_linux)]
             primary_menu: required_object(builder, "primary_menu"),
-            #[cfg(feature = "flatpak")]
+            #[cfg(keycord_restricted)]
             primary_menu_button: required_object(builder, "primary_menu_button"),
             back_button: required_object(builder, "back_button"),
             add_button: required_object(builder, "add_button"),
@@ -96,6 +104,7 @@ impl WindowWidgets {
             settings_page: required_object(builder, "settings_page"),
             store_recipients_page: required_object(builder, "store_recipients_page"),
             store_recipients_list: required_object(builder, "store_recipients_list"),
+            #[cfg(keycord_linux)]
             log_page: required_object(builder, "log_page"),
             new_pass_file_template_view: required_object(builder, "new_pass_file_template_view"),
             preferences_username_folder_check: required_object(
@@ -171,11 +180,17 @@ impl WindowWidgets {
                 builder,
                 "preferences_password_generator_min_symbols_spin",
             ),
+            #[cfg(keycord_linux)]
             backend_preferences: required_object(builder, "backend_preferences"),
+            #[cfg(keycord_linux)]
             backend_row: required_object(builder, "backend_row"),
+            #[cfg(keycord_linux)]
             pass_command_row: required_object(builder, "pass_command_row"),
+            #[cfg(keycord_linux)]
             git_busy_page: required_object(builder, "git_busy_page"),
+            #[cfg(keycord_linux)]
             git_busy_status: required_object(builder, "git_busy_status"),
+            #[cfg(keycord_linux)]
             log_view: required_object(builder, "log_view"),
         }
     }

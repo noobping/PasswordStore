@@ -1,12 +1,15 @@
 mod build;
 mod controls;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 mod flatpak;
 mod git;
+#[cfg(keycord_linux)]
 mod logs;
 pub(crate) mod navigation;
+#[cfg(not(keycord_linux))]
+mod non_linux;
 mod preferences;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 mod standard;
 
 pub(crate) use self::build::create_main_window;

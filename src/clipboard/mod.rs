@@ -7,14 +7,14 @@ use adw::gtk::{gdk::Display, Button, Widget};
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use std::time::Duration;
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 mod flatpak;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 mod standard;
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use self::flatpak as platform;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use self::standard as platform;
 
 const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";

@@ -162,7 +162,7 @@ pub(crate) fn run_command_output(
     run_command_output_inner(cmd, context, options)
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 pub(crate) fn run_command_status(
     cmd: &mut Command,
     context: &str,

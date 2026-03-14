@@ -2,7 +2,7 @@ mod run;
 mod streams;
 
 pub(crate) use self::run::run_command_output;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 pub(crate) use self::run::run_command_status;
 pub(crate) use self::run::run_command_with_input;
 

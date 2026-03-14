@@ -1,6 +1,6 @@
 use crate::preferences::Preferences;
 use std::fs;
-#[cfg(any(test, not(feature = "flatpak")))]
+#[cfg(any(test, keycord_standard_linux))]
 use std::{cell::RefCell, rc::Rc};
 
 pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
@@ -32,7 +32,7 @@ pub(crate) fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     Vec::new()
 }
 
-#[cfg(any(test, not(feature = "flatpak")))]
+#[cfg(any(test, keycord_standard_linux))]
 pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
     let parsed = parse_gpg_recipients(input);
     if parsed.is_empty() {

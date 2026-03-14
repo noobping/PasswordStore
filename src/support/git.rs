@@ -1,50 +1,59 @@
 use std::path::Path;
 
+#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 
 pub(crate) fn has_git_repository(root: &str) -> bool {
     Path::new(root).join(".git").exists()
 }
 
+fn password_store_without_repository_summary(root: &str) -> String {
+    format!(
+        "Password store Git state: {root} -> no Git repository detected, local commits disabled, network operations disabled."
+    )
+}
+
+#[cfg(keycord_flatpak)]
 pub(crate) fn password_store_git_state_summary(root: &str) -> String {
-    let has_repository = has_git_repository(root);
-    let network_available = git_network_operations_available();
-
-    if !has_repository {
-        return format!(
-            "Password store Git state: {root} -> no Git repository detected, local commits disabled, network operations disabled."
-        );
+    if !has_git_repository(root) {
+        return password_store_without_repository_summary(root);
     }
 
-    if network_available {
-        #[cfg(feature = "flatpak")]
-        {
-            return format!(
-                "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled through host commands."
-            );
-        }
-
-        #[cfg(not(feature = "flatpak"))]
-        {
-            return format!(
-                "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
-            );
-        }
+    if git_network_operations_available() {
+        return password_store_git_state_summary_with_network(root);
     }
 
-    #[cfg(feature = "flatpak")]
-    {
-        format!(
-            "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled because host command execution is unavailable."
-        )
+    password_store_git_state_summary_without_network(root)
+}
+
+#[cfg(keycord_standard_linux)]
+pub(crate) fn password_store_git_state_summary(root: &str) -> String {
+    if !has_git_repository(root) {
+        return password_store_without_repository_summary(root);
     }
 
-    #[cfg(not(feature = "flatpak"))]
-    {
-        format!(
-            "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled."
-        )
-    }
+    password_store_git_state_summary_with_network(root)
+}
+
+#[cfg(keycord_flatpak)]
+fn password_store_git_state_summary_with_network(root: &str) -> String {
+    format!(
+        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled through host commands."
+    )
+}
+
+#[cfg(keycord_standard_linux)]
+fn password_store_git_state_summary_with_network(root: &str) -> String {
+    format!(
+        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
+    )
+}
+
+#[cfg(keycord_flatpak)]
+fn password_store_git_state_summary_without_network(root: &str) -> String {
+    format!(
+        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled because host command execution is unavailable."
+    )
 }
 
 #[cfg(test)]

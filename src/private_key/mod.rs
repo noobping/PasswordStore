@@ -1,4 +1,4 @@
 pub(crate) mod dialog;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 pub(crate) mod git;
 pub(crate) mod unlock;

@@ -8,6 +8,7 @@ use crate::support::ui::{
 };
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
+#[cfg(keycord_linux)]
 pub(crate) fn show_log_page(state: &WindowNavigationState) {
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Logs", "Details", false);

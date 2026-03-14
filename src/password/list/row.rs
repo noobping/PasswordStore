@@ -511,13 +511,13 @@ mod tests {
 
     #[test]
     fn store_move_read_errors_keep_specific_open_toasts() {
-        #[cfg(feature = "flatpak")]
+        #[cfg(keycord_restricted)]
         {
             let error = UndoError::Read(PasswordEntryError::missing_private_key("missing"));
             assert_eq!(error.toast_message(), "Add a private key in Preferences.");
         }
 
-        #[cfg(not(feature = "flatpak"))]
+        #[cfg(keycord_standard_linux)]
         {
             let error = UndoError::Read(PasswordEntryError::other("missing"));
             assert_eq!(error.toast_message(), "Couldn't undo the last change.");

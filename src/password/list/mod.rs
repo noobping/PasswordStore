@@ -7,8 +7,10 @@ use crate::logging::{log_error, log_info};
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
+#[cfg(keycord_linux)]
 use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::non_null_to_string_option;
+#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::clear_list_box;
 use adw::gtk::{Button, ListBox, ListBoxRow, SearchEntry};
@@ -87,16 +89,30 @@ fn should_show_root_git_button(
     show_list_actions && !has_store_dirs && git_available
 }
 
+#[cfg(keycord_restricted)]
 fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
-    #[cfg(feature = "flatpak")]
-    {
-        show_list_actions && !has_store_dirs
-    }
-    #[cfg(not(feature = "flatpak"))]
-    {
-        let _ = (show_list_actions, has_store_dirs);
-        false
-    }
+    show_list_actions && !has_store_dirs
+}
+
+#[cfg(keycord_standard_linux)]
+fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
+    let _ = (show_list_actions, has_store_dirs);
+    false
+}
+
+#[cfg(keycord_flatpak)]
+fn list_git_available() -> bool {
+    git_network_operations_available()
+}
+
+#[cfg(not(keycord_linux))]
+fn list_git_available() -> bool {
+    false
+}
+
+#[cfg(keycord_standard_linux)]
+fn list_git_available() -> bool {
+    true
 }
 
 pub(crate) fn load_passwords_async(
@@ -112,7 +128,7 @@ pub(crate) fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
-    let git_available = git_network_operations_available();
+    let git_available = list_git_available();
     log_store_git_state(&settings);
 
     actions.git.set_visible(false);
@@ -230,6 +246,7 @@ fn prune_missing_store_dirs(settings: &Preferences) {
     }
 }
 
+#[cfg(keycord_linux)]
 fn log_store_git_state(settings: &Preferences) {
     let stores = settings.store_roots();
     let summary = if stores.is_empty() {
@@ -251,6 +268,10 @@ fn log_store_git_state(settings: &Preferences) {
     }
 }
 
+#[cfg(not(keycord_linux))]
+fn log_store_git_state(_settings: &Preferences) {}
+
+#[cfg(keycord_linux)]
 fn store_git_state_summary_changed(summary: &str) -> bool {
     static LAST_SUMMARY: OnceLock<Mutex<String>> = OnceLock::new();
     let state = LAST_SUMMARY.get_or_init(|| Mutex::new(String::new()));
@@ -276,6 +297,48 @@ mod tests {
     };
     use crate::password::model::CollectItemsOptions;
 
+    #[cfg(keycord_restricted)]
+    fn expected_root_store_button_visibility() -> bool {
+        true
+    }
+
+    #[cfg(keycord_standard_linux)]
+    fn expected_root_store_button_visibility() -> bool {
+        false
+    }
+
+    #[cfg(keycord_restricted)]
+    fn expected_root_action_visibility_for_empty_store_setup() -> ListActionVisibility {
+        ListActionVisibility {
+            add_visible: false,
+            find_visible: false,
+            git_visible: true,
+            store_visible: true,
+            save_visible: false,
+        }
+    }
+
+    #[cfg(keycord_standard_linux)]
+    fn expected_root_action_visibility_for_empty_store_setup() -> ListActionVisibility {
+        ListActionVisibility {
+            add_visible: false,
+            find_visible: false,
+            git_visible: true,
+            store_visible: false,
+            save_visible: false,
+        }
+    }
+
+    #[cfg(keycord_restricted)]
+    fn expected_store_visibility_without_git() -> bool {
+        true
+    }
+
+    #[cfg(keycord_standard_linux)]
+    fn expected_store_visibility_without_git() -> bool {
+        false
+    }
+
     #[test]
     fn root_shortcut_buttons_are_hidden_for_existing_store_setup() {
         assert!(!should_show_root_git_button(true, true, true));
@@ -286,17 +349,11 @@ mod tests {
 
     #[test]
     fn root_shortcut_buttons_match_the_current_build() {
-        #[cfg(not(feature = "flatpak"))]
-        {
-            assert!(should_show_root_git_button(true, false, true));
-            assert!(!should_show_root_store_button(true, false));
-        }
-
-        #[cfg(feature = "flatpak")]
-        {
-            assert!(should_show_root_git_button(true, false, true));
-            assert!(should_show_root_store_button(true, false));
-        }
+        assert!(should_show_root_git_button(true, false, true));
+        assert_eq!(
+            should_show_root_store_button(true, false),
+            expected_root_store_button_visibility()
+        );
     }
 
     #[test]
@@ -344,28 +401,9 @@ mod tests {
 
     #[test]
     fn list_actions_show_the_build_specific_root_shortcut_for_empty_missing_store_setup() {
-        #[cfg(not(feature = "flatpak"))]
         assert_eq!(
             list_action_visibility(true, false, true, true),
-            ListActionVisibility {
-                add_visible: false,
-                find_visible: false,
-                git_visible: true,
-                store_visible: false,
-                save_visible: false,
-            }
-        );
-
-        #[cfg(feature = "flatpak")]
-        assert_eq!(
-            list_action_visibility(true, false, true, true),
-            ListActionVisibility {
-                add_visible: false,
-                find_visible: false,
-                git_visible: true,
-                store_visible: true,
-                save_visible: false,
-            }
+            expected_root_action_visibility_for_empty_store_setup()
         );
     }
 
@@ -377,10 +415,7 @@ mod tests {
                 add_visible: false,
                 find_visible: false,
                 git_visible: false,
-                #[cfg(feature = "flatpak")]
-                store_visible: true,
-                #[cfg(not(feature = "flatpak"))]
-                store_visible: false,
+                store_visible: expected_store_visibility_without_git(),
                 save_visible: false,
             }
         );

@@ -1,8 +1,8 @@
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use crate::backend::integrated::clear_cached_unlocked_ripasso_private_keys;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use ripasso::crypto::{Crypto, Sequoia};
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use sequoia_openpgp::{cert::CertBuilder, serialize::Serialize, Cert};
 use std::env;
 use std::ffi::OsString;
@@ -12,7 +12,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,7 +23,7 @@ fn test_lock() -> &'static Mutex<()> {
 }
 
 fn reset_backend_test_state() {
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     clear_cached_unlocked_ripasso_private_keys();
 }
 
@@ -124,7 +124,7 @@ fn import_public_key(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 fn git_head_author(path: &Path) -> Result<String, String> {
     let output = ensure_success(
         "git log",
@@ -138,7 +138,7 @@ fn git_head_author(path: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 fn git_head_commit_has_signature(path: &Path) -> Result<bool, String> {
     let output = ensure_success(
         "git cat-file",
@@ -152,7 +152,7 @@ fn git_head_commit_has_signature(path: &Path) -> Result<bool, String> {
     Ok(String::from_utf8_lossy(&output.stdout).contains("\ngpgsig "))
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 fn verify_git_head_signature(path: &Path) -> Result<(), String> {
     ensure_success(
         "git verify-commit",
@@ -166,7 +166,7 @@ fn verify_git_head_signature(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 fn trust_public_key(fingerprint_hex: &str) -> Result<(), String> {
     let mut child = Command::new("gpg")
         .args(["--batch", "--yes", "--import-ownertrust"])
@@ -196,7 +196,7 @@ fn trust_public_key(fingerprint_hex: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 pub(crate) struct GeneratedSecretKey {
     pub(crate) cert: Arc<Cert>,
     pub(crate) fingerprint: [u8; 20],
@@ -243,7 +243,7 @@ impl SystemBackendTestEnv {
         env
     }
 
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn root_dir(&self) -> &Path {
         &self.root
     }
@@ -279,22 +279,22 @@ impl SystemBackendTestEnv {
         git_commit_subjects(self.store_root())
     }
 
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn store_git_head_author(&self) -> Result<String, String> {
         git_head_author(self.store_root())
     }
 
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn store_head_commit_has_signature(&self) -> Result<bool, String> {
         git_head_commit_has_signature(self.store_root())
     }
 
-    #[cfg(feature = "flatpak")]
+    #[cfg(keycord_restricted)]
     pub(crate) fn verify_store_head_commit_signature(&self) -> Result<(), String> {
         verify_git_head_signature(self.store_root())
     }
 
-    #[cfg(not(feature = "flatpak"))]
+    #[cfg(keycord_standard_linux)]
     pub(crate) fn generate_secret_key(&self, user_id: &str) -> Result<GeneratedSecretKey, String> {
         let (cert, _) = CertBuilder::general_purpose(Some(user_id))
             .generate()
@@ -321,7 +321,7 @@ impl SystemBackendTestEnv {
         import_public_key(bytes)
     }
 
-    #[cfg(not(feature = "flatpak"))]
+    #[cfg(keycord_standard_linux)]
     pub(crate) fn trust_public_key(&self, fingerprint_hex: &str) -> Result<(), String> {
         trust_public_key(fingerprint_hex)
     }
@@ -364,7 +364,7 @@ impl Drop for SystemBackendTestEnv {
     }
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 fn decrypt_entry_with_generated_key(
     key: &GeneratedSecretKey,
     ciphertext: &[u8],
@@ -376,7 +376,7 @@ fn decrypt_entry_with_generated_key(
         .map_err(|err| err.to_string())
 }
 
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 pub(crate) fn assert_entry_is_encrypted_for_each_recipient(
     initialize_store: impl Fn(&str, &[String]) -> Result<(), String>,
     save_entry: impl Fn(&str, &str, &str) -> Result<(), String>,

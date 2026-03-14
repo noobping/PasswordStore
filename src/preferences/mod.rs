@@ -3,19 +3,24 @@ use adw::gio::{self, prelude::*, Settings};
 use adw::glib::BoolError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_linux)]
+mod command_backend;
+#[cfg(keycord_flatpak)]
 mod flatpak;
+#[cfg(not(keycord_linux))]
+mod non_linux;
+#[cfg(keycord_restricted)]
+mod restricted;
+#[cfg(keycord_standard_linux)]
 mod standard;
 mod storage;
 
-#[cfg(feature = "flatpak")]
-use self::flatpak as platform_defaults;
 use self::platform_defaults::default_store_dirs;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_restricted)]
+use self::restricted as platform_defaults;
+#[cfg(keycord_standard_linux)]
 use self::standard as platform_defaults;
-use self::standard::remote_git_command;
 use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
@@ -30,6 +35,50 @@ pub enum BackendKind {
 
 fn default_backend_kind() -> BackendKind {
     BackendKind::Integrated
+}
+
+impl BackendKind {
+    pub fn stored_value(self) -> &'static str {
+        match self {
+            Self::Integrated => "integrated",
+            Self::HostCommand => "host-command",
+        }
+    }
+
+    pub fn from_stored(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "integrated" | "ripasso" => Self::Integrated,
+            "host-command" | "host command" | "pass" | "pass-command" | "pass command" => {
+                Self::HostCommand
+            }
+            _ => default_backend_kind(),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Integrated => "Integrated",
+            Self::HostCommand => "Host command",
+        }
+    }
+
+    pub fn combo_position(self) -> u32 {
+        match self {
+            Self::Integrated => 0,
+            Self::HostCommand => 1,
+        }
+    }
+
+    pub fn from_combo_position(position: u32) -> Self {
+        match position {
+            1 => Self::HostCommand,
+            _ => Self::Integrated,
+        }
+    }
+
+    pub fn uses_host_command(self) -> bool {
+        matches!(self, Self::HostCommand)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,14 +164,6 @@ impl Preferences {
 
     pub fn store(&self) -> String {
         self.store_roots().into_iter().next().unwrap_or_default()
-    }
-
-    pub fn git_command(&self) -> Command {
-        Command::new("git")
-    }
-
-    pub fn remote_git_command(&self) -> Command {
-        remote_git_command()
     }
 
     pub fn new_pass_file_template(&self) -> String {
@@ -260,20 +301,21 @@ mod tests {
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[cfg(keycord_restricted)]
+    fn expected_default_store_dirs() -> Vec<String> {
+        Vec::new()
+    }
+
+    #[cfg(keycord_standard_linux)]
+    fn expected_default_store_dirs() -> Vec<String> {
+        std::env::var("HOME")
+            .map(|home| vec![format!("{home}/.password-store")])
+            .unwrap_or_default()
+    }
+
     #[test]
     fn default_store_dirs_match_build_mode() {
-        #[cfg(feature = "flatpak")]
-        assert!(default_store_dirs().is_empty());
-
-        #[cfg(not(feature = "flatpak"))]
-        if let Ok(home) = std::env::var("HOME") {
-            assert_eq!(
-                default_store_dirs(),
-                vec![format!("{home}/.password-store")]
-            );
-        } else {
-            assert!(default_store_dirs().is_empty());
-        }
+        assert_eq!(default_store_dirs(), expected_default_store_dirs());
     }
 
     #[test]

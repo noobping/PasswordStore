@@ -1,6 +1,9 @@
 mod editor;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 mod flatpak;
+#[cfg(not(keycord_linux))]
+mod non_linux;
+#[cfg(keycord_linux)]
 mod standard;
 mod state;
 
@@ -32,10 +35,12 @@ use self::editor::{
     add_empty_otp_secret as add_empty_otp_secret_to_editor, current_editor_contents,
     structured_editor_contents, sync_editor_contents,
 };
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 use self::flatpak as platform;
+#[cfg(not(keycord_linux))]
+use self::non_linux as platform;
 use self::platform::handle_open_password_entry_error;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use self::standard as platform;
 pub(crate) use self::state::PasswordPageState;
 use self::state::{
@@ -331,7 +336,7 @@ pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
     save_current_password_entry_impl(state, true);
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 pub(super) fn save_current_password_entry_without_git_unlock_prompt(state: &PasswordPageState) {
     save_current_password_entry_impl(state, false);
 }
@@ -393,6 +398,16 @@ mod tests {
     use crate::password::model::{OpenPassFile, UsernameFallbackError};
     use crate::preferences::UsernameFallbackMode;
 
+    #[cfg(keycord_restricted)]
+    fn expected_missing_private_key_open_failure_message() -> &'static str {
+        "Add a private key in Preferences."
+    }
+
+    #[cfg(keycord_standard_linux)]
+    fn expected_missing_private_key_open_failure_message() -> &'static str {
+        "Couldn't open the item."
+    }
+
     #[test]
     fn retry_open_requires_a_hidden_editor_on_the_password_page_with_an_open_item() {
         assert!(should_retry_open_password_entry(true, true, false, true));
@@ -416,29 +431,18 @@ mod tests {
 
     #[test]
     fn password_open_failure_message_uses_specific_private_key_toasts_when_available() {
-        #[cfg(feature = "flatpak")]
-        {
-            assert_eq!(
-                password_open_failure_message(Some(&PasswordEntryError::missing_private_key(
-                    "missing"
-                ))),
-                "Add a private key in Preferences."
-            );
-            assert_eq!(
-                password_open_failure_message(Some(&PasswordEntryError::incompatible_private_key(
-                    "incompatible"
-                ))),
-                "This key can't open your items."
-            );
-        }
-
-        #[cfg(not(feature = "flatpak"))]
-        {
-            assert_eq!(
-                password_open_failure_message(Some(&PasswordEntryError::other("missing"))),
-                "Couldn't open the item."
-            );
-        }
+        assert_eq!(
+            password_open_failure_message(Some(&PasswordEntryError::missing_private_key(
+                "missing"
+            ))),
+            expected_missing_private_key_open_failure_message()
+        );
+        assert_eq!(
+            password_open_failure_message(Some(&PasswordEntryError::incompatible_private_key(
+                "incompatible"
+            ))),
+            "This key can't open your items."
+        );
     }
 
     #[test]

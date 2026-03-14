@@ -8,14 +8,14 @@ use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
-#[cfg(feature = "setup")]
+#[cfg(keycord_setup)]
 use crate::setup::*;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
     connect_store_recipients_entry, register_store_recipients_save_action, StoreRecipientsPageState,
 };
-#[cfg(feature = "setup")]
+#[cfg(keycord_setup)]
 use adw::gio::MenuItem;
 use adw::gtk::Builder;
 use adw::{prelude::*, Application, ApplicationWindow};
@@ -35,29 +35,189 @@ use super::controls::{
     register_context_save_action, register_context_undo_action, register_list_visibility_action,
     register_toggle_find_action, ListVisibilityState,
 };
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_flatpak)]
 use super::flatpak::configure_flatpak_window;
+use super::git::GitActionState;
+#[cfg(keycord_linux)]
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
 };
+#[cfg(keycord_standard_linux)]
+use super::logs::append_debug_log_menu_item;
+#[cfg(keycord_linux)]
 use super::logs::{register_open_log_action, start_log_poller};
-use super::navigation::set_save_button_for_password;
-#[cfg(feature = "setup")]
+use super::navigation::{set_save_button_for_password, WindowNavigationState};
+#[cfg(not(keycord_linux))]
+use super::non_linux::configure_non_linux_window;
+#[cfg(keycord_setup)]
 use super::preferences::register_install_locally_action;
+#[cfg(keycord_linux)]
+use super::preferences::{connect_backend_row, connect_pass_command_row, initialize_backend_row};
 use super::preferences::{
-    connect_backend_row, connect_new_password_template_autosave, connect_pass_command_row,
-    connect_password_generation_autosave, connect_username_fallback_autosave,
-    initialize_backend_row, register_open_preferences_action, PreferencesActionState,
+    connect_new_password_template_autosave, connect_password_generation_autosave,
+    connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use super::standard::configure_standard_window;
 use crate::logging::log_info;
-use crate::support::runtime::{
-    git_network_operations_available, host_command_execution_available,
-    log_runtime_capabilities_once,
-};
+use crate::support::runtime::log_runtime_capabilities_once;
+#[cfg(keycord_flatpak)]
+use crate::support::runtime::{git_network_operations_available, host_command_execution_available};
 
-const UI_SRC: &str = include_str!("../../../data/window.ui");
+const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
+
+#[cfg(keycord_setup)]
+fn append_setup_menu_item_if_available(widgets: &WindowWidgets) {
+    if can_install_locally() {
+        let item = MenuItem::new(
+            Some(local_menu_action_label(is_installed_locally())),
+            Some("win.install-locally"),
+        );
+        widgets.primary_menu.append_item(&item);
+    }
+}
+
+#[cfg(not(keycord_setup))]
+fn append_setup_menu_item_if_available(_widgets: &WindowWidgets) {}
+
+#[cfg(keycord_flatpak)]
+fn configure_platform_window(widgets: &WindowWidgets) {
+    configure_flatpak_window(widgets);
+}
+
+#[cfg(not(keycord_linux))]
+fn configure_platform_window(widgets: &WindowWidgets) {
+    configure_non_linux_window(widgets);
+}
+
+#[cfg(keycord_standard_linux)]
+fn configure_platform_window(widgets: &WindowWidgets) {
+    append_debug_log_menu_item(&widgets.primary_menu);
+}
+
+#[cfg(keycord_restricted)]
+fn build_store_recipients_page_state(widgets: &WindowWidgets) -> StoreRecipientsPageState {
+    store_recipients_page_state(widgets)
+}
+
+#[cfg(keycord_standard_linux)]
+fn build_store_recipients_page_state(widgets: &WindowWidgets) -> StoreRecipientsPageState {
+    let standard_window = configure_standard_window(widgets);
+    store_recipients_page_state(widgets, &standard_window.store_recipients_entry)
+}
+
+#[cfg(keycord_restricted)]
+fn register_platform_window_actions(
+    widgets: &WindowWidgets,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    register_open_store_picker_action(
+        &widgets.window,
+        &widgets.password_stores,
+        &widgets.toast_overlay,
+        recipients_page,
+    );
+}
+
+#[cfg(keycord_standard_linux)]
+fn register_platform_window_actions(
+    _widgets: &WindowWidgets,
+    _recipients_page: &StoreRecipientsPageState,
+) {
+}
+
+#[cfg(keycord_setup)]
+fn register_setup_action_if_available(widgets: &WindowWidgets) {
+    register_install_locally_action(
+        &widgets.window,
+        &widgets.primary_menu,
+        &widgets.toast_overlay,
+    );
+}
+
+#[cfg(not(keycord_setup))]
+fn register_setup_action_if_available(_widgets: &WindowWidgets) {}
+
+#[cfg(keycord_flatpak)]
+fn platform_git_actions_available() -> bool {
+    git_network_operations_available()
+}
+
+#[cfg(keycord_standard_linux)]
+fn platform_git_actions_available() -> bool {
+    true
+}
+
+#[cfg(not(keycord_linux))]
+fn register_platform_git_actions(_widgets: &WindowWidgets, _git_action_state: &GitActionState) {
+    log_info(
+        "Window Git actions: open-git, git-clone, and synchronize are disabled on non-Linux builds."
+            .to_string(),
+    );
+}
+
+#[cfg(keycord_linux)]
+fn register_platform_git_actions(widgets: &WindowWidgets, git_action_state: &GitActionState) {
+    register_open_git_action(git_action_state);
+    register_synchronize_action(git_action_state);
+    let git_available = platform_git_actions_available();
+    set_git_action_availability(&widgets.window, git_available);
+    log_info(format!(
+        "Window Git actions: open-git, git-clone, and synchronize are {}.",
+        if git_available { "enabled" } else { "disabled" }
+    ));
+}
+
+#[cfg(not(keycord_linux))]
+fn register_platform_log_actions(
+    _widgets: &WindowWidgets,
+    _navigation_state: &WindowNavigationState,
+) {
+}
+
+#[cfg(keycord_linux)]
+fn register_platform_log_actions(
+    widgets: &WindowWidgets,
+    navigation_state: &WindowNavigationState,
+) {
+    register_open_log_action(&widgets.window, navigation_state);
+    start_log_poller(&widgets.log_view);
+}
+
+#[cfg(keycord_flatpak)]
+fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Preferences) {
+    widgets
+        .backend_preferences
+        .set_visible(host_command_execution_available());
+    initialize_backend_row(&widgets.backend_row, &widgets.pass_command_row, preferences);
+}
+
+#[cfg(keycord_standard_linux)]
+fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Preferences) {
+    widgets.backend_preferences.set_visible(true);
+    initialize_backend_row(&widgets.backend_row, &widgets.pass_command_row, preferences);
+}
+
+#[cfg(not(keycord_linux))]
+fn initialize_backend_preferences(_widgets: &WindowWidgets, _preferences: &Preferences) {}
+
+#[cfg(keycord_linux)]
+fn connect_backend_preferences(widgets: &WindowWidgets, preferences: &Preferences) {
+    connect_pass_command_row(
+        &widgets.pass_command_row,
+        &widgets.toast_overlay,
+        preferences,
+    );
+    connect_backend_row(
+        &widgets.backend_row,
+        &widgets.pass_command_row,
+        &widgets.toast_overlay,
+        preferences,
+    );
+}
+
+#[cfg(not(keycord_linux))]
+fn connect_backend_preferences(_widgets: &WindowWidgets, _preferences: &Preferences) {}
 
 fn connect_window_behaviors(
     widgets: &WindowWidgets,
@@ -88,17 +248,7 @@ fn connect_window_behaviors(
         &widgets.toast_overlay,
     );
     let backend_preferences = Preferences::new();
-    connect_pass_command_row(
-        &widgets.pass_command_row,
-        &widgets.toast_overlay,
-        &backend_preferences,
-    );
-    connect_backend_row(
-        &widgets.backend_row,
-        &widgets.pass_command_row,
-        &widgets.toast_overlay,
-        &backend_preferences,
-    );
+    connect_backend_preferences(widgets, &backend_preferences);
     connect_store_recipients_entry(store_recipients_page_state);
     connect_password_copy_buttons(
         &widgets.toast_overlay,
@@ -132,30 +282,11 @@ pub(crate) fn create_main_window(
     let widgets = WindowWidgets::load(&builder);
     widgets.window.set_application(Some(app));
     log_runtime_capabilities_once();
-
-    #[cfg(feature = "setup")]
-    if can_install_locally() {
-        let item = MenuItem::new(
-            Some(local_menu_action_label(is_installed_locally())),
-            Some("win.install-locally"),
-        );
-        widgets.primary_menu.append_item(&item);
-    }
-    #[cfg(feature = "flatpak")]
-    configure_flatpak_window(&widgets);
+    configure_platform_window(&widgets);
+    append_setup_menu_item_if_available(&widgets);
     let backend_preferences = Preferences::new();
-    widgets
-        .backend_preferences
-        .set_visible(host_command_execution_available());
-    initialize_backend_row(
-        &widgets.backend_row,
-        &widgets.pass_command_row,
-        &backend_preferences,
-    );
+    initialize_backend_preferences(&widgets, &backend_preferences);
     set_save_button_for_password(&widgets.save_button);
-
-    #[cfg(not(feature = "flatpak"))]
-    let standard_window = configure_standard_window(&widgets);
 
     let list_actions = PasswordListActions::new(
         &widgets.add_button,
@@ -176,11 +307,7 @@ pub(crate) fn create_main_window(
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);
     let password_list_state = password_page_state(&widgets, &password_otp_state);
     let list_visibility = ListVisibilityState::new(false, false);
-    let store_recipients_page_state = store_recipients_page_state(
-        &widgets,
-        #[cfg(not(feature = "flatpak"))]
-        &standard_window.store_recipients_entry,
-    );
+    let store_recipients_page_state = build_store_recipients_page_state(&widgets);
     let window_navigation_state = window_navigation_state(&widgets);
     let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);
     let git_action_state = build_git_action_state(
@@ -219,31 +346,11 @@ pub(crate) fn create_main_window(
         &widgets.password_stores,
         &store_recipients_page_state,
     );
-    register_open_git_action(&git_action_state);
-    register_synchronize_action(&git_action_state);
-    let git_available = git_network_operations_available();
-    set_git_action_availability(&widgets.window, git_available);
-    log_info(format!(
-        "Window Git actions: open-git, git-clone, and synchronize are {}.",
-        if git_available { "enabled" } else { "disabled" }
-    ));
-    register_open_log_action(&widgets.window, &window_navigation_state);
-    start_log_poller(&widgets.log_view, &window_navigation_state);
-    #[cfg(feature = "flatpak")]
-    register_open_store_picker_action(
-        &widgets.window,
-        &widgets.password_stores,
-        &widgets.toast_overlay,
-        &store_recipients_page_state,
-    );
+    register_platform_git_actions(&widgets, &git_action_state);
+    register_platform_log_actions(&widgets, &window_navigation_state);
+    register_platform_window_actions(&widgets, &store_recipients_page_state);
     register_open_preferences_action(&widgets.window, &preferences_action_state);
-
-    #[cfg(feature = "setup")]
-    register_install_locally_action(
-        &widgets.window,
-        &widgets.primary_menu,
-        &widgets.toast_overlay,
-    );
+    register_setup_action_if_available(&widgets);
 
     register_open_new_password_action(&widgets.window, &new_password_popover_state);
     register_context_save_action(

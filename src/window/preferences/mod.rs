@@ -7,22 +7,34 @@ use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gtk::{Button, CheckButton, ListBox, TextView};
 use adw::prelude::*;
-use adw::{
-    ApplicationWindow, ComboRow, EntryRow, NavigationPage, NavigationView, Toast, ToastOverlay,
-    WindowTitle,
-};
+use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
+#[cfg(keycord_linux)]
+use adw::{ComboRow, EntryRow};
 use std::cell::Cell;
 use std::rc::Rc;
 
-#[cfg(feature = "setup")]
+#[cfg(keycord_flatpak)]
+mod flatpak;
+#[cfg(not(keycord_linux))]
+mod non_linux;
+#[cfg(keycord_setup)]
 mod setup;
+#[cfg(keycord_standard_linux)]
 mod standard;
 
-#[cfg(feature = "setup")]
-pub(crate) use self::setup::register_install_locally_action;
-pub(crate) use self::standard::{
+#[cfg(keycord_flatpak)]
+use self::flatpak as platform;
+#[cfg(not(keycord_linux))]
+use self::non_linux as platform;
+#[cfg(keycord_standard_linux)]
+use self::standard as platform;
+
+#[cfg(keycord_linux)]
+pub(crate) use self::platform::{
     connect_backend_row, connect_pass_command_row, initialize_backend_row,
 };
+#[cfg(keycord_setup)]
+pub(crate) use self::setup::register_install_locally_action;
 
 pub(super) fn toast_preferences_save_error(
     overlay: &ToastOverlay,
@@ -56,7 +68,9 @@ pub(crate) struct PreferencesActionState {
     pub(crate) stores_list: ListBox,
     pub(crate) overlay: ToastOverlay,
     pub(crate) recipients_page: StoreRecipientsPageState,
+    #[cfg(keycord_linux)]
     pub(crate) pass_row: EntryRow,
+    #[cfg(keycord_linux)]
     pub(crate) backend_row: ComboRow,
 }
 
@@ -213,7 +227,7 @@ pub(crate) fn register_open_preferences_action(
         push_navigation_page_if_needed(&state.nav, &state.page);
 
         let settings = Preferences::new();
-        self::standard::refresh_open_preferences_state(&state, &settings);
+        platform::refresh_open_preferences_state(&state, &settings);
         sync_username_fallback_checks(
             &state.username_folder_check,
             &state.username_filename_check,

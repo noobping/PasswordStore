@@ -16,7 +16,7 @@ pub(crate) fn uri_to_open(value: &str) -> Option<String> {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(keycord_linux)]
 pub(super) fn add_open_url_suffix(
     row: &EntryRow,
     text: impl Fn() -> String + 'static,

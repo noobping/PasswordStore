@@ -1,9 +1,12 @@
 use std::{fs, path::Path};
 
 fn main() {
+    emit_build_cfgs();
+    assert_non_linux_build_has_no_features();
     println!("cargo:rustc-env=APP_ID={}", app_id());
     println!("cargo:rustc-env=RESOURCE_ID={}", resource_id());
     export_dependency_versions();
+    write_platform_window_ui();
 
     // Directories
     let data_dir = Path::new("data");
@@ -12,6 +15,8 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-changed=data");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_FLATPAK");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_SETUP");
 
     // Ensure data/ exists
     fs::create_dir_all(data_dir).unwrap();
@@ -35,8 +40,178 @@ fn main() {
     // Compile GResources from data/resources.xml into resources.gresource
     glib_build_tools::compile_resources(&["data"], "data/resources.xml", "compiled.gresource");
 
-    #[cfg(not(feature = "setup"))]
-    desktop_file();
+    if should_write_desktop_file() {
+        desktop_file();
+    }
+}
+
+fn write_platform_window_ui() {
+    let source = fs::read_to_string("data/window.ui").expect("Failed to read data/window.ui");
+    let rendered = if is_non_linux_build() {
+        strip_non_linux_ui(&source)
+    } else {
+        source
+    };
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set for build script");
+    fs::write(Path::new(&out_dir).join("window.ui"), rendered)
+        .expect("Failed to write generated window.ui");
+}
+
+fn emit_build_cfgs() {
+    for cfg in [
+        "keycord_linux",
+        "keycord_flatpak",
+        "keycord_standard_linux",
+        "keycord_restricted",
+        "keycord_setup",
+    ] {
+        println!("cargo:rustc-check-cfg=cfg({cfg})");
+    }
+
+    if is_linux_build() {
+        println!("cargo:rustc-cfg=keycord_linux");
+    } else {
+        println!("cargo:rustc-cfg=keycord_restricted");
+    }
+
+    if is_flatpak_build() {
+        println!("cargo:rustc-cfg=keycord_flatpak");
+        println!("cargo:rustc-cfg=keycord_restricted");
+    }
+
+    if is_standard_linux_build() {
+        println!("cargo:rustc-cfg=keycord_standard_linux");
+    }
+
+    if is_setup_build() {
+        println!("cargo:rustc-cfg=keycord_setup");
+    }
+}
+
+fn target_os() -> String {
+    std::env::var("CARGO_CFG_TARGET_OS").expect("CARGO_CFG_TARGET_OS not set for build script")
+}
+
+fn is_linux_build() -> bool {
+    target_os() == "linux"
+}
+
+fn is_non_linux_build() -> bool {
+    !is_linux_build()
+}
+
+fn is_flatpak_build() -> bool {
+    is_linux_build() && std::env::var_os("CARGO_FEATURE_FLATPAK").is_some()
+}
+
+fn is_standard_linux_build() -> bool {
+    is_linux_build() && !is_flatpak_build()
+}
+
+fn is_setup_build() -> bool {
+    is_standard_linux_build() && std::env::var_os("CARGO_FEATURE_SETUP").is_some()
+}
+
+fn should_write_desktop_file() -> bool {
+    is_linux_build() && !is_setup_build()
+}
+
+fn assert_non_linux_build_has_no_features() {
+    if !is_non_linux_build() {
+        return;
+    }
+
+    let mut enabled_features = std::env::vars_os()
+        .filter_map(|(key, _)| {
+            let key = key.into_string().ok()?;
+            key.strip_prefix("CARGO_FEATURE_")
+                .map(|feature| feature.to_ascii_lowercase())
+        })
+        .collect::<Vec<_>>();
+
+    if enabled_features.is_empty() {
+        return;
+    }
+
+    enabled_features.sort();
+    panic!(
+        "Non-Linux builds do not allow Cargo features. Enabled feature(s): {}.",
+        enabled_features.join(", ")
+    );
+}
+
+fn strip_non_linux_ui(source: &str) -> String {
+    let source = remove_line_containing(source, "name=\"menu-model\">primary_menu");
+    let source = remove_menu_block(&source, "primary_menu");
+    let source = remove_child_block_containing_id(&source, "backend_preferences");
+    let source = remove_child_block_containing_id(&source, "log_page");
+    remove_child_block_containing_id(&source, "git_busy_page")
+}
+
+fn remove_line_containing(source: &str, pattern: &str) -> String {
+    let mut rendered = String::with_capacity(source.len());
+    for line in source.lines() {
+        if line.contains(pattern) {
+            continue;
+        }
+        rendered.push_str(line);
+        rendered.push('\n');
+    }
+    rendered
+}
+
+fn remove_menu_block(source: &str, id: &str) -> String {
+    let marker = format!("<menu id=\"{id}\">");
+    let Some(start) = source.find(&marker) else {
+        return source.to_string();
+    };
+    let Some(end) = source[start..].find("</menu>") else {
+        return source.to_string();
+    };
+    let end = start + end + "</menu>".len();
+    let mut rendered = String::with_capacity(source.len());
+    rendered.push_str(&source[..start]);
+    rendered.push_str(&source[end..]);
+    rendered
+}
+
+fn remove_child_block_containing_id(source: &str, id: &str) -> String {
+    let marker = format!("id=\"{id}\"");
+    let Some(id_index) = source.find(&marker) else {
+        return source.to_string();
+    };
+    let Some(child_start) = source[..id_index].rfind("<child") else {
+        return source.to_string();
+    };
+
+    let mut depth = 0usize;
+    let mut cursor = child_start;
+    while cursor < source.len() {
+        let next_open = source[cursor..].find("<child").map(|index| cursor + index);
+        let next_close = source[cursor..]
+            .find("</child>")
+            .map(|index| cursor + index);
+
+        match (next_open, next_close) {
+            (Some(open), Some(close)) if open < close => {
+                depth += 1;
+                cursor = open + "<child".len();
+            }
+            (_, Some(close)) => {
+                depth = depth.saturating_sub(1);
+                cursor = close + "</child>".len();
+                if depth == 0 {
+                    let mut rendered = String::with_capacity(source.len());
+                    rendered.push_str(&source[..child_start]);
+                    rendered.push_str(&source[cursor..]);
+                    return rendered;
+                }
+            }
+            _ => break,
+        }
+    }
+
+    source.to_string()
 }
 
 fn export_dependency_versions() {
@@ -100,7 +275,6 @@ fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
     }
 }
 
-#[cfg(not(feature = "setup"))]
 fn desktop_file() {
     use std::{fs, path::Path};
     let app_id = app_id();

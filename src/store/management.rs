@@ -1,11 +1,11 @@
 mod clone;
 mod dialogs;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 mod import;
 
 use self::clone::append_store_clone_row;
 pub(crate) use self::clone::prompt_store_clone;
-#[cfg(not(feature = "flatpak"))]
+#[cfg(keycord_standard_linux)]
 use self::import::schedule_store_import_row;
 use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
@@ -18,8 +18,9 @@ pub(crate) use super::recipients_page::{
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 use crate::support::actions::register_window_action;
+#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
@@ -128,6 +129,61 @@ fn folder_is_empty(path: &str) -> io::Result<bool> {
     Ok(entries.next().is_none())
 }
 
+#[cfg(keycord_standard_linux)]
+fn append_optional_store_import_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    stores: Vec<String>,
+) {
+    schedule_store_import_row(list, settings, window, overlay, stores);
+}
+
+#[cfg(keycord_restricted)]
+fn append_optional_store_import_row(
+    _list: &ListBox,
+    _settings: &Preferences,
+    _window: &ApplicationWindow,
+    _overlay: &ToastOverlay,
+    _stores: Vec<String>,
+) {
+}
+
+#[cfg(keycord_flatpak)]
+fn append_platform_store_clone_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    if git_network_operations_available() {
+        append_store_clone_row(list, settings, window, overlay, recipients_page);
+    }
+}
+
+#[cfg(not(keycord_linux))]
+fn append_platform_store_clone_row(
+    _list: &ListBox,
+    _settings: &Preferences,
+    _window: &ApplicationWindow,
+    _overlay: &ToastOverlay,
+    _recipients_page: &StoreRecipientsPageState,
+) {
+}
+
+#[cfg(keycord_standard_linux)]
+fn append_platform_store_clone_row(
+    list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    append_store_clone_row(list, settings, window, overlay, recipients_page);
+}
+
 pub(crate) fn rebuild_store_list(
     list: &ListBox,
     settings: &Preferences,
@@ -147,11 +203,8 @@ pub(crate) fn rebuild_store_list(
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
-    if git_network_operations_available() {
-        append_store_clone_row(list, settings, window, overlay, recipients_page);
-    }
-    #[cfg(not(feature = "flatpak"))]
-    schedule_store_import_row(list, settings, window, overlay, stores);
+    append_platform_store_clone_row(list, settings, window, overlay, recipients_page);
+    append_optional_store_import_row(list, settings, window, overlay, stores);
 }
 
 fn append_store_row(
@@ -284,7 +337,7 @@ pub(crate) fn prompt_add_or_create_store(
     );
 }
 
-#[cfg(feature = "flatpak")]
+#[cfg(keycord_restricted)]
 pub(crate) fn register_open_store_picker_action(
     window: &ApplicationWindow,
     list: &ListBox,
@@ -304,7 +357,7 @@ pub(crate) fn register_open_store_picker_action(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "flatpak"))]
+    #[cfg(keycord_standard_linux)]
     use super::import::should_show_pass_import_row;
     use super::{
         initial_recipients_for_store_creation, selected_store_folder_mode,
@@ -367,7 +420,7 @@ mod tests {
         );
     }
 
-    #[cfg(not(feature = "flatpak"))]
+    #[cfg(keycord_standard_linux)]
     #[test]
     fn pass_import_row_requires_an_existing_store_and_available_sources() {
         assert!(!should_show_pass_import_row(

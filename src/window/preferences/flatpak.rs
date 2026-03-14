@@ -1,5 +1,6 @@
 use super::{toast_preferences_save_error, PreferencesActionState};
 use crate::preferences::{BackendKind, Preferences};
+use crate::support::runtime::host_command_execution_available;
 use adw::prelude::*;
 use adw::{ComboRow, EntryRow, Toast, ToastOverlay};
 
@@ -20,10 +21,18 @@ fn sync_backend_preferences_rows(
 }
 
 fn backend_row_model() -> adw::gtk::StringList {
-    adw::gtk::StringList::new(&[
-        BackendKind::Integrated.label(),
-        BackendKind::HostCommand.label(),
-    ])
+    if host_command_execution_available() {
+        adw::gtk::StringList::new(&[
+            BackendKind::Integrated.label(),
+            BackendKind::HostCommand.label(),
+        ])
+    } else {
+        adw::gtk::StringList::new(&[BackendKind::Integrated.label()])
+    }
+}
+
+fn backend_row_visible() -> bool {
+    host_command_execution_available()
 }
 
 pub(crate) fn initialize_backend_row(
@@ -33,7 +42,7 @@ pub(crate) fn initialize_backend_row(
 ) {
     let model = backend_row_model();
     backend_row.set_model(Some(&model));
-    backend_row.set_visible(true);
+    backend_row.set_visible(backend_row_visible());
     sync_backend_preferences_rows(backend_row, pass_row, preferences);
 }
 
@@ -91,20 +100,4 @@ pub(super) fn refresh_open_preferences_state(
 ) {
     state.pass_row.set_text(&settings.command_value());
     sync_backend_preferences_rows(&state.backend_row, &state.pass_row, settings);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::backend_pass_row_visible;
-    use crate::preferences::BackendKind;
-
-    #[test]
-    fn host_command_backend_shows_the_pass_command_row() {
-        assert!(backend_pass_row_visible(BackendKind::HostCommand));
-    }
-
-    #[test]
-    fn integrated_backend_hides_the_pass_command_row() {
-        assert!(!backend_pass_row_visible(BackendKind::Integrated));
-    }
 }

@@ -11,7 +11,9 @@ use crate::backend::{PasswordEntryError, PrivateKeyError};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
-use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize, Cert};
+use sequoia_openpgp::{
+    cert::CertBuilder, crypto::Password, serialize::Serialize, serialize::SerializeInto, Cert,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -343,6 +345,17 @@ pub fn generate_ripasso_private_key(
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     import_ripasso_private_key_bytes(&bytes, Some(trimmed_passphrase))
+}
+
+pub fn armored_ripasso_private_key(fingerprint: &str) -> Result<String, String> {
+    let entry = find_stored_private_key(fingerprint)?;
+    let armored = entry
+        .cert
+        .as_tsk()
+        .armored()
+        .to_vec()
+        .map_err(|err| err.to_string())?;
+    String::from_utf8(armored).map_err(|err| err.to_string())
 }
 
 pub fn remove_ripasso_private_key(fingerprint: &str) -> Result<(), String> {

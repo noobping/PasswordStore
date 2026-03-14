@@ -1,3 +1,4 @@
+use super::export::copy_armored_private_key;
 use super::generate::append_private_key_generate_row;
 use super::import::append_private_key_import_row;
 use super::{super::queue_store_recipients_autosave, StoreRecipientsPageState};
@@ -143,6 +144,10 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             row.add_suffix(&unlocked_icon);
         }
 
+        let copy_button =
+            flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy armored private key");
+        row.add_suffix(&copy_button);
+
         let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove key");
         row.add_suffix(&delete_button);
         state.list.append(&row);
@@ -158,6 +163,17 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             if set_private_key_recipient_enabled(&page_state, &key_for_toggle, button.is_active()) {
                 queue_store_recipients_autosave(&page_state);
             }
+        });
+
+        let page_state = state.clone();
+        let key_for_copy = key.clone();
+        let copy_button_for_click = copy_button.clone();
+        copy_button.connect_clicked(move |_| {
+            copy_armored_private_key(
+                &page_state,
+                &key_for_copy.fingerprint,
+                Some(&copy_button_for_click),
+            );
         });
 
         let page_state = state.clone();

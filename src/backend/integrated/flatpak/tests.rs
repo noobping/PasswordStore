@@ -1,8 +1,8 @@
 use super::super::keys::{
-    clear_cached_unlocked_ripasso_private_keys, ensure_ripasso_private_key_is_ready,
-    generate_ripasso_private_key, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys, parse_managed_private_key_bytes,
-    prepare_managed_private_key_bytes, remove_ripasso_private_key,
+    armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
+    ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
     resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
     unlock_ripasso_private_key_for_session,
 };
@@ -21,7 +21,7 @@ use crate::backend::{
 };
 use crate::preferences::Preferences;
 use crate::support::git::has_git_repository;
-use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
+use sequoia_openpgp::{cert::CertBuilder, crypto::Password, parse::Parse, serialize::Serialize};
 use std::fs;
 use std::path::PathBuf;
 
@@ -137,6 +137,20 @@ fn generated_private_keys_are_stored_and_listed() {
         .expect("list generated keys")
         .into_iter()
         .any(|stored| stored.fingerprint == key.fingerprint));
+}
+
+#[test]
+fn armored_private_keys_can_be_exported() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("exported-key");
+
+    let key = generate_ripasso_private_key("Export User", "export@example.com", "hunter2")
+        .expect("generate private key");
+    let armored = armored_ripasso_private_key(&key.fingerprint).expect("export armored key");
+    let parsed = sequoia_openpgp::Cert::from_bytes(armored.as_bytes()).expect("parse armored key");
+
+    assert!(armored.starts_with("-----BEGIN PGP PRIVATE KEY BLOCK-----"));
+    assert_eq!(parsed.fingerprint().to_hex(), key.fingerprint);
 }
 
 #[test]

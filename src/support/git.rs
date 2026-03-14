@@ -1,10 +1,53 @@
+use crate::logging::{run_command_output, CommandLogOptions};
+use crate::preferences::Preferences;
 use std::path::Path;
+use std::process::{Command, Output};
 
 #[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 
 pub(crate) fn has_git_repository(root: &str) -> bool {
     Path::new(root).join(".git").exists()
+}
+
+fn git_command_error(action: &str, output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stderr.is_empty() {
+        format!("{action} failed: {stderr}")
+    } else if !stdout.is_empty() {
+        format!("{action} failed: {stdout}")
+    } else {
+        format!("{action} failed: {}", output.status)
+    }
+}
+
+fn run_store_git_command(
+    root: &str,
+    context: &str,
+    configure: impl FnOnce(&mut Command),
+) -> Result<Output, String> {
+    let mut cmd = Preferences::new().git_command();
+    cmd.arg("-C").arg(root);
+    configure(&mut cmd);
+    run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
+        .map_err(|err| format!("Failed to run git command: {err}"))
+}
+
+pub(crate) fn ensure_store_git_repository(root: &str) -> Result<(), String> {
+    if has_git_repository(root) {
+        return Ok(());
+    }
+
+    let output = run_store_git_command(root, "Initialize password store Git repository", |cmd| {
+        cmd.arg("init");
+    })?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(git_command_error("git init", &output))
+    }
 }
 
 fn password_store_without_repository_summary(root: &str) -> String {

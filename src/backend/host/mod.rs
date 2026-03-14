@@ -3,6 +3,8 @@ mod command;
 use self::command::{ensure_success, run_store_command_output, run_store_command_with_input};
 use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
 use crate::logging::CommandLogOptions;
+use crate::support::git::{ensure_store_git_repository, has_git_repository};
+use std::path::Path;
 use std::process::Output;
 
 fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
@@ -101,6 +103,8 @@ pub(super) fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
 ) -> Result<(), StoreRecipientsError> {
+    let should_initialize_git =
+        !Path::new(store_root).join(".gpg-id").exists() && !has_git_repository(store_root);
     let output = run_store_command_output(
         store_root,
         "Save password store recipients",
@@ -110,15 +114,20 @@ pub(super) fn save_store_recipients(
         },
     )
     .map_err(StoreRecipientsError::from_store_message)?;
-    ensure_success(output, "pass init failed")
-        .map(|_| ())
-        .map_err(StoreRecipientsError::from_store_message)
+    ensure_success(output, "pass init failed").map_err(StoreRecipientsError::from_store_message)?;
+    if should_initialize_git {
+        ensure_store_git_repository(store_root)
+            .map_err(StoreRecipientsError::from_store_message)?;
+    }
+    Ok(())
 }
 
 #[cfg(all(test, keycord_standard_linux))]
 mod tests {
     use super::{save_password_entry, save_store_recipients};
     use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
+    use crate::backend::test_support::SystemBackendTestEnv;
+    use crate::support::git::has_git_repository;
 
     #[test]
     fn host_backend_encrypts_entries_for_all_store_recipients() {
@@ -131,5 +140,24 @@ mod tests {
                     .map_err(|err| err.to_string())
             },
         );
+    }
+
+    #[test]
+    fn host_backend_initializes_git_for_new_stores() {
+        let env = SystemBackendTestEnv::new();
+
+        let key = env
+            .generate_secret_key("Recipient <host-create@example.com>")
+            .expect("generate host recipient key");
+        env.import_public_key(&key.public_key_bytes)
+            .expect("import host recipient key");
+        env.trust_public_key(&key.fingerprint_hex)
+            .expect("trust host recipient key");
+
+        let store_root = env.store_root().to_string_lossy().to_string();
+        save_store_recipients(&store_root, std::slice::from_ref(&key.fingerprint_hex))
+            .expect("save store recipients");
+
+        assert!(has_git_repository(&store_root));
     }
 }

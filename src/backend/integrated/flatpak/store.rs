@@ -6,6 +6,7 @@ use super::paths::{
     with_updated_recipients_file,
 };
 use crate::backend::StoreRecipientsError;
+use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -40,6 +41,7 @@ pub(crate) fn save_store_recipients(
     let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)
         .map_err(StoreRecipientsError::from_store_message)?;
     let recipients_path = store_dir.join(".gpg-id");
+    let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
 
     with_updated_recipients_file(&recipients_path, recipients, || {
         for (entry_path, secret) in &decrypted_entries {
@@ -49,6 +51,11 @@ pub(crate) fn save_store_recipients(
         Ok(())
     })
     .map_err(StoreRecipientsError::from_store_message)?;
+
+    if should_initialize_git {
+        ensure_store_git_repository(store_root)
+            .map_err(StoreRecipientsError::from_store_message)?;
+    }
 
     maybe_commit_git_paths(
         store_root,

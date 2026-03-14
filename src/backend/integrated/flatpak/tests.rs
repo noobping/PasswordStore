@@ -19,6 +19,7 @@ use crate::backend::{
     PrivateKeyError, StoreRecipientsError,
 };
 use crate::preferences::Preferences;
+use crate::support::git::has_git_repository;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, serialize::Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -380,6 +381,23 @@ fn recipient_saves_reject_non_directory_store_paths() {
     .expect_err("non-directory store paths should fail");
 
     assert!(matches!(err, StoreRecipientsError::InvalidStorePath(_)));
+}
+
+#[test]
+fn recipient_saves_initialize_git_for_new_stores() {
+    let env = SystemBackendTestEnv::new();
+    let bytes = protected_cert_bytes("Store Example <store@example.com>");
+    let imported = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
+        .expect("expected private key import to succeed");
+
+    let store = env.root_dir().join("secondary-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&imported.fingerprint),
+    )
+    .expect("save recipients for a new store");
+
+    assert!(has_git_repository(store.to_string_lossy().as_ref()));
 }
 
 #[test]

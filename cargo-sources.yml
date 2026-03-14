@@ -120,13 +120,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/bindgen/bindgen-0.70.1.crate
-  sha256: f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f
-  dest: cargo/vendor/bindgen-0.70.1
+  url: https://static.crates.io/crates/bindgen/bindgen-0.72.1.crate
+  sha256: 993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895
+  dest: cargo/vendor/bindgen-0.72.1
 - type: inline
-  contents: '{"package": "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f",
+  contents: '{"package": "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895",
     "files": {}}'
-  dest: cargo/vendor/bindgen-0.70.1
+  dest: cargo/vendor/bindgen-0.72.1
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -300,13 +300,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/capnp/capnp-0.25.1.crate
-  sha256: 1ae0593da254d02d0e69525b5eec7a59586753aa3bd2e54842eca33c6786330c
-  dest: cargo/vendor/capnp-0.25.1
+  url: https://static.crates.io/crates/capnp/capnp-0.25.2.crate
+  sha256: c982cc37b8f646c753f3b0a24d4d40ca2eac8a9c2b9ea6fff524be67ddc184cb
+  dest: cargo/vendor/capnp-0.25.2
 - type: inline
-  contents: '{"package": "1ae0593da254d02d0e69525b5eec7a59586753aa3bd2e54842eca33c6786330c",
+  contents: '{"package": "c982cc37b8f646c753f3b0a24d4d40ca2eac8a9c2b9ea6fff524be67ddc184cb",
     "files": {}}'
-  dest: cargo/vendor/capnp-0.25.1
+  dest: cargo/vendor/capnp-0.25.2
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -340,13 +340,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/cc/cc-1.2.56.crate
-  sha256: aebf35691d1bfb0ac386a69bac2fde4dd276fb618cf8bf4f5318fe285e821bb2
-  dest: cargo/vendor/cc-1.2.56
+  url: https://static.crates.io/crates/cc/cc-1.2.57.crate
+  sha256: 7a0dd1ca384932ff3641c8718a02769f1698e7563dc6974ffd03346116310423
+  dest: cargo/vendor/cc-1.2.57
 - type: inline
-  contents: '{"package": "aebf35691d1bfb0ac386a69bac2fde4dd276fb618cf8bf4f5318fe285e821bb2",
+  contents: '{"package": "7a0dd1ca384932ff3641c8718a02769f1698e7563dc6974ffd03346116310423",
     "files": {}}'
-  dest: cargo/vendor/cc-1.2.56
+  dest: cargo/vendor/cc-1.2.57
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -420,13 +420,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/config/config-0.15.19.crate
-  sha256: b30fa8254caad766fc03cb0ccae691e14bf3bd72bfff27f72802ce729551b3d6
-  dest: cargo/vendor/config-0.15.19
+  url: https://static.crates.io/crates/config/config-0.15.21.crate
+  sha256: 4fe5feec195269515c4722937cd7ffcfe7b4205d18d2e6577b7223ecb159ab00
+  dest: cargo/vendor/config-0.15.21
 - type: inline
-  contents: '{"package": "b30fa8254caad766fc03cb0ccae691e14bf3bd72bfff27f72802ce729551b3d6",
+  contents: '{"package": "4fe5feec195269515c4722937cd7ffcfe7b4205d18d2e6577b7223ecb159ab00",
     "files": {}}'
-  dest: cargo/vendor/config-0.15.19
+  dest: cargo/vendor/config-0.15.21
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -1900,13 +1900,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/nettle-sys/nettle-sys-2.3.1.crate
-  sha256: 61a3f5406064d310d59b1a219d3c5c9a49caf4047b6496032e3f930876488c34
-  dest: cargo/vendor/nettle-sys-2.3.1
+  url: https://static.crates.io/crates/nettle-sys/nettle-sys-2.3.2.crate
+  sha256: f35502358aa77e598570bbf9a79ad19c4985a1bcd157b5d70197688dafca9b48
+  dest: cargo/vendor/nettle-sys-2.3.2
 - type: inline
-  contents: '{"package": "61a3f5406064d310d59b1a219d3c5c9a49caf4047b6496032e3f930876488c34",
+  contents: '{"package": "f35502358aa77e598570bbf9a79ad19c4985a1bcd157b5d70197688dafca9b48",
     "files": {}}'
-  dest: cargo/vendor/nettle-sys-2.3.1
+  dest: cargo/vendor/nettle-sys-2.3.2
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -2460,13 +2460,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/rustc-hash/rustc-hash-1.1.0.crate
-  sha256: 08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2
-  dest: cargo/vendor/rustc-hash-1.1.0
+  url: https://static.crates.io/crates/rustc-hash/rustc-hash-2.1.1.crate
+  sha256: 357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d
+  dest: cargo/vendor/rustc-hash-2.1.1
 - type: inline
-  contents: '{"package": "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2",
+  contents: '{"package": "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d",
     "files": {}}'
-  dest: cargo/vendor/rustc-hash-1.1.0
+  dest: cargo/vendor/rustc-hash-2.1.1
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -3087,6 +3087,16 @@
   contents: '{"package": "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863",
     "files": {}}'
   dest: cargo/vendor/toml-0.9.12+spec-1.1.0
+  dest-filename: .cargo-checksum.json
+- type: archive
+  archive-type: tar-gzip
+  url: https://static.crates.io/crates/toml/toml-1.0.6+spec-1.1.0.crate
+  sha256: 399b1124a3c9e16766831c6bba21e50192572cdd98706ea114f9502509686ffc
+  dest: cargo/vendor/toml-1.0.6+spec-1.1.0
+- type: inline
+  contents: '{"package": "399b1124a3c9e16766831c6bba21e50192572cdd98706ea114f9502509686ffc",
+    "files": {}}'
+  dest: cargo/vendor/toml-1.0.6+spec-1.1.0
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

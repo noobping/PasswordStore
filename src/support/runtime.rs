@@ -47,6 +47,11 @@ pub fn flatpak_has_host_override_permission() -> bool {
     flatpak_context_has_talk_name(&info, "org.freedesktop.Flatpak")
 }
 
+#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+pub fn flatpak_has_host_override_permission() -> bool {
+    true
+}
+
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn flatpak_context_has_talk_name(info: &str, bus_name: &str) -> bool {
     let mut in_context = false;

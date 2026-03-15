@@ -1,19 +1,16 @@
 mod build;
 mod controls;
-#[cfg(keycord_flatpak)]
-mod flatpak;
+#[cfg(target_os = "linux")]
 mod git;
-#[cfg(keycord_linux)]
+#[cfg(target_os = "linux")]
 mod logs;
-pub(crate) mod navigation;
-#[cfg(not(keycord_linux))]
-mod non_linux;
+pub mod navigation;
 mod preferences;
-#[cfg(keycord_standard_linux)]
-mod standard;
+#[cfg(target_os = "linux")]
+mod tools;
 
-pub(crate) use self::build::create_main_window;
-pub(crate) use self::git::clone_store_repository;
+pub use self::build::create_main_window;
+pub use self::git::clone_store_repository;
 
 #[cfg(test)]
 mod tests {
@@ -37,9 +34,9 @@ mod tests {
             .iter()
             .filter_map(|(line, value)| match line {
                 StructuredPassLine::Field(_) => value.clone(),
-                StructuredPassLine::Username(_) => None,
-                StructuredPassLine::Otp(_) => None,
-                StructuredPassLine::Preserved(_) => None,
+                StructuredPassLine::Username(_)
+                | StructuredPassLine::Otp(_)
+                | StructuredPassLine::Preserved(_) => None,
             })
             .collect::<Vec<_>>();
 

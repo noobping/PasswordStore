@@ -5,7 +5,7 @@ use crate::password::model::OpenPassFile;
 use crate::preferences::{BackendKind, Preferences};
 use adw::Toast;
 
-fn should_switch_to_integrated_backend(
+const fn should_switch_to_integrated_backend(
     uses_integrated_backend: bool,
     error: &PasswordEntryError,
 ) -> bool {
@@ -35,14 +35,6 @@ pub(super) fn handle_open_password_entry_error(
         .add_toast(Toast::new("Using Integrated instead."));
     open_password_entry_page(state, pass_file.clone(), false);
     true
-}
-
-#[cfg(keycord_standard_linux)]
-pub(super) fn prompt_unlock_for_git_commit_if_needed(
-    _state: &PasswordPageState,
-    _pass_file: &OpenPassFile,
-) -> bool {
-    false
 }
 
 #[cfg(test)]

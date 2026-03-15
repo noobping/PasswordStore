@@ -4,23 +4,12 @@ use adw::glib::BoolError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[cfg(keycord_linux)]
 mod command_backend;
-#[cfg(keycord_flatpak)]
-mod flatpak;
-#[cfg(not(keycord_linux))]
-mod non_linux;
-#[cfg(keycord_restricted)]
+mod linux;
 mod restricted;
-#[cfg(keycord_standard_linux)]
-mod standard;
 mod storage;
 
-use self::platform_defaults::default_store_dirs;
-#[cfg(keycord_restricted)]
-use self::restricted as platform_defaults;
-#[cfg(keycord_standard_linux)]
-use self::standard as platform_defaults;
+use self::restricted::default_store_dirs;
 use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
@@ -33,12 +22,12 @@ pub enum BackendKind {
     HostCommand,
 }
 
-fn default_backend_kind() -> BackendKind {
+const fn default_backend_kind() -> BackendKind {
     BackendKind::Integrated
 }
 
 impl BackendKind {
-    pub fn stored_value(self) -> &'static str {
+    pub const fn stored_value(self) -> &'static str {
         match self {
             Self::Integrated => "integrated",
             Self::HostCommand => "host-command",
@@ -55,28 +44,28 @@ impl BackendKind {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Integrated => "Integrated",
             Self::HostCommand => "Host command",
         }
     }
 
-    pub fn combo_position(self) -> u32 {
+    pub const fn combo_position(self) -> u32 {
         match self {
             Self::Integrated => 0,
             Self::HostCommand => 1,
         }
     }
 
-    pub fn from_combo_position(position: u32) -> Self {
+    pub const fn from_combo_position(position: u32) -> Self {
         match position {
             1 => Self::HostCommand,
             _ => Self::Integrated,
         }
     }
 
-    pub fn uses_host_command(self) -> bool {
+    pub const fn uses_host_command(self) -> bool {
         matches!(self, Self::HostCommand)
     }
 }
@@ -90,7 +79,7 @@ pub enum UsernameFallbackMode {
 }
 
 impl UsernameFallbackMode {
-    pub fn stored_value(self) -> &'static str {
+    pub const fn stored_value(self) -> &'static str {
         match self {
             Self::Folder => "folder",
             Self::Filename => "filename",
@@ -122,11 +111,9 @@ impl Preferences {
         read_settings: impl FnOnce(&Settings) -> T,
         read_file: impl FnOnce(&PreferenceFile) -> T,
     ) -> T {
-        if let Some(settings) = &self.settings {
-            read_settings(settings)
-        } else {
-            read_file(&load_file_prefs())
-        }
+        self.settings
+            .as_ref()
+            .map_or_else(|| read_file(&load_file_prefs()), read_settings)
     }
 
     fn write_preference(
@@ -134,13 +121,14 @@ impl Preferences {
         write_settings: impl FnOnce(&Settings) -> Result<(), BoolError>,
         write_file: impl FnOnce(&mut PreferenceFile),
     ) -> Result<(), BoolError> {
-        if let Some(settings) = &self.settings {
-            write_settings(settings)
-        } else {
-            let mut cfg = load_file_prefs();
-            write_file(&mut cfg);
-            save_file_prefs(&cfg)
-        }
+        self.settings.as_ref().map_or_else(
+            || {
+                let mut cfg = load_file_prefs();
+                write_file(&mut cfg);
+                save_file_prefs(&cfg)
+            },
+            write_settings,
+        )
     }
 
     fn try_settings() -> Option<Settings> {
@@ -150,9 +138,7 @@ impl Preferences {
     }
 
     fn expand_path(s: &str) -> String {
-        shellexpand::full(s)
-            .map(|c| c.into_owned())
-            .unwrap_or_else(|_| s.to_string())
+        shellexpand::full(s).map_or_else(|_| s.to_string(), std::borrow::Cow::into_owned)
     }
 
     pub fn store_roots(&self) -> Vec<String> {
@@ -213,7 +199,7 @@ impl Preferences {
                 settings
                     .strv("password-store-dirs")
                     .iter()
-                    .map(|path| path.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect()
             },
             |cfg| {
@@ -301,12 +287,6 @@ mod tests {
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    #[cfg(keycord_restricted)]
-    fn expected_default_store_dirs() -> Vec<String> {
-        Vec::new()
-    }
-
-    #[cfg(keycord_standard_linux)]
     fn expected_default_store_dirs() -> Vec<String> {
         std::env::var("HOME")
             .map(|home| vec![format!("{home}/.password-store")])
@@ -336,6 +316,12 @@ mod tests {
             BackendKind::HostCommand
         );
         assert_eq!(BackendKind::from_stored("pass"), BackendKind::HostCommand);
+    }
+
+    #[test]
+    fn backend_kind_capabilities_match_expected_backends() {
+        assert!(!BackendKind::Integrated.uses_host_command());
+        assert!(BackendKind::HostCommand.uses_host_command());
     }
 
     #[test]

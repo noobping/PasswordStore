@@ -5,9 +5,7 @@ use crate::backend::{
     StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::{log_error, log_info};
-use crate::private_key::dialog::{
-    build_private_key_progress_dialog, present_private_key_password_dialog_with_close_handler,
-};
+use crate::private_key::dialog::present_private_key_password_dialog_with_close_handler;
 use crate::support::background::spawn_result_task;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
@@ -25,21 +23,12 @@ fn continue_without_git_signature(overlay: &ToastOverlay, reason: &str, action: 
 }
 
 fn start_private_key_unlock_for_git_commit(
-    window: &ApplicationWindow,
     overlay: &ToastOverlay,
     fingerprint: String,
-    key_title: Option<String>,
     passphrase: String,
-    after_unlock_attempt: Rc<dyn Fn()>,
+    after_unlock_attempt: &Rc<dyn Fn()>,
 ) {
-    let progress_dialog = build_private_key_progress_dialog(
-        window,
-        "Unlocking key",
-        key_title.as_deref(),
-        "Please wait.",
-    );
     let overlay = overlay.clone();
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let overlay_for_disconnect = overlay.clone();
     let fingerprint_for_worker = fingerprint.clone();
     let fingerprint_for_failure = fingerprint.clone();
@@ -49,12 +38,9 @@ fn start_private_key_unlock_for_git_commit(
         move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, &passphrase),
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
-                progress_dialog.force_close();
-                overlay.add_toast(Toast::new("Key unlocked."));
                 after_unlock_attempt_for_result();
             }
             Err(err) => {
-                progress_dialog.force_close();
                 log_error(format!("Failed to unlock ripasso private key: {err}"));
                 continue_without_git_signature(
                     &overlay,
@@ -66,7 +52,6 @@ fn start_private_key_unlock_for_git_commit(
             }
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
             log_error("Private key unlock worker disconnected unexpectedly.".to_string());
             continue_without_git_signature(
                 &overlay_for_disconnect,
@@ -83,7 +68,7 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
     overlay: &ToastOverlay,
     fingerprint: Result<Option<String>, String>,
     context: &str,
-    after_unlock_attempt: Rc<dyn Fn()>,
+    after_unlock_attempt: &Rc<dyn Fn()>,
 ) -> bool {
     let context = context.to_string();
 
@@ -97,7 +82,7 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
                 continue_without_git_signature(
                     overlay,
                     "Couldn't present the Git signing unlock dialog. Continuing without a signature.",
-                    &after_unlock_attempt,
+                    after_unlock_attempt,
                 );
                 return true;
             };
@@ -110,14 +95,12 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
                     None
                 }
             };
-            let window_for_submit = window.clone();
             let overlay_for_submit = overlay.clone();
-            let title_for_submit = key_title.clone();
-            let fingerprint_for_submit = fingerprint.clone();
+            let fingerprint_for_submit = fingerprint;
             let after_unlock_attempt_for_submit = after_unlock_attempt.clone();
             let overlay_for_close = overlay.clone();
             let after_unlock_attempt_for_close = after_unlock_attempt.clone();
-            let context_for_close = context.clone();
+            let context_for_close = context;
             present_private_key_password_dialog_with_close_handler(
                 &window,
                 overlay,
@@ -125,12 +108,10 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
                 key_title.as_deref(),
                 move |passphrase| {
                     start_private_key_unlock_for_git_commit(
-                        &window_for_submit,
                         &overlay_for_submit,
                         fingerprint_for_submit.clone(),
-                        title_for_submit.clone(),
                         passphrase,
-                        after_unlock_attempt_for_submit.clone(),
+                        &after_unlock_attempt_for_submit,
                     );
                 },
                 move || {
@@ -155,11 +136,11 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
     }
 }
 
-pub(crate) fn prompt_private_key_unlock_for_entry_git_commit_if_needed(
+pub fn prompt_private_key_unlock_for_entry_git_commit_if_needed(
     overlay: &ToastOverlay,
     store_root: &str,
     label: &str,
-    after_unlock: Rc<dyn Fn()>,
+    after_unlock: &Rc<dyn Fn()>,
 ) -> bool {
     prompt_private_key_unlock_for_git_commit_if_needed(
         overlay,
@@ -169,12 +150,12 @@ pub(crate) fn prompt_private_key_unlock_for_entry_git_commit_if_needed(
     )
 }
 
-pub(crate) fn prompt_private_key_unlock_for_store_git_commit_if_needed(
+pub fn prompt_private_key_unlock_for_store_git_commit_if_needed(
     overlay: &ToastOverlay,
     store_root: &str,
     recipients: &[String],
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
-    after_unlock: Rc<dyn Fn()>,
+    after_unlock: &Rc<dyn Fn()>,
 ) -> bool {
     prompt_private_key_unlock_for_git_commit_if_needed(
         overlay,

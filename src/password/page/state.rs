@@ -11,34 +11,34 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub(crate) struct PasswordPageState {
-    pub(crate) nav: adw::NavigationView,
-    pub(crate) page: NavigationPage,
-    pub(crate) raw_page: NavigationPage,
-    pub(crate) list: ListBox,
-    pub(crate) back: Button,
-    pub(crate) add: Button,
-    pub(crate) find: Button,
-    pub(crate) git: Button,
-    pub(crate) store: Button,
-    pub(crate) save: Button,
-    pub(crate) raw: Button,
-    pub(crate) win: WindowTitle,
-    pub(crate) status: StatusPage,
-    pub(crate) entry: PasswordEntryRow,
-    pub(crate) username: EntryRow,
-    pub(crate) otp: PasswordOtpState,
-    pub(crate) otp_add_button: Button,
-    pub(crate) generator_settings_button: ToggleButton,
-    pub(crate) generator_settings_revealer: Revealer,
-    pub(crate) generator_controls: PasswordGenerationControls,
-    pub(crate) dynamic_box: GtkBox,
-    pub(crate) structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
-    pub(crate) dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
-    pub(crate) text: TextView,
-    pub(crate) overlay: ToastOverlay,
-    pub(crate) saved_contents: Rc<RefCell<String>>,
-    pub(crate) saved_entry_exists: Rc<Cell<bool>>,
+pub struct PasswordPageState {
+    pub nav: adw::NavigationView,
+    pub page: NavigationPage,
+    pub raw_page: NavigationPage,
+    pub list: ListBox,
+    pub back: Button,
+    pub add: Button,
+    pub find: Button,
+    pub git: Button,
+    pub store: Button,
+    pub save: Button,
+    pub raw: Button,
+    pub win: WindowTitle,
+    pub status: StatusPage,
+    pub entry: PasswordEntryRow,
+    pub username: EntryRow,
+    pub otp: PasswordOtpState,
+    pub otp_add_button: Button,
+    pub generator_settings_button: ToggleButton,
+    pub generator_settings_revealer: Revealer,
+    pub generator_controls: PasswordGenerationControls,
+    pub dynamic_box: GtkBox,
+    pub structured_templates: Rc<RefCell<Vec<StructuredPassLine>>>,
+    pub dynamic_rows: Rc<RefCell<Vec<DynamicFieldRow>>>,
+    pub text: TextView,
+    pub overlay: ToastOverlay,
+    pub saved_contents: Rc<RefCell<String>>,
+    pub saved_entry_exists: Rc<Cell<bool>>,
 }
 
 pub(super) fn show_password_editor_chrome(state: &PasswordPageState, title: &str, subtitle: &str) {
@@ -95,10 +95,6 @@ pub(super) fn reset_password_editor(state: &PasswordPageState) {
     state.text.buffer().set_text("");
     state.saved_contents.borrow_mut().clear();
     state.saved_entry_exists.set(false);
-}
-
-pub(super) fn show_password_open_error(state: &PasswordPageState) {
-    show_password_status_message(state, "Item unavailable", "Try again.");
 }
 
 fn hide_password_generator_settings(state: &PasswordPageState) {

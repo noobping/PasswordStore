@@ -4,77 +4,71 @@ use crate::support::ui::reveal_navigation_page;
 use crate::window::navigation::{
     set_save_button_for_password, show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE,
 };
-use adw::gtk::{Button, ListBox};
+use adw::gtk::{Button, CheckButton, ListBox, ScrolledWindow, Stack};
 use adw::prelude::*;
-use adw::{ApplicationWindow, NavigationPage, NavigationView, WindowTitle};
+use adw::{
+    ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
+    PreferencesGroup, StatusPage, ToastOverlay, WindowTitle,
+};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-#[cfg(keycord_restricted)]
-mod flatpak;
+mod export;
+mod generate;
+mod import;
+mod list;
 mod save;
-#[cfg(keycord_standard_linux)]
-mod standard;
-
-#[cfg(keycord_restricted)]
-use self::flatpak as platform;
-#[cfg(keycord_standard_linux)]
-use self::standard as platform;
-
-pub(crate) use self::platform::StoreRecipientsPlatformState;
-pub(crate) use self::save::{
-    queue_store_recipients_autosave, register_store_recipients_save_action,
-};
+pub use self::save::{queue_store_recipients_autosave, register_store_recipients_save_action};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StoreRecipientsMode {
+pub enum StoreRecipientsMode {
     Create,
     Edit,
 }
 
 impl StoreRecipientsMode {
-    pub(crate) fn page_title(&self) -> &'static str {
+    pub const fn page_title(self) -> &'static str {
         match self {
             Self::Create => "New Store",
             Self::Edit => "Recipients",
         }
     }
 
-    #[cfg(keycord_standard_linux)]
-    pub(crate) fn empty_state_subtitle(&self) -> &'static str {
+    #[cfg(test)]
+    pub const fn empty_state_subtitle(self) -> &'static str {
         match self {
             Self::Create => "Add at least one recipient to create this store.",
             Self::Edit => "Add at least one recipient to keep saving changes.",
         }
     }
 
-    pub(crate) fn save_failure_message(&self) -> &'static str {
+    pub const fn save_failure_message(self) -> &'static str {
         match self {
             Self::Create => "Couldn't create the store.",
             Self::Edit => "Couldn't save recipients.",
         }
     }
 
-    pub(crate) fn creates_store(&self) -> bool {
+    pub const fn creates_store(self) -> bool {
         matches!(self, Self::Create)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StoreRecipientsRequest {
-    pub(crate) store: String,
-    pub(crate) mode: StoreRecipientsMode,
+pub struct StoreRecipientsRequest {
+    pub store: String,
+    pub mode: StoreRecipientsMode,
 }
 
 impl StoreRecipientsRequest {
-    pub(crate) fn create(store: impl Into<String>) -> Self {
+    pub fn create(store: impl Into<String>) -> Self {
         Self {
             store: store.into(),
             mode: StoreRecipientsMode::Create,
         }
     }
 
-    pub(crate) fn edit(store: impl Into<String>) -> Self {
+    pub fn edit(store: impl Into<String>) -> Self {
         Self {
             store: store.into(),
             mode: StoreRecipientsMode::Edit,
@@ -83,49 +77,76 @@ impl StoreRecipientsRequest {
 }
 
 #[derive(Clone)]
-pub(crate) struct StoreRecipientsPageState {
-    pub(crate) window: ApplicationWindow,
-    pub(crate) nav: NavigationView,
-    pub(crate) page: NavigationPage,
-    pub(crate) list: ListBox,
-    pub(crate) platform: StoreRecipientsPlatformState,
-    pub(crate) back: Button,
-    pub(crate) add: Button,
-    pub(crate) find: Button,
-    pub(crate) git: Button,
-    pub(crate) store: Button,
-    pub(crate) save: Button,
-    pub(crate) raw: Button,
-    pub(crate) win: WindowTitle,
-    pub(crate) request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
-    pub(crate) recipients: Rc<RefCell<Vec<String>>>,
-    pub(crate) saved_recipients: Rc<RefCell<Vec<String>>>,
-    pub(crate) private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
-    pub(crate) saved_private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
-    pub(crate) save_in_flight: Rc<Cell<bool>>,
-    pub(crate) save_queued: Rc<Cell<bool>>,
+pub struct StoreRecipientsPageState {
+    pub window: ApplicationWindow,
+    pub nav: NavigationView,
+    pub page: NavigationPage,
+    pub list: ListBox,
+    pub platform: StoreRecipientsPlatformState,
+    pub back: Button,
+    pub add: Button,
+    pub find: Button,
+    pub git: Button,
+    pub store: Button,
+    pub save: Button,
+    pub raw: Button,
+    pub win: WindowTitle,
+    pub request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
+    pub recipients: Rc<RefCell<Vec<String>>>,
+    pub saved_recipients: Rc<RefCell<Vec<String>>>,
+    pub private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
+    pub saved_private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
+    pub save_in_flight: Rc<Cell<bool>>,
+    pub save_queued: Rc<Cell<bool>>,
+}
+
+#[derive(Clone)]
+pub struct StoreRecipientsPlatformState {
+    pub overlay: ToastOverlay,
+    pub add_group: PreferencesGroup,
+    pub create_group: PreferencesGroup,
+    pub import_clipboard_row: ActionRow,
+    pub import_clipboard_button: Button,
+    pub import_file_row: ActionRow,
+    pub import_file_button: Button,
+    pub generate_key_row: ActionRow,
+    pub generate_key_button: Button,
+    pub require_all_row: ActionRow,
+    pub require_all_check: CheckButton,
+    pub private_key_generation_page: NavigationPage,
+    pub private_key_generation_stack: Stack,
+    pub private_key_generation_form: ScrolledWindow,
+    pub private_key_generation_loading: StatusPage,
+    pub private_key_generation_name_row: EntryRow,
+    pub private_key_generation_email_row: EntryRow,
+    pub private_key_generation_password_row: PasswordEntryRow,
+    pub private_key_generation_confirm_row: PasswordEntryRow,
+    pub private_key_generation_in_flight: Rc<Cell<bool>>,
 }
 
 impl StoreRecipientsPageState {
-    pub(crate) fn current_request(&self) -> Option<StoreRecipientsRequest> {
+    pub fn current_request(&self) -> Option<StoreRecipientsRequest> {
         self.request.borrow().clone()
     }
 
-    pub(crate) fn recipients_are_dirty(&self) -> bool {
+    pub fn recipients_are_dirty(&self) -> bool {
         *self.recipients.borrow() != *self.saved_recipients.borrow()
             || self.private_key_requirement.get() != self.saved_private_key_requirement.get()
     }
 }
 
-pub(crate) fn connect_store_recipients_entry(state: &StoreRecipientsPageState) {
-    platform::connect_store_recipients_entry(state);
+pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
+    import::connect_private_key_import_controls(state);
+    generate::connect_private_key_generate_controls(state);
+    list::connect_private_key_requirement_control(state);
+    generate::connect_private_key_generation_submit(state);
 }
 
-pub(crate) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
-    platform::rebuild_store_recipients_list(state);
+pub fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
+    list::rebuild_store_recipients_list(state);
 }
 
-pub(crate) fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
+pub fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
     let Some(request) = state.current_request() else {
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
@@ -156,7 +177,8 @@ fn show_store_recipients_page(
         .set(private_key_requirement);
     state.save_in_flight.set(false);
     state.save_queued.set(false);
-    platform::prepare_store_recipients_page(state);
+    state.platform.add_group.set_visible(true);
+    state.platform.create_group.set_visible(true);
     rebuild_store_recipients_list(state);
     sync_store_recipients_page_header(state);
 
@@ -169,7 +191,7 @@ fn show_store_recipients_page(
     }
 }
 
-pub(crate) fn show_store_recipients_create_page(
+pub fn show_store_recipients_create_page(
     state: &StoreRecipientsPageState,
     store: impl Into<String>,
     initial_recipients: Vec<String>,
@@ -182,10 +204,7 @@ pub(crate) fn show_store_recipients_create_page(
     );
 }
 
-pub(crate) fn show_store_recipients_edit_page(
-    state: &StoreRecipientsPageState,
-    store: impl Into<String>,
-) {
+pub fn show_store_recipients_edit_page(state: &StoreRecipientsPageState, store: impl Into<String>) {
     let store = store.into();
     show_store_recipients_page(
         state,
@@ -206,7 +225,6 @@ mod tests {
 
     #[test]
     fn mode_messages_match_their_behavior() {
-        #[cfg(keycord_standard_linux)]
         assert_eq!(
             StoreRecipientsMode::Create.empty_state_subtitle(),
             "Add at least one recipient to create this store."

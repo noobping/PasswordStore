@@ -1,24 +1,17 @@
-#[cfg(keycord_linux)]
 mod command;
 mod store;
 
-#[cfg(keycord_standard_linux)]
-pub(crate) use command::run_command_status;
-#[cfg(keycord_linux)]
-pub(crate) use command::run_command_with_input;
-#[cfg(keycord_linux)]
-pub(crate) use command::{run_command_output, CommandLogOptions};
-pub(crate) use store::log_error;
-pub(crate) use store::log_info;
-pub(crate) use store::log_snapshot;
+pub use command::run_command_status;
+pub use command::run_command_with_input;
+pub use command::{run_command_output, CommandLogOptions};
+pub use store::log_error;
+pub use store::log_info;
+pub use store::log_snapshot;
 
 #[cfg(test)]
 mod tests {
-    use super::{log_error, log_snapshot};
-    #[cfg(keycord_linux)]
-    use super::{run_command_output, CommandLogOptions};
+    use super::{log_error, log_snapshot, run_command_output, CommandLogOptions};
     use crate::logging::store::log_info;
-    #[cfg(keycord_linux)]
     use std::process::Command;
 
     #[test]
@@ -37,7 +30,6 @@ mod tests {
         assert!(text_after.contains("second log line"));
     }
 
-    #[cfg(keycord_linux)]
     #[test]
     fn run_command_output_logs_streams() {
         let marker = format!("stream-log-test-{}", std::process::id());
@@ -58,7 +50,6 @@ mod tests {
         assert!(text.contains(&format!("stderr:\n{marker} stderr")));
     }
 
-    #[cfg(keycord_linux)]
     #[test]
     fn run_command_output_can_accept_expected_non_zero_exit_codes() {
         let marker = format!("expected-exit-{}", std::process::id());

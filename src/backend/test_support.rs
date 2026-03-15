@@ -1,8 +1,5 @@
-#[cfg(keycord_restricted)]
 use crate::backend::integrated::clear_cached_unlocked_ripasso_private_keys;
-#[cfg(keycord_standard_linux)]
 use ripasso::crypto::{Crypto, Sequoia};
-#[cfg(keycord_standard_linux)]
 use sequoia_openpgp::{cert::CertBuilder, serialize::Serialize, Cert};
 use std::env;
 use std::ffi::OsString;
@@ -12,7 +9,6 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-#[cfg(keycord_standard_linux)]
 use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,7 +19,6 @@ fn test_lock() -> &'static Mutex<()> {
 }
 
 fn reset_backend_test_state() {
-    #[cfg(keycord_restricted)]
     clear_cached_unlocked_ripasso_private_keys();
 }
 
@@ -124,7 +119,6 @@ fn import_public_key(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(keycord_restricted)]
 fn git_head_author(path: &Path) -> Result<String, String> {
     let output = ensure_success(
         "git log",
@@ -138,7 +132,6 @@ fn git_head_author(path: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-#[cfg(keycord_restricted)]
 fn git_head_commit_has_signature(path: &Path) -> Result<bool, String> {
     let output = ensure_success(
         "git cat-file",
@@ -152,7 +145,6 @@ fn git_head_commit_has_signature(path: &Path) -> Result<bool, String> {
     Ok(String::from_utf8_lossy(&output.stdout).contains("\ngpgsig "))
 }
 
-#[cfg(keycord_restricted)]
 fn verify_git_head_signature(path: &Path) -> Result<(), String> {
     ensure_success(
         "git verify-commit",
@@ -166,7 +158,6 @@ fn verify_git_head_signature(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(keycord_standard_linux)]
 fn trust_public_key(fingerprint_hex: &str) -> Result<(), String> {
     let mut child = Command::new("gpg")
         .args(["--batch", "--yes", "--import-ownertrust"])
@@ -196,15 +187,14 @@ fn trust_public_key(fingerprint_hex: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(keycord_standard_linux)]
-pub(crate) struct GeneratedSecretKey {
-    pub(crate) cert: Arc<Cert>,
-    pub(crate) fingerprint: [u8; 20],
-    pub(crate) fingerprint_hex: String,
-    pub(crate) public_key_bytes: Vec<u8>,
+pub struct GeneratedSecretKey {
+    pub cert: Arc<Cert>,
+    pub fingerprint: [u8; 20],
+    pub fingerprint_hex: String,
+    pub public_key_bytes: Vec<u8>,
 }
 
-pub(crate) struct SystemBackendTestEnv {
+pub struct SystemBackendTestEnv {
     _guard: MutexGuard<'static, ()>,
     original_home: Option<OsString>,
     original_xdg_config_home: Option<OsString>,
@@ -216,7 +206,7 @@ pub(crate) struct SystemBackendTestEnv {
 }
 
 impl SystemBackendTestEnv {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let guard = match test_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -243,16 +233,15 @@ impl SystemBackendTestEnv {
         env
     }
 
-    #[cfg(keycord_restricted)]
-    pub(crate) fn root_dir(&self) -> &Path {
+    pub fn root_dir(&self) -> &Path {
         &self.root
     }
 
-    pub(crate) fn store_root(&self) -> &Path {
+    pub fn store_root(&self) -> &Path {
         &self.store
     }
 
-    pub(crate) fn activate_profile(&self, name: &str) {
+    pub fn activate_profile(&self, name: &str) {
         let home = self.root.join(name);
         let config = home.join(".config");
         let data = home.join(".local/share");
@@ -271,31 +260,27 @@ impl SystemBackendTestEnv {
         env::remove_var("GPG_AGENT_INFO");
     }
 
-    pub(crate) fn init_store_git_repository(&self) -> Result<(), String> {
+    pub fn init_store_git_repository(&self) -> Result<(), String> {
         init_git_repository(self.store_root())
     }
 
-    pub(crate) fn store_git_commit_subjects(&self) -> Result<Vec<String>, String> {
+    pub fn store_git_commit_subjects(&self) -> Result<Vec<String>, String> {
         git_commit_subjects(self.store_root())
     }
 
-    #[cfg(keycord_restricted)]
-    pub(crate) fn store_git_head_author(&self) -> Result<String, String> {
+    pub fn store_git_head_author(&self) -> Result<String, String> {
         git_head_author(self.store_root())
     }
 
-    #[cfg(keycord_restricted)]
-    pub(crate) fn store_head_commit_has_signature(&self) -> Result<bool, String> {
+    pub fn store_head_commit_has_signature(&self) -> Result<bool, String> {
         git_head_commit_has_signature(self.store_root())
     }
 
-    #[cfg(keycord_restricted)]
-    pub(crate) fn verify_store_head_commit_signature(&self) -> Result<(), String> {
+    pub fn verify_store_head_commit_signature(&self) -> Result<(), String> {
         verify_git_head_signature(self.store_root())
     }
 
-    #[cfg(keycord_standard_linux)]
-    pub(crate) fn generate_secret_key(&self, user_id: &str) -> Result<GeneratedSecretKey, String> {
+    pub fn generate_secret_key(user_id: &str) -> Result<GeneratedSecretKey, String> {
         let (cert, _) = CertBuilder::general_purpose(Some(user_id))
             .generate()
             .map_err(|err| format!("Failed to generate test certificate: {err}"))?;
@@ -317,12 +302,11 @@ impl SystemBackendTestEnv {
         })
     }
 
-    pub(crate) fn import_public_key(&self, bytes: &[u8]) -> Result<(), String> {
+    pub fn import_public_key(bytes: &[u8]) -> Result<(), String> {
         import_public_key(bytes)
     }
 
-    #[cfg(keycord_standard_linux)]
-    pub(crate) fn trust_public_key(&self, fingerprint_hex: &str) -> Result<(), String> {
+    pub fn trust_public_key(fingerprint_hex: &str) -> Result<(), String> {
         trust_public_key(fingerprint_hex)
     }
 }
@@ -364,7 +348,6 @@ impl Drop for SystemBackendTestEnv {
     }
 }
 
-#[cfg(keycord_standard_linux)]
 fn decrypt_entry_with_generated_key(
     key: &GeneratedSecretKey,
     ciphertext: &[u8],
@@ -376,8 +359,11 @@ fn decrypt_entry_with_generated_key(
         .map_err(|err| err.to_string())
 }
 
-#[cfg(keycord_standard_linux)]
-pub(crate) fn assert_entry_is_encrypted_for_each_recipient(
+#[expect(
+    clippy::significant_drop_tightening,
+    reason = "SystemBackendTestEnv intentionally keeps temp dirs and test env vars alive for the full helper execution."
+)]
+pub fn assert_entry_is_encrypted_for_each_recipient(
     initialize_store: impl Fn(&str, &[String]) -> Result<(), String>,
     save_entry: impl Fn(&str, &str, &str) -> Result<(), String>,
 ) {
@@ -392,19 +378,19 @@ pub(crate) fn assert_entry_is_encrypted_for_each_recipient(
     let store_root = env.store_root().to_string_lossy().to_string();
 
     env.activate_profile("base");
-    let key_a = env
-        .generate_secret_key(&format!("Recipient A <a-{marker}@example.com>"))
-        .expect("generate first recipient key");
-    let key_b = env
-        .generate_secret_key(&format!("Recipient B <b-{marker}@example.com>"))
-        .expect("generate second recipient key");
-    env.import_public_key(&key_a.public_key_bytes)
+    let key_a =
+        SystemBackendTestEnv::generate_secret_key(&format!("Recipient A <a-{marker}@example.com>"))
+            .expect("generate first recipient key");
+    let key_b =
+        SystemBackendTestEnv::generate_secret_key(&format!("Recipient B <b-{marker}@example.com>"))
+            .expect("generate second recipient key");
+    SystemBackendTestEnv::import_public_key(&key_a.public_key_bytes)
         .expect("import first public recipient key");
-    env.trust_public_key(&key_a.fingerprint_hex)
+    SystemBackendTestEnv::trust_public_key(&key_a.fingerprint_hex)
         .expect("trust first recipient key");
-    env.import_public_key(&key_b.public_key_bytes)
+    SystemBackendTestEnv::import_public_key(&key_b.public_key_bytes)
         .expect("import second public recipient key");
-    env.trust_public_key(&key_b.fingerprint_hex)
+    SystemBackendTestEnv::trust_public_key(&key_b.fingerprint_hex)
         .expect("trust second recipient key");
 
     initialize_store(

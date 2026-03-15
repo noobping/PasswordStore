@@ -1,20 +1,19 @@
 use adw::prelude::*;
 
-pub(crate) fn set_string_data<O: ObjectExt>(obj: &O, key: &str, value: String) {
+pub fn set_cloned_data<O: ObjectExt, T: Clone + 'static>(obj: &O, key: &str, value: T) {
     unsafe {
         obj.set_data(key, value);
     }
 }
 
-pub(crate) fn non_null_to_string_option<O: ObjectExt>(obj: &O, key: &str) -> Option<String> {
-    non_null_to_string_result(unsafe { obj.data::<String>(key) }).ok()
+pub fn cloned_data<O: ObjectExt, T: Clone + 'static>(obj: &O, key: &str) -> Option<T> {
+    unsafe { obj.data::<T>(key) }.map(|ptr| unsafe { ptr.as_ref() }.clone())
 }
 
-fn non_null_to_string_result(label_opt: Option<std::ptr::NonNull<String>>) -> Result<String, ()> {
-    if let Some(ptr) = label_opt {
-        let s: &String = unsafe { ptr.as_ref() };
-        Ok(s.clone())
-    } else {
-        Err(())
-    }
+pub fn set_string_data<O: ObjectExt>(obj: &O, key: &str, value: String) {
+    set_cloned_data(obj, key, value);
+}
+
+pub fn non_null_to_string_option<O: ObjectExt>(obj: &O, key: &str) -> Option<String> {
+    cloned_data(obj, key)
 }

@@ -22,8 +22,7 @@ pub(super) fn stored_backend_kind(preferences: &Preferences) -> BackendKind {
         |cfg| {
             cfg.backend
                 .as_deref()
-                .map(BackendKind::from_stored)
-                .unwrap_or_else(default_backend_kind)
+                .map_or_else(default_backend_kind, BackendKind::from_stored)
         },
     )
 }

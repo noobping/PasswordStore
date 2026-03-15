@@ -8,13 +8,14 @@ use crate::logging::{log_error, log_info};
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
-#[cfg(keycord_linux)]
 use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::non_null_to_string_option;
-#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::clear_list_box;
-use adw::gtk::{Button, ListBox, ListBoxRow, SearchEntry};
+use adw::glib::Propagation;
+use adw::gtk::{
+    gdk, Button, EventControllerKey, ListBox, ListBoxRow, PropagationPhase, SearchEntry,
+};
 use adw::prelude::*;
 use adw::ToastOverlay;
 use std::cell::RefCell;
@@ -22,31 +23,69 @@ use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Visibility {
+    Hidden,
+    Visible,
+}
+
+impl Visibility {
+    const fn is_visible(self) -> bool {
+        matches!(self, Self::Visible)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ListActionsMode {
+    Hidden,
+    Visible,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StoreSetup {
+    Missing,
+    Present,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ListContents {
+    Empty,
+    Populated,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GitAvailability {
+    Unavailable,
+    Available,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ListActionContext {
+    actions: ListActionsMode,
+    stores: StoreSetup,
+    contents: ListContents,
+    git: GitAvailability,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ListActionVisibility {
-    add_visible: bool,
-    find_visible: bool,
-    git_visible: bool,
-    store_visible: bool,
-    save_visible: bool,
+    add: Visibility,
+    find: Visibility,
+    git: Visibility,
+    store: Visibility,
+    save: Visibility,
 }
 
 #[derive(Clone)]
-pub(crate) struct PasswordListActions {
-    pub(crate) add: Button,
-    pub(crate) git: Button,
-    pub(crate) store: Button,
-    pub(crate) find: Button,
-    pub(crate) save: Button,
+pub struct PasswordListActions {
+    pub add: Button,
+    pub git: Button,
+    pub store: Button,
+    pub find: Button,
+    pub save: Button,
 }
 
 impl PasswordListActions {
-    pub(crate) fn new(
-        add: &Button,
-        git: &Button,
-        store: &Button,
-        find: &Button,
-        save: &Button,
-    ) -> Self {
+    pub fn new(add: &Button, git: &Button, store: &Button, find: &Button, save: &Button) -> Self {
         Self {
             add: add.clone(),
             git: git.clone(),
@@ -57,66 +96,58 @@ impl PasswordListActions {
     }
 }
 
-fn list_action_visibility(
-    show_list_actions: bool,
-    has_store_dirs: bool,
-    empty: bool,
-    git_available: bool,
-) -> ListActionVisibility {
-    if !show_list_actions {
+const fn list_action_visibility(context: ListActionContext) -> ListActionVisibility {
+    if matches!(context.actions, ListActionsMode::Hidden) {
         return ListActionVisibility {
-            add_visible: false,
-            find_visible: false,
-            git_visible: false,
-            store_visible: false,
-            save_visible: false,
+            add: Visibility::Hidden,
+            find: Visibility::Hidden,
+            git: Visibility::Hidden,
+            store: Visibility::Hidden,
+            save: Visibility::Hidden,
         };
     }
 
     ListActionVisibility {
-        add_visible: has_store_dirs,
-        find_visible: !empty,
-        git_visible: should_show_root_git_button(show_list_actions, has_store_dirs, git_available),
-        store_visible: should_show_root_store_button(show_list_actions, has_store_dirs),
-        save_visible: false,
+        add: if matches!(context.stores, StoreSetup::Present) {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        },
+        find: if matches!(context.contents, ListContents::Populated) {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        },
+        git: if should_show_root_git_button(context) {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        },
+        store: if should_show_root_store_button(context) {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        },
+        save: Visibility::Hidden,
     }
 }
 
-fn should_show_root_git_button(
-    show_list_actions: bool,
-    has_store_dirs: bool,
-    git_available: bool,
-) -> bool {
-    show_list_actions && !has_store_dirs && git_available
+const fn should_show_root_git_button(context: ListActionContext) -> bool {
+    matches!(context.actions, ListActionsMode::Visible)
+        && matches!(context.stores, StoreSetup::Missing)
+        && matches!(context.git, GitAvailability::Available)
 }
 
-#[cfg(keycord_restricted)]
-fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
-    show_list_actions && !has_store_dirs
+const fn should_show_root_store_button(context: ListActionContext) -> bool {
+    matches!(context.actions, ListActionsMode::Visible)
+        && matches!(context.stores, StoreSetup::Missing)
 }
 
-#[cfg(keycord_standard_linux)]
-fn should_show_root_store_button(show_list_actions: bool, has_store_dirs: bool) -> bool {
-    let _ = (show_list_actions, has_store_dirs);
-    false
-}
-
-#[cfg(keycord_flatpak)]
-fn list_git_available() -> bool {
+const fn list_git_available() -> bool {
     git_network_operations_available()
 }
 
-#[cfg(not(keycord_linux))]
-fn list_git_available() -> bool {
-    false
-}
-
-#[cfg(keycord_standard_linux)]
-fn list_git_available() -> bool {
-    true
-}
-
-pub(crate) fn load_passwords_async(
+pub fn load_passwords_async(
     list: &ListBox,
     actions: &PasswordListActions,
     overlay: &ToastOverlay,
@@ -144,70 +175,85 @@ pub(crate) fn load_passwords_async(
     let list_for_disconnect = list_clone.clone();
     let actions_for_disconnect = actions_clone.clone();
     spawn_result_task(
-        move || match collect_all_password_items_with_options(collect_items_options(
-            show_hidden,
-            show_duplicates,
-        )) {
-            Ok(items) => items
-                .into_iter()
-                .map(|item| {
-                    let label = item.label();
-                    let readable = password_entry_is_readable(&item.store_path, &label);
-                    (item, readable)
-                })
-                .collect(),
-            Err(err) => {
-                log_error(format!("Error scanning pass stores: {err}"));
-                Vec::new()
-            }
+        move || {
+            collect_all_password_items_with_options(collect_items_options(
+                show_hidden,
+                show_duplicates,
+            ))
+            .into_iter()
+            .map(|item| {
+                let label = item.label();
+                let readable = password_entry_is_readable(&item.store_path, &label);
+                (item, readable)
+            })
+            .collect::<Vec<_>>()
         },
         move |items| {
-            let empty = items.is_empty();
+            let context = ListActionContext {
+                actions: if show_list_actions {
+                    ListActionsMode::Visible
+                } else {
+                    ListActionsMode::Hidden
+                },
+                stores: if has_store_dirs {
+                    StoreSetup::Present
+                } else {
+                    StoreSetup::Missing
+                },
+                contents: if items.is_empty() {
+                    ListContents::Empty
+                } else {
+                    ListContents::Populated
+                },
+                git: if git_available {
+                    GitAvailability::Available
+                } else {
+                    GitAvailability::Unavailable
+                },
+            };
             for (item, readable) in items {
                 append_password_row(&list_clone, item, readable, &overlay_clone);
             }
 
-            update_list_actions(
-                &actions_clone,
-                show_list_actions,
+            update_list_actions(&actions_clone, context);
+            list_clone.set_placeholder(Some(&resolved_placeholder(
+                matches!(context.contents, ListContents::Empty),
                 has_store_dirs,
-                empty,
-                git_available,
-            );
-            list_clone.set_placeholder(Some(&resolved_placeholder(empty, has_store_dirs)));
+            )));
         },
         move || {
-            actions_for_disconnect
-                .add
-                .set_visible(show_list_actions && has_store_dirs);
-            actions_for_disconnect.save.set_visible(false);
-            actions_for_disconnect
-                .git
-                .set_visible(should_show_root_git_button(
-                    show_list_actions,
-                    has_store_dirs,
-                    git_available,
-                ));
-            actions_for_disconnect
-                .store
-                .set_visible(should_show_root_store_button(
-                    show_list_actions,
-                    has_store_dirs,
-                ));
-            actions_for_disconnect.find.set_visible(false);
+            let context = ListActionContext {
+                actions: if show_list_actions {
+                    ListActionsMode::Visible
+                } else {
+                    ListActionsMode::Hidden
+                },
+                stores: if has_store_dirs {
+                    StoreSetup::Present
+                } else {
+                    StoreSetup::Missing
+                },
+                contents: ListContents::Empty,
+                git: if git_available {
+                    GitAvailability::Available
+                } else {
+                    GitAvailability::Unavailable
+                },
+            };
+            update_list_actions(&actions_for_disconnect, context);
             list_for_disconnect.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
         },
     );
 }
 
-fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
+const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
     CollectItemsOptions {
         show_hidden,
         show_duplicates,
     }
 }
 
-pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
+pub fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
     let query = Rc::new(RefCell::new(String::new()));
 
     let query_for_filter = query.clone();
@@ -224,28 +270,92 @@ pub(crate) fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
         true
     });
 
-    let query_for_entry = query.clone();
+    let query_for_entry = query;
     let list_for_entry = list.clone();
     search_entry.connect_search_changed(move |entry| {
         *query_for_entry.borrow_mut() = entry.text().to_string().to_lowercase();
         list_for_entry.invalidate_filter();
     });
+
+    connect_search_arrow_navigation(list, search_entry);
 }
 
-fn update_list_actions(
-    actions: &PasswordListActions,
-    show_list_actions: bool,
-    has_store_dirs: bool,
-    empty: bool,
-    git_available: bool,
-) {
-    let visibility =
-        list_action_visibility(show_list_actions, has_store_dirs, empty, git_available);
-    actions.add.set_visible(visibility.add_visible);
-    actions.save.set_visible(visibility.save_visible);
-    actions.find.set_visible(visibility.find_visible);
-    actions.git.set_visible(visibility.git_visible);
-    actions.store.set_visible(visibility.store_visible);
+fn connect_search_arrow_navigation(list: &ListBox, search_entry: &SearchEntry) {
+    let search_controller = EventControllerKey::new();
+    search_controller.set_propagation_phase(PropagationPhase::Capture);
+    let list_for_search = list.clone();
+    search_controller.connect_key_pressed(move |_, key, _, _| {
+        if matches!(key, gdk::Key::Down | gdk::Key::KP_Down)
+            && focus_first_visible_row(&list_for_search)
+        {
+            return Propagation::Stop;
+        }
+
+        Propagation::Proceed
+    });
+    search_entry.add_controller(search_controller);
+
+    let list_controller = EventControllerKey::new();
+    list_controller.set_propagation_phase(PropagationPhase::Capture);
+    let list_for_keys = list.clone();
+    let search_entry_for_list = search_entry.clone();
+    list_controller.connect_key_pressed(move |_, key, _, _| {
+        if !search_entry_for_list.is_visible() {
+            return Propagation::Proceed;
+        }
+
+        if matches!(key, gdk::Key::Up | gdk::Key::KP_Up)
+            && selected_row_is_first_visible(&list_for_keys)
+        {
+            search_entry_for_list.grab_focus();
+            return Propagation::Stop;
+        }
+
+        Propagation::Proceed
+    });
+    list.add_controller(list_controller);
+}
+
+fn focus_first_visible_row(list: &ListBox) -> bool {
+    let Some(row) = first_visible_row(list) else {
+        return false;
+    };
+
+    list.select_row(Some(&row));
+    list.grab_focus();
+    row.grab_focus();
+    true
+}
+
+fn selected_row_is_first_visible(list: &ListBox) -> bool {
+    let Some(selected_row) = list.selected_row() else {
+        return false;
+    };
+    let Some(first_row) = first_visible_row(list) else {
+        return false;
+    };
+
+    selected_row.index() == first_row.index()
+}
+
+fn first_visible_row(list: &ListBox) -> Option<ListBoxRow> {
+    let mut index = 0;
+    loop {
+        let row = list.row_at_index(index)?;
+        if row.is_visible() {
+            return Some(row);
+        }
+        index += 1;
+    }
+}
+
+fn update_list_actions(actions: &PasswordListActions, context: ListActionContext) {
+    let visibility = list_action_visibility(context);
+    actions.add.set_visible(visibility.add.is_visible());
+    actions.save.set_visible(visibility.save.is_visible());
+    actions.find.set_visible(visibility.find.is_visible());
+    actions.git.set_visible(visibility.git.is_visible());
+    actions.store.set_visible(visibility.store.is_visible());
 }
 
 fn prune_missing_store_dirs(settings: &Preferences) {
@@ -254,7 +364,6 @@ fn prune_missing_store_dirs(settings: &Preferences) {
     }
 }
 
-#[cfg(keycord_linux)]
 fn log_store_git_state(settings: &Preferences) {
     let stores = settings.store_roots();
     let summary = if stores.is_empty() {
@@ -276,10 +385,6 @@ fn log_store_git_state(settings: &Preferences) {
     }
 }
 
-#[cfg(not(keycord_linux))]
-fn log_store_git_state(_settings: &Preferences) {}
-
-#[cfg(keycord_linux)]
 fn store_git_state_summary_changed(summary: &str) -> bool {
     static LAST_SUMMARY: OnceLock<Mutex<String>> = OnceLock::new();
     let state = LAST_SUMMARY.get_or_init(|| Mutex::new(String::new()));
@@ -301,84 +406,89 @@ fn store_git_state_summary_changed(summary: &str) -> bool {
 mod tests {
     use super::{
         collect_items_options, list_action_visibility, should_show_root_git_button,
-        should_show_root_store_button, ListActionVisibility,
+        should_show_root_store_button, GitAvailability, ListActionContext, ListActionVisibility,
+        ListActionsMode, ListContents, StoreSetup, Visibility,
     };
     use crate::password::model::CollectItemsOptions;
 
-    #[cfg(keycord_restricted)]
     fn expected_root_store_button_visibility() -> bool {
         true
     }
 
-    #[cfg(keycord_standard_linux)]
-    fn expected_root_store_button_visibility() -> bool {
-        false
-    }
-
-    #[cfg(keycord_restricted)]
     fn expected_root_action_visibility_for_empty_store_setup() -> ListActionVisibility {
         ListActionVisibility {
-            add_visible: false,
-            find_visible: false,
-            git_visible: true,
-            store_visible: true,
-            save_visible: false,
+            add: Visibility::Hidden,
+            find: Visibility::Hidden,
+            git: Visibility::Visible,
+            store: Visibility::Visible,
+            save: Visibility::Hidden,
         }
     }
 
-    #[cfg(keycord_standard_linux)]
-    fn expected_root_action_visibility_for_empty_store_setup() -> ListActionVisibility {
-        ListActionVisibility {
-            add_visible: false,
-            find_visible: false,
-            git_visible: true,
-            store_visible: false,
-            save_visible: false,
-        }
-    }
-
-    #[cfg(keycord_restricted)]
     fn expected_store_visibility_without_git() -> bool {
         true
-    }
-
-    #[cfg(keycord_standard_linux)]
-    fn expected_store_visibility_without_git() -> bool {
-        false
     }
 
     #[test]
     fn root_shortcut_buttons_are_hidden_for_existing_store_setup() {
-        assert!(!should_show_root_git_button(true, true, true));
-        assert!(!should_show_root_store_button(true, true));
-        assert!(!should_show_root_git_button(false, false, true));
-        assert!(!should_show_root_store_button(false, false));
+        let existing_store_context = ListActionContext {
+            actions: ListActionsMode::Visible,
+            stores: StoreSetup::Present,
+            contents: ListContents::Populated,
+            git: GitAvailability::Available,
+        };
+        let hidden_actions_context = ListActionContext {
+            actions: ListActionsMode::Hidden,
+            stores: StoreSetup::Missing,
+            contents: ListContents::Empty,
+            git: GitAvailability::Available,
+        };
+        assert!(!should_show_root_git_button(existing_store_context));
+        assert!(!should_show_root_store_button(existing_store_context));
+        assert!(!should_show_root_git_button(hidden_actions_context));
+        assert!(!should_show_root_store_button(hidden_actions_context));
     }
 
     #[test]
     fn root_shortcut_buttons_match_the_current_build() {
-        assert!(should_show_root_git_button(true, false, true));
+        let context = ListActionContext {
+            actions: ListActionsMode::Visible,
+            stores: StoreSetup::Missing,
+            contents: ListContents::Empty,
+            git: GitAvailability::Available,
+        };
+        assert!(should_show_root_git_button(context));
         assert_eq!(
-            should_show_root_store_button(true, false),
+            should_show_root_store_button(context),
             expected_root_store_button_visibility()
         );
     }
 
     #[test]
     fn root_git_shortcut_button_requires_runtime_git_availability() {
-        assert!(!should_show_root_git_button(true, false, false));
+        assert!(!should_show_root_git_button(ListActionContext {
+            actions: ListActionsMode::Visible,
+            stores: StoreSetup::Missing,
+            contents: ListContents::Empty,
+            git: GitAvailability::Unavailable,
+        }));
     }
 
     #[test]
     fn list_actions_hide_everything_when_list_actions_are_disabled() {
         assert_eq!(
-            list_action_visibility(false, true, false, true),
+            list_action_visibility(ListActionContext {
+                actions: ListActionsMode::Hidden,
+                stores: StoreSetup::Present,
+                contents: ListContents::Populated,
+                git: GitAvailability::Available,
+            }),
             ListActionVisibility {
-                add_visible: false,
-                find_visible: false,
-                git_visible: false,
-                store_visible: false,
-                save_visible: false,
+                add: Visibility::Hidden,
+                find: Visibility::Hidden,
+                git: Visibility::Hidden,
+                store: Visibility::Hidden,
+                save: Visibility::Hidden,
             }
         );
     }
@@ -386,23 +496,33 @@ mod tests {
     #[test]
     fn list_actions_show_find_only_when_items_exist() {
         assert_eq!(
-            list_action_visibility(true, true, false, true),
+            list_action_visibility(ListActionContext {
+                actions: ListActionsMode::Visible,
+                stores: StoreSetup::Present,
+                contents: ListContents::Populated,
+                git: GitAvailability::Available,
+            }),
             ListActionVisibility {
-                add_visible: true,
-                find_visible: true,
-                git_visible: false,
-                store_visible: false,
-                save_visible: false,
+                add: Visibility::Visible,
+                find: Visibility::Visible,
+                git: Visibility::Hidden,
+                store: Visibility::Hidden,
+                save: Visibility::Hidden,
             }
         );
         assert_eq!(
-            list_action_visibility(true, true, true, true),
+            list_action_visibility(ListActionContext {
+                actions: ListActionsMode::Visible,
+                stores: StoreSetup::Present,
+                contents: ListContents::Empty,
+                git: GitAvailability::Available,
+            }),
             ListActionVisibility {
-                add_visible: true,
-                find_visible: false,
-                git_visible: false,
-                store_visible: false,
-                save_visible: false,
+                add: Visibility::Visible,
+                find: Visibility::Hidden,
+                git: Visibility::Hidden,
+                store: Visibility::Hidden,
+                save: Visibility::Hidden,
             }
         );
     }
@@ -410,7 +530,12 @@ mod tests {
     #[test]
     fn list_actions_show_the_build_specific_root_shortcut_for_empty_missing_store_setup() {
         assert_eq!(
-            list_action_visibility(true, false, true, true),
+            list_action_visibility(ListActionContext {
+                actions: ListActionsMode::Visible,
+                stores: StoreSetup::Missing,
+                contents: ListContents::Empty,
+                git: GitAvailability::Available,
+            }),
             expected_root_action_visibility_for_empty_store_setup()
         );
     }
@@ -418,13 +543,22 @@ mod tests {
     #[test]
     fn list_actions_hide_git_when_runtime_git_is_unavailable() {
         assert_eq!(
-            list_action_visibility(true, false, true, false),
+            list_action_visibility(ListActionContext {
+                actions: ListActionsMode::Visible,
+                stores: StoreSetup::Missing,
+                contents: ListContents::Empty,
+                git: GitAvailability::Unavailable,
+            }),
             ListActionVisibility {
-                add_visible: false,
-                find_visible: false,
-                git_visible: false,
-                store_visible: expected_store_visibility_without_git(),
-                save_visible: false,
+                add: Visibility::Hidden,
+                find: Visibility::Hidden,
+                git: Visibility::Hidden,
+                store: if expected_store_visibility_without_git() {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                },
+                save: Visibility::Hidden,
             }
         );
     }

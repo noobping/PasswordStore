@@ -1,27 +1,24 @@
 mod clone;
 mod dialogs;
-#[cfg(keycord_standard_linux)]
 mod import;
 
 use self::clone::append_store_clone_row;
-pub(crate) use self::clone::prompt_store_clone;
-#[cfg(keycord_standard_linux)]
-use self::import::schedule_store_import_row;
+pub use self::clone::prompt_store_clone;
+pub use self::import::{
+    initialize_store_import_page, schedule_store_import_row, StoreImportPageState,
+};
 use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
 };
-pub(crate) use super::recipients_page::{
-    connect_store_recipients_entry, register_store_recipients_save_action,
+pub use super::recipients_page::{
+    connect_store_recipients_controls, register_store_recipients_save_action,
     show_store_recipients_create_page, show_store_recipients_edit_page,
     sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsPlatformState,
     StoreRecipientsRequest,
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-#[cfg(keycord_restricted)]
 use crate::support::actions::register_window_action;
-#[cfg(keycord_flatpak)]
-use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
@@ -111,7 +108,7 @@ enum SelectedStoreFolderMode {
     CreateNew,
 }
 
-fn selected_store_folder_mode(is_empty: bool) -> SelectedStoreFolderMode {
+const fn selected_store_folder_mode(is_empty: bool) -> SelectedStoreFolderMode {
     if is_empty {
         SelectedStoreFolderMode::CreateNew
     } else {
@@ -129,62 +126,7 @@ fn folder_is_empty(path: &str) -> io::Result<bool> {
     Ok(entries.next().is_none())
 }
 
-#[cfg(keycord_standard_linux)]
-fn append_optional_store_import_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    stores: Vec<String>,
-) {
-    schedule_store_import_row(list, settings, window, overlay, stores);
-}
-
-#[cfg(keycord_restricted)]
-fn append_optional_store_import_row(
-    _list: &ListBox,
-    _settings: &Preferences,
-    _window: &ApplicationWindow,
-    _overlay: &ToastOverlay,
-    _stores: Vec<String>,
-) {
-}
-
-#[cfg(keycord_flatpak)]
-fn append_platform_store_clone_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-) {
-    if git_network_operations_available() {
-        append_store_clone_row(list, settings, window, overlay, recipients_page);
-    }
-}
-
-#[cfg(not(keycord_linux))]
-fn append_platform_store_clone_row(
-    _list: &ListBox,
-    _settings: &Preferences,
-    _window: &ApplicationWindow,
-    _overlay: &ToastOverlay,
-    _recipients_page: &StoreRecipientsPageState,
-) {
-}
-
-#[cfg(keycord_standard_linux)]
-fn append_platform_store_clone_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    recipients_page: &StoreRecipientsPageState,
-) {
-    append_store_clone_row(list, settings, window, overlay, recipients_page);
-}
-
-pub(crate) fn rebuild_store_list(
+pub fn rebuild_store_list(
     list: &ListBox,
     settings: &Preferences,
     window: &ApplicationWindow,
@@ -203,8 +145,7 @@ pub(crate) fn rebuild_store_list(
     }
 
     append_store_picker_row(list, settings, window, overlay, recipients_page);
-    append_platform_store_clone_row(list, settings, window, overlay, recipients_page);
-    append_optional_store_import_row(list, settings, window, overlay, stores);
+    append_store_clone_row(list, settings, window, overlay, recipients_page);
 }
 
 fn append_store_row(
@@ -232,7 +173,7 @@ fn append_store_row(
     let store_for_edit = store.clone();
 
     row.connect_activated(move |_| {
-        show_store_recipients_edit_page(&recipients_page, &store_for_edit)
+        show_store_recipients_edit_page(&recipients_page, &store_for_edit);
     });
 
     delete_button.connect_clicked(move |_| {
@@ -270,12 +211,12 @@ fn append_store_picker_row(
                 &settings,
                 &overlay,
                 &recipients_page,
-            )
+            );
         },
     );
 }
 
-pub(crate) fn prompt_add_or_create_store(
+pub fn prompt_add_or_create_store(
     window: &ApplicationWindow,
     list: &ListBox,
     settings: &Preferences,
@@ -332,13 +273,12 @@ pub(crate) fn prompt_add_or_create_store(
                     );
                     show_store_recipients_create_page(&recipients_page, store, recipients);
                 }
-            };
+            }
         },
     );
 }
 
-#[cfg(keycord_restricted)]
-pub(crate) fn register_open_store_picker_action(
+pub fn register_open_store_picker_action(
     window: &ApplicationWindow,
     list: &ListBox,
     overlay: &ToastOverlay,
@@ -357,8 +297,6 @@ pub(crate) fn register_open_store_picker_action(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(keycord_standard_linux)]
-    use super::import::should_show_pass_import_row;
     use super::{
         initial_recipients_for_store_creation, selected_store_folder_mode,
         updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
@@ -418,22 +356,5 @@ mod tests {
             selected_store_folder_mode(false),
             SelectedStoreFolderMode::AddExisting
         );
-    }
-
-    #[cfg(keycord_standard_linux)]
-    #[test]
-    fn pass_import_row_requires_an_existing_store_and_available_sources() {
-        assert!(!should_show_pass_import_row(
-            &[],
-            &["bitwarden".to_string()]
-        ));
-        assert!(!should_show_pass_import_row(
-            &["/tmp/store".to_string()],
-            &[]
-        ));
-        assert!(should_show_pass_import_row(
-            &["/tmp/store".to_string()],
-            &["bitwarden".to_string()]
-        ));
     }
 }

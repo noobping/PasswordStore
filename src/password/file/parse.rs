@@ -3,16 +3,14 @@ use super::types::{
     OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
 };
 
-pub(crate) fn structured_username_value(
-    lines: &[(StructuredPassLine, Option<String>)],
-) -> Option<String> {
+pub fn structured_username_value(lines: &[(StructuredPassLine, Option<String>)]) -> Option<String> {
     lines.iter().find_map(|(line, value)| match line {
         StructuredPassLine::Username(_) => value.clone(),
         _ => None,
     })
 }
 
-pub(crate) fn structured_otp_line(
+pub fn structured_otp_line(
     lines: &[(StructuredPassLine, Option<String>)],
 ) -> Option<(OtpFieldTemplate, String)> {
     lines.iter().find_map(|(line, value)| match line {
@@ -21,7 +19,7 @@ pub(crate) fn structured_otp_line(
     })
 }
 
-pub(crate) fn parse_structured_pass_lines(
+pub fn parse_structured_pass_lines(
     contents: &str,
 ) -> (String, Vec<(StructuredPassLine, Option<String>)>) {
     let mut lines = contents.lines();
@@ -82,7 +80,7 @@ pub(crate) fn parse_structured_pass_lines(
 fn leading_spacing(value: &str) -> String {
     value
         .chars()
-        .take_while(|c| c.is_ascii_whitespace())
+        .take_while(char::is_ascii_whitespace)
         .collect()
 }
 

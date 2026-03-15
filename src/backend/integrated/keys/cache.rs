@@ -56,5 +56,5 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
 
 #[cfg(test)]
 pub(in crate::backend) fn clear_cached_unlocked_ripasso_private_keys() {
-    with_unlocked_ripasso_keys_write(|keys| keys.clear());
+    with_unlocked_ripasso_keys_write(std::collections::HashMap::clear);
 }

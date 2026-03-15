@@ -1,20 +1,23 @@
-#[cfg(keycord_setup)]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+#[cfg(all(target_os = "linux", feature = "setup"))]
 mod setup;
 
 mod backend;
 mod clipboard;
+#[cfg(target_os = "linux")]
 mod logging;
 mod password;
 mod preferences;
-#[cfg(keycord_restricted)]
 mod private_key;
 mod store;
 mod support;
 mod window;
 
-#[cfg(keycord_standard_linux)]
 use crate::logging::{run_command_output, CommandLogOptions};
-#[cfg(keycord_standard_linux)]
 use crate::preferences::Preferences;
 use crate::support::object_data::{non_null_to_string_option, set_string_data};
 
@@ -28,21 +31,13 @@ use adw::gtk::{
 use adw::prelude::*;
 use adw::Application;
 use std::ffi::OsString;
-use std::result::Result::Ok;
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
 const ISSUE_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
-#[cfg(keycord_standard_linux)]
 const RIPASSO_VERSION: &str = env!("RIPASSO_VERSION");
-#[cfg(keycord_standard_linux)]
 const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
-#[cfg(keycord_standard_linux)]
-const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-standard.ui");
-#[cfg(keycord_flatpak)]
-const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-flatpak.ui");
-#[cfg(not(keycord_linux))]
-const SHORTCUTS_UI: &str = include_str!("../data/shortcuts-non-linux.ui");
+const SHORTCUTS_UI: &str = include_str!("../data/shortcuts.ui");
 
 fn main() -> ExitCode {
     resources_register_include!("compiled.gresource").expect("Failed to register resources");
@@ -157,7 +152,6 @@ fn build_about_dialog() -> adw::AboutDialog {
     about
 }
 
-#[cfg(keycord_standard_linux)]
 fn about_comments(project: &str) -> String {
     let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
     let settings = Preferences::new();
@@ -177,14 +171,6 @@ fn about_comments(project: &str) -> String {
     }
 }
 
-#[cfg(keycord_restricted)]
-fn about_comments(_project: &str) -> String {
-    option_env!("CARGO_PKG_DESCRIPTION")
-        .unwrap_or("")
-        .to_string()
-}
-
-#[cfg(keycord_standard_linux)]
 fn get_pass_version(settings: &Preferences) -> Option<String> {
     let mut cmd = settings.command();
     cmd.arg("--version");
@@ -200,7 +186,7 @@ fn get_pass_version(settings: &Preferences) -> Option<String> {
         .map(|line| line.trim_matches('='))
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(|s| s.to_string())
+        .map(str::to_string)
         .collect();
     if lines.is_empty() {
         None

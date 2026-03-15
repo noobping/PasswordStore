@@ -1,50 +1,38 @@
+#[cfg(target_os = "linux")]
+mod command;
 mod errors;
-#[cfg(keycord_linux)]
+#[cfg(target_os = "linux")]
 mod host;
 mod integrated;
 #[cfg(test)]
 mod test_support;
 
-pub(crate) use self::errors::PasswordEntryError;
-#[cfg(keycord_restricted)]
-pub(crate) use self::errors::PrivateKeyError;
-pub(crate) use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
+pub use self::errors::PasswordEntryError;
+pub use self::errors::PrivateKeyError;
+pub use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum StoreRecipientsPrivateKeyRequirement {
+pub enum StoreRecipientsPrivateKeyRequirement {
     #[default]
     AnyManagedKey,
     AllManagedKeys,
 }
 
-#[cfg(keycord_flatpak)]
-pub(crate) use integrated::{
-    armored_ripasso_private_key, generate_ripasso_private_key,
-    git_commit_private_key_requiring_unlock_for_entry,
-    git_commit_private_key_requiring_unlock_for_store_recipients, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
-    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
-};
-
-#[cfg(not(keycord_linux))]
-pub(crate) use integrated::{
+pub use integrated::{
     armored_ripasso_private_key, generate_ripasso_private_key, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
     ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
+pub use integrated::{
+    git_commit_private_key_requiring_unlock_for_entry,
+    git_commit_private_key_requiring_unlock_for_store_recipients,
+};
 
-#[cfg(keycord_linux)]
 use crate::preferences::Preferences;
 
-#[cfg(keycord_linux)]
-fn dispatch_backend<T, E>(
-    integrated: impl FnOnce() -> Result<T, E>,
-    host: impl FnOnce() -> Result<T, E>,
-) -> Result<T, E> {
+fn dispatch_backend<T>(integrated: impl FnOnce() -> T, host: impl FnOnce() -> T) -> T {
     if Preferences::new().uses_integrated_backend() {
         integrated()
     } else {
@@ -52,18 +40,6 @@ fn dispatch_backend<T, E>(
     }
 }
 
-#[cfg(not(keycord_linux))]
-macro_rules! dispatch_backend_call {
-    ($(fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $ret:ty;)+) => {
-        $(
-            pub fn $name($($arg: $arg_ty),*) -> $ret {
-                integrated::$name($($arg),*)
-            }
-        )+
-    };
-}
-
-#[cfg(keycord_linux)]
 macro_rules! dispatch_backend_call {
     ($(fn $name:ident($($arg:ident: $arg_ty:ty),* $(,)?) -> $ret:ty;)+) => {
         $(
@@ -99,16 +75,9 @@ dispatch_backend_call! {
     ) -> Result<(), StoreRecipientsError>;
 }
 
-#[cfg(not(keycord_linux))]
 pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
-    integrated::password_entry_is_readable(store_root, label)
-}
-
-#[cfg(keycord_linux)]
-pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
-    if Preferences::new().uses_integrated_backend() {
-        integrated::password_entry_is_readable(store_root, label)
-    } else {
-        host::password_entry_is_readable(store_root, label)
-    }
+    dispatch_backend(
+        || integrated::password_entry_is_readable(store_root, label),
+        || host::password_entry_is_readable(store_root, label),
+    )
 }

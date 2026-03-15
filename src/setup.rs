@@ -95,7 +95,8 @@ pub fn uninstall_locally() -> std::io::Result<()> {
         .join("icons")
         .join("hicolor")
         .join("scalable")
-        .join("apps");
+        .join("apps")
+        .join(format!("{}.svg", APP_ID));
     let desktop = data
         .join("applications")
         .join(format!("{}.desktop", APP_ID));

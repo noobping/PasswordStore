@@ -20,19 +20,19 @@ use adw::gtk::ListBox;
 use adw::{ApplicationWindow, NavigationPage, StatusPage, Toast, ToastOverlay};
 
 #[derive(Clone)]
-pub(crate) struct GitActionState {
-    pub(crate) window: ApplicationWindow,
-    pub(crate) overlay: ToastOverlay,
-    pub(crate) list: ListBox,
-    pub(crate) navigation: WindowNavigationState,
-    pub(crate) recipients_page: StoreRecipientsPageState,
-    pub(crate) busy_page: NavigationPage,
-    pub(crate) busy_status: StatusPage,
-    pub(crate) visibility: ListVisibilityState,
+pub struct GitActionState {
+    pub window: ApplicationWindow,
+    pub overlay: ToastOverlay,
+    pub list: ListBox,
+    pub navigation: WindowNavigationState,
+    pub recipients_page: StoreRecipientsPageState,
+    pub busy_page: NavigationPage,
+    pub busy_status: StatusPage,
+    pub visibility: ListVisibilityState,
 }
 
 impl GitActionState {
-    pub(crate) fn new(
+    pub fn new(
         widgets: &WindowWidgets,
         navigation: &WindowNavigationState,
         recipients_page: &StoreRecipientsPageState,
@@ -51,7 +51,7 @@ impl GitActionState {
     }
 }
 
-pub(crate) fn clone_store_repository(url: &str, store_root: &str) -> Result<(), String> {
+pub fn clone_store_repository(url: &str, store_root: &str) -> Result<(), String> {
     match operations::run_clone_operation_at_root(url, store_root) {
         GitOperationResult::Success => Ok(()),
         GitOperationResult::Failed(message) => Err(message),
@@ -68,7 +68,7 @@ fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bo
     action.set_enabled(enabled);
 }
 
-pub(crate) fn set_git_action_availability(window: &ApplicationWindow, enabled: bool) {
+pub fn set_git_action_availability(window: &ApplicationWindow, enabled: bool) {
     for action in ["git-clone", "open-git", "synchronize"] {
         set_window_action_enabled(window, action, enabled);
     }
@@ -87,6 +87,7 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "save-store-recipients",
         "synchronize",
         "open-preferences",
+        "open-tools",
         "toggle-hidden-and-duplicates",
     ] {
         set_window_action_enabled(window, action, enabled);
@@ -115,7 +116,6 @@ fn begin_git_operation(state: &GitActionState, title: &str) {
         &state.busy_page,
         &state.busy_status,
         title,
-        Some("Please wait."),
     );
 }
 
@@ -158,9 +158,9 @@ fn start_prompted_clone(state: &GitActionState, store: String, url: String) {
     let state_for_result = state.clone();
     let state_for_disconnect = state.clone();
     let settings = Preferences::new();
-    let settings_for_result = settings.clone();
+    let settings_for_result = settings;
     let store_for_thread = store.clone();
-    let store_for_result = store.clone();
+    let store_for_result = store;
     spawn_result_task(
         move || clone_store_repository(&url, &store_for_thread),
         move |result| match result {
@@ -193,7 +193,7 @@ fn start_prompted_clone(state: &GitActionState, store: String, url: String) {
     );
 }
 
-pub(crate) fn register_open_git_action(state: &GitActionState) {
+pub fn register_open_git_action(state: &GitActionState) {
     let window = state.window.clone();
     let clone_state = state.clone();
     register_window_action(&window, "git-clone", move || {
@@ -213,7 +213,7 @@ pub(crate) fn register_open_git_action(state: &GitActionState) {
     });
 }
 
-pub(crate) fn register_synchronize_action(state: &GitActionState) {
+pub fn register_synchronize_action(state: &GitActionState) {
     let window = state.window.clone();
     let state = state.clone();
     register_window_action(&window, "synchronize", move || {
@@ -239,7 +239,7 @@ pub(crate) fn register_synchronize_action(state: &GitActionState) {
     });
 }
 
-pub(crate) fn handle_git_busy_back(state: &GitActionState) -> bool {
+pub fn handle_git_busy_back(state: &GitActionState) -> bool {
     if !visible_navigation_page_is(&state.navigation.nav, &state.busy_page) {
         return false;
     }

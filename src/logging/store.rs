@@ -32,7 +32,7 @@ fn with_log_state_write<T>(f: impl FnOnce(&mut LogState) -> T) -> T {
     }
 }
 
-fn push_log_entry(level: &str, message: String, is_error: bool) {
+fn push_log_entry(level: &str, message: &str, is_error: bool) {
     let message = message.trim_end();
     if message.is_empty() {
         return;
@@ -54,11 +54,13 @@ fn push_log_entry(level: &str, message: String, is_error: bool) {
 }
 
 pub fn log_info(message: impl Into<String>) {
-    push_log_entry("INFO", message.into(), false);
+    let message = message.into();
+    push_log_entry("INFO", &message, false);
 }
 
 pub fn log_error(message: impl Into<String>) {
-    push_log_entry("ERROR", message.into(), true);
+    let message = message.into();
+    push_log_entry("ERROR", &message, true);
 }
 
 pub fn log_snapshot() -> (usize, usize, String) {

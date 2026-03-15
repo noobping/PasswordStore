@@ -1,6 +1,6 @@
 use std::path::Path;
 
-pub(crate) fn shortened_store_labels(stores: &[String]) -> Vec<String> {
+pub fn shortened_store_labels(stores: &[String]) -> Vec<String> {
     let path_segments = stores
         .iter()
         .map(|store| {

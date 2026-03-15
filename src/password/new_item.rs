@@ -9,10 +9,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub(crate) struct NewPasswordPopoverState {
-    pub(crate) popover: Popover,
-    pub(crate) store_dropdown: DropDown,
-    pub(crate) store_roots: Rc<RefCell<Vec<String>>>,
+pub struct NewPasswordPopoverState {
+    pub popover: Popover,
+    pub store_dropdown: DropDown,
+    pub store_roots: Rc<RefCell<Vec<String>>>,
 }
 
 fn available_store_roots() -> Vec<String> {
@@ -29,15 +29,15 @@ fn resolve_selected_store(stores: &[String], selected: Option<&str>) -> Option<S
 fn selected_store_position(stores: &[String], selected: Option<&str>) -> u32 {
     resolve_selected_store(stores, selected)
         .and_then(|selected| stores.iter().position(|store| store == &selected))
-        .map(|index| index as u32)
+        .and_then(|index| u32::try_from(index).ok())
         .unwrap_or(INVALID_LIST_POSITION)
 }
 
-pub(crate) fn sync_new_password_store_selector(state: &NewPasswordPopoverState) {
+pub fn sync_new_password_store_selector(state: &NewPasswordPopoverState) {
     let stores = available_store_roots();
     let labels = shortened_store_labels(&stores);
     let selected = selected_new_password_store(state);
-    *state.store_roots.borrow_mut() = stores.clone();
+    state.store_roots.borrow_mut().clone_from(&stores);
     state.store_dropdown.set_visible(stores.len() > 1);
 
     let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
@@ -49,7 +49,7 @@ pub(crate) fn sync_new_password_store_selector(state: &NewPasswordPopoverState) 
         .set_selected(selected_store_position(&stores, selected.as_deref()));
 }
 
-pub(crate) fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
+pub fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
     let stores = state.store_roots.borrow();
     stores
         .get(state.store_dropdown.selected() as usize)
@@ -57,7 +57,7 @@ pub(crate) fn selected_new_password_store(state: &NewPasswordPopoverState) -> Op
         .or_else(|| stores.first().cloned())
 }
 
-pub(crate) fn register_open_new_password_action(
+pub fn register_open_new_password_action(
     window: &ApplicationWindow,
     state: &NewPasswordPopoverState,
 ) {

@@ -22,9 +22,9 @@ impl OtpCountdownCircle {
         let fraction_for_draw = fraction.clone();
         area.set_draw_func(move |area, cr, width, height| {
             let fraction = fraction_for_draw.get().clamp(0.0, 1.0);
-            let radius = (width.min(height) as f64 / 2.0) - 2.0;
-            let center_x = width as f64 / 2.0;
-            let center_y = height as f64 / 2.0;
+            let radius = (f64::from(width.min(height)) / 2.0) - 2.0;
+            let center_x = f64::from(width) / 2.0;
+            let center_y = f64::from(height) / 2.0;
 
             cr.set_line_width(2.0);
             cr.set_source_rgba(0.5, 0.5, 0.5, 0.18);
@@ -36,17 +36,17 @@ impl OtpCountdownCircle {
                 .lookup_color("accent_color")
                 .unwrap_or_else(default_accent_color);
             cr.set_source_rgba(
-                accent.red() as f64,
-                accent.green() as f64,
-                accent.blue() as f64,
-                accent.alpha() as f64,
+                f64::from(accent.red()),
+                f64::from(accent.green()),
+                f64::from(accent.blue()),
+                f64::from(accent.alpha()),
             );
             cr.arc(
                 center_x,
                 center_y,
                 radius,
                 -FRAC_PI_2,
-                -FRAC_PI_2 + (TAU * fraction),
+                TAU.mul_add(fraction, -FRAC_PI_2),
             );
             let _ = cr.stroke();
         });
@@ -54,7 +54,7 @@ impl OtpCountdownCircle {
         Self { area, fraction }
     }
 
-    pub(super) fn widget(&self) -> &DrawingArea {
+    pub(super) const fn widget(&self) -> &DrawingArea {
         &self.area
     }
 
@@ -72,6 +72,6 @@ impl OtpCountdownCircle {
     }
 }
 
-fn default_accent_color() -> RGBA {
+const fn default_accent_color() -> RGBA {
     RGBA::new(0.18, 0.55, 0.92, 1.0)
 }

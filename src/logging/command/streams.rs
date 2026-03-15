@@ -76,12 +76,9 @@ pub(super) fn join_stream_logger(
         return Ok(Vec::new());
     };
 
-    match handle.join() {
-        Ok(result) => result,
-        Err(_) => {
-            let err = io::Error::other(format!("stream logger panicked while reading {label}"));
-            log_error(format!("{context}\n$ {command}\n{err}"));
-            Err(err)
-        }
-    }
+    handle.join().unwrap_or_else(|_| {
+        let err = io::Error::other(format!("stream logger panicked while reading {label}"));
+        log_error(format!("{context}\n$ {command}\n{err}"));
+        Err(err)
+    })
 }

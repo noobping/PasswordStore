@@ -9,16 +9,16 @@ Keycord works with password stores that use the standard [`pass`](https://www.pa
 - Search entries across more than one store
 - Work with structured fields or raw pass-file text
 - Generate passwords and copy usernames, secrets, and one-time codes
-- Manage recipients (and private keys in the flatpak app)
+- Manage recipients and private keys
 - Clone and sync Git-backed stores
-- Import passwords from other password managers through `pass import` when that extension is available (not in the flatpak app)
+- Import passwords from other password managers through `pass import` when that extension is available
 
 ## How It Works
 
 Keycord reads and writes standard `pass` stores. It can work in two ways:
 
 - `Integrated` backend: the app reads and writes the store directly. This is the default.
-- `Host command` backend: the app runs your chosen `pass` command. In the Flatpak app, this is available when host command execution is permitted.
+- `Host command` backend: the app runs your chosen `pass` command.
 
 ## Screenshots
 

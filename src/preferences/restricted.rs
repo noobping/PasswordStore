@@ -1,6 +1,7 @@
 use super::Preferences;
 use adw::gio::prelude::*;
 use adw::glib::BoolError;
+use std::env;
 
 impl Preferences {
     pub fn ripasso_own_fingerprint(&self) -> Option<String> {
@@ -30,5 +31,7 @@ impl Preferences {
 }
 
 pub(super) fn default_store_dirs() -> Vec<String> {
-    Vec::new()
+    env::var("HOME")
+        .map(|home| vec![format!("{home}/.password-store")])
+        .unwrap_or_default()
 }

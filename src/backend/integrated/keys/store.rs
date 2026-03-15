@@ -290,7 +290,7 @@ pub fn import_ripasso_private_key_bytes(
 
     let (parsed_cert, key) = parse_managed_private_key_bytes(bytes)?;
     let stored_cert = if cert_requires_passphrase(&parsed_cert) {
-        parsed_cert.clone()
+        parsed_cert
     } else {
         return Err(PrivateKeyError::requires_password_protection(
             "That private key must be password protected before you can import it.",

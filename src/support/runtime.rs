@@ -1,7 +1,9 @@
 use crate::logging::log_info;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use std::process::Command;
-use std::sync::{Once, OnceLock};
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use std::sync::OnceLock;
+use std::sync::Once;
 
 pub fn log_runtime_capabilities_once() {
     static RUNTIME_LOGGED: Once = Once::new();

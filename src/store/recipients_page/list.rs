@@ -12,7 +12,6 @@ use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
     append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
 };
-use adw::gtk::Image;
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
 use std::rc::Rc;
@@ -272,28 +271,12 @@ fn append_private_key_status_suffixes(
     row: &ActionRow,
 ) {
     let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
-    if requires_unlock {
-        let icon_name = if unlocked {
-            "changes-allow-symbolic"
-        } else {
-            "changes-prevent-symbolic"
-        };
-        let tooltip = if unlocked {
-            "Key is unlocked for this session"
-        } else {
-            "Key requires unlocking before use"
-        };
-        let icon = Image::from_icon_name(icon_name);
-        icon.set_tooltip_text(Some(tooltip));
-        row.add_suffix(&icon);
-    }
-
     if !Preferences::new().uses_integrated_backend() {
         return;
     }
 
     if !unlocked && requires_unlock {
-        let unlock_button = flat_icon_button_with_tooltip("dialog-password-symbolic", "Unlock key");
+        let unlock_button = flat_icon_button_with_tooltip("changes-prevent-symbolic", "Unlock key");
         row.add_suffix(&unlock_button);
         let state = state.clone();
         let fingerprint = key.fingerprint.clone();

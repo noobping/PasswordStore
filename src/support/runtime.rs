@@ -1,7 +1,7 @@
 use crate::logging::log_info;
-use std::sync::Once;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-use std::fs;
+use std::process::Command;
+use std::sync::{Once, OnceLock};
 
 pub fn log_runtime_capabilities_once() {
     static RUNTIME_LOGGED: Once = Once::new();
@@ -27,11 +27,9 @@ const fn feature_status(enabled: bool) -> &'static str {
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 pub fn has_host_permission() -> bool {
-    let Ok(info) = fs::read_to_string("/.flatpak-info") else {
-        return true;
-    };
+    static HOST_PERMISSION: OnceLock<bool> = OnceLock::new();
 
-    flatpak_context_has_talk_name(&info, "org.freedesktop.Flatpak")
+    *HOST_PERMISSION.get_or_init(detect_host_permission)
 }
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
@@ -40,75 +38,34 @@ pub fn has_host_permission() -> bool {
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-fn flatpak_context_has_talk_name(info: &str, bus_name: &str) -> bool {
-    let mut in_context = false;
-
-    for line in info.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
-            continue;
-        }
-
-        if line.starts_with('[') && line.ends_with(']') {
-            in_context = line == "[Context]";
-            continue;
-        }
-
-        if !in_context {
-            continue;
-        }
-
-        let Some(value) = line.strip_prefix("session-bus-policy=") else {
-            continue;
-        };
-
-        if flatpak_policy_allows_talk_name(value, bus_name) {
-            return true;
-        }
-    }
-
-    false
+fn detect_host_permission() -> bool {
+    detect_host_permission_with(flatpak_host_spawn_probe)
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-fn flatpak_policy_allows_talk_name(policy: &str, bus_name: &str) -> bool {
-    policy.split(';').any(|entry| {
-        let mut parts = entry.trim().splitn(2, '=');
-        let name = parts.next().unwrap_or("").trim();
-        let permission = parts.next().unwrap_or("").trim();
-        name == bus_name && permission.eq_ignore_ascii_case("talk")
-    })
+fn detect_host_permission_with(probe: impl FnOnce() -> bool) -> bool {
+    probe()
+}
+
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+fn flatpak_host_spawn_probe() -> bool {
+    Command::new("flatpak-spawn")
+        .args(["--host", "true"])
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 #[cfg(all(test, target_os = "linux", feature = "flatpak"))]
 mod tests {
-    use super::flatpak_context_has_talk_name;
+    use super::detect_host_permission_with;
 
     #[test]
-    fn flatpak_context_detects_required_talk_name() {
-        let info = "\
-[Application]
-name=io.github.noobping.keycord
-[Context]
-session-bus-policy=org.freedesktop.Flatpak=talk;org.gtk.vfs.*=talk;
-";
-
-        assert!(flatpak_context_has_talk_name(
-            info,
-            "org.freedesktop.Flatpak"
-        ));
+    fn host_permission_is_available_when_probe_succeeds() {
+        assert!(detect_host_permission_with(|| true));
     }
 
     #[test]
-    fn flatpak_context_reports_missing_talk_name() {
-        let info = "\
-[Context]
-session-bus-policy=org.gtk.vfs.*=talk;
-";
-
-        assert!(!flatpak_context_has_talk_name(
-            info,
-            "org.freedesktop.Flatpak"
-        ));
+    fn host_permission_is_missing_when_probe_fails() {
+        assert!(!detect_host_permission_with(|| false));
     }
 }

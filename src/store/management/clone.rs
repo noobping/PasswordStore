@@ -6,13 +6,11 @@ use super::{
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::append_action_row_with_button;
+use crate::support::ui::{append_action_row_with_button, dim_label_icon};
 use crate::window::clone_store_repository;
 use adw::gtk::ListBox;
 use adw::prelude::*;
-use adw::{
-    ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast, ToastOverlay,
-};
+use adw::{ActionRow, ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast, ToastOverlay};
 use std::rc::Rc;
 
 fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
@@ -105,6 +103,18 @@ pub(super) fn append_store_clone_row(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
+    if !settings.uses_host_command_backend() {
+        let row = ActionRow::builder()
+            .title("Restore password store")
+            .subtitle("Switch Backend to Host to restore a store from a Git repository.")
+            .build();
+        row.set_sensitive(false);
+        row.set_activatable(false);
+        row.add_suffix(&dim_label_icon("git-symbolic"));
+        list.append(&row);
+        return;
+    }
+
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();

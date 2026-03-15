@@ -10,7 +10,7 @@ use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
-    connect_store_recipients_controls, register_store_recipients_save_action,
+    connect_store_recipients_controls, rebuild_store_list, register_store_recipients_save_action,
     StoreRecipientsPageState,
 };
 use crate::store::management::{initialize_store_import_page, StoreImportPageState};
@@ -102,6 +102,7 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
 fn connect_backend_preferences(
     widgets: &WindowWidgets,
     preferences: &Preferences,
+    preferences_action_state: &PreferencesActionState,
     tools_page_state: &ToolsPageState,
 ) {
     connect_pass_command_row(
@@ -115,8 +116,19 @@ fn connect_backend_preferences(
         &widgets.toast_overlay,
         preferences,
         {
+            let preferences = preferences.clone();
+            let preferences_action_state = preferences_action_state.clone();
             let tools_page_state = tools_page_state.clone();
-            move || tools_page_state.rebuild()
+            move || {
+                tools_page_state.rebuild();
+                rebuild_store_list(
+                    &preferences_action_state.stores_list,
+                    &preferences,
+                    &preferences_action_state.page_state.window,
+                    &preferences_action_state.overlay,
+                    &preferences_action_state.recipients_page,
+                );
+            }
         },
     );
 }
@@ -175,7 +187,12 @@ fn connect_window_behaviors(
         std::slice::from_ref(&password_list_state.generator_controls),
         &widgets.toast_overlay,
     );
-    connect_backend_preferences(widgets, preferences, tools_page_state);
+    connect_backend_preferences(
+        widgets,
+        preferences,
+        preferences_action_state,
+        tools_page_state,
+    );
     connect_store_recipients_controls(store_recipients_page_state);
     connect_password_copy_buttons(
         &widgets.toast_overlay,

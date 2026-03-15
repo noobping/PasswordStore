@@ -48,7 +48,7 @@ use super::preferences::{
 use super::tools::{register_open_tools_action, ToolsPageState};
 use crate::logging::log_info;
 use crate::support::runtime::{
-    git_network_operations_available, host_command_execution_available,
+    git_network_operations_available, flatpak_has_host_override_permission,
     log_runtime_capabilities_once,
 };
 
@@ -96,7 +96,7 @@ fn register_platform_log_actions(
 fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Preferences) {
     widgets
         .backend_preferences
-        .set_visible(host_command_execution_available());
+        .set_sensitive(flatpak_has_host_override_permission());
     initialize_backend_row(&widgets.backend_row, &widgets.pass_command_row, preferences);
 }
 

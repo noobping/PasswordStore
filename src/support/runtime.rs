@@ -7,10 +7,6 @@ pub const fn git_network_operations_available() -> bool {
     true
 }
 
-pub const fn host_command_execution_available() -> bool {
-    true
-}
-
 pub fn log_runtime_capabilities_once() {
     static RUNTIME_LOGGED: Once = Once::new();
 
@@ -29,7 +25,7 @@ fn log_platform_runtime_details() {
     log_info(format!(
         "Linux runtime: integrated key management {}, host execution {}, Git network operations {}.",
         feature_status(true),
-        feature_status(host_command_execution_available()),
+        feature_status(flatpak_has_host_override_permission()),
         feature_status(git_network_operations_available()),
     ));
 }

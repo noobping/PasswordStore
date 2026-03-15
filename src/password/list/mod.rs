@@ -10,7 +10,7 @@ use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::non_null_to_string_option;
-use crate::support::runtime::git_network_operations_available;
+use crate::support::runtime::flatpak_has_host_override_permission;
 use crate::support::ui::clear_list_box;
 use adw::glib::Propagation;
 use adw::gtk::{
@@ -143,10 +143,6 @@ const fn should_show_root_store_button(context: ListActionContext) -> bool {
         && matches!(context.stores, StoreSetup::Missing)
 }
 
-const fn list_git_available() -> bool {
-    git_network_operations_available()
-}
-
 pub fn load_passwords_async(
     list: &ListBox,
     actions: &PasswordListActions,
@@ -160,7 +156,7 @@ pub fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
-    let git_available = list_git_available();
+    let git_available = flatpak_has_host_override_permission();
     log_store_git_state(&settings);
 
     actions.git.set_visible(false);

@@ -1,5 +1,5 @@
 use super::state::WindowChrome;
-use crate::support::runtime::git_network_operations_available;
+use crate::support::runtime::flatpak_has_host_override_permission;
 use adw::gtk::Button;
 use adw::prelude::*;
 
@@ -11,14 +11,6 @@ pub fn set_save_button_for_password(save: &Button) {
     save.set_tooltip_text(Some("Save changes"));
 }
 
-const fn root_store_button_visible(has_store_dirs: bool) -> bool {
-    !has_store_dirs
-}
-
-const fn root_git_button_visible(has_store_dirs: bool) -> bool {
-    !has_store_dirs && git_network_operations_available()
-}
-
 pub fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool) {
     chrome.back.set_visible(false);
     chrome.save.set_visible(false);
@@ -27,10 +19,10 @@ pub fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool)
     chrome.find.set_visible(true);
     chrome
         .git
-        .set_visible(root_git_button_visible(has_store_dirs));
+        .set_visible(!has_store_dirs && flatpak_has_host_override_permission());
     chrome
         .store
-        .set_visible(root_store_button_visible(has_store_dirs));
+        .set_visible(!has_store_dirs);
     chrome.win.set_title(APP_WINDOW_TITLE);
     chrome.win.set_subtitle(APP_WINDOW_SUBTITLE);
     chrome.raw.set_visible(false);

@@ -466,7 +466,7 @@
                             <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Password Stores</property>
-                                <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>
+                                <property name="description" translatable="yes">A list of folders that contain your password data.</property>
                                 <child>
                                   <object class="GtkListBox" id="password_stores">
                                     <property name="hexpand">true</property>
@@ -480,6 +480,20 @@
                                         <property name="subtitle">Add an existing folder or create a new store.</property>
                                       </object>
                                     </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="GtkListBox" id="password_store_actions">
+                                    <property name="hexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
                                   </object>
                                 </child>
                               </object>

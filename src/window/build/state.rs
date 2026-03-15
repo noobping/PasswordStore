@@ -187,6 +187,7 @@ pub(super) fn preferences_action_state(
             &widgets.preferences_password_generator_min_symbols_spin,
         ),
         stores_list: widgets.password_stores.clone(),
+        store_actions_list: widgets.password_store_actions.clone(),
         overlay: widgets.toast_overlay.clone(),
         recipients_page: recipients_page.clone(),
         pass_row: widgets.pass_command_row.clone(),

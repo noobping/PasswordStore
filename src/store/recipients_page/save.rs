@@ -1,4 +1,4 @@
-use super::super::management::rebuild_store_list;
+use super::super::management::rebuild_stores_list;
 use super::super::recipients::stores_with_preferred_first;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsRequest};
 use crate::backend::{save_store_recipients, StoreRecipientsPrivateKeyRequirement};
@@ -140,7 +140,7 @@ fn save_store_recipients_async(
                 };
 
                 if should_rebuild_store_list {
-                    rebuild_store_list(&stores_list, &settings, &state.window, &overlay, &state);
+                    rebuild_stores_list(&stores_list, &settings, &state);
                 }
                 finish_store_recipients_save(&state, true);
             }

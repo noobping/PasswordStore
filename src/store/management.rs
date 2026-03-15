@@ -127,25 +127,67 @@ fn folder_is_empty(path: &str) -> io::Result<bool> {
 }
 
 pub fn rebuild_store_list(
-    list: &ListBox,
+    stores_list: &ListBox,
+    actions_list: &ListBox,
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    clear_list_box(list);
-
     if let Err(err) = settings.prune_missing_stores() {
         log_error(format!("Failed to remove missing password stores: {err}"));
     }
 
+    rebuild_stores_list(stores_list, settings, recipients_page);
+    rebuild_store_actions_list(
+        actions_list,
+        stores_list,
+        settings,
+        window,
+        overlay,
+        recipients_page,
+    );
+}
+
+pub fn rebuild_stores_list(
+    stores_list: &ListBox,
+    settings: &Preferences,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    clear_list_box(stores_list);
+
     let stores = settings.stores();
     for store in &stores {
-        append_store_row(list, settings, store, recipients_page);
+        append_store_row(stores_list, settings, store, recipients_page);
     }
+}
 
-    append_store_picker_row(list, settings, window, overlay, recipients_page);
-    append_store_clone_row(list, settings, window, overlay, recipients_page);
+pub fn rebuild_store_actions_list(
+    actions_list: &ListBox,
+    stores_list: &ListBox,
+    settings: &Preferences,
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    clear_list_box(actions_list);
+
+    append_store_picker_row(
+        actions_list,
+        stores_list,
+        settings,
+        window,
+        overlay,
+        recipients_page,
+    );
+    append_store_clone_row(
+        actions_list,
+        stores_list,
+        settings,
+        window,
+        overlay,
+        recipients_page,
+    );
 }
 
 fn append_store_row(
@@ -189,6 +231,7 @@ fn append_store_row(
 
 fn append_store_picker_row(
     list: &ListBox,
+    stores_list: &ListBox,
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -198,7 +241,7 @@ fn append_store_picker_row(
     let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
-    let list_for_action = list.clone();
+    let stores_list_for_action = stores_list.clone();
     append_action_row_with_button(
         list,
         "Add or create store",
@@ -207,7 +250,7 @@ fn append_store_picker_row(
         move || {
             prompt_add_or_create_store(
                 &window,
-                &list_for_action,
+                &stores_list_for_action,
                 &settings,
                 &overlay,
                 &recipients_page,
@@ -218,16 +261,15 @@ fn append_store_picker_row(
 
 pub fn prompt_add_or_create_store(
     window: &ApplicationWindow,
-    list: &ListBox,
+    stores_list: &ListBox,
     settings: &Preferences,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    let list = list.clone();
+    let stores_list = stores_list.clone();
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
-    let window_for_selection = window.clone();
     let overlay_for_selection = overlay.clone();
     let recipients_page = recipients_page.clone();
     open_store_folder_picker(
@@ -257,13 +299,7 @@ pub fn prompt_add_or_create_store(
                         }
                     }
 
-                    rebuild_store_list(
-                        &list,
-                        &settings,
-                        &window_for_selection,
-                        &overlay_for_selection,
-                        &recipients_page,
-                    );
+                    rebuild_stores_list(&stores_list, &settings, &recipients_page);
                     show_store_recipients_edit_page(&recipients_page, &store);
                 }
                 SelectedStoreFolderMode::CreateNew => {
@@ -280,18 +316,24 @@ pub fn prompt_add_or_create_store(
 
 pub fn register_open_store_picker_action(
     window: &ApplicationWindow,
-    list: &ListBox,
+    stores_list: &ListBox,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
     let action_window = window.clone();
     let prompt_window = action_window.clone();
-    let list = list.clone();
+    let stores_list = stores_list.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
     register_window_action(&action_window, "open-store-picker", move || {
         let settings = Preferences::new();
-        prompt_add_or_create_store(&prompt_window, &list, &settings, &overlay, &recipients_page);
+        prompt_add_or_create_store(
+            &prompt_window,
+            &stores_list,
+            &settings,
+            &overlay,
+            &recipients_page,
+        );
     });
 }
 

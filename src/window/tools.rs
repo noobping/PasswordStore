@@ -1,7 +1,7 @@
-#[cfg(all(target_os = "linux", feature = "setup"))]
-use crate::logging::log_error;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::clipboard::set_clipboard_text;
+#[cfg(all(target_os = "linux", feature = "setup"))]
+use crate::logging::log_error;
 use crate::preferences::Preferences;
 #[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::setup::{
@@ -10,7 +10,10 @@ use crate::setup::{
 };
 use crate::store::management::schedule_store_import_row;
 use crate::support::actions::register_window_action;
-#[cfg(any(debug_assertions, all(target_os = "linux", any(feature = "setup", feature = "flatpak"))))]
+#[cfg(any(
+    debug_assertions,
+    all(target_os = "linux", any(feature = "setup", feature = "flatpak"))
+))]
 use crate::support::ui::append_action_row_with_button;
 use crate::support::ui::{clear_list_box, reveal_navigation_page};
 #[cfg(debug_assertions)]

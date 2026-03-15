@@ -10,8 +10,8 @@ use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
-    connect_store_recipients_controls, rebuild_store_list, register_store_recipients_save_action,
-    StoreRecipientsPageState,
+    connect_store_recipients_controls, rebuild_store_actions_list,
+    register_store_recipients_save_action, StoreRecipientsPageState,
 };
 use crate::store::management::{initialize_store_import_page, StoreImportPageState};
 use adw::gtk::Builder;
@@ -121,7 +121,8 @@ fn connect_backend_preferences(
             let tools_page_state = tools_page_state.clone();
             move || {
                 tools_page_state.rebuild();
-                rebuild_store_list(
+                rebuild_store_actions_list(
+                    &preferences_action_state.store_actions_list,
                     &preferences_action_state.stores_list,
                     &preferences,
                     &preferences_action_state.page_state.window,

@@ -37,8 +37,7 @@ impl BackendKind {
     pub fn from_stored(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
             "integrated" | "ripasso" => Self::Integrated,
-            "host" | "host-command" | "host command" | "pass" | "pass-command"
-            | "pass command" => {
+            "host" | "host-command" | "host command" | "pass" | "pass-command" | "pass command" => {
                 Self::HostCommand
             }
             _ => default_backend_kind(),

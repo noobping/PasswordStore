@@ -120,6 +120,7 @@ pub struct PreferencesActionState {
     pub username_filename_check: CheckButton,
     pub generator_controls: PasswordGenerationControls,
     pub stores_list: ListBox,
+    pub store_actions_list: ListBox,
     pub overlay: ToastOverlay,
     pub recipients_page: StoreRecipientsPageState,
     pub pass_row: EntryRow,
@@ -286,6 +287,7 @@ pub fn register_open_preferences_action(
             .set_text(&settings.new_pass_file_template());
         rebuild_store_list(
             &state.stores_list,
+            &state.store_actions_list,
             &settings,
             &state.page_state.window,
             &state.overlay,

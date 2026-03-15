@@ -22,8 +22,6 @@ Keycord reads and writes standard `pass` stores. It can work in two ways:
 
 ## Screenshots
 
-![import](screenshots/import.png)
-
 ![list](screenshots/list.png)
 
 ![Password entry editor](screenshots/file.png)

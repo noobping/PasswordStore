@@ -68,6 +68,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.8.2" date="2026-03-16">
+      <description>
+        <ul>
+          <li>Improve private key list refresh and actions</li>
+          <li>Add tools page</li>
+          <li>Show disabled options instead of hiding them</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.8.1" date="2026-03-15">
       <description>
         <p>You can now generate new private keys.</p>

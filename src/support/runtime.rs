@@ -8,10 +8,10 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: flatpak={}, setup={}, debug_assertions={}, Git network operations {}.",
+            "App runtime: debug={}, setup={}, flatpak={}, network={}.",
+            feature_status(cfg!(debug_assertions)),
             feature_status(cfg!(feature = "setup")),
             feature_status(cfg!(feature = "flatpak")),
-            feature_status(cfg!(debug_assertions)),
             feature_status(has_host_permission()),
         ));
     });

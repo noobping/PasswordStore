@@ -38,6 +38,7 @@ fn start_private_key_unlock_for_action(
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
                 after_unlock();
+                activate_widget_action(&window_for_result, "win.reload-store-recipients-list");
                 activate_widget_action(&window_for_result, "win.reload-password-list");
                 on_finish_for_result(true);
             }

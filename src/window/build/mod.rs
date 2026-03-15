@@ -11,7 +11,8 @@ use crate::preferences::Preferences;
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
     connect_store_recipients_controls, rebuild_store_actions_list,
-    register_store_recipients_save_action, StoreRecipientsPageState,
+    register_store_recipients_reload_action, register_store_recipients_save_action,
+    StoreRecipientsPageState,
 };
 use crate::store::management::{initialize_store_import_page, StoreImportPageState};
 use adw::gtk::Builder;
@@ -300,6 +301,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         &widgets.password_stores,
         &store_recipients_page_state,
     );
+    register_store_recipients_reload_action(&widgets.window, &store_recipients_page_state);
     register_platform_git_actions(&widgets, &git_action_state);
     register_platform_log_actions(&widgets, &window_navigation_state);
     register_platform_window_actions(&widgets, &store_recipients_page_state);

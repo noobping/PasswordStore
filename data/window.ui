@@ -884,13 +884,9 @@
                                         <property name="subtitle" translatable="yes">Create a new password-protected key.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkButton"
-                                            id="store_recipients_generate_key_button">
+                                          <object class="GtkImage"
+                                            id="store_recipients_generate_key_icon">
                                             <property name="icon-name">document-new-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Generate private key</property>
-                                            <style>
-                                              <class name="flat" />
-                                            </style>
                                           </object>
                                         </child>
                                       </object>
@@ -902,13 +898,9 @@
                                         <property name="subtitle" translatable="yes">Read an armored private key from the clipboard.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkButton"
-                                            id="store_recipients_import_clipboard_button">
+                                          <object class="GtkImage"
+                                            id="store_recipients_import_clipboard_icon">
                                             <property name="icon-name">edit-paste-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Import private key from clipboard</property>
-                                            <style>
-                                              <class name="flat" />
-                                            </style>
                                           </object>
                                         </child>
                                       </object>
@@ -920,13 +912,9 @@
                                         <property name="subtitle" translatable="yes">Choose a private key file.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkButton"
-                                            id="store_recipients_import_file_button">
+                                          <object class="GtkImage"
+                                            id="store_recipients_import_file_icon">
                                             <property name="icon-name">document-open-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Import private key from file</property>
-                                            <style>
-                                              <class name="flat" />
-                                            </style>
                                           </object>
                                         </child>
                                       </object>

@@ -17,18 +17,9 @@ pub fn toggle_popover(popover: &Popover) {
     }
 }
 
-pub fn connect_row_and_button_action(
-    row: &ActionRow,
-    button: &Button,
-    action: impl Fn() + 'static,
-) {
+pub fn connect_row_action(row: &ActionRow, action: impl Fn() + 'static) {
     let action = Rc::new(action);
-
-    let row_action = action.clone();
-    row.connect_activated(move |_| row_action());
-
-    let button_action = action;
-    button.connect_clicked(move |_| button_action());
+    row.connect_activated(move |_| action());
 }
 
 pub fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {

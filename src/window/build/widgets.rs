@@ -43,11 +43,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_add_group: PreferencesGroup,
     pub(in crate::window) store_recipients_create_group: PreferencesGroup,
     pub(in crate::window) store_recipients_import_clipboard_row: ActionRow,
-    pub(in crate::window) store_recipients_import_clipboard_button: Button,
     pub(in crate::window) store_recipients_import_file_row: ActionRow,
-    pub(in crate::window) store_recipients_import_file_button: Button,
     pub(in crate::window) store_recipients_generate_key_row: ActionRow,
-    pub(in crate::window) store_recipients_generate_key_button: Button,
     pub(in crate::window) store_recipients_require_all_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_check: CheckButton,
     pub(in crate::window) private_key_generation_page: NavigationPage,
@@ -153,25 +150,13 @@ impl WindowWidgets {
                 builder,
                 "store_recipients_import_clipboard_row",
             ),
-            store_recipients_import_clipboard_button: required_object(
-                builder,
-                "store_recipients_import_clipboard_button",
-            ),
             store_recipients_import_file_row: required_object(
                 builder,
                 "store_recipients_import_file_row",
             ),
-            store_recipients_import_file_button: required_object(
-                builder,
-                "store_recipients_import_file_button",
-            ),
             store_recipients_generate_key_row: required_object(
                 builder,
                 "store_recipients_generate_key_row",
-            ),
-            store_recipients_generate_key_button: required_object(
-                builder,
-                "store_recipients_generate_key_button",
             ),
             store_recipients_require_all_row: required_object(
                 builder,

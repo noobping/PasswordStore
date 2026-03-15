@@ -59,16 +59,19 @@ pub fn append_action_row_with_button(
     list: &ListBox,
     title: &str,
     subtitle: &str,
-    button_icon_name: &str,
+    icon_name: &str,
     action: impl Fn() + 'static,
 ) {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
     row.set_activatable(true);
 
-    let button = flat_icon_button(button_icon_name);
-    row.add_suffix(&button);
+    let icon = Image::from_icon_name(icon_name);
+    row.add_suffix(&icon);
     list.append(&row);
-    connect_row_and_button_action(&row, &button, action);
+
+    let action = Rc::new(action);
+    let row_action = action.clone();
+    row.connect_activated(move |_| row_action());
 }
 
 pub fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {

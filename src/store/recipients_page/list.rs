@@ -152,7 +152,16 @@ fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipien
 }
 
 fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: bool) {
+    let uses_integrated_backend = Preferences::new().uses_integrated_backend();
     state.platform.require_all_row.set_visible(has_keys);
+    state
+        .platform
+        .require_all_row
+        .set_sensitive(uses_integrated_backend);
+    state
+        .platform
+        .require_all_check
+        .set_sensitive(uses_integrated_backend);
     state.platform.require_all_check.set_active(matches!(
         state.private_key_requirement.get(),
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys

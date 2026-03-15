@@ -280,7 +280,9 @@ fn append_private_key_status_suffixes(
         row.add_suffix(&unlock_button);
         let state = state.clone();
         let fingerprint = key.fingerprint.clone();
+        let finish_button = unlock_button.clone();
         unlock_button.connect_clicked(move |_| {
+            finish_button.set_sensitive(false);
             let after_unlock: Rc<dyn Fn()> = Rc::new({
                 let state = state.clone();
                 move || {
@@ -288,7 +290,14 @@ fn append_private_key_status_suffixes(
                     activate_widget_action(&state.window, "win.reload-password-list");
                 }
             });
-            let on_finish: Rc<dyn Fn(bool)> = Rc::new(|_| {});
+            let on_finish: Rc<dyn Fn(bool)> = Rc::new({
+                let finish_button = finish_button.clone();
+                move |success| {
+                    if !success {
+                        finish_button.set_sensitive(true);
+                    }
+                }
+            });
             prompt_private_key_unlock_for_action(
                 &state.platform.overlay,
                 fingerprint.clone(),

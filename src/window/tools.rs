@@ -16,7 +16,7 @@ use crate::support::actions::register_window_action;
 ))]
 use crate::support::ui::append_action_row_with_button;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-use crate::support::runtime::flatpak_has_host_override_permission;
+use crate::support::runtime::has_host_permission;
 use crate::support::ui::{clear_list_box, reveal_navigation_page};
 #[cfg(debug_assertions)]
 use crate::window::navigation::show_log_page;
@@ -125,7 +125,7 @@ const fn append_optional_setup_row(_state: &ToolsPageState) {}
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn append_optional_flatpak_override_row(state: &ToolsPageState) {
-    if flatpak_has_host_override_permission() {
+    if has_host_permission() {
         return;
     }
 

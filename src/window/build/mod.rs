@@ -47,7 +47,7 @@ use super::preferences::{
 };
 use super::tools::{register_open_tools_action, ToolsPageState};
 use crate::logging::log_info;
-use crate::support::runtime::{flatpak_has_host_override_permission, log_runtime_capabilities_once};
+use crate::support::runtime::{has_host_permission, log_runtime_capabilities_once};
 
 const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
 
@@ -70,7 +70,7 @@ fn register_platform_window_actions(
 fn register_platform_git_actions(widgets: &WindowWidgets, git_action_state: &GitActionState) {
     register_open_git_action(git_action_state);
     register_synchronize_action(git_action_state);
-    let git_available = flatpak_has_host_override_permission();
+    let git_available = has_host_permission();
     set_git_action_availability(&widgets.window, git_available);
     log_info(format!(
         "Window Git actions: open-git, git-clone, and synchronize are {}.",
@@ -89,7 +89,7 @@ fn register_platform_log_actions(
 fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Preferences) {
     widgets
         .backend_preferences
-        .set_sensitive(flatpak_has_host_override_permission());
+        .set_sensitive(has_host_permission());
     initialize_backend_row(&widgets.backend_row, &widgets.pass_command_row, preferences);
 }
 

@@ -12,7 +12,7 @@ pub fn log_runtime_capabilities_once() {
             feature_status(cfg!(feature = "setup")),
             feature_status(cfg!(feature = "flatpak")),
             feature_status(cfg!(debug_assertions)),
-            feature_status(flatpak_has_host_override_permission()),
+            feature_status(has_host_permission()),
         ));
     });
 }
@@ -26,7 +26,7 @@ const fn feature_status(enabled: bool) -> &'static str {
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-pub fn flatpak_has_host_override_permission() -> bool {
+pub fn has_host_permission() -> bool {
     let Ok(info) = fs::read_to_string("/.flatpak-info") else {
         return true;
     };
@@ -35,7 +35,7 @@ pub fn flatpak_has_host_override_permission() -> bool {
 }
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
-pub fn flatpak_has_host_override_permission() -> bool {
+pub fn has_host_permission() -> bool {
     true
 }
 

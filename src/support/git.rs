@@ -1,6 +1,6 @@
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
-use crate::support::runtime::flatpak_has_host_override_permission;
+use crate::support::runtime::has_host_permission;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -56,7 +56,7 @@ pub fn password_store_git_state_summary(root: &str) -> String {
         );
     }
 
-    if flatpak_has_host_override_permission() {
+    if has_host_permission() {
         return format!(
             "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
         );

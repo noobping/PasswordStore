@@ -1,5 +1,5 @@
 use super::state::WindowChrome;
-use crate::support::runtime::flatpak_has_host_override_permission;
+use crate::support::runtime::has_host_permission;
 use adw::gtk::Button;
 use adw::prelude::*;
 
@@ -19,7 +19,7 @@ pub fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool)
     chrome.find.set_visible(true);
     chrome
         .git
-        .set_visible(!has_store_dirs && flatpak_has_host_override_permission());
+        .set_visible(!has_store_dirs && has_host_permission());
     chrome
         .store
         .set_visible(!has_store_dirs);

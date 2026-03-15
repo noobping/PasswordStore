@@ -10,7 +10,7 @@ use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::non_null_to_string_option;
-use crate::support::runtime::flatpak_has_host_override_permission;
+use crate::support::runtime::has_host_permission;
 use crate::support::ui::clear_list_box;
 use adw::glib::Propagation;
 use adw::gtk::{
@@ -156,7 +156,7 @@ pub fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
-    let git_available = flatpak_has_host_override_permission();
+    let git_available = has_host_permission();
     log_store_git_state(&settings);
 
     actions.git.set_visible(false);

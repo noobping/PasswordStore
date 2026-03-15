@@ -1,6 +1,6 @@
 use super::{default_backend_kind, BackendKind, Preferences};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-use crate::support::runtime::flatpak_has_host_override_permission;
+use crate::support::runtime::has_host_permission;
 use adw::gio::prelude::*;
 use adw::glib::BoolError;
 
@@ -33,7 +33,7 @@ pub(super) fn stored_backend_kind(preferences: &Preferences) -> BackendKind {
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn effective_backend_kind(stored: BackendKind) -> BackendKind {
-    if stored.uses_host_command() && !flatpak_has_host_override_permission() {
+    if stored.uses_host_command() && !has_host_permission() {
         BackendKind::Integrated
     } else {
         stored

@@ -18,7 +18,7 @@ Keycord works with password stores that use the standard [`pass`](https://www.pa
 Keycord reads and writes standard `pass` stores. It can work in two ways:
 
 - `Integrated` backend: the app reads and writes the store directly. This is the default.
-- `Host command` backend: the app runs your chosen `pass` command.
+- `Host` backend: the app runs your chosen `pass` command.
 
 ## Screenshots
 

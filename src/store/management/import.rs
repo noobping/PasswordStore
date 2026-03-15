@@ -154,7 +154,7 @@ const fn pass_import_row_subtitle(
     source_state: &PassImportSourceState,
 ) -> &'static str {
     if !uses_host_command_backend {
-        "Switch Backend to Host command to use pass import."
+        "Switch Backend to Host to use pass import."
     } else if stores.is_empty() {
         "Add a store to use pass import."
     } else if source_state.is_available() {
@@ -562,7 +562,7 @@ mod tests {
                 &["/tmp/store".to_string()],
                 &PassImportSourceState::Available(vec!["bitwarden".to_string()]),
             ),
-            "Switch Backend to Host command to use pass import."
+            "Switch Backend to Host to use pass import."
         );
         assert_eq!(
             pass_import_row_subtitle(true, &[], &PassImportSourceState::Checking),

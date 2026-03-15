@@ -25,7 +25,7 @@ pub fn log_runtime_capabilities_once() {
 
 fn log_platform_runtime_details() {
     log_info(format!(
-        "Linux runtime: integrated key management {}, host command execution {}, Git network operations {}.",
+        "Linux runtime: integrated key management {}, host execution {}, Git network operations {}.",
         feature_status(true),
         feature_status(host_command_execution_available()),
         feature_status(git_network_operations_available()),

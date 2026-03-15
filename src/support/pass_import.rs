@@ -31,7 +31,7 @@ fn run_pass_command(context: &str, configure: impl FnOnce(&mut Command)) -> Resu
     let mut cmd = custom_pass_command();
     configure(&mut cmd);
     run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
-        .map_err(|err| format!("Failed to run the host command: {err}"))
+        .map_err(|err| format!("Failed to run the host backend command: {err}"))
 }
 
 fn run_store_pass_command(
@@ -43,7 +43,7 @@ fn run_store_pass_command(
     let mut cmd = Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)]);
     configure(&mut cmd);
     run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
-        .map_err(|err| format!("Failed to run the host command: {err}"))
+        .map_err(|err| format!("Failed to run the host backend command: {err}"))
 }
 
 fn strip_ansi_escape_sequences(text: &str) -> String {

@@ -59,7 +59,7 @@ pub fn connect_pass_command_row(
             return;
         }
         if let Err(err) = preferences.set_command(text) {
-            toast_preferences_save_error(&overlay, "host command", &err);
+            toast_preferences_save_error(&overlay, "host", &err);
         }
     });
 }

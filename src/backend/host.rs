@@ -355,6 +355,48 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "SystemBackendTestEnv must stay alive for the full test to keep the temp store and env vars in place."
+    )]
+    fn host_backend_saves_entries_with_empty_password_lines() {
+        let env = SystemBackendTestEnv::new();
+
+        let key = SystemBackendTestEnv::generate_secret_key("Recipient <host-empty@example.com>")
+            .expect("generate host recipient key");
+        let mut secret_key_bytes = Vec::new();
+        key.cert
+            .as_tsk()
+            .serialize(&mut secret_key_bytes)
+            .expect("serialize secret key");
+        import_secret_key(&secret_key_bytes).expect("import host secret key");
+        SystemBackendTestEnv::import_public_key(&key.public_key_bytes)
+            .expect("import host recipient key");
+        SystemBackendTestEnv::trust_public_key(&key.fingerprint_hex)
+            .expect("trust host recipient key");
+
+        let store_root = env.store_root().to_string_lossy().to_string();
+        save_store_recipients(
+            &store_root,
+            std::slice::from_ref(&key.fingerprint_hex),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        )
+        .expect("save store recipients");
+        save_password_entry(
+            &store_root,
+            "team/empty-password",
+            "\nusername: alice",
+            true,
+        )
+        .expect("save password entry with empty first line");
+
+        assert_eq!(
+            super::read_password_entry(&store_root, "team/empty-password").expect("read entry"),
+            "\nusername: alice"
+        );
+    }
+
+    #[test]
     fn host_gpg_parser_keeps_primary_fingerprint_and_user_ids() {
         let parsed = parse_host_gpg_private_keys(
             "\

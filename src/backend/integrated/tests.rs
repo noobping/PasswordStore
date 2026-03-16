@@ -968,6 +968,40 @@ fn integrated_backend_commits_without_signature_when_private_key_is_locked() {
 }
 
 #[test]
+fn integrated_backend_saves_entries_with_empty_password_lines() {
+    let env = SystemBackendTestEnv::new();
+    let (cert, bytes) = protected_cert("Empty Password <empty-password@example.com>");
+    let imported =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+
+    let mut public_bytes = Vec::new();
+    cert.serialize(&mut public_bytes)
+        .expect("serialize public certificate");
+    SystemBackendTestEnv::import_public_key(&public_bytes).expect("import public key");
+    SystemBackendTestEnv::trust_public_key(&imported.fingerprint).expect("trust public key");
+
+    let store_root = env.store_root().to_string_lossy().to_string();
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&imported.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        &store_root,
+        "team/empty-password",
+        "\nusername: alice",
+        true,
+    )
+    .expect("save password entry with empty first line");
+
+    assert_eq!(
+        read_password_entry(&store_root, "team/empty-password").expect("read saved entry"),
+        "\nusername: alice"
+    );
+}
+
+#[test]
 fn git_commit_unlock_helper_detects_a_locked_entry_signing_key() {
     let env = SystemBackendTestEnv::new();
     let bytes = protected_cert_bytes("Locked Signer <locked-entry@example.com>");

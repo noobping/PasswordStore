@@ -12,6 +12,7 @@ use crate::setup::{
 use crate::store::management::schedule_store_import_row;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
+#[cfg(any(debug_assertions, feature = "setup"))]
 use crate::support::ui::append_action_row_with_button;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::ui::{connect_row_action, flat_icon_button_with_tooltip};

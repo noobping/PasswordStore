@@ -36,6 +36,7 @@ enum SearchQuery {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum StructuredSearchQuery {
     Clause(SearchClause),
+    Not(Box<StructuredSearchQuery>),
     And(Box<StructuredSearchQuery>, Box<StructuredSearchQuery>),
     Or(Box<StructuredSearchQuery>, Box<StructuredSearchQuery>),
 }
@@ -50,7 +51,9 @@ struct SearchClause {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SearchComparison {
     Contains,
+    ContainsNot,
     Exact,
+    ExactNot,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -275,18 +278,27 @@ impl<'a> StructuredSearchParser<'a> {
     }
 
     fn parse_and(&mut self) -> Option<StructuredSearchQuery> {
-        let mut query = self.parse_primary()?;
+        let mut query = self.parse_not()?;
         loop {
             self.skip_whitespace();
             if !self.consume_symbol("&&") && !self.consume_keyword("AND") {
                 break;
             }
 
-            let right = self.parse_primary()?;
+            let right = self.parse_not()?;
             query = StructuredSearchQuery::And(Box::new(query), Box::new(right));
         }
 
         Some(query)
+    }
+
+    fn parse_not(&mut self) -> Option<StructuredSearchQuery> {
+        self.skip_whitespace();
+        if self.consume_symbol("!") || self.consume_keyword("NOT") {
+            return Some(StructuredSearchQuery::Not(Box::new(self.parse_not()?)));
+        }
+
+        self.parse_primary()
     }
 
     fn parse_primary(&mut self) -> Option<StructuredSearchQuery> {
@@ -305,13 +317,19 @@ impl<'a> StructuredSearchParser<'a> {
         self.skip_whitespace();
         let comparison = if self.consume_symbol("==") {
             SearchComparison::Exact
+        } else if self.consume_symbol("!=") {
+            SearchComparison::ExactNot
+        } else if self.consume_symbol("~=") {
+            SearchComparison::Contains
+        } else if self.consume_symbol("!~") {
+            SearchComparison::ContainsNot
         } else if self.consume_symbol("=") {
             SearchComparison::Contains
         } else {
             return None;
         };
         self.skip_whitespace();
-        let value = if self.peek_char() == Some('"') {
+        let value = if matches!(self.peek_char(), Some('"') | Some('\'')) {
             self.parse_quoted_value()?
         } else {
             self.parse_unquoted_value()?
@@ -331,7 +349,7 @@ impl<'a> StructuredSearchParser<'a> {
         self.skip_whitespace();
         let start = self.pos;
         while let Some(ch) = self.peek_char() {
-            if ch.is_ascii_whitespace() || matches!(ch, '(' | ')' | '=') {
+            if ch.is_ascii_whitespace() || matches!(ch, '(' | ')' | '=' | '!' | '~') {
                 break;
             }
             self.advance_char();
@@ -342,7 +360,11 @@ impl<'a> StructuredSearchParser<'a> {
     }
 
     fn parse_quoted_value(&mut self) -> Option<String> {
-        if !self.consume_char('"') {
+        let quote = self.peek_char()?;
+        if !matches!(quote, '"' | '\'') {
+            return None;
+        }
+        if !self.consume_char(quote) {
             return None;
         }
 
@@ -351,7 +373,7 @@ impl<'a> StructuredSearchParser<'a> {
             let ch = self.peek_char()?;
             self.advance_char();
             match ch {
-                '"' => return Some(value),
+                ch if ch == quote => return Some(value),
                 '\\' => {
                     let escaped = self.peek_char()?;
                     self.advance_char();
@@ -480,19 +502,30 @@ fn row_matches_query(label: &str, fields: &SearchRowFieldIndexState, query: &Sea
 
 fn structured_query_matches(fields: &[SearchablePassField], query: &StructuredSearchQuery) -> bool {
     match query {
-        StructuredSearchQuery::Clause(clause) => fields.iter().any(|field| {
-            field.key == clause.field
-                && match clause.comparison {
-                    SearchComparison::Contains => field.value.contains(&clause.value),
-                    SearchComparison::Exact => field.value == clause.value,
-                }
-        }),
+        StructuredSearchQuery::Clause(clause) => clause_matches(fields, clause),
+        StructuredSearchQuery::Not(query) => !structured_query_matches(fields, query),
         StructuredSearchQuery::And(left, right) => {
             structured_query_matches(fields, left) && structured_query_matches(fields, right)
         }
         StructuredSearchQuery::Or(left, right) => {
             structured_query_matches(fields, left) || structured_query_matches(fields, right)
         }
+    }
+}
+
+fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool {
+    let matches_positive = |predicate: fn(&str, &str) -> bool| {
+        fields
+            .iter()
+            .filter(|field| field.key == clause.field)
+            .any(|field| predicate(&field.value, &clause.value))
+    };
+
+    match clause.comparison {
+        SearchComparison::Contains => matches_positive(|field, value| field.contains(value)),
+        SearchComparison::ContainsNot => !matches_positive(|field, value| field.contains(value)),
+        SearchComparison::Exact => matches_positive(|field, value| field == value),
+        SearchComparison::ExactNot => !matches_positive(|field, value| field == value),
     }
 }
 
@@ -601,6 +634,10 @@ mod tests {
         StructuredSearchQuery::Or(Box::new(left), Box::new(right))
     }
 
+    fn not(query: StructuredSearchQuery) -> StructuredSearchQuery {
+        StructuredSearchQuery::Not(Box::new(query))
+    }
+
     fn indexed_fields(entries: &[(&str, &str)]) -> SearchRowFieldIndexState {
         SearchRowFieldIndexState::Indexed(
             entries
@@ -666,6 +703,36 @@ mod tests {
     }
 
     #[test]
+    fn not_queries_parse_with_word_and_symbol_forms() {
+        assert_eq!(
+            parse_search_query("find:NOT username==alice"),
+            SearchQuery::Structured(not(clause("username", SearchComparison::Exact, "alice",)))
+        );
+        assert_eq!(
+            parse_search_query("find:!username~=alice"),
+            SearchQuery::Structured(not(
+                clause("username", SearchComparison::Contains, "alice",)
+            ))
+        );
+    }
+
+    #[test]
+    fn not_binds_tighter_than_and_or() {
+        assert_eq!(
+            parse_search_query(
+                "find:NOT username==alice AND email==alice@example.com OR url~=gitlab"
+            ),
+            SearchQuery::Structured(or(
+                and(
+                    not(clause("username", SearchComparison::Exact, "alice")),
+                    clause("email", SearchComparison::Exact, "alice@example.com"),
+                ),
+                clause("url", SearchComparison::Contains, "gitlab"),
+            ))
+        );
+    }
+
+    #[test]
     fn and_takes_precedence_over_or() {
         assert_eq!(
             parse_search_query("find:username=noob OR url=gitlab AND email==alice@example.com"),
@@ -706,9 +773,43 @@ mod tests {
     }
 
     #[test]
+    fn single_quoted_values_preserve_spaces_keywords_and_escapes() {
+        assert_eq!(
+            parse_search_query(
+                r#"find:notes=='Personal OR Work \'vault\'''#),
+            SearchQuery::Structured(clause(
+                "notes",
+                SearchComparison::Exact,
+                "personal or work 'vault'",
+            ))
+        );
+    }
+
+    #[test]
+    fn operator_shorthands_parse_as_expected() {
+        assert_eq!(
+            parse_search_query("find:username!=alice"),
+            SearchQuery::Structured(clause("username", SearchComparison::ExactNot, "alice"))
+        );
+        assert_eq!(
+            parse_search_query("find:url~=gitlab"),
+            SearchQuery::Structured(clause("url", SearchComparison::Contains, "gitlab"))
+        );
+        assert_eq!(
+            parse_search_query("find:url!~gitlab"),
+            SearchQuery::Structured(clause("url", SearchComparison::ContainsNot, "gitlab"))
+        );
+    }
+
+    #[test]
     fn malformed_boolean_queries_do_not_fall_back_to_plain_search() {
         assert_eq!(
-            parse_search_query(r#"find:notes=="unterminated"#),
+            parse_search_query(r#"find:notes=="unterminated"#
+            ),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find:notes=='unterminated"),
             SearchQuery::InvalidStructured
         );
         assert_eq!(
@@ -717,6 +818,14 @@ mod tests {
         );
         assert_eq!(
             parse_search_query("find:(username=noob OR email==alice@example.com"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find:NOT"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find:username<>alice"),
             SearchQuery::InvalidStructured
         );
     }
@@ -773,6 +882,77 @@ mod tests {
             "work/noobping/github",
             &indexed_fields(&[("username", "noob")]),
             &query,
+        ));
+    }
+
+    #[test]
+    fn negative_clause_operators_match_as_expected() {
+        let exact_not =
+            SearchQuery::Structured(clause("username", SearchComparison::ExactNot, "alice"));
+        let contains_not =
+            SearchQuery::Structured(clause("url", SearchComparison::ContainsNot, "gitlab"));
+
+        assert!(row_matches_query(
+            "work/noobping/github",
+            &indexed_fields(&[("username", "noobping"), ("url", "https://example.com")]),
+            &exact_not,
+        ));
+        assert!(!row_matches_query(
+            "work/alice/github",
+            &indexed_fields(&[("username", "alice"), ("url", "https://example.com")]),
+            &exact_not,
+        ));
+        assert!(!row_matches_query(
+            "work/multi/github",
+            &indexed_fields(&[("username", "alice"), ("username", "bob")]),
+            &exact_not,
+        ));
+        assert!(row_matches_query(
+            "work/noobping/github",
+            &indexed_fields(&[("username", "noobping"), ("url", "https://example.com")]),
+            &contains_not,
+        ));
+        assert!(!row_matches_query(
+            "work/noobping/gitlab",
+            &indexed_fields(&[("username", "noobping"), ("url", "https://gitlab.com")]),
+            &contains_not,
+        ));
+    }
+
+    #[test]
+    fn negated_clauses_and_groups_match_as_expected() {
+        let negated_clause =
+            SearchQuery::Structured(not(clause("username", SearchComparison::Exact, "alice")));
+        let negated_group = parse_search_query("find:!(username~=alice OR email=='a@b.com')");
+
+        assert!(row_matches_query(
+            "work/noobping/github",
+            &indexed_fields(&[("username", "noobping"), ("email", "c@d.com")]),
+            &negated_clause,
+        ));
+        assert!(!row_matches_query(
+            "work/alice/github",
+            &indexed_fields(&[("username", "alice"), ("email", "c@d.com")]),
+            &negated_clause,
+        ));
+        assert!(row_matches_query(
+            "work/noobping/github",
+            &indexed_fields(&[("username", "noobping"), ("email", "c@d.com")]),
+            &negated_group,
+        ));
+        assert!(!row_matches_query(
+            "work/alice/github",
+            &indexed_fields(&[("username", "alice"), ("email", "c@d.com")]),
+            &negated_group,
+        ));
+    }
+
+    #[test]
+    fn legacy_equals_operator_still_means_contains() {
+        assert!(row_matches_query(
+            "work/noobping/github",
+            &indexed_fields(&[("username", "noobping")]),
+            &SearchQuery::Structured(clause("username", SearchComparison::Contains, "noob",)),
         ));
     }
 

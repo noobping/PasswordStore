@@ -13,13 +13,21 @@ use crate::store::management::schedule_store_import_row;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::append_action_row_with_button;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use crate::support::ui::{connect_row_action, flat_icon_button_with_tooltip};
 #[cfg(debug_assertions)]
 use crate::window::navigation::show_log_page;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use adw::prelude::*;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use adw::ActionRow;
 #[cfg(any(
     all(target_os = "linux", feature = "flatpak"),
     all(target_os = "linux", feature = "setup")
 ))]
 use adw::Toast;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use std::rc::Rc;
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 const FLATPAK_HOST_OVERRIDE_COMMAND: &str =
@@ -32,7 +40,7 @@ pub(super) fn append_optional_log_row(state: &ToolsPageState) {
         &state.list,
         "Open logs",
         "Inspect recent app and command output.",
-        "document-open-symbolic",
+        "go-next-symbolic",
         move || show_log_page(&navigation),
     );
 }
@@ -82,18 +90,34 @@ pub(super) fn append_optional_flatpak_override_row(state: &ToolsPageState) {
         return;
     }
 
+    let row = ActionRow::builder()
+        .title("Enable Flatpak host access")
+        .subtitle("Copy the override command needed for Flatpak host integration.")
+        .build();
+    row.set_activatable(true);
+
+    let button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy override command");
+    row.add_suffix(&button);
+    state.list.append(&row);
+
     let overlay = state.overlay.clone();
-    append_action_row_with_button(
-        &state.list,
-        "Enable Flatpak host access",
-        "Copy the override command needed for Flatpak host integration.",
-        "edit-copy-symbolic",
-        move || {
-            if set_clipboard_text(FLATPAK_HOST_OVERRIDE_COMMAND, &overlay, None) {
-                overlay.add_toast(Toast::new("Copied."));
-            }
-        },
-    );
+    let feedback_button = button.clone();
+    let copy_action = Rc::new(move || {
+        if set_clipboard_text(
+            FLATPAK_HOST_OVERRIDE_COMMAND,
+            &overlay,
+            Some(&feedback_button),
+        ) {
+            overlay.add_toast(Toast::new("Copied."));
+        }
+    });
+
+    {
+        let copy_action = copy_action.clone();
+        connect_row_action(&row, move || copy_action());
+    }
+
+    button.connect_clicked(move |_| copy_action());
 }
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]

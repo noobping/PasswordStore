@@ -140,6 +140,8 @@ pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigati
         raw_text_page: widgets.raw_text_page.clone(),
         settings_page: widgets.settings_page.clone(),
         tools_page: widgets.tools_page.clone(),
+        tools_field_values_page: widgets.tools_field_values_page.clone(),
+        tools_value_values_page: widgets.tools_value_values_page.clone(),
         store_import_page: widgets.store_import_page.clone(),
         log_page: widgets.log_page.clone(),
         back: widgets.back_button.clone(),

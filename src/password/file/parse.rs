@@ -36,7 +36,7 @@ pub fn canonical_search_field_key(key: &str) -> Option<String> {
         return Some("username".to_string());
     }
     if key.eq_ignore_ascii_case("otpauth") {
-        return Some("otpauth".to_string());
+        return None;
     }
 
     Some(key.to_ascii_lowercase())
@@ -50,7 +50,7 @@ pub fn searchable_pass_fields(contents: &str) -> Vec<SearchablePassField> {
             let value = value?;
             let key = match line {
                 StructuredPassLine::Username(_) => Some("username".to_string()),
-                StructuredPassLine::Otp(_) => Some("otpauth".to_string()),
+                StructuredPassLine::Otp(_) => None,
                 StructuredPassLine::Field(template) => canonical_search_field_key(&template.title),
                 StructuredPassLine::Preserved(_) => None,
             }?;
@@ -172,13 +172,10 @@ mod tests {
     }
 
     #[test]
-    fn otp_lines_are_indexed_under_otpauth() {
+    fn otp_lines_are_not_indexed_for_search() {
         assert_eq!(
             searchable_pass_fields("secret\notpauth://totp/Example\notpauth: otpauth://totp/Alt"),
-            vec![
-                field("otpauth", "otpauth://totp/Example"),
-                field("otpauth", "otpauth://totp/Alt"),
-            ]
+            Vec::<SearchablePassField>::new()
         );
     }
 

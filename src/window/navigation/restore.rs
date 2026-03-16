@@ -17,6 +17,8 @@ enum RestoredPageKind {
     Raw,
     Settings,
     Tools,
+    ToolFieldValues,
+    ToolValueValues,
     Recipients,
     Log,
     Other,
@@ -98,6 +100,20 @@ pub fn restore_window_for_current_page(
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
     } else if page_kind == RestoredPageKind::Tools {
         show_secondary_page_chrome(&chrome, "Tools", "Utilities and maintenance", false);
+    } else if page_kind == RestoredPageKind::ToolFieldValues {
+        show_secondary_page_chrome(
+            &chrome,
+            "Browse field values",
+            "Pick a field from the current list.",
+            false,
+        );
+    } else if page_kind == RestoredPageKind::ToolValueValues {
+        show_secondary_page_chrome(
+            &chrome,
+            "Browse field values",
+            "Pick a value from the current list.",
+            false,
+        );
     } else if page_kind == RestoredPageKind::Recipients {
         set_save_button_for_password(&state.save);
         sync_store_recipients_page_header(recipients_page);
@@ -123,6 +139,12 @@ fn visible_secondary_page_kind(
     }
     if visible_navigation_page_is(&state.nav, &state.tools_page) {
         return Some(RestoredPageKind::Tools);
+    }
+    if visible_navigation_page_is(&state.nav, &state.tools_field_values_page) {
+        return Some(RestoredPageKind::ToolFieldValues);
+    }
+    if visible_navigation_page_is(&state.nav, &state.tools_value_values_page) {
+        return Some(RestoredPageKind::ToolValueValues);
     }
     if visible_navigation_page_is(&state.nav, &recipients_page.page) {
         return Some(RestoredPageKind::Recipients);
@@ -196,6 +218,20 @@ mod tests {
                 current_page: Some(RestoredPageKind::Tools),
             }),
             RestoredPageKind::Tools
+        );
+        assert_eq!(
+            restored_page_kind(RestoredPageState {
+                at_root: false,
+                current_page: Some(RestoredPageKind::ToolFieldValues),
+            }),
+            RestoredPageKind::ToolFieldValues
+        );
+        assert_eq!(
+            restored_page_kind(RestoredPageState {
+                at_root: false,
+                current_page: Some(RestoredPageKind::ToolValueValues),
+            }),
+            RestoredPageKind::ToolValueValues
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {

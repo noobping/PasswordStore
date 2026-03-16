@@ -373,13 +373,13 @@ impl<'a> StructuredSearchParser<'a> {
     }
 
     fn parse_clause(&mut self) -> Option<SearchClause> {
-        let raw_field = self.parse_field()?;
+        let (raw_field, field_was_quoted) = self.parse_field()?;
         self.skip_whitespace();
         let field = canonical_search_field_key(&raw_field)?;
         let comparison = if let Some(comparison) = self.parse_symbolic_comparison() {
             comparison
         } else {
-            if is_reserved_human_field_keyword(&raw_field) {
+            if !field_was_quoted && is_reserved_human_field_keyword(&raw_field) {
                 return None;
             }
             match self.parse_human_comparison() {
@@ -466,8 +466,12 @@ impl<'a> StructuredSearchParser<'a> {
         Ok(None)
     }
 
-    fn parse_field(&mut self) -> Option<String> {
+    fn parse_field(&mut self) -> Option<(String, bool)> {
         self.skip_whitespace();
+        if matches!(self.peek_char(), Some('"') | Some('\'')) {
+            return Some((self.parse_quoted_value()?, true));
+        }
+
         let start = self.pos;
         while let Some(ch) = self.peek_char() {
             if ch.is_ascii_whitespace() || matches!(ch, '(' | ')' | '=' | '!' | '~') {
@@ -477,7 +481,7 @@ impl<'a> StructuredSearchParser<'a> {
         }
 
         let field = self.input.get(start..self.pos)?.trim();
-        (!field.is_empty()).then(|| field.to_string())
+        (!field.is_empty()).then(|| (field.to_string(), false))
     }
 
     fn parse_value(&mut self) -> Option<String> {
@@ -1070,6 +1074,26 @@ mod tests {
                 "Personal (OR|AND) Work",
             ))
         );
+        assert_eq!(
+            parse_search_query(r#"find "security question" is "first pet""#),
+            SearchQuery::Structured(clause(
+                "security question",
+                SearchComparison::Exact,
+                "first pet",
+            ))
+        );
+        assert_eq!(
+            parse_search_query(r#"find "matches" is "keyword field""#),
+            SearchQuery::Structured(clause("matches", SearchComparison::Exact, "keyword field",))
+        );
+        assert_eq!(
+            parse_search_query(r#"find:"security question"=="first pet""#),
+            SearchQuery::Structured(clause(
+                "security question",
+                SearchComparison::Exact,
+                "first pet",
+            ))
+        );
     }
 
     #[test]
@@ -1104,6 +1128,10 @@ mod tests {
         );
         assert_eq!(
             parse_search_query("find user matches '['"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query(r#"find "otpauth" is "otpauth://totp/example""#),
             SearchQuery::InvalidStructured
         );
     }
@@ -1152,6 +1180,10 @@ mod tests {
         );
         assert_eq!(
             parse_search_query("find user not regex"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find otpauth contains totp"),
             SearchQuery::InvalidStructured
         );
     }

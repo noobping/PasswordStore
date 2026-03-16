@@ -1,4 +1,7 @@
-use crate::backend::{read_password_entry, read_password_line};
+use crate::backend::{
+    preferred_ripasso_private_key_fingerprint_for_entry, read_password_entry, read_password_line,
+    PasswordEntryError,
+};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::clipboard::set_clipboard_text;
 #[cfg(all(target_os = "linux", feature = "setup"))]
@@ -9,6 +12,7 @@ use crate::password::opened::clear_opened_pass_file;
 use crate::password::page::{open_password_entry_page, PasswordPageState};
 use crate::password::strength::weak_password_reason;
 use crate::preferences::Preferences;
+use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 #[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::setup::{
     can_install_locally, install_locally, is_installed_locally, local_menu_action_label,
@@ -31,12 +35,7 @@ use crate::window::navigation::{
 };
 use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
-#[cfg(any(
-    all(target_os = "linux", feature = "setup"),
-    all(target_os = "linux", feature = "flatpak")
-))]
-use adw::Toast;
-use adw::{ApplicationWindow, NavigationPage, ToastOverlay};
+use adw::{ApplicationWindow, NavigationPage, Toast, ToastOverlay};
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -160,6 +159,12 @@ struct WeakPasswordBatch {
     results: Vec<WeakPasswordFinding>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ToolReadMode {
+    PasswordContents,
+    PasswordLine,
+}
+
 impl ToolsPageState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -215,7 +220,7 @@ impl ToolsPageState {
             FIELD_VALUES_ROW_TITLE,
             FIELD_VALUES_ROW_SUBTITLE,
             "go-next-symbolic",
-            move || state.open_field_values_browser(),
+            move || state.prepare_field_values_browser(),
         );
 
         let state = self.clone();
@@ -224,7 +229,7 @@ impl ToolsPageState {
             WEAK_PASSWORDS_ROW_TITLE,
             WEAK_PASSWORDS_ROW_SUBTITLE,
             "dialog-warning-symbolic",
-            move || state.open_weak_passwords_browser(),
+            move || state.prepare_weak_passwords_browser(),
         );
 
         append_optional_log_row(self);
@@ -277,7 +282,17 @@ impl ToolsPageState {
         }
     }
 
-    fn open_field_values_browser(&self) {
+    fn prepare_field_values_browser(&self) {
+        let requests = collect_loaded_entry_requests(&self.root_list);
+        let state = self.clone();
+        self.unlock_tool_keys_if_needed(
+            requests,
+            ToolReadMode::PasswordContents,
+            Rc::new(move |requests| state.open_field_values_browser_with_requests(requests)),
+        );
+    }
+
+    fn open_field_values_browser_with_requests(&self, requests: Vec<FieldValueRequest>) {
         self.reset_weak_passwords_state();
         self.reset_browser_state();
         let generation = next_generation(self.browser.generation.get());
@@ -285,7 +300,6 @@ impl ToolsPageState {
         self.browser.in_flight.set(true);
         self.render_field_list();
 
-        let requests = collect_loaded_entry_requests(&self.root_list);
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(
             &chrome,
@@ -313,7 +327,17 @@ impl ToolsPageState {
         );
     }
 
-    fn open_weak_passwords_browser(&self) {
+    fn prepare_weak_passwords_browser(&self) {
+        let requests = collect_loaded_entry_requests(&self.root_list);
+        let state = self.clone();
+        self.unlock_tool_keys_if_needed(
+            requests,
+            ToolReadMode::PasswordLine,
+            Rc::new(move |requests| state.open_weak_passwords_browser_with_requests(requests)),
+        );
+    }
+
+    fn open_weak_passwords_browser_with_requests(&self, requests: Vec<FieldValueRequest>) {
         self.reset_browser_state();
         self.reset_weak_passwords_state();
         let generation = next_generation(self.weak_passwords.generation.get());
@@ -321,7 +345,6 @@ impl ToolsPageState {
         self.weak_passwords.in_flight.set(true);
         self.render_weak_passwords_list();
 
-        let requests = collect_loaded_entry_requests(&self.root_list);
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(
             &chrome,
@@ -627,6 +650,45 @@ impl ToolsPageState {
         );
     }
 
+    fn unlock_tool_keys_if_needed(
+        &self,
+        requests: Vec<FieldValueRequest>,
+        read_mode: ToolReadMode,
+        on_ready: Rc<dyn Fn(Vec<FieldValueRequest>)>,
+    ) {
+        if !Preferences::new().uses_integrated_backend() {
+            on_ready(requests);
+            return;
+        }
+
+        let requests_for_unlock = requests.clone();
+        let on_ready_for_result = on_ready.clone();
+        let overlay_for_result = self.overlay.clone();
+        let overlay_for_disconnect = self.overlay.clone();
+        spawn_result_task(
+            move || collect_locked_tool_fingerprints(&requests_for_unlock, read_mode),
+            move |fingerprints| {
+                if fingerprints.is_empty() {
+                    on_ready_for_result(requests);
+                    return;
+                }
+
+                prompt_tool_unlock_sequence(
+                    &overlay_for_result,
+                    fingerprints,
+                    Rc::new(move |success| {
+                        if success {
+                            on_ready(requests.clone());
+                        }
+                    }),
+                );
+            },
+            move || {
+                overlay_for_disconnect.add_toast(Toast::new("Couldn't prepare tool access."));
+            },
+        );
+    }
+
     fn reset_browser_state(&self) {
         self.browser
             .generation
@@ -664,14 +726,18 @@ impl ToolsPageState {
         visible_navigation_page_is(&self.navigation.nav, &self.page)
             || visible_navigation_page_is(&self.navigation.nav, &self.field_values_page)
             || visible_navigation_page_is(&self.navigation.nav, &self.value_values_page)
+            || visible_navigation_page_is(&self.navigation.nav, &self.weak_passwords_page)
     }
 
     fn browser_has_state(&self) -> bool {
         self.browser.in_flight.get()
             || self.browser.catalog.borrow().is_some()
             || self.browser.selected_field.borrow().is_some()
+            || self.weak_passwords.in_flight.get()
+            || self.weak_passwords.results.borrow().is_some()
             || !self.field_values_search_entry.text().is_empty()
             || !self.value_values_search_entry.text().is_empty()
+            || !self.weak_passwords_search_entry.text().is_empty()
     }
 }
 
@@ -776,6 +842,85 @@ fn collect_loaded_entry_requests(list: &ListBox) -> Vec<FieldValueRequest> {
     }
 
     requests
+}
+
+fn collect_locked_tool_fingerprints(
+    requests: &[FieldValueRequest],
+    read_mode: ToolReadMode,
+) -> Vec<String> {
+    let mut fingerprints = Vec::new();
+    for request in requests {
+        let read_result = match read_mode {
+            ToolReadMode::PasswordContents => {
+                read_password_entry(&request.root, &request.label).map(|_| ())
+            }
+            ToolReadMode::PasswordLine => {
+                read_password_line(&request.root, &request.label).map(|_| ())
+            }
+        };
+
+        if !matches!(read_result, Err(PasswordEntryError::LockedPrivateKey(_))) {
+            continue;
+        }
+
+        let Ok(fingerprint) =
+            preferred_ripasso_private_key_fingerprint_for_entry(&request.root, &request.label)
+        else {
+            continue;
+        };
+        if !fingerprints.iter().any(|existing| existing == &fingerprint) {
+            fingerprints.push(fingerprint);
+        }
+    }
+
+    fingerprints
+}
+
+fn prompt_tool_unlock_sequence(
+    overlay: &ToastOverlay,
+    fingerprints: Vec<String>,
+    on_finish: Rc<dyn Fn(bool)>,
+) {
+    if fingerprints.is_empty() {
+        on_finish(true);
+        return;
+    }
+
+    prompt_tool_unlock_at_index(overlay.clone(), Rc::new(fingerprints), 0, on_finish);
+}
+
+fn prompt_tool_unlock_at_index(
+    overlay: ToastOverlay,
+    fingerprints: Rc<Vec<String>>,
+    index: usize,
+    on_finish: Rc<dyn Fn(bool)>,
+) {
+    let Some(fingerprint) = fingerprints.get(index).cloned() else {
+        on_finish(true);
+        return;
+    };
+
+    let overlay_for_next = overlay.clone();
+    let fingerprints_for_next = fingerprints.clone();
+    let on_finish_for_next = on_finish.clone();
+    let on_finish_for_result = on_finish.clone();
+    prompt_private_key_unlock_for_action(
+        &overlay,
+        fingerprint,
+        Rc::new(move || {
+            prompt_tool_unlock_at_index(
+                overlay_for_next.clone(),
+                fingerprints_for_next.clone(),
+                index + 1,
+                on_finish_for_next.clone(),
+            );
+        }),
+        Rc::new(move |success| {
+            if !success {
+                on_finish_for_result(false);
+            }
+        }),
+    );
 }
 
 fn build_weak_password_batch(

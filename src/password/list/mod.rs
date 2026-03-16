@@ -161,10 +161,12 @@ pub fn load_passwords_async(
     let git_available = has_host_permission();
     log_store_git_state(&settings);
 
-    actions.git.set_visible(false);
-    actions.store.set_visible(false);
-    actions.add.set_visible(show_list_actions && has_store_dirs);
-    actions.find.set_visible(show_list_actions);
+    if show_list_actions {
+        actions.git.set_visible(false);
+        actions.store.set_visible(false);
+        actions.add.set_visible(has_store_dirs);
+        actions.find.set_visible(true);
+    }
     list.set_placeholder(Some(&loading_placeholder()));
 
     let list_clone = list.clone();
@@ -213,7 +215,9 @@ pub fn load_passwords_async(
                 append_password_row(&list_clone, item, readable, &overlay_clone);
             }
 
-            update_list_actions(&actions_clone, context);
+            if show_list_actions {
+                update_list_actions(&actions_clone, context);
+            }
             if let Some(controller) = search_controller_for_list(&list_clone) {
                 controller.finish_reload(&list_clone);
             } else {
@@ -242,7 +246,9 @@ pub fn load_passwords_async(
                     GitAvailability::Unavailable
                 },
             };
-            update_list_actions(&actions_for_disconnect, context);
+            if show_list_actions {
+                update_list_actions(&actions_for_disconnect, context);
+            }
             if let Some(controller) = search_controller_for_list(&list_for_disconnect) {
                 controller.finish_reload_failure(&list_for_disconnect);
             } else {

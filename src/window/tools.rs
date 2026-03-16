@@ -25,8 +25,8 @@ use crate::support::object_data::non_null_to_string_option;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::{
-    append_action_row_with_button, append_info_row, clear_list_box, pop_navigation_to_root,
-    reveal_navigation_page, visible_navigation_page_is,
+    append_action_row_with_button, append_info_row, append_spinner_row, clear_list_box,
+    pop_navigation_to_root, reveal_navigation_page, visible_navigation_page_is,
 };
 #[cfg(debug_assertions)]
 use crate::window::navigation::show_log_page;
@@ -474,6 +474,7 @@ impl ToolsPageState {
                 FIELD_VALUES_LOADING_TITLE,
                 FIELD_VALUES_LOADING_SUBTITLE,
             );
+            append_spinner_row(&self.weak_passwords_list);
             return;
         }
 
@@ -545,6 +546,7 @@ impl ToolsPageState {
                     FIELD_VALUES_LOADING_TITLE,
                     FIELD_VALUES_LOADING_SUBTITLE,
                 );
+                append_spinner_row(&self.weak_passwords_list);
             } else {
                 append_info_row(
                     &self.value_values_list,
@@ -607,6 +609,7 @@ impl ToolsPageState {
                 WEAK_PASSWORDS_LOADING_TITLE,
                 WEAK_PASSWORDS_LOADING_SUBTITLE,
             );
+            append_spinner_row(&self.weak_passwords_list);
             return;
         }
 

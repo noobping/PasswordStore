@@ -1,4 +1,6 @@
-use adw::gtk::{Button, Image, ListBox, Popover};
+use adw::gtk::{
+    Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, Popover, Spinner,
+};
 use adw::prelude::*;
 use adw::{ActionRow, NavigationPage, NavigationView};
 use std::rc::Rc;
@@ -25,6 +27,25 @@ pub fn connect_row_action(row: &ActionRow, action: impl Fn() + 'static) {
 pub fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
     row.set_activatable(false);
+    list.append(&row);
+}
+
+pub fn append_spinner_row(list: &ListBox) {
+    let spinner = Spinner::builder().spinning(true).build();
+    let container = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .halign(Align::Center)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    container.append(&spinner);
+
+    let row = ListBoxRow::new();
+    row.set_activatable(false);
+    row.set_selectable(false);
+    row.set_child(Some(&container));
     list.append(&row);
 }
 

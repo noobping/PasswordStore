@@ -19,6 +19,7 @@ enum RestoredPageKind {
     Tools,
     ToolFieldValues,
     ToolValueValues,
+    ToolWeakPasswords,
     Recipients,
     Log,
     Other,
@@ -114,6 +115,13 @@ pub fn restore_window_for_current_page(
             "Pick a value from the current list.",
             false,
         );
+    } else if page_kind == RestoredPageKind::ToolWeakPasswords {
+        show_secondary_page_chrome(
+            &chrome,
+            "Find weak passwords",
+            "Scan the current list for passwords that fail basic checks.",
+            false,
+        );
     } else if page_kind == RestoredPageKind::Recipients {
         set_save_button_for_password(&state.save);
         sync_store_recipients_page_header(recipients_page);
@@ -145,6 +153,9 @@ fn visible_secondary_page_kind(
     }
     if visible_navigation_page_is(&state.nav, &state.tools_value_values_page) {
         return Some(RestoredPageKind::ToolValueValues);
+    }
+    if visible_navigation_page_is(&state.nav, &state.tools_weak_passwords_page) {
+        return Some(RestoredPageKind::ToolWeakPasswords);
     }
     if visible_navigation_page_is(&state.nav, &recipients_page.page) {
         return Some(RestoredPageKind::Recipients);
@@ -232,6 +243,13 @@ mod tests {
                 current_page: Some(RestoredPageKind::ToolValueValues),
             }),
             RestoredPageKind::ToolValueValues
+        );
+        assert_eq!(
+            restored_page_kind(RestoredPageState {
+                at_root: false,
+                current_page: Some(RestoredPageKind::ToolWeakPasswords),
+            }),
+            RestoredPageKind::ToolWeakPasswords
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {

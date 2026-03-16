@@ -125,7 +125,7 @@
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
                             <property name="placeholder-text" translatable="yes">find user matches '^Alice$'</property>
-                            <property name="tooltip-text" translatable="yes">Use find: or find with is, contains, matches/regex, NOT/AND/OR, quotes, and (?i) for case-insensitive regex.</property>
+                            <property name="tooltip-text" translatable="yes">Use find: or find with weak password, is, contains, matches/regex, NOT/AND/OR, quotes, and (?i) for case-insensitive regex.</property>
                           </object>
                         </child>
 
@@ -802,6 +802,46 @@
                                   <object class="AdwPreferencesGroup">
                                     <child>
                                       <object class="GtkListBox" id="tools_value_values_list">
+                                        <property name="selection-mode">none</property>
+                                        <style>
+                                          <class name="boxed-list" />
+                                        </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="tools_weak_passwords_page">
+                    <property name="title" translatable="yes">Weak passwords</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkSearchEntry" id="tools_weak_passwords_search_entry">
+                            <property name="placeholder-text" translatable="yes">Search weak passwords</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="vscrollbar-policy">automatic</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="AdwPreferencesPage">
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <child>
+                                      <object class="GtkListBox" id="tools_weak_passwords_list">
                                         <property name="selection-mode">none</property>
                                         <style>
                                           <class name="boxed-list" />

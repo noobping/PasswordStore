@@ -7,6 +7,7 @@ use super::types::{
 pub struct SearchablePassField {
     pub key: String,
     pub value: String,
+    pub normalized_value: String,
 }
 
 pub fn structured_username_value(lines: &[(StructuredPassLine, Option<String>)]) -> Option<String> {
@@ -53,10 +54,12 @@ pub fn searchable_pass_fields(contents: &str) -> Vec<SearchablePassField> {
                 StructuredPassLine::Field(template) => canonical_search_field_key(&template.title),
                 StructuredPassLine::Preserved(_) => None,
             }?;
+            let normalized_value = value.to_lowercase();
 
             Some(SearchablePassField {
                 key,
-                value: value.to_lowercase(),
+                value,
+                normalized_value,
             })
         })
         .collect()
@@ -137,23 +140,22 @@ fn trim_leading_spacing(value: &str) -> String {
 mod tests {
     use super::{searchable_pass_fields, SearchablePassField};
 
+    fn field(key: &str, value: &str) -> SearchablePassField {
+        SearchablePassField {
+            key: key.to_string(),
+            value: value.to_string(),
+            normalized_value: value.to_lowercase(),
+        }
+    }
+
     #[test]
     fn username_aliases_share_the_username_key() {
         assert_eq!(
             searchable_pass_fields("secret\nlogin: Alice\nuser: Bob\nusername: Carol"),
             vec![
-                SearchablePassField {
-                    key: "username".to_string(),
-                    value: "alice".to_string(),
-                },
-                SearchablePassField {
-                    key: "username".to_string(),
-                    value: "bob".to_string(),
-                },
-                SearchablePassField {
-                    key: "username".to_string(),
-                    value: "carol".to_string(),
-                },
+                field("username", "Alice"),
+                field("username", "Bob"),
+                field("username", "Carol"),
             ]
         );
     }
@@ -163,14 +165,8 @@ mod tests {
         assert_eq!(
             searchable_pass_fields("secret\nUrl: https://example.com\nemail: Person@Example.com"),
             vec![
-                SearchablePassField {
-                    key: "url".to_string(),
-                    value: "https://example.com".to_string(),
-                },
-                SearchablePassField {
-                    key: "email".to_string(),
-                    value: "person@example.com".to_string(),
-                },
+                field("url", "https://example.com"),
+                field("email", "Person@Example.com"),
             ]
         );
     }
@@ -180,14 +176,8 @@ mod tests {
         assert_eq!(
             searchable_pass_fields("secret\notpauth://totp/Example\notpauth: otpauth://totp/Alt"),
             vec![
-                SearchablePassField {
-                    key: "otpauth".to_string(),
-                    value: "otpauth://totp/example".to_string(),
-                },
-                SearchablePassField {
-                    key: "otpauth".to_string(),
-                    value: "otpauth://totp/alt".to_string(),
-                },
+                field("otpauth", "otpauth://totp/Example"),
+                field("otpauth", "otpauth://totp/Alt"),
             ]
         );
     }
@@ -198,10 +188,7 @@ mod tests {
             searchable_pass_fields(
                 "secret-value\nnotes without colon\n  \nurl: https://example.com"
             ),
-            vec![SearchablePassField {
-                key: "url".to_string(),
-                value: "https://example.com".to_string(),
-            }]
+            vec![field("url", "https://example.com")]
         );
     }
 }

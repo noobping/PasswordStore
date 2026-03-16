@@ -6,6 +6,7 @@ use crate::password::file::{
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use adw::gtk::{ListBox, ListBoxRow};
+use regex::Regex;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -41,11 +42,12 @@ enum StructuredSearchQuery {
     Or(Box<StructuredSearchQuery>, Box<StructuredSearchQuery>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct SearchClause {
     field: String,
     comparison: SearchComparison,
     value: String,
+    compiled_regex: Option<Regex>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +56,8 @@ enum SearchComparison {
     ContainsNot,
     Exact,
     ExactNot,
+    RegexMatch,
+    RegexNotMatch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +91,48 @@ impl SearchQuery {
         matches!(self, Self::Structured(_))
     }
 }
+
+impl SearchComparison {
+    const fn is_regex(self) -> bool {
+        matches!(self, Self::RegexMatch | Self::RegexNotMatch)
+    }
+}
+
+impl SearchClause {
+    fn new(field: String, comparison: SearchComparison, value: String) -> Option<Self> {
+        if value.is_empty() {
+            return None;
+        }
+
+        let compiled_regex = if comparison.is_regex() {
+            Some(Regex::new(&value).ok()?)
+        } else {
+            None
+        };
+        let value = if comparison.is_regex() {
+            value
+        } else {
+            value.to_lowercase()
+        };
+
+        Some(Self {
+            field,
+            comparison,
+            value,
+            compiled_regex,
+        })
+    }
+}
+
+impl PartialEq for SearchClause {
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field
+            && self.comparison == other.comparison
+            && self.value == other.value
+    }
+}
+
+impl Eq for SearchClause {}
 
 impl SearchFilterController {
     pub(super) fn new() -> Self {
@@ -344,15 +390,7 @@ impl<'a> StructuredSearchParser<'a> {
         };
         self.skip_whitespace();
         let value = self.parse_value()?;
-        if value.is_empty() {
-            return None;
-        }
-
-        Some(SearchClause {
-            field,
-            comparison,
-            value: value.to_lowercase(),
-        })
+        SearchClause::new(field, comparison, value)
     }
 
     fn parse_symbolic_comparison(&mut self) -> Option<SearchComparison> {
@@ -392,7 +430,30 @@ impl<'a> StructuredSearchParser<'a> {
             if self.consume_keyword("CONTAIN") || self.consume_keyword("CONTAINS") {
                 return Ok(Some(SearchComparison::ContainsNot));
             }
+            if self.consume_keyword("MATCH") || self.consume_keyword("MATCHES") {
+                return Ok(Some(SearchComparison::RegexNotMatch));
+            }
             return Err(());
+        }
+
+        if self.keyword_starts_at(self.pos, "NOT") {
+            self.consume_keyword("NOT");
+            self.skip_whitespace();
+            if self.consume_keyword("REGEX") {
+                return Ok(Some(SearchComparison::RegexNotMatch));
+            }
+            return Err(());
+        }
+
+        if self.keyword_starts_at(self.pos, "MATCHES") || self.keyword_starts_at(self.pos, "MATCH")
+        {
+            let _ = self.consume_keyword("MATCHES") || self.consume_keyword("MATCH");
+            return Ok(Some(SearchComparison::RegexMatch));
+        }
+
+        if self.keyword_starts_at(self.pos, "REGEX") {
+            self.consume_keyword("REGEX");
+            return Ok(Some(SearchComparison::RegexMatch));
         }
 
         if self.keyword_starts_at(self.pos, "CONTAINS")
@@ -562,6 +623,9 @@ fn is_reserved_human_field_keyword(field: &str) -> bool {
         || field.eq_ignore_ascii_case("not")
         || field.eq_ignore_ascii_case("is")
         || field.eq_ignore_ascii_case("does")
+        || field.eq_ignore_ascii_case("match")
+        || field.eq_ignore_ascii_case("matches")
+        || field.eq_ignore_ascii_case("regex")
         || field.eq_ignore_ascii_case("contain")
         || field.eq_ignore_ascii_case("contains")
 }
@@ -592,18 +656,38 @@ fn structured_query_matches(fields: &[SearchablePassField], query: &StructuredSe
 }
 
 fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool {
-    let matches_positive = |predicate: fn(&str, &str) -> bool| {
+    let matches_positive = |predicate: fn(&SearchablePassField, &SearchClause) -> bool| {
         fields
             .iter()
             .filter(|field| field.key == clause.field)
-            .any(|field| predicate(&field.value, &clause.value))
+            .any(|field| predicate(field, clause))
     };
 
     match clause.comparison {
-        SearchComparison::Contains => matches_positive(|field, value| field.contains(value)),
-        SearchComparison::ContainsNot => !matches_positive(|field, value| field.contains(value)),
-        SearchComparison::Exact => matches_positive(|field, value| field == value),
-        SearchComparison::ExactNot => !matches_positive(|field, value| field == value),
+        SearchComparison::Contains => {
+            matches_positive(|field, clause| field.normalized_value.contains(&clause.value))
+        }
+        SearchComparison::ContainsNot => {
+            !matches_positive(|field, clause| field.normalized_value.contains(&clause.value))
+        }
+        SearchComparison::Exact => {
+            matches_positive(|field, clause| field.normalized_value == clause.value)
+        }
+        SearchComparison::ExactNot => {
+            !matches_positive(|field, clause| field.normalized_value == clause.value)
+        }
+        SearchComparison::RegexMatch => matches_positive(|field, clause| {
+            clause
+                .compiled_regex
+                .as_ref()
+                .is_some_and(|regex| regex.is_match(&field.value))
+        }),
+        SearchComparison::RegexNotMatch => !matches_positive(|field, clause| {
+            clause
+                .compiled_regex
+                .as_ref()
+                .is_some_and(|regex| regex.is_match(&field.value))
+        }),
     }
 }
 
@@ -701,6 +785,7 @@ mod tests {
             field: field.to_string(),
             comparison,
             value: value.to_string(),
+            compiled_regex: None,
         })
     }
 
@@ -723,6 +808,7 @@ mod tests {
                 .map(|(key, value)| SearchablePassField {
                     key: (*key).to_string(),
                     value: (*value).to_string(),
+                    normalized_value: value.to_lowercase(),
                 })
                 .collect(),
         )
@@ -912,6 +998,30 @@ mod tests {
             parse_search_query("find url does not contain gitlab"),
             SearchQuery::Structured(clause("url", SearchComparison::ContainsNot, "gitlab"))
         );
+        assert_eq!(
+            parse_search_query("find user matches '^Alice$'"),
+            SearchQuery::Structured(clause("username", SearchComparison::RegexMatch, "^Alice$",))
+        );
+        assert_eq!(
+            parse_search_query("find user regex '^Alice$'"),
+            SearchQuery::Structured(clause("username", SearchComparison::RegexMatch, "^Alice$",))
+        );
+        assert_eq!(
+            parse_search_query("find user does not match '^Alice$'"),
+            SearchQuery::Structured(clause(
+                "username",
+                SearchComparison::RegexNotMatch,
+                "^Alice$",
+            ))
+        );
+        assert_eq!(
+            parse_search_query("find url not regex 'gitlab|github'"),
+            SearchQuery::Structured(clause(
+                "url",
+                SearchComparison::RegexNotMatch,
+                "gitlab|github",
+            ))
+        );
     }
 
     #[test]
@@ -952,6 +1062,14 @@ mod tests {
                 not(clause("url", SearchComparison::Contains, "gitlab")),
             ))
         );
+        assert_eq!(
+            parse_search_query(r#"find notes matches 'Personal (OR|AND) Work'"#),
+            SearchQuery::Structured(clause(
+                "notes",
+                SearchComparison::RegexMatch,
+                "Personal (OR|AND) Work",
+            ))
+        );
     }
 
     #[test]
@@ -982,6 +1100,10 @@ mod tests {
         );
         assert_eq!(
             parse_search_query("find not"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find user matches '['"),
             SearchQuery::InvalidStructured
         );
     }
@@ -1018,6 +1140,18 @@ mod tests {
         );
         assert_eq!(
             parse_search_query("find contains alice"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find user matches"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find user does not match"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find user not regex"),
             SearchQuery::InvalidStructured
         );
     }
@@ -1057,6 +1191,40 @@ mod tests {
             "work/alice/gitlab",
             &indexed_fields(&[("username", "alice"), ("url", "https://gitlab.com")]),
             &query,
+        ));
+    }
+
+    #[test]
+    fn regex_queries_match_case_sensitive_patterns() {
+        let exact_case = parse_search_query("find user matches '^Alice$'");
+        let wrong_case = parse_search_query("find user matches '^alice$'");
+        let ignore_case = parse_search_query(r#"find user regex '(?i)^alice$'"#);
+        let negative = parse_search_query("find user does not match '^Alice$'");
+
+        assert!(row_matches_query(
+            "work/Alice/example",
+            &indexed_fields(&[("username", "Alice")]),
+            &exact_case,
+        ));
+        assert!(!row_matches_query(
+            "work/Alice/example",
+            &indexed_fields(&[("username", "Alice")]),
+            &wrong_case,
+        ));
+        assert!(row_matches_query(
+            "work/Alice/example",
+            &indexed_fields(&[("username", "Alice")]),
+            &ignore_case,
+        ));
+        assert!(!row_matches_query(
+            "work/Alice/example",
+            &indexed_fields(&[("username", "Alice")]),
+            &negative,
+        ));
+        assert!(row_matches_query(
+            "work/Bob/example",
+            &indexed_fields(&[("username", "Bob")]),
+            &negative,
         ));
     }
 

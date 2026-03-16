@@ -124,8 +124,7 @@
                         <child>
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
-                            <property name="placeholder-text" translatable="yes">find or find:NOT user==alice AND url~=gitlab</property>
-                            <property name="tooltip-text" translatable="yes">Use NOT/!, AND/OR, (), ==/!=, ~=/!~, legacy =, and 'single' or &quot;double&quot; quotes.</property>
+                            <property name="placeholder-text" translatable="yes">find user alice and not url gitlab</property>
                           </object>
                         </child>
 

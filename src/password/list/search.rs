@@ -228,22 +228,36 @@ fn parse_search_query(query: &str) -> SearchQuery {
         return SearchQuery::Empty;
     }
 
-    if !query
-        .get(..5)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("find:"))
-    {
+    let Some(remainder) = strip_structured_query_prefix(query) else {
         return SearchQuery::Plain(query.to_lowercase());
-    }
-
-    let Some(remainder) = query.get(5..) else {
-        return SearchQuery::InvalidStructured;
     };
+
     parse_structured_search_query(remainder)
         .map_or(SearchQuery::InvalidStructured, SearchQuery::Structured)
 }
 
 fn parse_structured_search_query(query: &str) -> Option<StructuredSearchQuery> {
     StructuredSearchParser::new(query).parse()
+}
+
+fn strip_structured_query_prefix(query: &str) -> Option<&str> {
+    let find = query.get(..4)?;
+    if !find.eq_ignore_ascii_case("find") {
+        return None;
+    }
+
+    match query.get(4..)?.chars().next() {
+        Some(':') => query.get(5..),
+        Some(ch) if ch.is_ascii_whitespace() => {
+            let separator = query
+                .get(4..)?
+                .char_indices()
+                .find(|(_, ch)| !ch.is_ascii_whitespace())
+                .map_or(query.len(), |(index, _)| 4 + index);
+            query.get(separator..)
+        }
+        _ => None,
+    }
 }
 
 struct StructuredSearchParser<'a> {
@@ -313,27 +327,23 @@ impl<'a> StructuredSearchParser<'a> {
     }
 
     fn parse_clause(&mut self) -> Option<SearchClause> {
-        let field = canonical_search_field_key(&self.parse_field()?)?;
+        let raw_field = self.parse_field()?;
         self.skip_whitespace();
-        let comparison = if self.consume_symbol("==") {
-            SearchComparison::Exact
-        } else if self.consume_symbol("!=") {
-            SearchComparison::ExactNot
-        } else if self.consume_symbol("~=") {
-            SearchComparison::Contains
-        } else if self.consume_symbol("!~") {
-            SearchComparison::ContainsNot
-        } else if self.consume_symbol("=") {
-            SearchComparison::Contains
+        let field = canonical_search_field_key(&raw_field)?;
+        let comparison = if let Some(comparison) = self.parse_symbolic_comparison() {
+            comparison
         } else {
-            return None;
+            if is_reserved_human_field_keyword(&raw_field) {
+                return None;
+            }
+            match self.parse_human_comparison() {
+                Ok(Some(comparison)) => comparison,
+                Ok(None) => SearchComparison::Contains,
+                Err(()) => return None,
+            }
         };
         self.skip_whitespace();
-        let value = if matches!(self.peek_char(), Some('"') | Some('\'')) {
-            self.parse_quoted_value()?
-        } else {
-            self.parse_unquoted_value()?
-        };
+        let value = self.parse_value()?;
         if value.is_empty() {
             return None;
         }
@@ -343,6 +353,56 @@ impl<'a> StructuredSearchParser<'a> {
             comparison,
             value: value.to_lowercase(),
         })
+    }
+
+    fn parse_symbolic_comparison(&mut self) -> Option<SearchComparison> {
+        if self.consume_symbol("==") {
+            Some(SearchComparison::Exact)
+        } else if self.consume_symbol("!=") {
+            Some(SearchComparison::ExactNot)
+        } else if self.consume_symbol("~=") {
+            Some(SearchComparison::Contains)
+        } else if self.consume_symbol("!~") {
+            Some(SearchComparison::ContainsNot)
+        } else if self.consume_symbol("=") {
+            Some(SearchComparison::Contains)
+        } else {
+            None
+        }
+    }
+
+    fn parse_human_comparison(&mut self) -> Result<Option<SearchComparison>, ()> {
+        if self.keyword_starts_at(self.pos, "IS") {
+            self.consume_keyword("IS");
+            self.skip_whitespace();
+            return Ok(Some(if self.consume_keyword("NOT") {
+                SearchComparison::ExactNot
+            } else {
+                SearchComparison::Exact
+            }));
+        }
+
+        if self.keyword_starts_at(self.pos, "DOES") {
+            self.consume_keyword("DOES");
+            self.skip_whitespace();
+            if !self.consume_keyword("NOT") {
+                return Err(());
+            }
+            self.skip_whitespace();
+            if self.consume_keyword("CONTAIN") || self.consume_keyword("CONTAINS") {
+                return Ok(Some(SearchComparison::ContainsNot));
+            }
+            return Err(());
+        }
+
+        if self.keyword_starts_at(self.pos, "CONTAINS")
+            || self.keyword_starts_at(self.pos, "CONTAIN")
+        {
+            let _ = self.consume_keyword("CONTAINS") || self.consume_keyword("CONTAIN");
+            return Ok(Some(SearchComparison::Contains));
+        }
+
+        Ok(None)
     }
 
     fn parse_field(&mut self) -> Option<String> {
@@ -357,6 +417,14 @@ impl<'a> StructuredSearchParser<'a> {
 
         let field = self.input.get(start..self.pos)?.trim();
         (!field.is_empty()).then(|| field.to_string())
+    }
+
+    fn parse_value(&mut self) -> Option<String> {
+        if matches!(self.peek_char(), Some('"') | Some('\'')) {
+            self.parse_quoted_value()
+        } else {
+            self.parse_unquoted_value()
+        }
     }
 
     fn parse_quoted_value(&mut self) -> Option<String> {
@@ -486,6 +554,16 @@ impl<'a> StructuredSearchParser<'a> {
 
 fn operator_boundary(ch: Option<char>) -> bool {
     matches!(ch, None | Some('(' | ')')) || ch.is_some_and(|ch| ch.is_ascii_whitespace())
+}
+
+fn is_reserved_human_field_keyword(field: &str) -> bool {
+    field.eq_ignore_ascii_case("and")
+        || field.eq_ignore_ascii_case("or")
+        || field.eq_ignore_ascii_case("not")
+        || field.eq_ignore_ascii_case("is")
+        || field.eq_ignore_ascii_case("does")
+        || field.eq_ignore_ascii_case("contain")
+        || field.eq_ignore_ascii_case("contains")
 }
 
 fn row_matches_query(label: &str, fields: &SearchRowFieldIndexState, query: &SearchQuery) -> bool {
@@ -656,12 +734,20 @@ mod tests {
             parse_search_query("alice/github"),
             SearchQuery::Plain("alice/github".to_string())
         );
+        assert_eq!(
+            parse_search_query("user alice"),
+            SearchQuery::Plain("user alice".to_string())
+        );
     }
 
     #[test]
     fn structured_queries_parse_with_case_insensitive_prefix() {
         assert_eq!(
             parse_search_query("FiNd:username=noobping"),
+            SearchQuery::Structured(clause("username", SearchComparison::Contains, "noobping",))
+        );
+        assert_eq!(
+            parse_search_query("FiNd user noobping"),
             SearchQuery::Structured(clause("username", SearchComparison::Contains, "noobping",))
         );
     }
@@ -775,8 +861,7 @@ mod tests {
     #[test]
     fn single_quoted_values_preserve_spaces_keywords_and_escapes() {
         assert_eq!(
-            parse_search_query(
-                r#"find:notes=='Personal OR Work \'vault\'''#),
+            parse_search_query(r#"find:notes=='Personal OR Work \'vault\''"#),
             SearchQuery::Structured(clause(
                 "notes",
                 SearchComparison::Exact,
@@ -802,10 +887,77 @@ mod tests {
     }
 
     #[test]
+    fn human_friendly_clauses_parse_as_expected() {
+        assert_eq!(
+            parse_search_query("find user alice"),
+            SearchQuery::Structured(clause("username", SearchComparison::Contains, "alice"))
+        );
+        assert_eq!(
+            parse_search_query("find:user alice"),
+            SearchQuery::Structured(clause("username", SearchComparison::Contains, "alice"))
+        );
+        assert_eq!(
+            parse_search_query("find user is alice"),
+            SearchQuery::Structured(clause("username", SearchComparison::Exact, "alice"))
+        );
+        assert_eq!(
+            parse_search_query("find user is not alice"),
+            SearchQuery::Structured(clause("username", SearchComparison::ExactNot, "alice"))
+        );
+        assert_eq!(
+            parse_search_query("find url contains gitlab"),
+            SearchQuery::Structured(clause("url", SearchComparison::Contains, "gitlab"))
+        );
+        assert_eq!(
+            parse_search_query("find url does not contain gitlab"),
+            SearchQuery::Structured(clause("url", SearchComparison::ContainsNot, "gitlab"))
+        );
+    }
+
+    #[test]
+    fn mixed_human_and_symbolic_syntax_parses_with_existing_precedence() {
+        assert_eq!(
+            parse_search_query("find user alice and not url gitlab"),
+            SearchQuery::Structured(and(
+                clause("username", SearchComparison::Contains, "alice"),
+                not(clause("url", SearchComparison::Contains, "gitlab")),
+            ))
+        );
+        assert_eq!(
+            parse_search_query("find user alice and url~=gitlab"),
+            SearchQuery::Structured(and(
+                clause("username", SearchComparison::Contains, "alice"),
+                clause("url", SearchComparison::Contains, "gitlab"),
+            ))
+        );
+    }
+
+    #[test]
+    fn human_friendly_queries_support_quoted_values() {
+        assert_eq!(
+            parse_search_query(r#"find notes contains 'Personal OR Work'"#),
+            SearchQuery::Structured(clause(
+                "notes",
+                SearchComparison::Contains,
+                "personal or work",
+            ))
+        );
+        assert_eq!(
+            parse_search_query(r#"find (user alice or email is "a@b.com") and not url gitlab"#),
+            SearchQuery::Structured(and(
+                or(
+                    clause("username", SearchComparison::Contains, "alice"),
+                    clause("email", SearchComparison::Exact, "a@b.com"),
+                ),
+                not(clause("url", SearchComparison::Contains, "gitlab")),
+            ))
+        );
+    }
+
+    #[test]
     fn malformed_boolean_queries_do_not_fall_back_to_plain_search() {
         assert_eq!(
-            parse_search_query(r#"find:notes=="unterminated"#
-            ),
+            parse_search_query(r#"find:notes=="unterminated"#),
             SearchQuery::InvalidStructured
         );
         assert_eq!(
@@ -828,6 +980,10 @@ mod tests {
             parse_search_query("find:username<>alice"),
             SearchQuery::InvalidStructured
         );
+        assert_eq!(
+            parse_search_query("find not"),
+            SearchQuery::InvalidStructured
+        );
     }
 
     #[test]
@@ -842,6 +998,26 @@ mod tests {
         );
         assert_eq!(
             parse_search_query("find:username="),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find user"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find user is"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find url does not"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find url does not contain"),
+            SearchQuery::InvalidStructured
+        );
+        assert_eq!(
+            parse_search_query("find contains alice"),
             SearchQuery::InvalidStructured
         );
     }
@@ -866,6 +1042,21 @@ mod tests {
             "work/noobping/github",
             &indexed_fields(&[("username", "noobping"), ("url", "https://example.com")]),
             &SearchQuery::Structured(clause("username", SearchComparison::Contains, "noob",)),
+        ));
+    }
+
+    #[test]
+    fn human_friendly_queries_match_indexed_fields() {
+        let query = parse_search_query("find user alice and not url gitlab");
+        assert!(row_matches_query(
+            "work/alice/example",
+            &indexed_fields(&[("username", "alice"), ("url", "https://example.com")]),
+            &query,
+        ));
+        assert!(!row_matches_query(
+            "work/alice/gitlab",
+            &indexed_fields(&[("username", "alice"), ("url", "https://gitlab.com")]),
+            &query,
         ));
     }
 

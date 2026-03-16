@@ -104,6 +104,7 @@ pub struct StoreRecipientsPageState {
 #[derive(Clone)]
 pub struct StoreRecipientsPlatformState {
     pub overlay: ToastOverlay,
+    pub host_gpg_warning_group: PreferencesGroup,
     pub add_group: PreferencesGroup,
     pub create_group: PreferencesGroup,
     pub import_clipboard_row: ActionRow,

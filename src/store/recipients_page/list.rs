@@ -237,6 +237,10 @@ fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: 
     ));
 }
 
+fn sync_host_gpg_warning_group(state: &StoreRecipientsPageState, visible: bool) {
+    state.platform.host_gpg_warning_group.set_visible(visible);
+}
+
 pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPageState) {
     let row = state.platform.require_all_row.clone();
     let check = state.platform.require_all_check.clone();
@@ -328,6 +332,7 @@ fn load_available_private_keys(
 
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
+    sync_host_gpg_warning_group(state, false);
 
     let managed_keys = match list_ripasso_private_keys() {
         Ok(keys) => keys,
@@ -350,14 +355,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     let current_recipients = state.recipients.borrow().clone();
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
     sync_private_key_requirement_row(state, managed_key_count > 0);
-
-    if show_host_gpg_warning {
-        append_info_row(
-            &state.list,
-            "Couldn't inspect host GPG keys",
-            "Valid host keys may appear unavailable.",
-        );
-    }
+    sync_host_gpg_warning_group(state, show_host_gpg_warning);
 
     if keys.is_empty() {
         if unresolved_recipients.is_empty() {

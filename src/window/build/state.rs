@@ -70,6 +70,7 @@ pub(super) fn password_page_state(
 fn build_store_recipients_platform_state(widgets: &WindowWidgets) -> StoreRecipientsPlatformState {
     StoreRecipientsPlatformState {
         overlay: widgets.toast_overlay.clone(),
+        host_gpg_warning_group: widgets.store_recipients_host_gpg_warning_group.clone(),
         add_group: widgets.store_recipients_add_group.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
         import_clipboard_row: widgets.store_recipients_import_clipboard_row.clone(),

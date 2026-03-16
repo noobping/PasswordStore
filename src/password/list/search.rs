@@ -344,7 +344,10 @@ impl<'a> StructuredSearchParser<'a> {
         let mut query = self.parse_not()?;
         loop {
             self.skip_whitespace();
-            if !self.consume_symbol("&&") && !self.consume_keyword("AND") {
+            if !self.consume_symbol("&&")
+                && !self.consume_keyword("AND")
+                && !self.consume_keyword("WITH")
+            {
                 break;
             }
 
@@ -541,6 +544,7 @@ impl<'a> StructuredSearchParser<'a> {
                 || self.starts_with_symbol_at(scan, "&&")
                 || self.starts_with_symbol_at(scan, "||")
                 || self.keyword_starts_at(scan, "AND")
+                || self.keyword_starts_at(scan, "WITH")
                 || self.keyword_starts_at(scan, "OR")
             {
                 break;
@@ -638,6 +642,7 @@ fn operator_boundary(ch: Option<char>) -> bool {
 
 fn is_reserved_human_field_keyword(field: &str) -> bool {
     field.eq_ignore_ascii_case("and")
+        || field.eq_ignore_ascii_case("with")
         || field.eq_ignore_ascii_case("or")
         || field.eq_ignore_ascii_case("not")
         || field.eq_ignore_ascii_case("is")
@@ -915,6 +920,13 @@ mod tests {
         assert_eq!(
             parse_search_query("find:username=noob && url=gitlab || email==alice@example.com"),
             parse_search_query("find:username=noob AND url=gitlab OR email==alice@example.com")
+        );
+        assert_eq!(
+            parse_search_query("find user nick with weak password"),
+            SearchQuery::Structured(and(
+                clause("username", SearchComparison::Contains, "nick"),
+                weak_password(),
+            ))
         );
     }
 

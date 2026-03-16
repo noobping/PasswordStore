@@ -35,7 +35,7 @@ use crate::window::navigation::{
 };
 use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
-use adw::{ApplicationWindow, NavigationPage, Toast, ToastOverlay};
+use adw::{ActionRow, ApplicationWindow, NavigationPage, Toast, ToastOverlay};
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -96,12 +96,15 @@ pub struct ToolsPageState {
     pub root_search_entry: SearchEntry,
     browser: Rc<FieldValueBrowserState>,
     weak_passwords: Rc<WeakPasswordToolState>,
+    field_values_tool_row: Rc<RefCell<Option<ActionRow>>>,
+    weak_passwords_tool_row: Rc<RefCell<Option<ActionRow>>>,
 }
 
 #[derive(Default)]
 struct FieldValueBrowserState {
     generation: Cell<u64>,
     in_flight: Cell<bool>,
+    tool_busy: Cell<bool>,
     catalog: RefCell<Option<FieldValueCatalog>>,
     selected_field: RefCell<Option<String>>,
 }
@@ -110,6 +113,7 @@ struct FieldValueBrowserState {
 struct WeakPasswordToolState {
     generation: Cell<u64>,
     in_flight: Cell<bool>,
+    tool_busy: Cell<bool>,
     results: RefCell<Option<Vec<WeakPasswordFinding>>>,
 }
 
@@ -206,6 +210,8 @@ impl ToolsPageState {
             root_search_entry: root_search_entry.clone(),
             browser: Rc::new(FieldValueBrowserState::default()),
             weak_passwords: Rc::new(WeakPasswordToolState::default()),
+            field_values_tool_row: Rc::new(RefCell::new(None)),
+            weak_passwords_tool_row: Rc::new(RefCell::new(None)),
         };
         state.connect_browser_handlers();
         state
@@ -213,24 +219,29 @@ impl ToolsPageState {
 
     pub fn rebuild(&self) {
         clear_list_box(&self.list);
+        *self.field_values_tool_row.borrow_mut() = None;
+        *self.weak_passwords_tool_row.borrow_mut() = None;
 
         let state = self.clone();
-        append_action_row_with_button(
+        let field_values_row = append_action_row_with_button(
             &self.list,
             FIELD_VALUES_ROW_TITLE,
             FIELD_VALUES_ROW_SUBTITLE,
             "go-next-symbolic",
             move || state.prepare_field_values_browser(),
         );
+        *self.field_values_tool_row.borrow_mut() = Some(field_values_row);
 
         let state = self.clone();
-        append_action_row_with_button(
+        let weak_passwords_row = append_action_row_with_button(
             &self.list,
             WEAK_PASSWORDS_ROW_TITLE,
             WEAK_PASSWORDS_ROW_SUBTITLE,
             "dialog-warning-symbolic",
             move || state.prepare_weak_passwords_browser(),
         );
+        *self.weak_passwords_tool_row.borrow_mut() = Some(weak_passwords_row);
+        self.sync_tool_rows();
 
         append_optional_log_row(self);
         append_optional_setup_row(self);
@@ -279,22 +290,32 @@ impl ToolsPageState {
         }
         if !self.browser_flow_is_visible() && self.browser_has_state() {
             self.reset_browser_state();
+            self.reset_weak_passwords_state();
         }
     }
 
     fn prepare_field_values_browser(&self) {
+        if self.tools_are_busy() {
+            return;
+        }
+
+        self.set_field_values_tool_busy(true);
         let requests = collect_loaded_entry_requests(&self.root_list);
         let state = self.clone();
         self.unlock_tool_keys_if_needed(
             requests,
             ToolReadMode::PasswordContents,
             Rc::new(move |requests| state.open_field_values_browser_with_requests(requests)),
+            Rc::new({
+                let state = self.clone();
+                move || state.set_field_values_tool_busy(false)
+            }),
         );
     }
 
     fn open_field_values_browser_with_requests(&self, requests: Vec<FieldValueRequest>) {
         self.reset_weak_passwords_state();
-        self.reset_browser_state();
+        self.clear_browser_state();
         let generation = next_generation(self.browser.generation.get());
         self.browser.generation.set(generation);
         self.browser.in_flight.set(true);
@@ -328,18 +349,27 @@ impl ToolsPageState {
     }
 
     fn prepare_weak_passwords_browser(&self) {
+        if self.tools_are_busy() {
+            return;
+        }
+
+        self.set_weak_passwords_tool_busy(true);
         let requests = collect_loaded_entry_requests(&self.root_list);
         let state = self.clone();
         self.unlock_tool_keys_if_needed(
             requests,
             ToolReadMode::PasswordLine,
             Rc::new(move |requests| state.open_weak_passwords_browser_with_requests(requests)),
+            Rc::new({
+                let state = self.clone();
+                move || state.set_weak_passwords_tool_busy(false)
+            }),
         );
     }
 
     fn open_weak_passwords_browser_with_requests(&self, requests: Vec<FieldValueRequest>) {
-        self.reset_browser_state();
-        self.reset_weak_passwords_state();
+        self.clear_browser_state();
+        self.clear_weak_passwords_state();
         let generation = next_generation(self.weak_passwords.generation.get());
         self.weak_passwords.generation.set(generation);
         self.weak_passwords.in_flight.set(true);
@@ -397,6 +427,7 @@ impl ToolsPageState {
         }
 
         self.weak_passwords.in_flight.set(false);
+        self.set_weak_passwords_tool_busy(false);
         *self.weak_passwords.results.borrow_mut() = Some(batch.results);
         self.render_weak_passwords_list();
     }
@@ -407,6 +438,7 @@ impl ToolsPageState {
         }
 
         self.weak_passwords.in_flight.set(false);
+        self.set_weak_passwords_tool_busy(false);
         self.render_weak_passwords_list();
     }
 
@@ -416,6 +448,7 @@ impl ToolsPageState {
         }
 
         self.browser.in_flight.set(false);
+        self.set_field_values_tool_busy(false);
         *self.browser.catalog.borrow_mut() = Some(batch.catalog);
         self.render_field_list();
         self.render_value_list();
@@ -427,6 +460,7 @@ impl ToolsPageState {
         }
 
         self.browser.in_flight.set(false);
+        self.set_field_values_tool_busy(false);
         self.render_field_list();
         self.render_value_list();
     }
@@ -655,6 +689,7 @@ impl ToolsPageState {
         requests: Vec<FieldValueRequest>,
         read_mode: ToolReadMode,
         on_ready: Rc<dyn Fn(Vec<FieldValueRequest>)>,
+        on_abort: Rc<dyn Fn()>,
     ) {
         if !Preferences::new().uses_integrated_backend() {
             on_ready(requests);
@@ -663,6 +698,7 @@ impl ToolsPageState {
 
         let requests_for_unlock = requests.clone();
         let on_ready_for_result = on_ready.clone();
+        let on_abort_for_result = on_abort.clone();
         let overlay_for_result = self.overlay.clone();
         let overlay_for_disconnect = self.overlay.clone();
         spawn_result_task(
@@ -673,23 +709,27 @@ impl ToolsPageState {
                     return;
                 }
 
+                let on_abort_for_unlock = on_abort_for_result.clone();
                 prompt_tool_unlock_sequence(
                     &overlay_for_result,
                     fingerprints,
                     Rc::new(move |success| {
                         if success {
                             on_ready(requests.clone());
+                        } else {
+                            on_abort_for_unlock();
                         }
                     }),
                 );
             },
             move || {
+                on_abort();
                 overlay_for_disconnect.add_toast(Toast::new("Couldn't prepare tool access."));
             },
         );
     }
 
-    fn reset_browser_state(&self) {
+    fn clear_browser_state(&self) {
         self.browser
             .generation
             .set(next_generation(self.browser.generation.get()));
@@ -708,7 +748,12 @@ impl ToolsPageState {
         clear_list_box(&self.value_values_list);
     }
 
-    fn reset_weak_passwords_state(&self) {
+    fn reset_browser_state(&self) {
+        self.clear_browser_state();
+        self.set_field_values_tool_busy(false);
+    }
+
+    fn clear_weak_passwords_state(&self) {
         self.weak_passwords
             .generation
             .set(next_generation(self.weak_passwords.generation.get()));
@@ -720,6 +765,11 @@ impl ToolsPageState {
         }
 
         clear_list_box(&self.weak_passwords_list);
+    }
+
+    fn reset_weak_passwords_state(&self) {
+        self.clear_weak_passwords_state();
+        self.set_weak_passwords_tool_busy(false);
     }
 
     fn browser_flow_is_visible(&self) -> bool {
@@ -738,6 +788,29 @@ impl ToolsPageState {
             || !self.field_values_search_entry.text().is_empty()
             || !self.value_values_search_entry.text().is_empty()
             || !self.weak_passwords_search_entry.text().is_empty()
+    }
+
+    fn set_field_values_tool_busy(&self, busy: bool) {
+        self.browser.tool_busy.set(busy);
+        self.sync_tool_rows();
+    }
+
+    fn set_weak_passwords_tool_busy(&self, busy: bool) {
+        self.weak_passwords.tool_busy.set(busy);
+        self.sync_tool_rows();
+    }
+
+    fn tools_are_busy(&self) -> bool {
+        self.browser.tool_busy.get() || self.weak_passwords.tool_busy.get()
+    }
+
+    fn sync_tool_rows(&self) {
+        let enabled = tool_rows_enabled(
+            self.browser.tool_busy.get(),
+            self.weak_passwords.tool_busy.get(),
+        );
+        set_tool_row_enabled(self.field_values_tool_row.borrow().as_ref(), enabled);
+        set_tool_row_enabled(self.weak_passwords_tool_row.borrow().as_ref(), enabled);
     }
 }
 
@@ -1064,6 +1137,18 @@ fn matching_items_subtitle(count: usize) -> String {
     }
 }
 
+fn tool_rows_enabled(field_values_busy: bool, weak_passwords_busy: bool) -> bool {
+    !(field_values_busy || weak_passwords_busy)
+}
+
+fn set_tool_row_enabled(row: Option<&ActionRow>, enabled: bool) {
+    let Some(row) = row else {
+        return;
+    };
+    row.set_sensitive(enabled);
+    row.set_activatable(enabled);
+}
+
 pub fn register_open_tools_action(window: &ApplicationWindow, state: &ToolsPageState) {
     let state = state.clone();
     register_window_action(window, "open-tools", move || {
@@ -1078,7 +1163,7 @@ pub fn register_open_tools_action(window: &ApplicationWindow, state: &ToolsPageS
 mod tests {
     use super::{
         field_value_catalog_from_entries, format_exact_field_query, matching_items_subtitle,
-        unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
+        tool_rows_enabled, unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
     };
     use crate::password::file::SearchablePassField;
     use std::collections::BTreeMap;
@@ -1180,5 +1265,13 @@ mod tests {
         assert_eq!(unique_values_subtitle(2), "2 unique values");
         assert_eq!(matching_items_subtitle(1), "1 matching item");
         assert_eq!(matching_items_subtitle(3), "3 matching items");
+    }
+
+    #[test]
+    fn tool_rows_disable_while_any_tool_is_busy() {
+        assert!(tool_rows_enabled(false, false));
+        assert!(!tool_rows_enabled(true, false));
+        assert!(!tool_rows_enabled(false, true));
+        assert!(!tool_rows_enabled(true, true));
     }
 }

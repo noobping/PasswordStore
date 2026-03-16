@@ -52,7 +52,7 @@ pub fn append_action_row_with_button(
     subtitle: &str,
     icon_name: &str,
     action: impl Fn() + 'static,
-) {
+) -> ActionRow {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
     row.set_activatable(true);
 
@@ -63,6 +63,8 @@ pub fn append_action_row_with_button(
     let action = Rc::new(action);
     let row_action = action.clone();
     row.connect_activated(move |_| row_action());
+
+    row
 }
 
 pub fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {

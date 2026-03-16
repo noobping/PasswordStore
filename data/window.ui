@@ -130,26 +130,36 @@
                         </child>
 
                         <child>
-                          <object class="GtkScrolledWindow">
-                            <property name="vscrollbar-policy">automatic</property>
-                            <property name="hscrollbar-policy">never</property>
-                            <property name="propagate-natural-width">true</property>
-                            <property name="propagate-natural-height">true</property>
+                          <object class="GtkStack" id="password_list_stack">
                             <child>
-                              <object class="AdwClamp">
-                                <property name="maximum-size">900</property>
-                                <property name="tightening-threshold">600</property>
+                              <object class="AdwStatusPage" id="password_list_status">
+                                <property name="icon-name">io.github.noobping.keycord</property>
                                 <child>
-                                  <object class="GtkListBox" id="list">
-                                    <property name="hexpand">true</property>
-                                    <property name="vexpand">true</property>
-                                    <property name="selection-mode">none</property>
-                                    <style>
-                                      <class name="boxed-list" />
-                                    </style>
-                                    <child type="placeholder">
-                                      <object class="AdwStatusPage">
-                                        <property name="icon-name">io.github.noobping.keycord</property>
+                                  <object class="GtkSpinner" id="password_list_spinner">
+                                    <property name="visible">false</property>
+                                    <property name="spinning">false</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkScrolledWindow" id="password_list_scrolled">
+                                <property name="vscrollbar-policy">automatic</property>
+                                <property name="hscrollbar-policy">never</property>
+                                <property name="propagate-natural-width">true</property>
+                                <property name="propagate-natural-height">true</property>
+                                <child>
+                                  <object class="AdwClamp">
+                                    <property name="maximum-size">900</property>
+                                    <property name="tightening-threshold">600</property>
+                                    <child>
+                                      <object class="GtkListBox" id="list">
+                                        <property name="hexpand">true</property>
+                                        <property name="vexpand">true</property>
+                                        <property name="selection-mode">none</property>
+                                        <style>
+                                          <class name="boxed-list" />
+                                        </style>
                                       </object>
                                     </child>
                                   </object>

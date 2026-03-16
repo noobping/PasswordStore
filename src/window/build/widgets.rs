@@ -1,7 +1,7 @@
 use adw::glib::{object::IsA, Object};
 use adw::gtk::{
     Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer,
-    ScrolledWindow, SearchEntry, SpinButton, Stack, TextView, ToggleButton,
+    ScrolledWindow, SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
 };
 use adw::ActionRow;
 use adw::PreferencesGroup;
@@ -73,6 +73,10 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) password_store_actions: ListBox,
     pub(in crate::window) navigation_view: NavigationView,
     pub(in crate::window) search_entry: SearchEntry,
+    pub(in crate::window) password_list_stack: Stack,
+    pub(in crate::window) password_list_status: StatusPage,
+    pub(in crate::window) password_list_spinner: Spinner,
+    pub(in crate::window) password_list_scrolled: ScrolledWindow,
     pub(in crate::window) list: ListBox,
     pub(in crate::window) text_page: NavigationPage,
     pub(in crate::window) raw_text_page: NavigationPage,
@@ -236,6 +240,10 @@ impl WindowWidgets {
             password_store_actions: required_object(builder, "password_store_actions"),
             navigation_view: required_object(builder, "navigation_view"),
             search_entry: required_object(builder, "search_entry"),
+            password_list_stack: required_object(builder, "password_list_stack"),
+            password_list_status: required_object(builder, "password_list_status"),
+            password_list_spinner: required_object(builder, "password_list_spinner"),
+            password_list_scrolled: required_object(builder, "password_list_scrolled"),
             list: required_object(builder, "list"),
             text_page: required_object(builder, "text_page"),
             raw_text_page: required_object(builder, "raw_text_page"),

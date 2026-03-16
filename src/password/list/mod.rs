@@ -2,7 +2,9 @@ mod placeholder;
 mod row;
 mod search;
 
-use self::placeholder::{loading_placeholder, resolved_placeholder};
+use self::placeholder::{
+    register_placeholder_state, show_loading_placeholder, show_resolved_placeholder,
+};
 use self::row::append_password_row;
 use self::search::{search_controller_for_list, SearchFilterController};
 use crate::backend::password_entry_is_readable;
@@ -167,7 +169,7 @@ pub fn load_passwords_async(
         actions.add.set_visible(has_store_dirs);
         actions.find.set_visible(true);
     }
-    list.set_placeholder(Some(&loading_placeholder()));
+    show_loading_placeholder(list);
 
     let list_clone = list.clone();
     let actions_clone = actions.clone();
@@ -221,10 +223,11 @@ pub fn load_passwords_async(
             if let Some(controller) = search_controller_for_list(&list_clone) {
                 controller.finish_reload(&list_clone);
             } else {
-                list_clone.set_placeholder(Some(&resolved_placeholder(
+                show_resolved_placeholder(
+                    &list_clone,
                     matches!(context.contents, ListContents::Empty),
                     has_store_dirs,
-                )));
+                );
             }
         },
         move || {
@@ -252,8 +255,7 @@ pub fn load_passwords_async(
             if let Some(controller) = search_controller_for_list(&list_for_disconnect) {
                 controller.finish_reload_failure(&list_for_disconnect);
             } else {
-                list_for_disconnect
-                    .set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
+                show_resolved_placeholder(&list_for_disconnect, true, has_store_dirs);
             }
         },
     );
@@ -266,7 +268,21 @@ const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> Coll
     }
 }
 
-pub fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
+pub fn setup_search_filter(
+    list: &ListBox,
+    search_entry: &SearchEntry,
+    placeholder_stack: &adw::gtk::Stack,
+    placeholder_status: &adw::StatusPage,
+    placeholder_spinner: &adw::gtk::Spinner,
+    list_view: &adw::gtk::ScrolledWindow,
+) {
+    register_placeholder_state(
+        list,
+        placeholder_stack,
+        placeholder_status,
+        placeholder_spinner,
+        list_view,
+    );
     let controller = SearchFilterController::new();
     controller.register_for_list(list);
 
@@ -278,8 +294,8 @@ pub fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
     search_entry.connect_search_changed(move |entry| {
         controller_for_entry.update_query(entry.text().as_str());
         controller_for_entry.start_indexing_if_needed(&list_for_entry);
-        controller_for_entry.update_placeholder(&list_for_entry);
         list_for_entry.invalidate_filter();
+        controller_for_entry.update_placeholder(&list_for_entry);
     });
 
     connect_search_arrow_navigation(list, search_entry);

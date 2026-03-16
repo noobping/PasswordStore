@@ -469,12 +469,11 @@ impl ToolsPageState {
         clear_list_box(&self.field_values_list);
 
         if self.browser.in_flight.get() {
-            append_info_row(
+            append_loading_rows(
                 &self.field_values_list,
                 FIELD_VALUES_LOADING_TITLE,
                 FIELD_VALUES_LOADING_SUBTITLE,
             );
-            append_spinner_row(&self.weak_passwords_list);
             return;
         }
 
@@ -541,12 +540,11 @@ impl ToolsPageState {
 
         let Some(catalog) = self.browser.catalog.borrow().clone() else {
             if self.browser.in_flight.get() {
-                append_info_row(
+                append_loading_rows(
                     &self.value_values_list,
                     FIELD_VALUES_LOADING_TITLE,
                     FIELD_VALUES_LOADING_SUBTITLE,
                 );
-                append_spinner_row(&self.weak_passwords_list);
             } else {
                 append_info_row(
                     &self.value_values_list,
@@ -604,12 +602,11 @@ impl ToolsPageState {
         clear_list_box(&self.weak_passwords_list);
 
         if self.weak_passwords.in_flight.get() {
-            append_info_row(
+            append_loading_rows(
                 &self.weak_passwords_list,
                 WEAK_PASSWORDS_LOADING_TITLE,
                 WEAK_PASSWORDS_LOADING_SUBTITLE,
             );
-            append_spinner_row(&self.weak_passwords_list);
             return;
         }
 
@@ -1138,6 +1135,11 @@ fn matching_items_subtitle(count: usize) -> String {
     } else {
         format!("{count} matching items")
     }
+}
+
+fn append_loading_rows(list: &ListBox, title: &str, subtitle: &str) {
+    append_info_row(list, title, subtitle);
+    append_spinner_row(list);
 }
 
 fn tool_rows_enabled(field_values_busy: bool, weak_passwords_busy: bool) -> bool {

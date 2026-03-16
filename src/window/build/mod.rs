@@ -240,6 +240,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     initialize_backend_preferences(&widgets, &preferences);
     set_save_button_for_password(&widgets.save_button);
 
+    setup_search_filter(&widgets.list, &widgets.search_entry);
     initialize_password_list(&widgets);
     let new_password_popover_state = new_password_popover_state(&widgets);
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);
@@ -321,7 +322,6 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     register_back_action(&widgets.window, &back_action_state);
 
     configure_window_shortcuts(app);
-    setup_search_filter(&widgets.list, &widgets.search_entry);
     apply_startup_query(startup_query, &widgets.search_entry, &widgets.list);
 
     widgets.window

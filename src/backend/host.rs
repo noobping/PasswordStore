@@ -1,5 +1,8 @@
 use crate::backend::{
-    command::{ensure_success, run_store_command_output, run_store_command_with_input},
+    command::{
+        ensure_success, run_host_program_output, run_store_command_output,
+        run_store_command_with_input,
+    },
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
@@ -7,6 +10,22 @@ use crate::logging::CommandLogOptions;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::path::Path;
 use std::process::Output;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostGpgPrivateKeySummary {
+    pub fingerprint: String,
+    pub user_ids: Vec<String>,
+}
+
+impl HostGpgPrivateKeySummary {
+    pub fn title(&self) -> String {
+        self.user_ids
+            .first()
+            .cloned()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "Unnamed host private key".to_string())
+    }
+}
 
 fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
     let output =
@@ -128,13 +147,168 @@ pub(super) fn save_store_recipients(
     Ok(())
 }
 
+pub fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, String> {
+    let output = run_host_program_output(
+        "gpg",
+        &[
+            "--batch",
+            "--with-colons",
+            "--fingerprint",
+            "--list-secret-keys",
+        ],
+        "Inspect host GPG private keys",
+        CommandLogOptions::DEFAULT,
+    )?;
+    let output = ensure_success(output, "gpg --list-secret-keys failed")?;
+    Ok(parse_host_gpg_private_keys(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+fn parse_host_gpg_private_keys(output: &str) -> Vec<HostGpgPrivateKeySummary> {
+    #[derive(Default)]
+    struct PartialHostKey {
+        fingerprint: Option<String>,
+        user_ids: Vec<String>,
+        awaiting_primary_fpr: bool,
+    }
+
+    fn finish_key(
+        partial: Option<PartialHostKey>,
+        keys: &mut Vec<HostGpgPrivateKeySummary>,
+    ) -> Option<PartialHostKey> {
+        let Some(partial) = partial else {
+            return None;
+        };
+        let Some(fingerprint) = partial.fingerprint.filter(|value| !value.trim().is_empty()) else {
+            return None;
+        };
+        if keys
+            .iter()
+            .any(|existing| existing.fingerprint.eq_ignore_ascii_case(&fingerprint))
+        {
+            return None;
+        }
+
+        keys.push(HostGpgPrivateKeySummary {
+            fingerprint,
+            user_ids: partial
+                .user_ids
+                .into_iter()
+                .filter(|value| !value.trim().is_empty())
+                .collect(),
+        });
+        None
+    }
+
+    fn colon_field(line: &str, index: usize) -> Option<&str> {
+        line.split(':').nth(index).map(str::trim)
+    }
+
+    fn user_id_field(line: &str) -> &str {
+        colon_field(line, 9)
+            .filter(|value| !value.is_empty())
+            .or_else(|| colon_field(line, 7).filter(|value| !value.is_empty()))
+            .unwrap_or_default()
+    }
+
+    let mut keys = Vec::new();
+    let mut current = None;
+
+    for line in output.lines() {
+        let mut fields = line.split(':');
+        let Some(record_type) = fields.next() else {
+            continue;
+        };
+
+        match record_type {
+            "sec" => {
+                let _ = finish_key(current.take(), &mut keys);
+                current = Some(PartialHostKey {
+                    fingerprint: None,
+                    user_ids: Vec::new(),
+                    awaiting_primary_fpr: true,
+                });
+            }
+            "fpr" => {
+                let Some(current) = current.as_mut() else {
+                    continue;
+                };
+                if !current.awaiting_primary_fpr {
+                    continue;
+                }
+                let fingerprint = colon_field(line, 9).unwrap_or_default().to_string();
+                if fingerprint.is_empty() {
+                    continue;
+                }
+                current.fingerprint = Some(fingerprint);
+                current.awaiting_primary_fpr = false;
+            }
+            "uid" => {
+                let Some(current) = current.as_mut() else {
+                    continue;
+                };
+                let user_id = user_id_field(line).to_string();
+                if !user_id.is_empty() {
+                    current.user_ids.push(user_id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    finish_key(current, &mut keys);
+    keys.sort_by(|left, right| {
+        left.title()
+            .to_ascii_lowercase()
+            .cmp(&right.title().to_ascii_lowercase())
+            .then_with(|| left.fingerprint.cmp(&right.fingerprint))
+    });
+    keys
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::{save_password_entry, save_store_recipients};
+    use super::{
+        list_host_gpg_private_keys, parse_host_gpg_private_keys, save_password_entry,
+        save_store_recipients,
+    };
     use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
     use crate::backend::test_support::SystemBackendTestEnv;
     use crate::backend::StoreRecipientsPrivateKeyRequirement;
     use crate::support::git::has_git_repository;
+    use sequoia_openpgp::serialize::Serialize;
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    fn import_secret_key(bytes: &[u8]) -> Result<(), String> {
+        let mut child = Command::new("gpg")
+            .args(["--batch", "--yes", "--import"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|err| format!("Failed to start gpg secret-key import: {err}"))?;
+
+        {
+            let stdin = child
+                .stdin
+                .as_mut()
+                .ok_or_else(|| "gpg secret-key import did not provide stdin".to_string())?;
+            stdin
+                .write_all(bytes)
+                .map_err(|err| format!("Failed to write imported secret key bytes: {err}"))?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .map_err(|err| format!("Failed to wait for gpg secret-key import: {err}"))?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
+    }
 
     #[test]
     fn host_backend_encrypts_entries_for_all_store_recipients() {
@@ -178,5 +352,81 @@ mod tests {
         .expect("save store recipients");
 
         assert!(has_git_repository(&store_root));
+    }
+
+    #[test]
+    fn host_gpg_parser_keeps_primary_fingerprint_and_user_ids() {
+        let parsed = parse_host_gpg_private_keys(
+            "\
+sec:u:255:22:PRIMARY:1:::::::scESC:::+:::23::0:\n\
+fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n\
+grp:::::::::group:\n\
+uid:u::::1::Alice Example <alice@example.com>::::::::::0:\n\
+uid:u::::1::Alice Work <alice@work.example>::::::::::0:\n\
+ssb:u:255:18:SUB:1:::::::e:::+:::23:\n\
+fpr:::::::::BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:\n",
+        );
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            parsed[0].fingerprint,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        );
+        assert_eq!(
+            parsed[0].user_ids,
+            vec![
+                "Alice Example <alice@example.com>".to_string(),
+                "Alice Work <alice@work.example>".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn host_gpg_parser_ignores_duplicate_or_incomplete_blocks() {
+        let parsed = parse_host_gpg_private_keys(
+            "\
+sec:u:::::::\n\
+uid:u::::1::Missing Fingerprint:::::::\n\
+sec:u:255:22:PRIMARY:1:::::::scESC:::+:::23::0:\n\
+fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n\
+uid:u::::1::Alice Example <alice@example.com>::::::::::0:\n\
+sec:u:255:22:PRIMARY:1:::::::scESC:::+:::23::0:\n\
+fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n\
+uid:u::::1::Duplicate Alice <alice@example.com>::::::::::0:\n",
+        );
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            parsed[0].user_ids,
+            vec!["Alice Example <alice@example.com>".to_string()]
+        );
+    }
+
+    #[test]
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "SystemBackendTestEnv must stay alive for the full test to keep the temp gpg home in place."
+    )]
+    fn host_gpg_discovery_lists_imported_secret_keys() {
+        let env = SystemBackendTestEnv::new();
+        env.activate_profile("host-gpg");
+
+        let key = SystemBackendTestEnv::generate_secret_key("Host User <host-user@example.com>")
+            .expect("generate secret key");
+        let mut bytes = Vec::new();
+        key.cert
+            .as_tsk()
+            .serialize(&mut bytes)
+            .expect("serialize secret key");
+        import_secret_key(&bytes).expect("import host secret key");
+
+        let keys = list_host_gpg_private_keys().expect("list host gpg private keys");
+        assert!(keys.iter().any(|found| {
+            found.fingerprint.eq_ignore_ascii_case(&key.fingerprint_hex)
+                && found
+                    .user_ids
+                    .iter()
+                    .any(|user_id| user_id == "Host User <host-user@example.com>")
+        }));
     }
 }

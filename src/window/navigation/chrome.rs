@@ -20,9 +20,7 @@ pub fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool)
     chrome
         .git
         .set_visible(!has_store_dirs && has_host_permission());
-    chrome
-        .store
-        .set_visible(!has_store_dirs);
+    chrome.store.set_visible(!has_store_dirs);
     chrome.win.set_title(APP_WINDOW_TITLE);
     chrome.win.set_subtitle(APP_WINDOW_SUBTITLE);
     chrome.raw.set_visible(false);

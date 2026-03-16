@@ -10,13 +10,13 @@ use crate::setup::{
 };
 use crate::store::management::schedule_store_import_row;
 use crate::support::actions::register_window_action;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use crate::support::runtime::has_host_permission;
 #[cfg(any(
     debug_assertions,
     all(target_os = "linux", any(feature = "setup", feature = "flatpak"))
 ))]
 use crate::support::ui::append_action_row_with_button;
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
-use crate::support::runtime::has_host_permission;
 use crate::support::ui::{clear_list_box, reveal_navigation_page};
 #[cfg(debug_assertions)]
 use crate::window::navigation::show_log_page;

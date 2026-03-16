@@ -475,12 +475,6 @@
                                     <style>
                                       <class name="boxed-list" />
                                     </style>
-                                    <child type="placeholder">
-                                      <object class="AdwActionRow" id="stores_row">
-                                        <property name="title">No folders added</property>
-                                        <property name="subtitle">Add an existing folder or create a new store.</property>
-                                      </object>
-                                    </child>
                                   </object>
                                 </child>
                               </object>

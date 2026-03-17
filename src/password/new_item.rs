@@ -52,7 +52,6 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow) {
     let dialog = Dialog::builder()
         .title("New item")
         .content_width(460)
-        .follows_content_size(true)
         .child(&dialog_content_shell(
             "New item",
             "Create a new pass file.",

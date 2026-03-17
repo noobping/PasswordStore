@@ -5,7 +5,7 @@ use crate::logging::log_error;
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{
-    connect_row_and_button_action, push_navigation_page_if_needed, visible_navigation_page_is,
+    connect_row_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::prelude::*;
@@ -189,9 +189,8 @@ pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageS
 
 pub(super) fn connect_private_key_generate_controls(state: &StoreRecipientsPageState) {
     let row = state.platform.generate_key_row.clone();
-    let button = state.platform.generate_key_button.clone();
     let state = state.clone();
-    connect_row_and_button_action(&row, &button, move || {
+    connect_row_action(&row, move || {
         show_private_key_generation_page(&state);
     });
 }

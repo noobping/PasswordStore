@@ -43,11 +43,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_add_group: PreferencesGroup,
     pub(in crate::window) store_recipients_create_group: PreferencesGroup,
     pub(in crate::window) store_recipients_import_clipboard_row: ActionRow,
-    pub(in crate::window) store_recipients_import_clipboard_button: Button,
     pub(in crate::window) store_recipients_import_file_row: ActionRow,
-    pub(in crate::window) store_recipients_import_file_button: Button,
     pub(in crate::window) store_recipients_generate_key_row: ActionRow,
-    pub(in crate::window) store_recipients_generate_key_button: Button,
     pub(in crate::window) store_recipients_require_all_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_check: CheckButton,
     pub(in crate::window) private_key_generation_page: NavigationPage,
@@ -63,6 +60,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) preferences_username_folder_check: CheckButton,
     pub(in crate::window) preferences_username_filename_check: CheckButton,
     pub(in crate::window) password_stores: ListBox,
+    pub(in crate::window) password_store_actions: ListBox,
     pub(in crate::window) navigation_view: NavigationView,
     pub(in crate::window) search_entry: SearchEntry,
     pub(in crate::window) list: ListBox,
@@ -153,25 +151,13 @@ impl WindowWidgets {
                 builder,
                 "store_recipients_import_clipboard_row",
             ),
-            store_recipients_import_clipboard_button: required_object(
-                builder,
-                "store_recipients_import_clipboard_button",
-            ),
             store_recipients_import_file_row: required_object(
                 builder,
                 "store_recipients_import_file_row",
             ),
-            store_recipients_import_file_button: required_object(
-                builder,
-                "store_recipients_import_file_button",
-            ),
             store_recipients_generate_key_row: required_object(
                 builder,
                 "store_recipients_generate_key_row",
-            ),
-            store_recipients_generate_key_button: required_object(
-                builder,
-                "store_recipients_generate_key_button",
             ),
             store_recipients_require_all_row: required_object(
                 builder,
@@ -215,6 +201,7 @@ impl WindowWidgets {
                 "preferences_username_filename_check",
             ),
             password_stores: required_object(builder, "password_stores"),
+            password_store_actions: required_object(builder, "password_store_actions"),
             navigation_view: required_object(builder, "navigation_view"),
             search_entry: required_object(builder, "search_entry"),
             list: required_object(builder, "list"),

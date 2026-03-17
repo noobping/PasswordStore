@@ -1,17 +1,18 @@
 use super::{
     dialogs::{build_progress_dialog, dialog_content_shell},
-    open_store_folder_picker, rebuild_store_list, updated_stores_after_add,
+    open_store_folder_picker, rebuild_stores_list, updated_stores_after_add,
     StoreRecipientsPageState,
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::append_action_row_with_button;
+use crate::support::ui::{append_action_row_with_button, dim_label_icon};
 use crate::window::clone_store_repository;
 use adw::gtk::ListBox;
 use adw::prelude::*;
 use adw::{
-    ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast, ToastOverlay,
+    ActionRow, ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast,
+    ToastOverlay,
 };
 use std::rc::Rc;
 
@@ -100,23 +101,36 @@ where
 
 pub(super) fn append_store_clone_row(
     list: &ListBox,
+    stores_list: &ListBox,
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
+    if !settings.uses_host_command_backend() {
+        let row = ActionRow::builder()
+            .title("Restore password store")
+            .subtitle("Switch Backend to Host to restore a store from a Git repository.")
+            .build();
+        row.set_sensitive(false);
+        row.set_activatable(false);
+        row.add_suffix(&dim_label_icon("git-symbolic"));
+        list.append(&row);
+        return;
+    }
+
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
-    let list_for_action = list.clone();
+    let stores_list_for_action = stores_list.clone();
     append_action_row_with_button(
         list,
         "Restore password store",
         "Choose a folder and restore it from a Git repository.",
         "git-symbolic",
         move || {
-            let list_for_clone = list_for_action.clone();
+            let stores_list_for_clone = stores_list_for_action.clone();
             let settings_for_clone = settings.clone();
             let window_for_clone = window.clone();
             let overlay_for_clone = overlay.clone();
@@ -124,7 +138,7 @@ pub(super) fn append_store_clone_row(
             prompt_store_clone(&window, &overlay, move |store, url| {
                 start_store_clone(
                     &window_for_clone,
-                    &list_for_clone,
+                    &stores_list_for_clone,
                     &settings_for_clone,
                     &overlay_for_clone,
                     &recipients_page_for_clone,
@@ -138,7 +152,7 @@ pub(super) fn append_store_clone_row(
 
 fn start_store_clone(
     window: &ApplicationWindow,
-    list: &ListBox,
+    stores_list: &ListBox,
     settings: &Preferences,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
@@ -147,18 +161,16 @@ fn start_store_clone(
 ) {
     let progress_dialog = build_clone_progress_dialog(window, &store);
     let progress_dialog_for_disconnect = progress_dialog.clone();
-    let list = list.clone();
+    let stores_list = stores_list.clone();
     let settings = settings.clone();
-    let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
     let store_for_thread = store.clone();
     let store_for_result = store.clone();
     let store_for_disconnect = store;
-    let window_for_result = window;
     let overlay_for_disconnect = overlay.clone();
     let settings_for_result = settings;
-    let list_for_result = list;
+    let stores_list_for_result = stores_list;
     let recipients_page_for_result = recipients_page;
     spawn_result_task(
         move || clone_store_repository(&url, &store_for_thread),
@@ -174,11 +186,9 @@ fn start_store_clone(
                         return;
                     }
                 }
-                rebuild_store_list(
-                    &list_for_result,
+                rebuild_stores_list(
+                    &stores_list_for_result,
                     &settings_for_result,
-                    &window_for_result,
-                    &overlay,
                     &recipients_page_for_result,
                 );
                 overlay.add_toast(Toast::new("Store restored."));

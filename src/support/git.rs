@@ -74,7 +74,7 @@ fn password_store_git_state_summary_with_network(root: &str) -> String {
 
 fn password_store_git_state_summary_without_network(root: &str) -> String {
     format!(
-        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled because host command execution is unavailable."
+        "Password store Git state: {root} -> Git repository detected, local commits enabled, remote sync disabled in this backend."
     )
 }
 

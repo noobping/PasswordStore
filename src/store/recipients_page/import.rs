@@ -10,7 +10,7 @@ use crate::private_key::dialog::{
 };
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::connect_row_and_button_action;
+use crate::support::ui::connect_row_action;
 use adw::gio;
 use adw::gtk::{gdk::Display, FileChooserAction, FileChooserNative, ResponseType};
 use adw::prelude::*;
@@ -169,16 +169,14 @@ fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
 
 pub(super) fn connect_private_key_import_controls(state: &StoreRecipientsPageState) {
     let clipboard_row = state.platform.import_clipboard_row.clone();
-    let clipboard_button = state.platform.import_clipboard_button.clone();
     let clipboard_state = state.clone();
-    connect_row_and_button_action(&clipboard_row, &clipboard_button, move || {
+    connect_row_action(&clipboard_row, move || {
         import_private_key_from_clipboard(&clipboard_state);
     });
 
     let file_row = state.platform.import_file_row.clone();
-    let file_button = state.platform.import_file_button.clone();
     let file_state = state.clone();
-    connect_row_and_button_action(&file_row, &file_button, move || {
+    connect_row_action(&file_row, move || {
         open_private_key_picker(&file_state);
     });
 }

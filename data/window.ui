@@ -466,7 +466,7 @@
                             <child>
                               <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Password Stores</property>
-                                <property name="description" translatable="yes">A list of folders that contain your password data. Add an existing password store folder or create a new one here.</property>
+                                <property name="description" translatable="yes">A list of folders that contain your password data.</property>
                                 <child>
                                   <object class="GtkListBox" id="password_stores">
                                     <property name="hexpand">true</property>
@@ -486,10 +486,24 @@
                             </child>
 
                             <child>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="GtkListBox" id="password_store_actions">
+                                    <property name="hexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
                               <object class="AdwPreferencesGroup" id="backend_preferences">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
-                                <property name="description" translatable="yes">Choose how Keycord opens your data. Integrated is the default. Use Host command to run your own command.</property>
+                                <property name="description" translatable="yes">Choose how Keycord opens your data. Integrated is the default. Use Host to run your own command.</property>
                                 <child>
                                   <object class="AdwComboRow" id="backend_row">
                                     <property name="visible">false</property>
@@ -498,7 +512,7 @@
                                 </child>
                                 <child>
                                   <object class="AdwEntryRow" id="pass_command_row">
-                                    <property name="title" translatable="yes">Host command</property>
+                                    <property name="title" translatable="yes">Host</property>
                                     <property name="show-apply-button">true</property>
                                   </object>
                                 </child>
@@ -884,13 +898,9 @@
                                         <property name="subtitle" translatable="yes">Create a new password-protected key.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkButton"
-                                            id="store_recipients_generate_key_button">
+                                          <object class="GtkImage"
+                                            id="store_recipients_generate_key_icon">
                                             <property name="icon-name">document-new-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Generate private key</property>
-                                            <style>
-                                              <class name="flat" />
-                                            </style>
                                           </object>
                                         </child>
                                       </object>
@@ -902,13 +912,9 @@
                                         <property name="subtitle" translatable="yes">Read an armored private key from the clipboard.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkButton"
-                                            id="store_recipients_import_clipboard_button">
+                                          <object class="GtkImage"
+                                            id="store_recipients_import_clipboard_icon">
                                             <property name="icon-name">edit-paste-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Import private key from clipboard</property>
-                                            <style>
-                                              <class name="flat" />
-                                            </style>
                                           </object>
                                         </child>
                                       </object>
@@ -920,13 +926,9 @@
                                         <property name="subtitle" translatable="yes">Choose a private key file.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkButton"
-                                            id="store_recipients_import_file_button">
+                                          <object class="GtkImage"
+                                            id="store_recipients_import_file_icon">
                                             <property name="icon-name">document-open-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Import private key from file</property>
-                                            <style>
-                                              <class name="flat" />
-                                            </style>
                                           </object>
                                         </child>
                                       </object>

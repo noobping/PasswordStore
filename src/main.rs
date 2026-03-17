@@ -159,8 +159,8 @@ fn about_comments(project: &str) -> String {
         format!("backend: ripasso {RIPASSO_VERSION}\nsequoia-openpgp {SEQUOIA_OPENPGP_VERSION}")
     } else {
         get_pass_version(&settings).map_or_else(
-            || "backend: host command".to_string(),
-            |version| format!("backend: host command\n{version}"),
+            || "backend: host".to_string(),
+            |version| format!("backend: host\n{version}"),
         )
     };
 

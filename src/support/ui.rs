@@ -17,18 +17,9 @@ pub fn toggle_popover(popover: &Popover) {
     }
 }
 
-pub fn connect_row_and_button_action(
-    row: &ActionRow,
-    button: &Button,
-    action: impl Fn() + 'static,
-) {
+pub fn connect_row_action(row: &ActionRow, action: impl Fn() + 'static) {
     let action = Rc::new(action);
-
-    let row_action = action.clone();
-    row.connect_activated(move |_| row_action());
-
-    let button_action = action;
-    button.connect_clicked(move |_| button_action());
+    row.connect_activated(move |_| action());
 }
 
 pub fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
@@ -59,16 +50,19 @@ pub fn append_action_row_with_button(
     list: &ListBox,
     title: &str,
     subtitle: &str,
-    button_icon_name: &str,
+    icon_name: &str,
     action: impl Fn() + 'static,
 ) {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
     row.set_activatable(true);
 
-    let button = flat_icon_button(button_icon_name);
-    row.add_suffix(&button);
+    let icon = Image::from_icon_name(icon_name);
+    row.add_suffix(&icon);
     list.append(&row);
-    connect_row_and_button_action(&row, &button, action);
+
+    let action = Rc::new(action);
+    let row_action = action.clone();
+    row.connect_activated(move |_| row_action());
 }
 
 pub fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {

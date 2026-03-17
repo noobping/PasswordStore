@@ -9,14 +9,14 @@ use crate::support::pass_import::{
     available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
 };
 use crate::support::ui::{
-    connect_row_and_button_action, flat_icon_button, push_navigation_page_if_needed,
-    visible_navigation_page_is,
+    connect_row_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
 };
 use adw::gtk::{
-    Button, FileChooserAction, FileChooserNative, ListBox, ResponseType, ScrolledWindow, Stack,
+    Button, FileChooserAction, FileChooserNative, Image, ListBox, ResponseType, ScrolledWindow,
+    Stack,
 };
 use adw::prelude::*;
 use adw::{
@@ -59,7 +59,6 @@ struct PassImportRowState {
     window: ApplicationWindow,
     overlay: ToastOverlay,
     row: ActionRow,
-    button: Button,
     source_state: Rc<RefCell<PassImportSourceState>>,
 }
 
@@ -72,8 +71,8 @@ impl PassImportRowState {
         stores: &[String],
     ) -> Self {
         let row = ActionRow::builder().title("Import passwords").build();
-        let button = flat_icon_button("document-open-symbolic");
-        row.add_suffix(&button);
+        let icon = Image::from_icon_name("document-open-symbolic");
+        row.add_suffix(&icon);
         list.append(&row);
 
         let state = Self {
@@ -81,13 +80,12 @@ impl PassImportRowState {
             window: window.clone(),
             overlay: overlay.clone(),
             row,
-            button,
             source_state: Rc::new(RefCell::new(PassImportSourceState::Checking)),
         };
         state.sync(stores);
 
         let open_state = state.clone();
-        connect_row_and_button_action(&state.row, &state.button, move || open_state.open());
+        connect_row_action(&state.row, move || open_state.open());
 
         state
     }
@@ -118,7 +116,6 @@ impl PassImportRowState {
     fn sync(&self, stores: &[String]) {
         sync_pass_import_row(
             &self.row,
-            &self.button,
             self.settings.uses_host_command_backend(),
             stores,
             &self.source_state.borrow(),
@@ -154,7 +151,7 @@ const fn pass_import_row_subtitle(
     source_state: &PassImportSourceState,
 ) -> &'static str {
     if !uses_host_command_backend {
-        "Switch Backend to Host command to use pass import."
+        "Switch Backend to Host to use pass import."
     } else if stores.is_empty() {
         "Add a store to use pass import."
     } else if source_state.is_available() {
@@ -477,7 +474,6 @@ fn start_pass_import(state: &StoreImportPageState, request: PassImportRequest) {
 
 fn sync_pass_import_row(
     row: &ActionRow,
-    button: &Button,
     uses_host_command_backend: bool,
     stores: &[String],
     source_state: &PassImportSourceState,
@@ -490,7 +486,6 @@ fn sync_pass_import_row(
     ));
     row.set_activatable(enabled);
     row.set_sensitive(enabled);
-    button.set_sensitive(enabled);
 }
 
 pub fn schedule_store_import_row(
@@ -562,7 +557,7 @@ mod tests {
                 &["/tmp/store".to_string()],
                 &PassImportSourceState::Available(vec!["bitwarden".to_string()]),
             ),
-            "Switch Backend to Host command to use pass import."
+            "Switch Backend to Host to use pass import."
         );
         assert_eq!(
             pass_import_row_subtitle(true, &[], &PassImportSourceState::Checking),

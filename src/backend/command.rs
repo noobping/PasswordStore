@@ -24,7 +24,7 @@ pub(super) fn run_store_command_output(
     let mut cmd = store_command(store_root);
     configure(&mut cmd);
     run_command_output(&mut cmd, action, log_options)
-        .map_err(|err| format!("Failed to run the host command: {err}"))
+        .map_err(|err| format!("Failed to run the host backend command: {err}"))
 }
 
 pub(super) fn run_store_command_with_input(

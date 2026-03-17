@@ -11,9 +11,9 @@
 
     <key name="pass-command" type="s">
       <default>'pass'</default>
-      <summary>Host command</summary>
+      <summary>Host</summary>
       <description>
-        Command used for the Host command backend.
+        Command used for the Host backend.
       </description>
     </key>
 
@@ -21,7 +21,7 @@
       <default>'integrated'</default>
       <summary>Password backend</summary>
       <description>
-        Backend used to open the password store. Valid values are "integrated" and "host-command".
+        Backend used to open the password store. Valid values are "integrated" and "host".
       </description>
     </key>
 

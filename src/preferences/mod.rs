@@ -30,14 +30,14 @@ impl BackendKind {
     pub const fn stored_value(self) -> &'static str {
         match self {
             Self::Integrated => "integrated",
-            Self::HostCommand => "host-command",
+            Self::HostCommand => "host",
         }
     }
 
     pub fn from_stored(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
             "integrated" | "ripasso" => Self::Integrated,
-            "host-command" | "host command" | "pass" | "pass-command" | "pass command" => {
+            "host" | "host-command" | "host command" | "pass" | "pass-command" | "pass command" => {
                 Self::HostCommand
             }
             _ => default_backend_kind(),
@@ -47,7 +47,7 @@ impl BackendKind {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Integrated => "Integrated",
-            Self::HostCommand => "Host command",
+            Self::HostCommand => "Host",
         }
     }
 
@@ -306,11 +306,13 @@ mod tests {
     #[test]
     fn backend_storage_accepts_current_and_legacy_names() {
         assert_eq!(BackendKind::Integrated.stored_value(), "integrated");
+        assert_eq!(BackendKind::HostCommand.stored_value(), "host");
         assert_eq!(
             BackendKind::from_stored("integrated"),
             BackendKind::Integrated
         );
         assert_eq!(BackendKind::from_stored("ripasso"), BackendKind::Integrated);
+        assert_eq!(BackendKind::from_stored("host"), BackendKind::HostCommand);
         assert_eq!(
             BackendKind::from_stored("host-command"),
             BackendKind::HostCommand

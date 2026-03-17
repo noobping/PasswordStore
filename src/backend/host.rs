@@ -1,7 +1,7 @@
 use crate::backend::{
     command::{
         ensure_success, run_host_program_output, run_store_command_output,
-        run_store_command_with_input,
+        run_host_program_with_input, run_store_command_with_input,
     },
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
@@ -163,6 +163,45 @@ pub fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, Str
     Ok(parse_host_gpg_private_keys(&String::from_utf8_lossy(
         &output.stdout,
     )))
+}
+
+pub fn armored_host_gpg_private_key(fingerprint: &str) -> Result<String, String> {
+    let output = run_host_program_output(
+        "gpg",
+        &[
+            "--batch",
+            "--yes",
+            "--armor",
+            "--export-secret-keys",
+            fingerprint,
+        ],
+        "Export host GPG private key",
+        CommandLogOptions::SENSITIVE,
+    )?;
+    let output = ensure_success(output, "gpg --export-secret-keys failed")?;
+    String::from_utf8(output.stdout).map_err(|err| err.to_string())
+}
+
+pub fn import_host_gpg_private_key_bytes(bytes: &[u8]) -> Result<(), String> {
+    let input = std::str::from_utf8(bytes).map_err(|err| err.to_string())?;
+    let output = run_host_program_with_input(
+        "gpg",
+        &["--batch", "--yes", "--import"],
+        input,
+        "Import host GPG private key",
+        CommandLogOptions::SENSITIVE,
+    )?;
+    ensure_success(output, "gpg --import failed").map(|_| ())
+}
+
+pub fn delete_host_gpg_private_key(fingerprint: &str) -> Result<(), String> {
+    let output = run_host_program_output(
+        "gpg",
+        &["--batch", "--yes", "--delete-secret-keys", fingerprint],
+        "Delete host GPG private key",
+        CommandLogOptions::DEFAULT,
+    )?;
+    ensure_success(output, "gpg --delete-secret-keys failed").map(|_| ())
 }
 
 fn parse_host_gpg_private_keys(output: &str) -> Vec<HostGpgPrivateKeySummary> {

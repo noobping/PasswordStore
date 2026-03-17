@@ -8,6 +8,7 @@ use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
+use crate::private_key::sync::{sync_private_keys_with_host, PrivateKeySyncDirection};
 use crate::store::management::register_open_store_picker_action;
 use crate::store::management::{
     connect_store_recipients_controls, rebuild_store_actions_list,
@@ -28,6 +29,7 @@ use self::state::{
     preferences_action_state, store_recipients_page_state, window_navigation_state,
 };
 use self::widgets::WindowWidgets;
+use super::host_access::append_optional_host_access_group_row;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, connect_search_visibility,
     register_back_action, register_context_save_action, register_context_undo_action,
@@ -40,13 +42,16 @@ use super::git::{
 };
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::{set_save_button_for_password, WindowNavigationState};
-use super::preferences::{connect_backend_row, connect_pass_command_row, initialize_backend_row};
+use super::preferences::{
+    connect_backend_row, connect_pass_command_row, connect_private_key_sync_row,
+    initialize_backend_row,
+};
 use super::preferences::{
     connect_new_password_template_autosave, connect_password_generation_autosave,
     connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
 use super::tools::{register_open_tools_action, ToolsPageState};
-use crate::logging::log_info;
+use crate::logging::{log_error, log_info};
 use crate::support::runtime::{has_host_permission, log_runtime_capabilities_once};
 
 const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
@@ -90,7 +95,17 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
     widgets
         .backend_preferences
         .set_sensitive(has_host_permission());
-    initialize_backend_row(&widgets.backend_row, &widgets.pass_command_row, preferences);
+    append_optional_host_access_group_row(
+        &widgets.host_access_preferences_group,
+        &widgets.toast_overlay,
+    );
+    initialize_backend_row(
+        &widgets.backend_row,
+        &widgets.pass_command_row,
+        &widgets.sync_private_keys_with_host_row,
+        &widgets.sync_private_keys_with_host_check,
+        preferences,
+    );
 }
 
 fn connect_backend_preferences(
@@ -104,6 +119,7 @@ fn connect_backend_preferences(
         &widgets.toast_overlay,
         preferences,
     );
+    connect_private_key_sync_row(preferences_action_state);
     connect_backend_row(
         &widgets.backend_row,
         &widgets.pass_command_row,
@@ -199,10 +215,8 @@ fn connect_window_behaviors(
         &widgets.copy_otp_button,
     );
     connect_new_password_submit(
-        &widgets.path_entry,
         password_list_state,
         new_password_popover_state,
-        &widgets.add_button_popover,
     );
 
     let revealer = widgets.password_generator_settings_revealer.clone();
@@ -237,10 +251,23 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     widgets.window.set_application(Some(app));
     log_runtime_capabilities_once();
     let preferences = Preferences::new();
+    if preferences.sync_private_keys_with_host() {
+        if let Err(err) = sync_private_keys_with_host(PrivateKeySyncDirection::HostToApp) {
+            log_error(format!("Failed to sync private keys during startup: {err}"));
+            let _ = preferences.set_sync_private_keys_with_host(false);
+        }
+    }
     initialize_backend_preferences(&widgets, &preferences);
     set_save_button_for_password(&widgets.save_button);
 
-    setup_search_filter(&widgets.list, &widgets.search_entry);
+    setup_search_filter(
+        &widgets.list,
+        &widgets.search_entry,
+        &widgets.password_list_stack,
+        &widgets.password_list_status,
+        &widgets.password_list_spinner,
+        &widgets.password_list_scrolled,
+    );
     initialize_password_list(&widgets);
     let new_password_popover_state = new_password_popover_state(&widgets);
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);

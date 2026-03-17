@@ -8,7 +8,7 @@ use crate::password::page::{
 };
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
-use adw::gtk::{Button, ListBox, Popover};
+use adw::gtk::{Button, ListBox};
 use adw::prelude::*;
 use adw::{EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 
@@ -70,20 +70,19 @@ pub(super) fn connect_password_copy_buttons(
 }
 
 pub(super) fn connect_new_password_submit(
-    path_entry: &EntryRow,
     page_state: &PasswordPageState,
     popover_state: &NewPasswordPopoverState,
-    add_popover: &Popover,
 ) {
-    let add_popover = add_popover.clone();
     let page_state = page_state.clone();
     let popover_state = popover_state.clone();
+    let path_entry = popover_state.path_entry.clone();
+    let dialog = popover_state.dialog.clone();
     path_entry.connect_apply(move |row| {
         begin_new_password_entry(
             &page_state,
             &row.text(),
             selected_new_password_store(&popover_state),
-            &add_popover,
+            &dialog,
         );
     });
 }

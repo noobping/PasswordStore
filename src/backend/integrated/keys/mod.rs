@@ -19,7 +19,8 @@ pub use self::store::{
     armored_ripasso_private_key, generate_ripasso_private_key, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    ripasso_private_key_title, unlock_ripasso_private_key_for_session,
+    ripasso_private_key_title, store_ripasso_private_key_bytes,
+    unlock_ripasso_private_key_for_session,
 };
 pub(in crate::backend::integrated) use self::store::{
     build_ripasso_crypto_from_key_ring, ensure_ripasso_private_key_is_ready,

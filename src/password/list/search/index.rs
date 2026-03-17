@@ -1,7 +1,7 @@
-use super::query::WEAK_PASSWORD_SEARCH_KEY;
+use super::query::{OTP_SEARCH_KEY, WEAK_PASSWORD_SEARCH_KEY};
 use super::{SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
 use crate::backend::read_password_entry;
-use crate::password::file::{searchable_pass_fields, SearchablePassField};
+use crate::password::file::{pass_file_has_otp, searchable_pass_fields, SearchablePassField};
 use crate::password::strength::weak_password_reason;
 use crate::support::object_data::{cloned_data, non_null_to_string_option};
 use adw::gtk::{ListBox, ListBoxRow};
@@ -100,6 +100,13 @@ pub(super) fn is_stale_index_batch(current_generation: u64, batch_generation: u6
 
 fn indexed_fields_for_contents(contents: &str) -> Vec<SearchablePassField> {
     let mut fields = searchable_pass_fields(contents);
+    if pass_file_has_otp(contents) {
+        fields.push(SearchablePassField {
+            key: OTP_SEARCH_KEY.to_string(),
+            value: "true".to_string(),
+            normalized_value: "true".to_string(),
+        });
+    }
     if let Some(reason) = weak_password_reason(contents.lines().next().unwrap_or_default()) {
         fields.push(SearchablePassField {
             key: WEAK_PASSWORD_SEARCH_KEY.to_string(),

@@ -1,7 +1,13 @@
 use crate::logging::log_error;
+use crate::private_key::sync::{
+    preflight_host_to_app_private_key_sync, sync_private_keys_with_host, PrivateKeySyncDirection,
+};
 use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
 use crate::preferences::{BackendKind, Preferences, UsernameFallbackMode};
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
+use crate::support::actions::activate_widget_action;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+use crate::support::runtime::has_host_permission;
 use crate::support::actions::register_window_action;
 use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{
@@ -9,7 +15,7 @@ use crate::window::navigation::{
 };
 use adw::gtk::{CheckButton, ListBox, TextView};
 use adw::prelude::*;
-use adw::{ComboRow, EntryRow};
+use adw::{ActionRow, AlertDialog, ComboRow, EntryRow};
 use adw::{Toast, ToastOverlay};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -17,6 +23,8 @@ use std::rc::Rc;
 fn sync_backend_preferences_rows(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
+    sync_row: &ActionRow,
+    sync_check: &CheckButton,
     preferences: &Preferences,
 ) {
     let backend = preferences.backend_kind();
@@ -24,6 +32,7 @@ fn sync_backend_preferences_rows(
         backend_row.set_selected(backend.combo_position());
     }
     pass_row.set_visible(preferences.uses_host_command_backend());
+    sync_private_key_sync_row(sync_row, sync_check, preferences);
 }
 
 fn backend_row_model() -> adw::gtk::StringList {
@@ -36,12 +45,85 @@ fn backend_row_model() -> adw::gtk::StringList {
 pub fn initialize_backend_row(
     backend_row: &ComboRow,
     pass_row: &EntryRow,
+    sync_row: &ActionRow,
+    sync_check: &CheckButton,
     preferences: &Preferences,
 ) {
     let model = backend_row_model();
     backend_row.set_model(Some(&model));
     backend_row.set_visible(true);
-    sync_backend_preferences_rows(backend_row, pass_row, preferences);
+    sync_backend_preferences_rows(backend_row, pass_row, sync_row, sync_check, preferences);
+}
+
+#[cfg(target_os = "linux")]
+const SYNC_PRIVATE_KEYS_AVAILABLE_SUBTITLE: &str =
+    "Keep Keycord's private keys and your computer's GPG private keys in step when host access is available.";
+
+#[cfg(target_os = "linux")]
+const SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE: &str =
+    "Grant host access first if you want Keycord to keep its private keys in step with your computer's GPG private keys.";
+
+#[cfg(not(target_os = "linux"))]
+const SYNC_PRIVATE_KEYS_AVAILABLE_SUBTITLE: &str =
+    "Private-key sync with the host is only available on Linux.";
+
+fn host_private_key_sync_is_available() -> bool {
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
+    {
+        has_host_permission()
+    }
+
+    #[cfg(all(target_os = "linux", not(feature = "flatpak")))]
+    {
+        true
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+fn sync_private_key_sync_row(
+    row: &ActionRow,
+    check: &CheckButton,
+    preferences: &Preferences,
+) {
+    let supported = cfg!(target_os = "linux");
+    row.set_visible(supported);
+    if !supported {
+        return;
+    }
+
+    let available = host_private_key_sync_is_available();
+    let enabled = preferences.sync_private_keys_with_host();
+    row.set_sensitive(available);
+    check.set_sensitive(available);
+    row.set_subtitle(if available {
+        SYNC_PRIVATE_KEYS_AVAILABLE_SUBTITLE
+    } else {
+        SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE
+    });
+
+    if check.is_active() != enabled {
+        check.set_active(enabled);
+    }
+}
+
+fn present_private_key_sync_confirmation(
+    window: &adw::ApplicationWindow,
+    on_response: impl FnOnce(bool) + 'static,
+) {
+    let dialog = AlertDialog::builder()
+        .heading("Turn on private-key sync?")
+        .body("Keycord will first make its private-key list match the GPG private keys on your computer. After that, creating, importing, or deleting a private key in Keycord will update the host too. Keys that only exist in Keycord may be removed during the first sync.")
+        .build();
+    dialog.add_responses(&[("cancel", "Cancel"), ("sync", "Turn On")]);
+    dialog.set_close_response("cancel");
+    dialog.set_default_response(Some("sync"));
+    dialog.choose(window, None::<&adw::gio::Cancellable>, move |response| {
+        on_response(response == "sync");
+    });
 }
 
 pub fn connect_pass_command_row(
@@ -95,9 +177,104 @@ pub fn connect_backend_row(
     });
 }
 
+pub fn connect_private_key_sync_row(state: &PreferencesActionState) {
+    let row = state.sync_private_keys_row.clone();
+    let check = state.sync_private_keys_check.clone();
+    let check_for_row = check.clone();
+    row.connect_activated(move |_| {
+        if !check_for_row.is_sensitive() {
+            return;
+        }
+        check_for_row.set_active(!check_for_row.is_active());
+    });
+
+    let overlay = state.overlay.clone();
+    let window = state.page_state.window.clone();
+    let preferences = Preferences::new();
+    let syncing = Rc::new(Cell::new(false));
+    check.connect_toggled(move |button| {
+        if syncing.get() {
+            return;
+        }
+
+        let desired = button.is_active();
+        let stored = preferences.sync_private_keys_with_host();
+        if desired == stored {
+            return;
+        }
+
+        if desired {
+            if !host_private_key_sync_is_available() {
+                syncing.set(true);
+                button.set_active(false);
+                syncing.set(false);
+                overlay.add_toast(Toast::new("Grant host access first."));
+                return;
+            }
+
+            let confirm_button = button.clone();
+            let confirm_overlay = overlay.clone();
+            let confirm_preferences = preferences.clone();
+            let confirm_syncing = syncing.clone();
+            let confirm_window = window.clone();
+            present_private_key_sync_confirmation(&window, move |confirmed| {
+                if !confirmed {
+                    confirm_syncing.set(true);
+                    confirm_button.set_active(false);
+                    confirm_syncing.set(false);
+                    return;
+                }
+
+                match preflight_host_to_app_private_key_sync()
+                    .and_then(|_| sync_private_keys_with_host(PrivateKeySyncDirection::HostToApp))
+                {
+                    Ok(()) => {
+                        if let Err(err) = confirm_preferences.set_sync_private_keys_with_host(true) {
+                            toast_preferences_save_error(
+                                &confirm_overlay,
+                                "private-key sync",
+                                &err,
+                            );
+                            confirm_syncing.set(true);
+                            confirm_button.set_active(false);
+                            confirm_syncing.set(false);
+                            return;
+                        }
+
+                        activate_widget_action(&confirm_window, "win.reload-store-recipients-list");
+                        activate_widget_action(&confirm_window, "win.reload-password-list");
+                        confirm_overlay.add_toast(Toast::new("Private keys synced."));
+                    }
+                    Err(err) => {
+                        log_error(format!("Failed to enable private-key sync: {err}"));
+                        confirm_syncing.set(true);
+                        confirm_button.set_active(false);
+                        confirm_syncing.set(false);
+                        confirm_overlay.add_toast(Toast::new("Couldn't sync private keys."));
+                    }
+                }
+            });
+            return;
+        }
+
+        if let Err(err) = preferences.set_sync_private_keys_with_host(false) {
+            toast_preferences_save_error(&overlay, "private-key sync", &err);
+            syncing.set(true);
+            button.set_active(true);
+            syncing.set(false);
+        }
+    });
+}
+
 fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Preferences) {
     state.pass_row.set_text(&settings.command_value());
-    sync_backend_preferences_rows(&state.backend_row, &state.pass_row, settings);
+    sync_backend_preferences_rows(
+        &state.backend_row,
+        &state.pass_row,
+        &state.sync_private_keys_row,
+        &state.sync_private_keys_check,
+        settings,
+    );
 }
 
 pub(super) fn toast_preferences_save_error(
@@ -125,6 +302,8 @@ pub struct PreferencesActionState {
     pub recipients_page: StoreRecipientsPageState,
     pub pass_row: EntryRow,
     pub backend_row: ComboRow,
+    pub sync_private_keys_row: ActionRow,
+    pub sync_private_keys_check: CheckButton,
 }
 
 pub fn connect_new_password_template_autosave(template_view: &TextView, overlay: &ToastOverlay) {

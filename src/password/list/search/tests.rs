@@ -1,7 +1,7 @@
 use super::index::is_stale_index_batch;
 use super::query::{
-    parse_search_query, row_matches_query, SearchClause, SearchComparison, SearchQuery,
-    StructuredSearchQuery, WEAK_PASSWORD_SEARCH_KEY,
+    parse_search_query, row_matches_query, OTP_SEARCH_KEY, SearchClause, SearchComparison,
+    SearchQuery, StructuredSearchQuery, WEAK_PASSWORD_SEARCH_KEY,
 };
 use super::SearchRowFieldIndexState;
 use crate::password::file::SearchablePassField;
@@ -26,6 +26,10 @@ fn not(query: StructuredSearchQuery) -> StructuredSearchQuery {
 
 fn weak_password() -> StructuredSearchQuery {
     StructuredSearchQuery::WeakPassword
+}
+
+fn otp() -> StructuredSearchQuery {
+    StructuredSearchQuery::Otp
 }
 
 fn indexed_fields(entries: &[(&str, &str)]) -> SearchRowFieldIndexState {
@@ -62,6 +66,18 @@ fn structured_queries_parse_with_case_insensitive_prefix() {
     assert_eq!(
         parse_search_query("FiNd user noobping"),
         SearchQuery::Structured(clause("username", SearchComparison::Contains, "noobping"))
+    );
+}
+
+#[test]
+fn regex_queries_parse_with_a_separate_reg_prefix() {
+    assert_eq!(
+        parse_search_query(r#"reg:(?i)^alice/.+github$"#),
+        SearchQuery::Regex(super::query::RegexSearchQuery::new("(?i)^alice/.+github$").unwrap())
+    );
+    assert_eq!(
+        parse_search_query(r#"ReG team/.+service"#),
+        SearchQuery::Regex(super::query::RegexSearchQuery::new("team/.+service").unwrap())
     );
 }
 
@@ -278,6 +294,25 @@ fn weak_password_keyword_parses_as_a_structured_predicate() {
 }
 
 #[test]
+fn otp_keyword_parses_as_a_structured_predicate() {
+    assert_eq!(
+        parse_search_query("find otp"),
+        SearchQuery::Structured(otp())
+    );
+    assert_eq!(
+        parse_search_query("find not otp"),
+        SearchQuery::Structured(not(otp()))
+    );
+    assert_eq!(
+        parse_search_query("find otp and username==alice"),
+        SearchQuery::Structured(and(
+            otp(),
+            clause("username", SearchComparison::Exact, "alice"),
+        ))
+    );
+}
+
+#[test]
 fn mixed_human_and_symbolic_syntax_parses_with_existing_precedence() {
     assert_eq!(
         parse_search_query("find user alice and not url gitlab"),
@@ -386,6 +421,13 @@ fn malformed_boolean_queries_do_not_fall_back_to_plain_search() {
 }
 
 #[test]
+fn malformed_reg_queries_do_not_fall_back_to_plain_search() {
+    assert_eq!(parse_search_query("reg"), SearchQuery::InvalidRegex);
+    assert_eq!(parse_search_query("reg:["), SearchQuery::InvalidRegex);
+    assert_eq!(parse_search_query("reg ["), SearchQuery::InvalidRegex);
+}
+
+#[test]
 fn malformed_find_queries_do_not_fall_back_to_plain_search() {
     assert_eq!(
         parse_search_query("find:username"),
@@ -448,6 +490,28 @@ fn plain_label_search_matches_only_the_label() {
         "work/noobping/github",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Plain("alice".to_string()),
+    ));
+}
+
+#[test]
+fn reg_queries_match_labels_and_indexed_field_corpus() {
+    let label_query = parse_search_query(r#"reg:^(?i)work/alice/.+$"#);
+    let field_query = parse_search_query(r#"reg:(?i)email:\s+alice@example\.com"#);
+
+    assert!(row_matches_query(
+        "work/alice/github",
+        &SearchRowFieldIndexState::Unavailable,
+        &label_query,
+    ));
+    assert!(row_matches_query(
+        "work/bob/github",
+        &indexed_fields(&[("email", "alice@example.com")]),
+        &field_query,
+    ));
+    assert!(!row_matches_query(
+        "work/bob/github",
+        &indexed_fields(&[("email", "bob@example.com")]),
+        &field_query,
     ));
 }
 
@@ -525,6 +589,25 @@ fn weak_password_queries_match_only_rows_with_the_weak_password_flag() {
         "alice",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Structured(not(weak_password())),
+    ));
+}
+
+#[test]
+fn otp_queries_match_only_rows_with_the_otp_flag() {
+    assert!(row_matches_query(
+        "alice",
+        &indexed_fields(&[(OTP_SEARCH_KEY, "true")]),
+        &SearchQuery::Structured(otp()),
+    ));
+    assert!(!row_matches_query(
+        "alice",
+        &indexed_fields(&[("username", "alice")]),
+        &SearchQuery::Structured(otp()),
+    ));
+    assert!(row_matches_query(
+        "alice",
+        &indexed_fields(&[("username", "alice")]),
+        &SearchQuery::Structured(not(otp())),
     ));
 }
 

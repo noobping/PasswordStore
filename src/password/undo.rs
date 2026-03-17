@@ -6,9 +6,13 @@ use crate::password::model::PassEntry;
 use std::sync::{OnceLock, RwLock};
 
 const MAX_UNDO_ACTIONS: usize = 32;
+const UNAVAILABLE_UNDO_MESSAGE: &str = "Undo unavailable for that change.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UndoAction {
+    Unavailable {
+        message: String,
+    },
     RestoreSavedEntry {
         previous_store: String,
         previous_label: String,
@@ -79,6 +83,22 @@ impl UndoError {
             Self::Rename(err) => err.rename_toast_message(),
             Self::Write(_) | Self::Rollback { .. } => "Couldn't undo the last change.",
         }
+    }
+}
+
+pub fn unavailable_undo_action() -> UndoAction {
+    UndoAction::Unavailable {
+        message: UNAVAILABLE_UNDO_MESSAGE.to_string(),
+    }
+}
+
+pub fn unavailable_undo_message(action: &UndoAction) -> Option<&str> {
+    match action {
+        UndoAction::Unavailable { message } => Some(message.as_str()),
+        UndoAction::RestoreSavedEntry { .. }
+        | UndoAction::RenameEntry { .. }
+        | UndoAction::MoveEntryBetweenStores { .. }
+        | UndoAction::RestoreDeletedEntry { .. } => None,
     }
 }
 
@@ -172,7 +192,7 @@ pub fn delete_entry_with_optional_undo(entry: &PassEntry) -> Result<Option<UndoA
         }
         Err(err) if can_delete_without_undo_after_read_error(&err) => {
             delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
-            Ok(None)
+            Ok(Some(unavailable_undo_action()))
         }
         Err(err) => Err(UndoError::Read(err)),
     }
@@ -195,6 +215,7 @@ pub fn move_entry_to_store(entry: &PassEntry, target_store: &str) -> Result<Pass
 
 pub fn execute_undo_action(action: &UndoAction) -> Result<(), UndoError> {
     match action {
+        UndoAction::Unavailable { .. } => Ok(()),
         UndoAction::RestoreSavedEntry {
             previous_store,
             previous_label,
@@ -228,6 +249,7 @@ pub fn execute_undo_action(action: &UndoAction) -> Result<(), UndoError> {
 
 pub fn undo_action_restored_entry(action: &UndoAction) -> Option<(String, String)> {
     match action {
+        UndoAction::Unavailable { .. } => None,
         UndoAction::RestoreSavedEntry {
             previous_store,
             previous_label,
@@ -309,7 +331,7 @@ mod tests {
         can_delete_without_undo_after_read_error, clear_undo_actions, has_undo_actions,
         move_entry_between_stores_action, pop_undo_action, push_undo_action, rename_entry_action,
         restore_deleted_entry_action, restore_saved_entry_action, undo_action_restored_entry,
-        UndoAction,
+        unavailable_undo_action, unavailable_undo_message, UndoAction,
     };
     use crate::backend::PasswordEntryError;
     use crate::password::model::PassEntry;
@@ -376,6 +398,17 @@ mod tests {
             ),
             UndoAction::RestoreSavedEntry { .. }
         ));
+    }
+
+    #[test]
+    fn unavailable_undo_actions_expose_a_message() {
+        let action = unavailable_undo_action();
+
+        assert_eq!(
+            unavailable_undo_message(&action),
+            Some("Undo unavailable for that change.")
+        );
+        assert_eq!(undo_action_restored_entry(&action), None);
     }
 
     #[test]

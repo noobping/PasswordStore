@@ -20,7 +20,8 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
 use crate::support::ui::{
-    append_action_row_with_button, append_info_row, clear_list_box, flat_icon_button,
+    append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
+    flat_icon_button,
 };
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
@@ -221,7 +222,9 @@ fn append_store_row(
         .build();
     row.set_activatable(true);
 
-    let delete_button = flat_icon_button("user-trash-symbolic");
+    row.add_suffix(&dim_label_icon("go-next-symbolic"));
+
+    let delete_button = flat_icon_button("window-close-symbolic");
     row.add_suffix(&delete_button);
 
     list.append(&row);

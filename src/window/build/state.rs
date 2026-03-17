@@ -18,10 +18,12 @@ use crate::window::preferences::PreferencesActionState;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-pub(super) fn new_password_popover_state(widgets: &WindowWidgets) -> NewPasswordPopoverState {
+pub(super) fn new_password_popover_state(_widgets: &WindowWidgets) -> NewPasswordPopoverState {
+    let (dialog, store_dropdown, path_entry) = crate::password::new_item::build_new_password_dialog();
     NewPasswordPopoverState {
-        popover: widgets.add_button_popover.clone(),
-        store_dropdown: widgets.new_password_store_dropdown.clone(),
+        dialog,
+        path_entry,
+        store_dropdown,
         store_roots: Rc::new(RefCell::new(Vec::new())),
     }
 }
@@ -196,6 +198,8 @@ pub(super) fn preferences_action_state(
         recipients_page: recipients_page.clone(),
         pass_row: widgets.pass_command_row.clone(),
         backend_row: widgets.backend_row.clone(),
+        sync_private_keys_row: widgets.sync_private_keys_with_host_row.clone(),
+        sync_private_keys_check: widgets.sync_private_keys_with_host_check.clone(),
     }
 }
 

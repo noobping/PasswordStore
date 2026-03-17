@@ -88,5 +88,13 @@
         Fingerprint of the private key used by the integrated backend.
       </description>
     </key>
+
+    <key name="sync-private-keys-with-host" type="b">
+      <default>false</default>
+      <summary>Sync private keys with the host</summary>
+      <description>
+        Keep app-managed private keys aligned with the host GPG keyring when host access is available.
+      </description>
+    </key>
   </schema>
 </schemalist>

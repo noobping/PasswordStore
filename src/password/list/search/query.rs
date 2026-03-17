@@ -2,19 +2,29 @@ use super::SearchRowFieldIndexState;
 use crate::password::file::{canonical_search_field_key, SearchablePassField};
 use regex::Regex;
 
+pub(super) const OTP_SEARCH_KEY: &str = "__meta_otp";
 pub(super) const WEAK_PASSWORD_SEARCH_KEY: &str = "__meta_weak_password";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(super) enum SearchQuery {
     Empty,
     Plain(String),
+    Regex(RegexSearchQuery),
     Structured(StructuredSearchQuery),
+    InvalidRegex,
     InvalidStructured,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct RegexSearchQuery {
+    pattern: String,
+    compiled: Regex,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum StructuredSearchQuery {
     Clause(SearchClause),
+    Otp,
     WeakPassword,
     Not(Box<StructuredSearchQuery>),
     And(Box<StructuredSearchQuery>, Box<StructuredSearchQuery>),
@@ -40,8 +50,8 @@ pub(super) enum SearchComparison {
 }
 
 impl SearchQuery {
-    pub(super) const fn is_structured(&self) -> bool {
-        matches!(self, Self::Structured(_))
+    pub(super) const fn requires_index(&self) -> bool {
+        matches!(self, Self::Regex(_) | Self::Structured(_))
     }
 }
 
@@ -77,6 +87,28 @@ impl SearchClause {
     }
 }
 
+impl RegexSearchQuery {
+    pub(super) fn new(pattern: &str) -> Option<Self> {
+        let pattern = pattern.trim();
+        if pattern.is_empty() {
+            return None;
+        }
+        let compiled = Regex::new(pattern).ok()?;
+        Some(Self {
+            pattern: pattern.to_string(),
+            compiled,
+        })
+    }
+}
+
+impl PartialEq for RegexSearchQuery {
+    fn eq(&self, other: &Self) -> bool {
+        self.pattern == other.pattern
+    }
+}
+
+impl Eq for RegexSearchQuery {}
+
 impl PartialEq for SearchClause {
     fn eq(&self, other: &Self) -> bool {
         self.field == other.field
@@ -87,9 +119,34 @@ impl PartialEq for SearchClause {
 
 impl Eq for SearchClause {}
 
+impl PartialEq for SearchQuery {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Empty, Self::Empty)
+            | (Self::InvalidRegex, Self::InvalidRegex)
+            | (Self::InvalidStructured, Self::InvalidStructured) => true,
+            (Self::Plain(left), Self::Plain(right)) => left == right,
+            (Self::Regex(left), Self::Regex(right)) => left == right,
+            (Self::Structured(left), Self::Structured(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for SearchQuery {}
+
 pub(super) fn parse_search_query(query: &str) -> SearchQuery {
     if query.is_empty() {
         return SearchQuery::Empty;
+    }
+
+    if query.trim().eq_ignore_ascii_case("reg") {
+        return SearchQuery::InvalidRegex;
+    }
+
+    if let Some(remainder) = strip_query_prefix(query, "reg") {
+        return RegexSearchQuery::new(remainder)
+            .map_or(SearchQuery::InvalidRegex, SearchQuery::Regex);
     }
 
     let Some(remainder) = strip_structured_query_prefix(query) else {
@@ -108,10 +165,12 @@ pub(super) fn row_matches_query(
     match query {
         SearchQuery::Empty => true,
         SearchQuery::Plain(query) => label.to_lowercase().contains(query),
+        SearchQuery::Regex(query) => regex_query_matches(label, fields, query),
         SearchQuery::Structured(query) => match fields {
             SearchRowFieldIndexState::Indexed(fields) => structured_query_matches(fields, query),
             SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => false,
         },
+        SearchQuery::InvalidRegex => false,
         SearchQuery::InvalidStructured => false,
     }
 }
@@ -121,19 +180,23 @@ fn parse_structured_search_query(query: &str) -> Option<StructuredSearchQuery> {
 }
 
 fn strip_structured_query_prefix(query: &str) -> Option<&str> {
-    let find = query.get(..4)?;
-    if !find.eq_ignore_ascii_case("find") {
+    strip_query_prefix(query, "find")
+}
+
+fn strip_query_prefix<'a>(query: &'a str, prefix: &str) -> Option<&'a str> {
+    let found_prefix = query.get(..prefix.len())?;
+    if !found_prefix.eq_ignore_ascii_case(prefix) {
         return None;
     }
 
-    match query.get(4..)?.chars().next() {
-        Some(':') => query.get(5..),
+    match query.get(prefix.len()..)?.chars().next() {
+        Some(':') => query.get(prefix.len() + 1..),
         Some(ch) if ch.is_ascii_whitespace() => {
             let separator = query
-                .get(4..)?
+                .get(prefix.len()..)?
                 .char_indices()
                 .find(|(_, ch)| !ch.is_ascii_whitespace())
-                .map_or(query.len(), |(index, _)| 4 + index);
+                .map_or(query.len(), |(index, _)| prefix.len() + index);
             query.get(separator..)
         }
         _ => None,
@@ -204,11 +267,17 @@ impl<'a> StructuredSearchParser<'a> {
             let query = self.parse_or()?;
             self.skip_whitespace();
             self.consume_char(')').then_some(query)
+        } else if self.parse_otp_predicate() {
+            Some(StructuredSearchQuery::Otp)
         } else if self.parse_weak_password_predicate() {
             Some(StructuredSearchQuery::WeakPassword)
         } else {
             Some(StructuredSearchQuery::Clause(self.parse_clause()?))
         }
+    }
+
+    fn parse_otp_predicate(&mut self) -> bool {
+        self.consume_keyword("OTP")
     }
 
     fn parse_weak_password_predicate(&mut self) -> bool {
@@ -481,6 +550,7 @@ fn is_reserved_human_field_keyword(field: &str) -> bool {
         || field.eq_ignore_ascii_case("match")
         || field.eq_ignore_ascii_case("matches")
         || field.eq_ignore_ascii_case("regex")
+        || field.eq_ignore_ascii_case("otp")
         || field.eq_ignore_ascii_case("contain")
         || field.eq_ignore_ascii_case("contains")
 }
@@ -488,6 +558,7 @@ fn is_reserved_human_field_keyword(field: &str) -> bool {
 fn structured_query_matches(fields: &[SearchablePassField], query: &StructuredSearchQuery) -> bool {
     match query {
         StructuredSearchQuery::Clause(clause) => clause_matches(fields, clause),
+        StructuredSearchQuery::Otp => has_otp(fields),
         StructuredSearchQuery::WeakPassword => has_weak_password(fields),
         StructuredSearchQuery::Not(query) => !structured_query_matches(fields, query),
         StructuredSearchQuery::And(left, right) => {
@@ -503,6 +574,39 @@ fn has_weak_password(fields: &[SearchablePassField]) -> bool {
     fields
         .iter()
         .any(|field| field.key == WEAK_PASSWORD_SEARCH_KEY)
+}
+
+fn has_otp(fields: &[SearchablePassField]) -> bool {
+    fields.iter().any(|field| field.key == OTP_SEARCH_KEY)
+}
+
+fn regex_query_matches(
+    label: &str,
+    fields: &SearchRowFieldIndexState,
+    query: &RegexSearchQuery,
+) -> bool {
+    if query.compiled.is_match(label) {
+        return true;
+    }
+
+    match fields {
+        SearchRowFieldIndexState::Indexed(fields) => query
+            .compiled
+            .is_match(&regex_search_corpus(label, fields)),
+        SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => false,
+    }
+}
+
+fn regex_search_corpus(label: &str, fields: &[SearchablePassField]) -> String {
+    let mut corpus = String::from(label);
+    for field in fields {
+        corpus.push('\n');
+        corpus.push_str(&field.key);
+        corpus.push(':');
+        corpus.push(' ');
+        corpus.push_str(&field.value);
+    }
+    corpus
 }
 
 fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool {

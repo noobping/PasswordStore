@@ -2,6 +2,7 @@ mod build;
 mod controls;
 #[cfg(target_os = "linux")]
 mod git;
+mod host_access;
 #[cfg(target_os = "linux")]
 mod logs;
 pub mod navigation;

@@ -8,7 +8,7 @@ use self::index::{
     list_is_empty, row_field_index_state, SearchIndexBatch,
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
-use super::placeholder::{loading_placeholder, resolved_placeholder};
+use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
 use crate::password::file::SearchablePassField;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
@@ -79,18 +79,18 @@ impl SearchFilterController {
     pub(super) fn finish_reload(&self, list: &ListBox) {
         self.state.loading.set(false);
         self.start_indexing_if_needed(list);
-        self.update_placeholder(list);
         list.invalidate_filter();
+        self.update_placeholder(list);
     }
 
     pub(super) fn finish_reload_failure(&self, list: &ListBox) {
         self.state.loading.set(false);
-        self.update_placeholder(list);
         list.invalidate_filter();
+        self.update_placeholder(list);
     }
 
     pub(super) fn start_indexing_if_needed(&self, list: &ListBox) {
-        if !self.state.query.borrow().is_structured() {
+        if !self.state.query.borrow().requires_index() {
             return;
         }
 
@@ -120,14 +120,11 @@ impl SearchFilterController {
 
     pub(super) fn update_placeholder(&self, list: &ListBox) {
         if self.should_show_loading_placeholder(list) {
-            list.set_placeholder(Some(&loading_placeholder()));
+            show_loading_placeholder(list);
             return;
         }
 
-        list.set_placeholder(Some(&resolved_placeholder(
-            list_is_empty(list),
-            self.state.has_store_dirs.get(),
-        )));
+        show_resolved_placeholder(list, list_is_empty(list), self.state.has_store_dirs.get());
     }
 
     fn apply_index_batch(&self, list: &ListBox, batch: SearchIndexBatch) {
@@ -145,8 +142,8 @@ impl SearchFilterController {
             }
         }
 
-        self.update_placeholder(list);
         list.invalidate_filter();
+        self.update_placeholder(list);
     }
 
     fn handle_index_disconnect(&self, list: &ListBox, generation: u64) {
@@ -158,13 +155,13 @@ impl SearchFilterController {
             self.state.indexing_generation.set(None);
         }
 
-        self.update_placeholder(list);
         list.invalidate_filter();
+        self.update_placeholder(list);
     }
 
     fn should_show_loading_placeholder(&self, list: &ListBox) -> bool {
         self.state.loading.get()
-            || (self.state.query.borrow().is_structured()
+            || (self.state.query.borrow().requires_index()
                 && self.state.indexing_generation.get() == Some(self.state.generation.get())
                 && !list_is_empty(list))
     }

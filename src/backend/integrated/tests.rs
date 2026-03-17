@@ -968,6 +968,99 @@ fn integrated_backend_commits_without_signature_when_private_key_is_locked() {
 }
 
 #[test]
+fn unreadable_entry_rename_commits_without_a_signature() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Entry Key <entry-unreadable@example.com>");
+    let bytes_b = protected_cert_bytes("Missing Key <missing-unreadable@example.com>");
+    let imported_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let imported_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(Some(&imported_a.fingerprint))
+        .expect("select signing key");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
+
+    save_store_recipients(
+        &store_root,
+        &[imported_a.fingerprint.clone(), imported_b.fingerprint.clone()],
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        &store_root,
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+    remove_ripasso_private_key(&imported_b.fingerprint).expect("remove second key");
+
+    rename_password_entry(&store_root, "team/service", "team/renamed")
+        .expect("rename unreadable entry");
+
+    let subjects = env
+        .store_git_commit_subjects()
+        .expect("read commit subjects");
+    assert_eq!(subjects[0], "Rename password from team/service to team/renamed");
+    assert_eq!(
+        env.store_git_head_author().expect("read head author"),
+        "Keycord <git@keycord.invalid>"
+    );
+    assert!(!env
+        .store_head_commit_has_signature()
+        .expect("inspect commit headers"));
+}
+
+#[test]
+fn unreadable_entry_delete_commits_without_a_signature() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Entry Key <entry-delete@example.com>");
+    let bytes_b = protected_cert_bytes("Missing Key <missing-delete@example.com>");
+    let imported_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let imported_b = import_ripasso_private_key_bytes(&bytes_b, Some("hunter2"))
+        .expect("import second private key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(Some(&imported_a.fingerprint))
+        .expect("select signing key");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
+
+    save_store_recipients(
+        &store_root,
+        &[imported_a.fingerprint.clone(), imported_b.fingerprint.clone()],
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
+    )
+    .expect("save store recipients");
+    save_password_entry(
+        &store_root,
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+    remove_ripasso_private_key(&imported_b.fingerprint).expect("remove second key");
+
+    delete_password_entry(&store_root, "team/service").expect("delete unreadable entry");
+
+    let subjects = env
+        .store_git_commit_subjects()
+        .expect("read commit subjects");
+    assert_eq!(subjects[0], "Remove password for team/service");
+    assert_eq!(
+        env.store_git_head_author().expect("read head author"),
+        "Keycord <git@keycord.invalid>"
+    );
+    assert!(!env
+        .store_head_commit_has_signature()
+        .expect("inspect commit headers"));
+}
+
+#[test]
 fn integrated_backend_saves_entries_with_empty_password_lines() {
     let env = SystemBackendTestEnv::new();
     let (cert, bytes) = protected_cert("Empty Password <empty-password@example.com>");

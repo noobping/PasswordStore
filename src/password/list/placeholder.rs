@@ -1,9 +1,137 @@
-use adw::gtk::Spinner;
+use crate::support::object_data::{cloned_data, set_cloned_data};
+use adw::gtk::{ListBox, ScrolledWindow, Spinner, Stack};
+use adw::prelude::*;
 use adw::StatusPage;
 
 const APP_ID: &str = env!("APP_ID");
+const PLACEHOLDER_STATE_KEY: &str = "password-list-placeholder-state";
 
-pub(super) fn loading_placeholder() -> StatusPage {
+#[derive(Clone)]
+pub(super) struct PasswordListPlaceholderState {
+    stack: Stack,
+    status: StatusPage,
+    spinner: Spinner,
+    list_view: ScrolledWindow,
+}
+
+impl PasswordListPlaceholderState {
+    fn show_loading(&self, list: &ListBox) {
+        self.sync(
+            list,
+            PlaceholderPresentation {
+                icon_name: APP_ID,
+                title: "",
+                description: None,
+                spinner: true,
+            },
+        );
+    }
+
+    fn show_resolved(&self, list: &ListBox, empty: bool, has_store_dirs: bool) {
+        let presentation = if empty {
+            if has_store_dirs {
+                PlaceholderPresentation {
+                    icon_name: APP_ID,
+                    title: "No items yet",
+                    description: Some("Create a new item to get started."),
+                    spinner: false,
+                }
+            } else {
+                PlaceholderPresentation {
+                    icon_name: APP_ID,
+                    title: "No folders added",
+                    description: Some("Open Preferences to add a password store folder."),
+                    spinner: false,
+                }
+            }
+        } else {
+            PlaceholderPresentation {
+                icon_name: "edit-find-symbolic",
+                title: "No matches",
+                description: Some("Try another query."),
+                spinner: false,
+            }
+        };
+        self.sync(list, presentation);
+    }
+
+    fn sync(&self, list: &ListBox, presentation: PlaceholderPresentation) {
+        if has_visible_rows(list) {
+            self.stack.set_visible_child(&self.list_view);
+            return;
+        }
+
+        self.status.set_icon_name(Some(presentation.icon_name));
+        self.status.set_title(presentation.title);
+        self.status.set_description(presentation.description);
+        self.spinner.set_visible(presentation.spinner);
+        self.spinner.set_spinning(presentation.spinner);
+        self.stack.set_visible_child(&self.status);
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PlaceholderPresentation {
+    icon_name: &'static str,
+    title: &'static str,
+    description: Option<&'static str>,
+    spinner: bool,
+}
+
+pub(super) fn register_placeholder_state(
+    list: &ListBox,
+    stack: &Stack,
+    status: &StatusPage,
+    spinner: &Spinner,
+    list_view: &ScrolledWindow,
+) {
+    set_cloned_data(
+        list,
+        PLACEHOLDER_STATE_KEY,
+        PasswordListPlaceholderState {
+            stack: stack.clone(),
+            status: status.clone(),
+            spinner: spinner.clone(),
+            list_view: list_view.clone(),
+        },
+    );
+}
+
+pub(super) fn show_loading_placeholder(list: &ListBox) {
+    if let Some(state) = placeholder_state_for_list(list) {
+        state.show_loading(list);
+        return;
+    }
+
+    list.set_placeholder(Some(&loading_placeholder()));
+}
+
+pub(super) fn show_resolved_placeholder(list: &ListBox, empty: bool, has_store_dirs: bool) {
+    if let Some(state) = placeholder_state_for_list(list) {
+        state.show_resolved(list, empty, has_store_dirs);
+        return;
+    }
+
+    list.set_placeholder(Some(&resolved_placeholder(empty, has_store_dirs)));
+}
+
+fn placeholder_state_for_list(list: &ListBox) -> Option<PasswordListPlaceholderState> {
+    cloned_data(list, PLACEHOLDER_STATE_KEY)
+}
+
+fn has_visible_rows(list: &ListBox) -> bool {
+    let mut index = 0;
+    while let Some(row) = list.row_at_index(index) {
+        if row.is_visible() {
+            return true;
+        }
+        index += 1;
+    }
+
+    false
+}
+
+fn loading_placeholder() -> StatusPage {
     let spinner = Spinner::new();
     spinner.start();
 
@@ -13,7 +141,7 @@ pub(super) fn loading_placeholder() -> StatusPage {
         .build()
 }
 
-pub(super) fn resolved_placeholder(empty: bool, has_store_dirs: bool) -> StatusPage {
+fn resolved_placeholder(empty: bool, has_store_dirs: bool) -> StatusPage {
     if empty {
         build_empty_password_list_placeholder(APP_ID, has_store_dirs)
     } else {

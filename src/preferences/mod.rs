@@ -277,6 +277,20 @@ impl Preferences {
         let path = PathBuf::from(Self::expand_path(store));
         path.exists() && path.is_dir()
     }
+
+    pub fn sync_private_keys_with_host(&self) -> bool {
+        self.read_preference(
+            |settings| settings.boolean("sync-private-keys-with-host"),
+            |cfg| cfg.sync_private_keys_with_host.unwrap_or(false),
+        )
+    }
+
+    pub fn set_sync_private_keys_with_host(&self, enabled: bool) -> Result<(), BoolError> {
+        self.write_preference(
+            |settings| settings.set_boolean("sync-private-keys-with-host", enabled),
+            |cfg| cfg.sync_private_keys_with_host = Some(enabled),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -387,5 +401,10 @@ mod tests {
             UsernameFallbackMode::from_stored("filename"),
             UsernameFallbackMode::Filename
         );
+    }
+
+    #[test]
+    fn private_key_sync_defaults_to_disabled() {
+        assert!(!Preferences::new().sync_private_keys_with_host());
     }
 }

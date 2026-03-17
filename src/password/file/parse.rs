@@ -26,6 +26,11 @@ pub fn structured_otp_line(
     })
 }
 
+pub fn pass_file_has_otp(contents: &str) -> bool {
+    let (_, structured_lines) = parse_structured_pass_lines(contents);
+    structured_otp_line(&structured_lines).is_some()
+}
+
 pub fn canonical_search_field_key(key: &str) -> Option<String> {
     let key = key.trim();
     if key.is_empty() {
@@ -138,7 +143,7 @@ fn trim_leading_spacing(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{searchable_pass_fields, SearchablePassField};
+    use super::{pass_file_has_otp, searchable_pass_fields, SearchablePassField};
 
     fn field(key: &str, value: &str) -> SearchablePassField {
         SearchablePassField {
@@ -177,6 +182,15 @@ mod tests {
             searchable_pass_fields("secret\notpauth://totp/Example\notpauth: otpauth://totp/Alt"),
             Vec::<SearchablePassField>::new()
         );
+    }
+
+    #[test]
+    fn pass_file_otp_detection_tracks_structured_or_bare_urls() {
+        assert!(pass_file_has_otp("secret\notpauth://totp/Example?secret=ABC"));
+        assert!(pass_file_has_otp(
+            "secret\notpauth: otpauth://totp/Example?secret=ABC"
+        ));
+        assert!(!pass_file_has_otp("secret\nusername: alice\nurl: https://example.com"));
     }
 
     #[test]

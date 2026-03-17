@@ -1,6 +1,4 @@
-use adw::gtk::{
-    Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, Popover, Spinner,
-};
+use adw::gtk::{Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{ActionRow, NavigationPage, NavigationView};
 use std::rc::Rc;
@@ -8,14 +6,6 @@ use std::rc::Rc;
 pub fn clear_list_box(list: &ListBox) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
-    }
-}
-
-pub fn toggle_popover(popover: &Popover) {
-    if popover.is_visible() {
-        popover.popdown();
-    } else {
-        popover.popup();
     }
 }
 

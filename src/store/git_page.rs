@@ -195,10 +195,8 @@ fn sync_subtitle(status: &StoreGitRepositoryStatus) -> String {
 
 fn store_git_row_subtitle(store: &str) -> String {
     match store_git_repository_status(store) {
-        Ok(status) if !status.has_repository => {
-            "No Git repository yet. Add a remote to initialize one.".to_string()
-        }
-        Ok(status) => remote_count_subtitle(&status),
+        Ok(status) if sync_allowed(&status) => remote_count_subtitle(&status),
+        Ok(status) => sync_subtitle(&status),
         Err(_) => "Couldn't inspect Git remotes.".to_string(),
     }
 }
@@ -454,6 +452,27 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                 &sync_subtitle(&status),
                 "view-refresh-symbolic",
                 move || {
+                    let current_status = match store_git_repository_status(&store_for_sync) {
+                        Ok(status) => status,
+                        Err(err) => {
+                            log_error(format!(
+                                "Failed to inspect Git state before syncing '{store_for_sync}': {err}"
+                            ));
+                            sync_state
+                                .overlay
+                                .add_toast(Toast::new("Couldn't inspect Git remotes."));
+                            rebuild_store_git_page(&sync_state);
+                            return;
+                        }
+                    };
+                    if !sync_allowed(&current_status) {
+                        sync_state
+                            .overlay
+                            .add_toast(Toast::new(&sync_subtitle(&current_status)));
+                        rebuild_store_git_page(&sync_state);
+                        return;
+                    }
+
                     begin_git_operation(&sync_state, "Syncing store");
 
                     let state_for_result = sync_state.clone();

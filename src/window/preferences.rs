@@ -17,7 +17,7 @@ use adw::gtk::{CheckButton, ListBox, TextView};
 use adw::prelude::*;
 use adw::{ActionRow, AlertDialog, ComboRow, EntryRow};
 use adw::{Toast, ToastOverlay};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 fn sync_backend_preferences_rows(
@@ -117,9 +117,13 @@ fn present_private_key_sync_confirmation(
     dialog.add_responses(&[("cancel", "Cancel"), ("sync", "Turn On")]);
     dialog.set_close_response("cancel");
     dialog.set_default_response(Some("sync"));
-    dialog.choose(window, None::<&adw::gio::Cancellable>, move |response| {
-        on_response(response == "sync");
+    let on_response = Rc::new(RefCell::new(Some(on_response)));
+    dialog.connect_response(None, move |_, response| {
+        if let Some(on_response) = on_response.borrow_mut().take() {
+            on_response(response == "sync");
+        }
     });
+    dialog.present(Some(window));
 }
 
 pub fn connect_pass_command_row(

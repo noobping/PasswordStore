@@ -11,6 +11,7 @@ fn email_regex() -> &'static Regex {
     })
 }
 
+#[cfg(test)]
 pub fn email_field_value(contents: &str) -> Option<String> {
     contents.lines().find_map(|line| {
         let (key, value) = line.split_once(':')?;

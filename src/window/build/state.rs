@@ -5,6 +5,7 @@ use crate::password::generation::PasswordGenerationControls;
 use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
+use crate::store::git_page::StoreGitPageState;
 use crate::store::management::{
     StoreRecipientsPageState, StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
@@ -70,12 +71,39 @@ pub(super) fn password_page_state(
     }
 }
 
-fn build_store_recipients_platform_state(widgets: &WindowWidgets) -> StoreRecipientsPlatformState {
+pub(super) fn store_git_page_state(widgets: &WindowWidgets) -> StoreGitPageState {
+    StoreGitPageState {
+        window: widgets.window.clone(),
+        nav: widgets.navigation_view.clone(),
+        page: widgets.store_git_page.clone(),
+        list: widgets.store_git_list.clone(),
+        overlay: widgets.toast_overlay.clone(),
+        back: widgets.back_button.clone(),
+        add: widgets.add_button.clone(),
+        find: widgets.find_button.clone(),
+        git: widgets.git_button.clone(),
+        store: widgets.store_button.clone(),
+        save: widgets.save_button.clone(),
+        raw: widgets.open_raw_button.clone(),
+        win: widgets.window_title.clone(),
+        busy_page: widgets.git_busy_page.clone(),
+        busy_status: widgets.git_busy_status.clone(),
+        current_store: Rc::new(RefCell::new(None)),
+    }
+}
+
+fn build_store_recipients_platform_state(
+    widgets: &WindowWidgets,
+    store_git_page: &StoreGitPageState,
+) -> StoreRecipientsPlatformState {
     StoreRecipientsPlatformState {
         overlay: widgets.toast_overlay.clone(),
         host_gpg_warning_group: widgets.store_recipients_host_gpg_warning_group.clone(),
         add_group: widgets.store_recipients_add_group.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
+        git_group: widgets.store_recipients_git_group.clone(),
+        git_list: widgets.store_recipients_git_list.clone(),
+        store_git_page: store_git_page.clone(),
         import_clipboard_row: widgets.store_recipients_import_clipboard_row.clone(),
         import_file_row: widgets.store_recipients_import_file_row.clone(),
         generate_key_row: widgets.store_recipients_generate_key_row.clone(),
@@ -133,8 +161,14 @@ fn build_store_recipients_page_state(
     }
 }
 
-pub(super) fn store_recipients_page_state(widgets: &WindowWidgets) -> StoreRecipientsPageState {
-    build_store_recipients_page_state(widgets, build_store_recipients_platform_state(widgets))
+pub(super) fn store_recipients_page_state(
+    widgets: &WindowWidgets,
+    store_git_page: &StoreGitPageState,
+) -> StoreRecipientsPageState {
+    build_store_recipients_page_state(
+        widgets,
+        build_store_recipients_platform_state(widgets, store_git_page),
+    )
 }
 
 pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigationState {
@@ -208,9 +242,16 @@ pub(super) fn build_git_action_state(
     widgets: &WindowWidgets,
     navigation: &WindowNavigationState,
     recipients_page: &StoreRecipientsPageState,
+    store_git_page: &StoreGitPageState,
     visibility: &ListVisibilityState,
 ) -> GitActionState {
-    GitActionState::new(widgets, navigation, recipients_page, visibility)
+    GitActionState::new(
+        widgets,
+        navigation,
+        recipients_page,
+        store_git_page,
+        visibility,
+    )
 }
 
 fn build_back_action_platform_state(git_action_state: &GitActionState) -> PlatformBackActionState {
@@ -222,6 +263,7 @@ fn build_back_action_platform_state(git_action_state: &GitActionState) -> Platfo
 pub(super) fn back_action_state(
     password_page: &PasswordPageState,
     recipients_page: &StoreRecipientsPageState,
+    store_git_page: &StoreGitPageState,
     navigation: &WindowNavigationState,
     visibility: &ListVisibilityState,
     git_action_state: &GitActionState,
@@ -231,6 +273,7 @@ pub(super) fn back_action_state(
     BackActionState {
         password_page: password_page.clone(),
         recipients_page: recipients_page.clone(),
+        store_git_page: store_git_page.clone(),
         navigation: navigation.clone(),
         visibility: visibility.clone(),
         platform,
@@ -253,12 +296,14 @@ pub(super) fn list_visibility_action_state(
 pub(super) fn context_undo_action_state(
     password_page: &PasswordPageState,
     recipients_page: &StoreRecipientsPageState,
+    store_git_page: &StoreGitPageState,
     navigation: &WindowNavigationState,
     visibility: &ListVisibilityState,
 ) -> ContextUndoActionState {
     ContextUndoActionState {
         password_page: password_page.clone(),
         recipients_page: recipients_page.clone(),
+        store_git_page: store_git_page.clone(),
         navigation: navigation.clone(),
         visibility: visibility.clone(),
     }

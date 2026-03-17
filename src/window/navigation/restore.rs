@@ -6,6 +6,7 @@ use super::state::{HasWindowChrome, WindowNavigationState};
 use crate::password::file::sync_username_row;
 use crate::password::opened::get_opened_pass_file;
 use crate::preferences::Preferences;
+use crate::store::git_page::{sync_store_git_page_header, StoreGitPageState};
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use adw::prelude::*;
@@ -21,6 +22,7 @@ enum RestoredPageKind {
     ToolValueValues,
     ToolWeakPasswords,
     Recipients,
+    StoreGit,
     Log,
     Other,
 }
@@ -45,6 +47,7 @@ const fn restored_page_kind(state: RestoredPageState) -> RestoredPageKind {
 pub fn restore_window_for_current_page(
     state: &WindowNavigationState,
     recipients_page: &StoreRecipientsPageState,
+    store_git_page: &StoreGitPageState,
 ) -> bool {
     let chrome = state.window_chrome();
     if visible_store_import_page(state) {
@@ -69,7 +72,7 @@ pub fn restore_window_for_current_page(
 
     let page_kind = restored_page_kind(RestoredPageState {
         at_root: navigation_stack_is_root(&state.nav),
-        current_page: visible_secondary_page_kind(state, recipients_page),
+        current_page: visible_secondary_page_kind(state, recipients_page, store_git_page),
     });
 
     if page_kind == RestoredPageKind::Root {
@@ -125,6 +128,8 @@ pub fn restore_window_for_current_page(
     } else if page_kind == RestoredPageKind::Recipients {
         set_save_button_for_password(&state.save);
         sync_store_recipients_page_header(recipients_page);
+    } else if page_kind == RestoredPageKind::StoreGit {
+        sync_store_git_page_header(store_git_page);
     } else if page_kind == RestoredPageKind::Log {
         show_secondary_page_chrome(&chrome, "Logs", "Details", false);
     }
@@ -135,6 +140,7 @@ pub fn restore_window_for_current_page(
 fn visible_secondary_page_kind(
     state: &WindowNavigationState,
     recipients_page: &StoreRecipientsPageState,
+    store_git_page: &StoreGitPageState,
 ) -> Option<RestoredPageKind> {
     if visible_navigation_page_is(&state.nav, &state.text_page) {
         return Some(RestoredPageKind::Text);
@@ -159,6 +165,9 @@ fn visible_secondary_page_kind(
     }
     if visible_navigation_page_is(&state.nav, &recipients_page.page) {
         return Some(RestoredPageKind::Recipients);
+    }
+    if visible_navigation_page_is(&state.nav, &store_git_page.page) {
+        return Some(RestoredPageKind::StoreGit);
     }
     if visible_log_page(state) {
         return Some(RestoredPageKind::Log);
@@ -257,6 +266,13 @@ mod tests {
                 current_page: Some(RestoredPageKind::Recipients),
             }),
             RestoredPageKind::Recipients
+        );
+        assert_eq!(
+            restored_page_kind(RestoredPageState {
+                at_root: false,
+                current_page: Some(RestoredPageKind::StoreGit),
+            }),
+            RestoredPageKind::StoreGit
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {

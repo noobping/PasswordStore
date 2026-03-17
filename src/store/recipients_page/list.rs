@@ -12,6 +12,7 @@ use crate::clipboard::set_clipboard_text;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
+use crate::store::git_page::rebuild_store_recipients_git_row;
 use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
     append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
@@ -403,6 +404,7 @@ fn load_available_private_keys(
 
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
+    rebuild_store_recipients_git_row(state);
     sync_host_gpg_warning_group(state, false);
     let _ = sync_private_keys_from_host_if_enabled(state);
 

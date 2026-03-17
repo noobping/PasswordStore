@@ -1,5 +1,6 @@
 use super::recipients::{read_store_gpg_recipients, read_store_private_key_requirement};
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::store::git_page::StoreGitPageState;
 use crate::support::actions::register_window_action;
 use crate::support::ui::reveal_navigation_page;
 use crate::window::navigation::{
@@ -108,6 +109,9 @@ pub struct StoreRecipientsPlatformState {
     pub host_gpg_warning_group: PreferencesGroup,
     pub add_group: PreferencesGroup,
     pub create_group: PreferencesGroup,
+    pub git_group: PreferencesGroup,
+    pub git_list: ListBox,
+    pub store_git_page: StoreGitPageState,
     pub import_clipboard_row: ActionRow,
     pub import_file_row: ActionRow,
     pub generate_key_row: ActionRow,

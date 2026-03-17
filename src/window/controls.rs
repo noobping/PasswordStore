@@ -9,6 +9,7 @@ use crate::password::undo::{
     execute_undo_action, pop_undo_action, push_undo_action, unavailable_undo_message,
     undo_action_restored_entry,
 };
+use crate::store::git_page::StoreGitPageState;
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
@@ -72,6 +73,7 @@ const fn toggled_list_visibility(show_hidden: bool, show_duplicates: bool) -> (b
 pub struct BackActionState {
     pub password_page: PasswordPageState,
     pub recipients_page: StoreRecipientsPageState,
+    pub store_git_page: StoreGitPageState,
     pub navigation: WindowNavigationState,
     pub visibility: ListVisibilityState,
     pub platform: PlatformBackActionState,
@@ -89,6 +91,7 @@ pub struct ListVisibilityActionState {
 pub struct ContextUndoActionState {
     pub password_page: PasswordPageState,
     pub recipients_page: StoreRecipientsPageState,
+    pub store_git_page: StoreGitPageState,
     pub navigation: WindowNavigationState,
     pub visibility: ListVisibilityState,
 }
@@ -312,6 +315,7 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
                         let _ = restore_window_for_current_page(
                             &state_for_result.navigation,
                             &state_for_result.recipients_page,
+                            &state_for_result.store_git_page,
                         );
                     }
                     overlay.add_toast(adw::Toast::new("Undone."));
@@ -393,7 +397,11 @@ pub fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionS
         }
 
         state.navigation.nav.pop();
-        if restore_window_for_current_page(&state.navigation, &state.recipients_page) {
+        if restore_window_for_current_page(
+            &state.navigation,
+            &state.recipients_page,
+            &state.store_git_page,
+        ) {
             show_password_list_page(
                 &state.password_page,
                 state.visibility.show_hidden(),

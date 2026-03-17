@@ -9,9 +9,9 @@ use crate::support::git::{
 };
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::{
-    append_action_row_with_button, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
-    navigation_stack_contains_page, push_navigation_page_if_needed, reveal_navigation_page,
-    visible_navigation_page_is,
+    append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
+    flat_icon_button_with_tooltip, navigation_stack_contains_page, push_navigation_page_if_needed,
+    reveal_navigation_page, visible_navigation_page_is,
 };
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
@@ -30,7 +30,9 @@ pub struct StoreGitPageState {
     pub window: ApplicationWindow,
     pub nav: NavigationView,
     pub page: NavigationPage,
-    pub list: ListBox,
+    pub remotes_list: ListBox,
+    pub actions_list: ListBox,
+    pub status_list: ListBox,
     pub overlay: ToastOverlay,
     pub back: Button,
     pub add: Button,
@@ -327,7 +329,7 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove remote");
     row.add_suffix(&delete_button);
 
-    state.list.append(&row);
+    state.remotes_list.append(&row);
 
     let store_for_edit = store.to_string();
     let state_for_edit = state.clone();
@@ -385,47 +387,38 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
 }
 
 pub fn rebuild_store_git_page(state: &StoreGitPageState) {
-    clear_list_box(&state.list);
+    clear_list_box(&state.remotes_list);
+    clear_list_box(&state.actions_list);
+    clear_list_box(&state.status_list);
 
     let Some(store) = state.current_store() else {
-        let row = ActionRow::builder()
-            .title("No password store")
-            .subtitle("Open a store first.")
-            .build();
-        row.set_activatable(false);
-        state.list.append(&row);
+        append_info_row(
+            &state.remotes_list,
+            "No password store",
+            "Open a store first.",
+        );
         return;
     };
 
     match store_git_repository_status(&store) {
         Ok(status) => {
-            append_status_row(
-                &state.list,
-                "Repository",
-                &repository_subtitle(&status),
-                "git-symbolic",
-            );
-            append_status_row(
-                &state.list,
-                "Branch",
-                &branch_subtitle(&status),
-                "object-select-symbolic",
-            );
-            append_status_row(
-                &state.list,
-                "Remotes",
-                &remote_count_subtitle(&status),
-                "go-next-symbolic",
-            );
-
-            for remote in &status.remotes {
-                append_remote_row(state, &store, &remote.name, &remote.url);
+            if status.remotes.is_empty() {
+                append_status_row(
+                    &state.remotes_list,
+                    "Repository",
+                    &repository_subtitle(&status),
+                    "git-symbolic",
+                );
+            } else {
+                for remote in &status.remotes {
+                    append_remote_row(state, &store, &remote.name, &remote.url);
+                }
             }
 
             let add_state = state.clone();
             let store_for_add = store.clone();
             append_action_row_with_button(
-                &state.list,
+                &state.actions_list,
                 "Add remote",
                 "Add a Git remote for this store.",
                 "list-add-symbolic",
@@ -456,7 +449,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
             let sync_state = state.clone();
             let store_for_sync = store.clone();
             let sync_row = append_action_row_with_button(
-                &state.list,
+                &state.status_list,
                 "Sync now",
                 &sync_subtitle(&status),
                 "view-refresh-symbolic",
@@ -501,15 +494,21 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
             );
             sync_row.set_sensitive(sync_allowed(&status));
             sync_row.set_activatable(sync_allowed(&status));
+
+            append_status_row(
+                &state.status_list,
+                "Branch",
+                &branch_subtitle(&status),
+                "object-select-symbolic",
+            );
         }
         Err(err) => {
             log_error(format!("Failed to inspect Git state for '{store}': {err}"));
-            let row = ActionRow::builder()
-                .title("Couldn't inspect Git state")
-                .subtitle("Check the logs for details.")
-                .build();
-            row.set_activatable(false);
-            state.list.append(&row);
+            append_info_row(
+                &state.remotes_list,
+                "Couldn't inspect Git state",
+                "Check the logs for details.",
+            );
         }
     }
 }

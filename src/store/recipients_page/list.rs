@@ -51,6 +51,30 @@ enum AvailablePrivateKey {
     HostOnly(HostGpgPrivateKeySummary),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PrivateKeyVerificationWarning {
+    HostInspectionFailed,
+    SyncDisabled,
+}
+
+impl PrivateKeyVerificationWarning {
+    const fn title(self) -> &'static str {
+        match self {
+            Self::HostInspectionFailed => "Couldn't inspect host GPG keys",
+            Self::SyncDisabled => "Private keys can't be verified",
+        }
+    }
+
+    const fn subtitle(self) -> &'static str {
+        match self {
+            Self::HostInspectionFailed => "Valid host keys may appear unavailable here.",
+            Self::SyncDisabled => {
+                "Valid host keys may appear unavailable here while private-key sync is off."
+            }
+        }
+    }
+}
+
 impl AvailablePrivateKey {
     fn fingerprint(&self) -> &str {
         match self {
@@ -308,8 +332,24 @@ fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: 
     ));
 }
 
-fn sync_host_gpg_warning_group(state: &StoreRecipientsPageState, visible: bool) {
-    state.platform.host_gpg_warning_group.set_visible(visible);
+fn sync_private_key_verification_warning(
+    state: &StoreRecipientsPageState,
+    warning: Option<PrivateKeyVerificationWarning>,
+) {
+    if let Some(warning) = warning {
+        state
+            .platform
+            .host_gpg_warning_row
+            .set_title(warning.title());
+        state
+            .platform
+            .host_gpg_warning_row
+            .set_subtitle(warning.subtitle());
+    }
+    state
+        .platform
+        .host_gpg_warning_group
+        .set_visible(warning.is_some());
 }
 
 pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPageState) {
@@ -362,11 +402,18 @@ fn merge_available_private_keys(
     keys
 }
 
-fn should_show_host_gpg_warning(
+fn private_key_verification_warning(
     uses_host_backend: bool,
-    host_keys: &Result<Vec<HostGpgPrivateKeySummary>, String>,
-) -> bool {
-    uses_host_backend && host_keys.is_err()
+    sync_enabled: bool,
+    host_key_inspection_failed: bool,
+) -> Option<PrivateKeyVerificationWarning> {
+    if uses_host_backend && host_key_inspection_failed {
+        Some(PrivateKeyVerificationWarning::HostInspectionFailed)
+    } else if !uses_host_backend && !sync_enabled {
+        Some(PrivateKeyVerificationWarning::SyncDisabled)
+    } else {
+        None
+    }
 }
 
 fn load_available_private_keys(
@@ -384,7 +431,6 @@ fn load_available_private_keys(
     }
 
     let host_keys = list_host_gpg_private_keys();
-    let show_warning = should_show_host_gpg_warning(uses_host_backend, &host_keys);
     match host_keys {
         Ok(host_keys) => (merge_available_private_keys(managed_keys, host_keys), false),
         Err(err) => {
@@ -396,7 +442,7 @@ fn load_available_private_keys(
                     .into_iter()
                     .map(AvailablePrivateKey::Managed)
                     .collect(),
-                show_warning,
+                true,
             )
         }
     }
@@ -405,7 +451,7 @@ fn load_available_private_keys(
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
     rebuild_store_recipients_git_row(state);
-    sync_host_gpg_warning_group(state, false);
+    sync_private_key_verification_warning(state, None);
     let _ = sync_private_keys_from_host_if_enabled(state);
 
     let managed_keys = match list_ripasso_private_keys() {
@@ -423,15 +469,23 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     };
 
     let uses_host_backend = Preferences::new().uses_host_command_backend();
+    let sync_enabled = Preferences::new().sync_private_keys_with_host();
     let managed_key_count = managed_keys.len();
-    let (keys, show_host_gpg_warning) =
+    let (keys, host_key_inspection_failed) =
         load_available_private_keys(managed_keys, uses_host_backend);
     let current_recipients = state.recipients.borrow().clone();
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
     let selected_available_keys = selected_available_private_key_count(&current_recipients, &keys);
     let selected_usable_keys = selected_usable_private_key_count(&current_recipients, &keys);
     sync_private_key_requirement_row(state, managed_key_count > 0);
-    sync_host_gpg_warning_group(state, show_host_gpg_warning);
+    sync_private_key_verification_warning(
+        state,
+        private_key_verification_warning(
+            uses_host_backend,
+            sync_enabled,
+            host_key_inspection_failed,
+        ),
+    );
 
     if keys.is_empty() {
         if unresolved_recipients.is_empty() {
@@ -702,9 +756,9 @@ fn connect_managed_private_key_row_actions(
 mod tests {
     use super::{
         merge_available_private_keys, private_key_delete_block_message,
-        private_key_toggle_block_message, selected_available_private_key_count,
-        should_show_host_gpg_warning, unresolved_private_key_recipients, AvailablePrivateKey,
-        HostGpgPrivateKeySummary,
+        private_key_toggle_block_message, private_key_verification_warning,
+        selected_available_private_key_count, unresolved_private_key_recipients,
+        AvailablePrivateKey, HostGpgPrivateKeySummary, PrivateKeyVerificationWarning,
     };
     use crate::backend::ManagedRipassoPrivateKey;
 
@@ -757,19 +811,17 @@ mod tests {
     }
 
     #[test]
-    fn host_gpg_warning_only_shows_for_host_backend_failures() {
-        assert!(should_show_host_gpg_warning(
-            true,
-            &Err("gpg unavailable".to_string())
-        ));
-        assert!(!should_show_host_gpg_warning(
-            false,
-            &Err("gpg unavailable".to_string())
-        ));
-        assert!(!should_show_host_gpg_warning(
-            true,
-            &Ok(Vec::<HostGpgPrivateKeySummary>::new())
-        ));
+    fn private_key_verification_warning_matches_backend_sync_and_inspection_state() {
+        assert_eq!(
+            private_key_verification_warning(true, false, true),
+            Some(PrivateKeyVerificationWarning::HostInspectionFailed)
+        );
+        assert_eq!(
+            private_key_verification_warning(false, false, false),
+            Some(PrivateKeyVerificationWarning::SyncDisabled)
+        );
+        assert_eq!(private_key_verification_warning(true, false, false), None);
+        assert_eq!(private_key_verification_warning(false, true, false), None);
     }
 
     #[test]

@@ -1172,7 +1172,31 @@
                             <child>
                               <object class="AdwPreferencesGroup">
                                 <child>
-                                  <object class="GtkListBox" id="store_git_list">
+                                  <object class="GtkListBox" id="store_git_remotes_list">
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="GtkListBox" id="store_git_actions_list">
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <child>
+                                  <object class="GtkListBox" id="store_git_status_list">
                                     <property name="selection-mode">none</property>
                                     <style>
                                       <class name="boxed-list" />

@@ -9,16 +9,17 @@ use crate::support::git::{
 };
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::{
-    append_action_row_with_button, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
-    navigation_stack_contains_page, push_navigation_page_if_needed, reveal_navigation_page,
-    visible_navigation_page_is,
+    append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
+    flat_icon_button_with_tooltip, navigation_stack_contains_page, push_navigation_page_if_needed,
+    reveal_navigation_page, visible_navigation_page_is,
 };
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
+use adw::glib::object::IsA;
 use adw::gtk::{Box as GtkBox, Button, ListBox, Orientation};
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
+    ActionRow, ApplicationWindow, Dialog, EntryRow, HeaderBar, NavigationPage, NavigationView,
     PreferencesGroup, PreferencesPage, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use std::cell::RefCell;
@@ -29,7 +30,9 @@ pub struct StoreGitPageState {
     pub window: ApplicationWindow,
     pub nav: NavigationView,
     pub page: NavigationPage,
-    pub list: ListBox,
+    pub remotes_list: ListBox,
+    pub actions_list: ListBox,
+    pub status_list: ListBox,
     pub overlay: ToastOverlay,
     pub back: Button,
     pub add: Button,
@@ -192,21 +195,39 @@ fn sync_subtitle(status: &StoreGitRepositoryStatus) -> String {
 
 fn store_git_row_subtitle(store: &str) -> String {
     match store_git_repository_status(store) {
-        Ok(status) if !status.has_repository => {
-            "No Git repository yet. Add a remote to initialize one.".to_string()
-        }
-        Ok(status) => remote_count_subtitle(&status),
+        Ok(status) if sync_allowed(&status) => remote_count_subtitle(&status),
+        Ok(status) => sync_subtitle(&status),
         Err(_) => "Couldn't inspect Git remotes.".to_string(),
     }
+}
+
+fn dialog_content_shell(
+    title: &str,
+    subtitle: Option<&str>,
+    child: &impl IsA<adw::gtk::Widget>,
+) -> GtkBox {
+    let window_title = WindowTitle::builder().title(title).build();
+    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
+        window_title.set_subtitle(subtitle);
+    }
+
+    let header = HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+
+    let shell = GtkBox::new(Orientation::Vertical, 0);
+    shell.append(&header);
+    shell.append(child);
+    shell
 }
 
 fn present_remote_dialog(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    store: &str,
     title: &str,
     initial_name: &str,
     initial_url: &str,
-    submit_label: &str,
+    _submit_label: &str,
     on_submit: impl Fn(String, String) -> Result<(), String> + 'static,
 ) {
     let name_row = EntryRow::new();
@@ -215,9 +236,7 @@ fn present_remote_dialog(
     let url_row = EntryRow::new();
     url_row.set_title("Remote URL");
     url_row.set_text(initial_url);
-
-    let save_button = Button::with_label(submit_label);
-    save_button.add_css_class("suggested-action");
+    url_row.set_show_apply_button(true);
 
     let group = PreferencesGroup::builder().build();
     group.add(&name_row);
@@ -226,31 +245,17 @@ fn present_remote_dialog(
     let page = PreferencesPage::new();
     page.add(&group);
 
-    let button_box = GtkBox::builder()
-        .orientation(Orientation::Horizontal)
-        .halign(adw::gtk::Align::End)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    button_box.append(&save_button);
-
-    let content = GtkBox::new(Orientation::Vertical, 0);
-    content.append(&page);
-    content.append(&button_box);
-
     let dialog = Dialog::builder()
         .title(title)
         .content_width(460)
-        .child(&content)
+        .child(&dialog_content_shell(title, Some(store), &page))
         .build();
 
     let dialog_for_submit = dialog.clone();
     let overlay_for_submit = overlay.clone();
-    save_button.connect_clicked(move |_| {
+    url_row.connect_apply(move |row| {
         let name = name_row.text().trim().to_string();
-        let url = url_row.text().trim().to_string();
+        let url = row.text().trim().to_string();
         if name.is_empty() {
             overlay_for_submit.add_toast(Toast::new("Enter a remote name."));
             return;
@@ -322,7 +327,7 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove remote");
     row.add_suffix(&delete_button);
 
-    state.list.append(&row);
+    state.remotes_list.append(&row);
 
     let store_for_edit = store.to_string();
     let state_for_edit = state.clone();
@@ -335,6 +340,7 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
         present_remote_dialog(
             &state_for_edit.window,
             &state_for_edit.overlay,
+            &store_for_edit,
             "Edit remote",
             &current_name,
             &current_url,
@@ -379,47 +385,38 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
 }
 
 pub fn rebuild_store_git_page(state: &StoreGitPageState) {
-    clear_list_box(&state.list);
+    clear_list_box(&state.remotes_list);
+    clear_list_box(&state.actions_list);
+    clear_list_box(&state.status_list);
 
     let Some(store) = state.current_store() else {
-        let row = ActionRow::builder()
-            .title("No password store")
-            .subtitle("Open a store first.")
-            .build();
-        row.set_activatable(false);
-        state.list.append(&row);
+        append_info_row(
+            &state.remotes_list,
+            "No password store",
+            "Open a store first.",
+        );
         return;
     };
 
     match store_git_repository_status(&store) {
         Ok(status) => {
-            append_status_row(
-                &state.list,
-                "Repository",
-                &repository_subtitle(&status),
-                "git-symbolic",
-            );
-            append_status_row(
-                &state.list,
-                "Branch",
-                &branch_subtitle(&status),
-                "object-select-symbolic",
-            );
-            append_status_row(
-                &state.list,
-                "Remotes",
-                &remote_count_subtitle(&status),
-                "go-next-symbolic",
-            );
-
-            for remote in &status.remotes {
-                append_remote_row(state, &store, &remote.name, &remote.url);
+            if status.remotes.is_empty() {
+                append_status_row(
+                    &state.remotes_list,
+                    "Repository",
+                    &repository_subtitle(&status),
+                    "git-symbolic",
+                );
+            } else {
+                for remote in &status.remotes {
+                    append_remote_row(state, &store, &remote.name, &remote.url);
+                }
             }
 
             let add_state = state.clone();
             let store_for_add = store.clone();
             append_action_row_with_button(
-                &state.list,
+                &state.actions_list,
                 "Add remote",
                 "Add a Git remote for this store.",
                 "list-add-symbolic",
@@ -429,6 +426,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     present_remote_dialog(
                         &add_state.window,
                         &add_state.overlay,
+                        &store_for_add,
                         "Add remote",
                         "",
                         "",
@@ -449,11 +447,32 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
             let sync_state = state.clone();
             let store_for_sync = store.clone();
             let sync_row = append_action_row_with_button(
-                &state.list,
+                &state.status_list,
                 "Sync now",
                 &sync_subtitle(&status),
                 "view-refresh-symbolic",
                 move || {
+                    let current_status = match store_git_repository_status(&store_for_sync) {
+                        Ok(status) => status,
+                        Err(err) => {
+                            log_error(format!(
+                                "Failed to inspect Git state before syncing '{store_for_sync}': {err}"
+                            ));
+                            sync_state
+                                .overlay
+                                .add_toast(Toast::new("Couldn't inspect Git remotes."));
+                            rebuild_store_git_page(&sync_state);
+                            return;
+                        }
+                    };
+                    if !sync_allowed(&current_status) {
+                        sync_state
+                            .overlay
+                            .add_toast(Toast::new(&sync_subtitle(&current_status)));
+                        rebuild_store_git_page(&sync_state);
+                        return;
+                    }
+
                     begin_git_operation(&sync_state, "Syncing store");
 
                     let state_for_result = sync_state.clone();
@@ -494,15 +513,21 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
             );
             sync_row.set_sensitive(sync_allowed(&status));
             sync_row.set_activatable(sync_allowed(&status));
+
+            append_status_row(
+                &state.status_list,
+                "Branch",
+                &branch_subtitle(&status),
+                "object-select-symbolic",
+            );
         }
         Err(err) => {
             log_error(format!("Failed to inspect Git state for '{store}': {err}"));
-            let row = ActionRow::builder()
-                .title("Couldn't inspect Git state")
-                .subtitle("Check the logs for details.")
-                .build();
-            row.set_activatable(false);
-            state.list.append(&row);
+            append_info_row(
+                &state.remotes_list,
+                "Couldn't inspect Git state",
+                "Check the logs for details.",
+            );
         }
     }
 }

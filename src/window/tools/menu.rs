@@ -10,7 +10,6 @@ use crate::setup::{
 use crate::store::management::schedule_store_import_row;
 #[cfg(any(debug_assertions, feature = "setup"))]
 use crate::support::ui::append_action_row_with_button;
-use crate::window::host_access::append_optional_host_access_list_row;
 #[cfg(debug_assertions)]
 use crate::window::navigation::show_log_page;
 #[cfg(all(target_os = "linux", feature = "setup"))]
@@ -70,5 +69,4 @@ pub(super) const fn append_optional_setup_row(_state: &ToolsPageState) {}
 pub(super) fn append_optional_pass_import_row(state: &ToolsPageState) {
     let settings = Preferences::new();
     schedule_store_import_row(&state.list, &settings, &state.window, &state.overlay);
-    append_optional_host_access_list_row(&state.list, &state.overlay);
 }

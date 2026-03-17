@@ -76,7 +76,9 @@ pub(super) fn store_git_page_state(widgets: &WindowWidgets) -> StoreGitPageState
         window: widgets.window.clone(),
         nav: widgets.navigation_view.clone(),
         page: widgets.store_git_page.clone(),
-        list: widgets.store_git_list.clone(),
+        remotes_list: widgets.store_git_remotes_list.clone(),
+        actions_list: widgets.store_git_actions_list.clone(),
+        status_list: widgets.store_git_status_list.clone(),
         overlay: widgets.toast_overlay.clone(),
         back: widgets.back_button.clone(),
         add: widgets.add_button.clone(),
@@ -99,6 +101,7 @@ fn build_store_recipients_platform_state(
     StoreRecipientsPlatformState {
         overlay: widgets.toast_overlay.clone(),
         host_gpg_warning_group: widgets.store_recipients_host_gpg_warning_group.clone(),
+        host_gpg_warning_row: widgets.store_recipients_host_gpg_warning_row.clone(),
         add_group: widgets.store_recipients_add_group.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
         git_group: widgets.store_recipients_git_group.clone(),

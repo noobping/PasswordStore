@@ -17,20 +17,18 @@ pub(super) struct PreferenceFile {
 }
 
 fn config_path() -> PathBuf {
-    if let Some(dir) = dirs_next::config_dir() {
-        dir.join(format!("{}.toml", env!("CARGO_PKG_NAME")))
-    } else {
-        PathBuf::from(format!("{}.toml", env!("CARGO_PKG_NAME")))
-    }
+    dirs_next::config_dir().map_or_else(
+        || PathBuf::from(format!("{}.toml", env!("CARGO_PKG_NAME"))),
+        |dir| dir.join(format!("{}.toml", env!("CARGO_PKG_NAME"))),
+    )
 }
 
 pub(super) fn load_file_prefs() -> PreferenceFile {
     let path = config_path();
-    if let Ok(data) = fs::read_to_string(&path) {
-        toml::from_str(&data).unwrap_or_default()
-    } else {
-        PreferenceFile::default()
-    }
+    fs::read_to_string(&path).map_or_else(
+        |_| PreferenceFile::default(),
+        |data| toml::from_str(&data).unwrap_or_default(),
+    )
 }
 
 pub(super) fn save_file_prefs(cfg: &PreferenceFile) -> Result<(), BoolError> {

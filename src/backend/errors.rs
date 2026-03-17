@@ -1,4 +1,5 @@
-use std::fmt;
+use std::io;
+use thiserror::Error;
 
 fn message_contains_any(lowered: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|pattern| lowered.contains(pattern))
@@ -36,118 +37,134 @@ fn store_message_is_invalid_store_path(lowered: &str) -> bool {
     lowered.contains("selected password store path is not a folder")
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StoreMessageKind {
+    EntryNotFound,
+    EntryAlreadyExists,
+    MissingPrivateKey,
+    LockedPrivateKey,
+    IncompatiblePrivateKey,
+    InvalidStorePath,
+    Other,
+}
+
+fn classify_store_message(message: &str) -> StoreMessageKind {
+    let lowered = message.to_ascii_lowercase();
+    if store_message_is_entry_not_found(&lowered) {
+        StoreMessageKind::EntryNotFound
+    } else if store_message_is_already_exists(&lowered) {
+        StoreMessageKind::EntryAlreadyExists
+    } else if store_message_is_missing_private_key(message) {
+        StoreMessageKind::MissingPrivateKey
+    } else if store_message_is_locked_private_key(message) {
+        StoreMessageKind::LockedPrivateKey
+    } else if store_message_is_incompatible_private_key(message) {
+        StoreMessageKind::IncompatiblePrivateKey
+    } else if store_message_is_invalid_store_path(&lowered) {
+        StoreMessageKind::InvalidStorePath
+    } else {
+        StoreMessageKind::Other
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum PasswordEntryError {
+    #[error("{0}")]
     EntryNotFound(String),
-    #[cfg(keycord_restricted)]
+    #[error("{0}")]
     MissingPrivateKey(String),
-    #[cfg(keycord_restricted)]
+    #[error("{0}")]
     LockedPrivateKey(String),
-    #[cfg(keycord_restricted)]
+    #[error("{0}")]
     IncompatiblePrivateKey(String),
+    #[error("{0}")]
     Other(String),
 }
 
 impl PasswordEntryError {
-    #[cfg(keycord_restricted)]
-    pub(crate) fn missing_private_key(message: impl Into<String>) -> Self {
+    pub fn missing_private_key(message: impl Into<String>) -> Self {
         Self::MissingPrivateKey(message.into())
     }
 
-    #[cfg(keycord_restricted)]
-    pub(crate) fn locked_private_key(message: impl Into<String>) -> Self {
+    pub fn locked_private_key(message: impl Into<String>) -> Self {
         Self::LockedPrivateKey(message.into())
     }
 
-    #[cfg(keycord_restricted)]
-    pub(crate) fn incompatible_private_key(message: impl Into<String>) -> Self {
+    pub fn incompatible_private_key(message: impl Into<String>) -> Self {
         Self::IncompatiblePrivateKey(message.into())
     }
 
-    pub(crate) fn other(message: impl Into<String>) -> Self {
+    pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
     }
 
-    pub(crate) fn from_store_message(message: impl Into<String>) -> Self {
+    pub fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
-        let lowered = message.to_ascii_lowercase();
-        if store_message_is_entry_not_found(&lowered) {
-            Self::EntryNotFound(message)
-        } else {
-            Self::other(message)
+        match classify_store_message(&message) {
+            StoreMessageKind::EntryNotFound => Self::EntryNotFound(message),
+            _ => Self::other(message),
         }
     }
 
-    pub(crate) fn toast_message(&self) -> Option<&'static str> {
+    pub const fn toast_message(&self) -> Option<&'static str> {
         match self {
-            #[cfg(keycord_restricted)]
             Self::MissingPrivateKey(_) => Some("Add a private key in Preferences."),
-            #[cfg(keycord_restricted)]
             Self::IncompatiblePrivateKey(_) => Some("This key can't open your items."),
             _ => None,
         }
     }
-
-    pub(crate) fn detail(&self) -> &str {
-        match self {
-            Self::EntryNotFound(message) => message,
-            #[cfg(keycord_restricted)]
-            Self::MissingPrivateKey(message)
-            | Self::LockedPrivateKey(message)
-            | Self::IncompatiblePrivateKey(message) => message,
-            Self::Other(message) => message,
-        }
-    }
 }
 
-impl fmt::Display for PasswordEntryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.detail())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum PasswordEntryWriteError {
+    #[error("{0}")]
     EntryAlreadyExists(String),
+    #[error("{0}")]
     EntryNotFound(String),
+    #[error("{0}")]
     MissingPrivateKey(String),
+    #[error("{0}")]
     LockedPrivateKey(String),
+    #[error("{0}")]
     IncompatiblePrivateKey(String),
+    #[error("{0}")]
     Other(String),
 }
 
 impl PasswordEntryWriteError {
-    pub(crate) fn already_exists(message: impl Into<String>) -> Self {
+    pub fn already_exists(message: impl Into<String>) -> Self {
         Self::EntryAlreadyExists(message.into())
     }
 
-    pub(crate) fn entry_not_found(message: impl Into<String>) -> Self {
+    pub fn entry_not_found(message: impl Into<String>) -> Self {
         Self::EntryNotFound(message.into())
     }
 
-    pub(crate) fn other(message: impl Into<String>) -> Self {
+    pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
     }
 
-    pub(crate) fn from_store_message(message: impl Into<String>) -> Self {
+    pub fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
-        let lowered = message.to_ascii_lowercase();
-        if store_message_is_already_exists(&lowered) {
-            Self::already_exists(message)
-        } else if store_message_is_entry_not_found(&lowered) {
-            Self::entry_not_found(message)
-        } else if store_message_is_missing_private_key(&message) {
-            Self::MissingPrivateKey(message)
-        } else if store_message_is_locked_private_key(&message) {
-            Self::LockedPrivateKey(message)
-        } else if store_message_is_incompatible_private_key(&message) {
-            Self::IncompatiblePrivateKey(message)
-        } else {
-            Self::other(message)
+        match classify_store_message(&message) {
+            StoreMessageKind::EntryAlreadyExists => Self::already_exists(message),
+            StoreMessageKind::EntryNotFound => Self::entry_not_found(message),
+            StoreMessageKind::MissingPrivateKey => Self::MissingPrivateKey(message),
+            StoreMessageKind::LockedPrivateKey => Self::LockedPrivateKey(message),
+            StoreMessageKind::IncompatiblePrivateKey => Self::IncompatiblePrivateKey(message),
+            StoreMessageKind::InvalidStorePath | StoreMessageKind::Other => Self::other(message),
         }
     }
 
-    pub(crate) fn save_toast_message(&self) -> &'static str {
+    pub fn from_io_error(err: &io::Error) -> Self {
+        match err.kind() {
+            io::ErrorKind::AlreadyExists => Self::already_exists(err.to_string()),
+            io::ErrorKind::NotFound => Self::entry_not_found(err.to_string()),
+            _ => Self::from_store_message(err.to_string()),
+        }
+    }
+
+    pub const fn save_toast_message(&self) -> &'static str {
         match self {
             Self::EntryAlreadyExists(_) => "An item with that name already exists.",
             Self::MissingPrivateKey(_) => "Add a private key in Preferences.",
@@ -157,7 +174,7 @@ impl PasswordEntryWriteError {
         }
     }
 
-    pub(crate) fn rename_toast_message(&self) -> &'static str {
+    pub const fn rename_toast_message(&self) -> &'static str {
         match self {
             Self::EntryAlreadyExists(_) => "An item with that name already exists.",
             Self::EntryNotFound(_) => "That item no longer exists.",
@@ -168,7 +185,7 @@ impl PasswordEntryWriteError {
         }
     }
 
-    pub(crate) fn delete_toast_message(&self) -> &'static str {
+    pub const fn delete_toast_message(&self) -> &'static str {
         match self {
             Self::EntryNotFound(_) => "That item no longer exists.",
             Self::EntryAlreadyExists(_)
@@ -178,60 +195,45 @@ impl PasswordEntryWriteError {
             | Self::Other(_) => "Couldn't delete the item.",
         }
     }
-
-    pub(crate) fn detail(&self) -> &str {
-        match self {
-            Self::EntryAlreadyExists(message)
-            | Self::EntryNotFound(message)
-            | Self::MissingPrivateKey(message)
-            | Self::LockedPrivateKey(message)
-            | Self::IncompatiblePrivateKey(message)
-            | Self::Other(message) => message,
-        }
-    }
 }
 
-impl fmt::Display for PasswordEntryWriteError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.detail())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum StoreRecipientsError {
+    #[error("{0}")]
     InvalidStorePath(String),
+    #[error("{0}")]
     MissingPrivateKey(String),
+    #[error("{0}")]
     LockedPrivateKey(String),
+    #[error("{0}")]
     IncompatiblePrivateKey(String),
+    #[error("{0}")]
     Other(String),
 }
 
 impl StoreRecipientsError {
-    pub(crate) fn invalid_store_path(message: impl Into<String>) -> Self {
+    pub fn invalid_store_path(message: impl Into<String>) -> Self {
         Self::InvalidStorePath(message.into())
     }
 
-    pub(crate) fn other(message: impl Into<String>) -> Self {
+    pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
     }
 
-    pub(crate) fn from_store_message(message: impl Into<String>) -> Self {
+    pub fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
-        let lowered = message.to_ascii_lowercase();
-        if store_message_is_invalid_store_path(&lowered) {
-            Self::invalid_store_path(message)
-        } else if store_message_is_missing_private_key(&message) {
-            Self::MissingPrivateKey(message)
-        } else if store_message_is_locked_private_key(&message) {
-            Self::LockedPrivateKey(message)
-        } else if store_message_is_incompatible_private_key(&message) {
-            Self::IncompatiblePrivateKey(message)
-        } else {
-            Self::other(message)
+        match classify_store_message(&message) {
+            StoreMessageKind::InvalidStorePath => Self::invalid_store_path(message),
+            StoreMessageKind::MissingPrivateKey => Self::MissingPrivateKey(message),
+            StoreMessageKind::LockedPrivateKey => Self::LockedPrivateKey(message),
+            StoreMessageKind::IncompatiblePrivateKey => Self::IncompatiblePrivateKey(message),
+            StoreMessageKind::EntryNotFound
+            | StoreMessageKind::EntryAlreadyExists
+            | StoreMessageKind::Other => Self::other(message),
         }
     }
 
-    pub(crate) fn toast_message(&self, fallback: &'static str) -> &'static str {
+    pub const fn toast_message(&self, fallback: &'static str) -> &'static str {
         match self {
             Self::InvalidStorePath(_) => "The selected store path is not a folder.",
             Self::MissingPrivateKey(_) => "Add a private key in Preferences.",
@@ -240,74 +242,63 @@ impl StoreRecipientsError {
             Self::Other(_) => fallback,
         }
     }
-
-    pub(crate) fn detail(&self) -> &str {
-        match self {
-            Self::InvalidStorePath(message)
-            | Self::MissingPrivateKey(message)
-            | Self::LockedPrivateKey(message)
-            | Self::IncompatiblePrivateKey(message)
-            | Self::Other(message) => message,
-        }
-    }
 }
 
-impl fmt::Display for StoreRecipientsError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.detail())
-    }
-}
-
-#[cfg(keycord_restricted)]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum PrivateKeyError {
+    #[error("{0}")]
     NotStored(String),
+    #[error("{0}")]
     MissingPrivateKeyMaterial(String),
+    #[error("{0}")]
     PassphraseRequired(String),
+    #[error("{0}")]
     IncorrectPassphrase(String),
+    #[error("{0}")]
     RequiresPasswordProtection(String),
+    #[error("{0}")]
     Incompatible(String),
+    #[error("{0}")]
     Other(String),
 }
 
-#[cfg(keycord_restricted)]
 impl PrivateKeyError {
-    pub(crate) fn not_stored(message: impl Into<String>) -> Self {
+    pub fn not_stored(message: impl Into<String>) -> Self {
         Self::NotStored(message.into())
     }
 
-    pub(crate) fn missing_private_key_material(message: impl Into<String>) -> Self {
+    pub fn missing_private_key_material(message: impl Into<String>) -> Self {
         Self::MissingPrivateKeyMaterial(message.into())
     }
 
-    pub(crate) fn passphrase_required(message: impl Into<String>) -> Self {
+    pub fn passphrase_required(message: impl Into<String>) -> Self {
         Self::PassphraseRequired(message.into())
     }
 
-    pub(crate) fn incorrect_passphrase(message: impl Into<String>) -> Self {
+    pub fn incorrect_passphrase(message: impl Into<String>) -> Self {
         Self::IncorrectPassphrase(message.into())
     }
 
-    pub(crate) fn requires_password_protection(message: impl Into<String>) -> Self {
+    pub fn requires_password_protection(message: impl Into<String>) -> Self {
         Self::RequiresPasswordProtection(message.into())
     }
 
-    pub(crate) fn incompatible(message: impl Into<String>) -> Self {
+    pub fn incompatible(message: impl Into<String>) -> Self {
         Self::Incompatible(message.into())
     }
 
-    pub(crate) fn other(message: impl Into<String>) -> Self {
+    pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
     }
 
-    pub(crate) fn unlock_message(&self) -> &'static str {
+    pub const fn unlock_message(&self) -> &'static str {
         match self {
             Self::Incompatible(_) => "This key can't open your items.",
             _ => "Couldn't unlock the key.",
         }
     }
 
-    pub(crate) fn import_message(&self) -> &'static str {
+    pub const fn import_message(&self) -> &'static str {
         match self {
             Self::MissingPrivateKeyMaterial(_) => "That file does not contain a private key.",
             Self::RequiresPasswordProtection(_) => "Add a password to that key first.",
@@ -319,36 +310,18 @@ impl PrivateKeyError {
         }
     }
 
-    pub(crate) fn inspection_message(&self) -> &'static str {
+    pub const fn inspection_message(&self) -> &'static str {
         match self {
             Self::MissingPrivateKeyMaterial(_) => "That data does not contain a private key.",
             _ => "Couldn't read that key.",
         }
-    }
-
-    pub(crate) fn detail(&self) -> &str {
-        match self {
-            Self::NotStored(message)
-            | Self::MissingPrivateKeyMaterial(message)
-            | Self::PassphraseRequired(message)
-            | Self::IncorrectPassphrase(message)
-            | Self::RequiresPasswordProtection(message)
-            | Self::Incompatible(message)
-            | Self::Other(message) => message,
-        }
-    }
-}
-
-#[cfg(keycord_restricted)]
-impl fmt::Display for PrivateKeyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.detail())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{PasswordEntryWriteError, StoreRecipientsError};
+    use std::io;
 
     #[test]
     fn write_errors_classify_existing_and_missing_entries() {
@@ -375,6 +348,18 @@ mod tests {
             PasswordEntryWriteError::EntryNotFound("missing".to_string()).delete_toast_message(),
             "That item no longer exists."
         );
+    }
+
+    #[test]
+    fn write_errors_classify_io_error_kinds_without_matching_english_text() {
+        assert!(matches!(
+            PasswordEntryWriteError::from_io_error(&io::Error::from(io::ErrorKind::NotFound)),
+            PasswordEntryWriteError::EntryNotFound(_)
+        ));
+        assert!(matches!(
+            PasswordEntryWriteError::from_io_error(&io::Error::from(io::ErrorKind::AlreadyExists)),
+            PasswordEntryWriteError::EntryAlreadyExists(_)
+        ));
     }
 
     #[test]

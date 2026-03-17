@@ -1,4 +1,4 @@
-use super::super::keys::{
+use super::keys::{
     ensure_ripasso_private_key_is_ready, fingerprint_from_string,
     imported_private_key_fingerprints, load_stored_ripasso_key_ring, missing_private_key_error,
     ripasso_private_key_requires_session_unlock, selected_ripasso_own_fingerprint,
@@ -92,8 +92,7 @@ fn recipient_ids_from_contents(contents: &str) -> Vec<String> {
     for raw_line in contents.lines() {
         let line = raw_line
             .split_once('#')
-            .map(|(key, _)| key)
-            .unwrap_or(raw_line)
+            .map_or(raw_line, |(key, _)| key)
             .trim();
         if line.is_empty() {
             continue;
@@ -236,7 +235,7 @@ pub(super) fn required_private_key_fingerprints_for_label(
     recipient_fingerprints_for_label(store_root, label)
 }
 
-pub(crate) fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
     let Ok(recipients_file) = recipients_file_for_label(store_root, label) else {
         return false;
     };
@@ -256,11 +255,9 @@ pub(crate) fn password_entry_is_readable(store_root: &str, label: &str) -> bool 
     match private_key_requirement {
         StoreRecipientsPrivateKeyRequirement::AnyManagedKey => {
             recipient_ids.into_iter().any(|id| {
-                resolve_recipient_cert(&id, &key_ring)
-                    .map(|(_, cert)| {
-                        private_key_is_openable_with_unlock(&cert.fingerprint().to_hex())
-                    })
-                    .unwrap_or(false)
+                resolve_recipient_cert(&id, &key_ring).is_some_and(|(_, cert)| {
+                    private_key_is_openable_with_unlock(&cert.fingerprint().to_hex())
+                })
             })
         }
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys => {
@@ -318,7 +315,7 @@ pub(super) fn decryption_candidate_fingerprints_for_entry(
     Ok(candidates)
 }
 
-pub(crate) fn preferred_ripasso_private_key_fingerprint_for_entry(
+pub fn preferred_ripasso_private_key_fingerprint_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<String, String> {

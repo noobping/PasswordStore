@@ -3,11 +3,11 @@ use crate::preferences::Preferences;
 use std::process::{Command, Output};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PassImportRequest {
-    pub(crate) store_root: String,
-    pub(crate) source: String,
-    pub(crate) source_path: Option<String>,
-    pub(crate) target_path: Option<String>,
+pub struct PassImportRequest {
+    pub store_root: String,
+    pub source: String,
+    pub source_path: Option<String>,
+    pub target_path: Option<String>,
 }
 
 fn command_error(prefix: &str, output: &Output) -> String {
@@ -22,12 +22,13 @@ fn command_error(prefix: &str, output: &Output) -> String {
     }
 }
 
-fn pass_command() -> Command {
+// pass import always uses the configured host/custom pass command.
+fn custom_pass_command() -> Command {
     Preferences::new().command()
 }
 
 fn run_pass_command(context: &str, configure: impl FnOnce(&mut Command)) -> Result<Output, String> {
-    let mut cmd = pass_command();
+    let mut cmd = custom_pass_command();
     configure(&mut cmd);
     run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
         .map_err(|err| format!("Failed to run the host command: {err}"))
@@ -38,6 +39,7 @@ fn run_store_pass_command(
     context: &str,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
+    // Store-scoped imports still run through the configured host/custom pass command.
     let mut cmd = Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)]);
     configure(&mut cmd);
     run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
@@ -80,12 +82,12 @@ fn parse_import_sources(output: &str) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn normalize_optional_text(text: &str) -> Option<String> {
+pub fn normalize_optional_text(text: &str) -> Option<String> {
     let trimmed = text.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-pub(crate) fn available_pass_import_sources() -> Result<Vec<String>, String> {
+pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
     let output = run_pass_command("Read pass import sources", |cmd| {
         cmd.arg("import").arg("--list");
     })?;
@@ -101,7 +103,7 @@ pub(crate) fn available_pass_import_sources() -> Result<Vec<String>, String> {
     }
 }
 
-pub(crate) fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
+pub fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
     let output = run_store_pass_command(
         &request.store_root,
         "Import passwords with pass import",

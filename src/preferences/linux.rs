@@ -34,11 +34,11 @@ pub(super) fn remote_git_command() -> Command {
 }
 
 impl Preferences {
-    pub fn git_command(&self) -> Command {
+    pub fn git_command() -> Command {
         Command::new("git")
     }
 
-    pub fn remote_git_command(&self) -> Command {
+    pub fn remote_git_command() -> Command {
         remote_git_command()
     }
 
@@ -58,22 +58,18 @@ impl Preferences {
     pub fn uses_integrated_backend(&self) -> bool {
         matches!(self.backend_kind(), BackendKind::Integrated)
     }
-}
 
-pub(super) fn default_store_dirs() -> Vec<String> {
-    if let Ok(home) = env::var("HOME") {
-        vec![format!("{home}/.password-store")]
-    } else {
-        Vec::new()
+    pub fn uses_host_command_backend(&self) -> bool {
+        self.backend_kind().uses_host_command()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::build_command;
+    use super::{build_command, remote_git_command};
 
     #[test]
-    fn standard_host_command_sets_requested_environment_variables() {
+    fn linux_host_command_sets_requested_environment_variables() {
         let cmd = build_command(
             "pass".to_string(),
             vec!["show".to_string(), "team/demo".to_string()],
@@ -94,5 +90,13 @@ mod tests {
                 key.to_string_lossy() == "PASSWORD_STORE_DIR"
                     && value.to_string_lossy() == "/tmp/store"
             }));
+    }
+
+    #[test]
+    fn linux_remote_git_uses_system_git() {
+        let cmd = remote_git_command();
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "git");
+        assert_eq!(cmd.get_args().count(), 0);
     }
 }

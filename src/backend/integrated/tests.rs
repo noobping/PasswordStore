@@ -1,12 +1,9 @@
-use super::super::keys::{
-    armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
-    ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
-    resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
-    unlock_ripasso_private_key_for_session,
-};
-use super::crypto::FlatpakCryptoContext;
+#![expect(
+    clippy::significant_drop_tightening,
+    reason = "SystemBackendTestEnv intentionally stays alive through each test to preserve the temp workspace and test env vars."
+)]
+
+use super::crypto::IntegratedCryptoContext;
 use super::entries::{
     delete_password_entry, password_entry_is_readable, read_password_entry, rename_password_entry,
     save_password_entry,
@@ -14,6 +11,14 @@ use super::entries::{
 use super::git::{
     git_commit_private_key_requiring_unlock_for_entry,
     git_commit_private_key_requiring_unlock_for_store_recipients,
+};
+use super::keys::{
+    armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
+    ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
+    resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
+    unlock_ripasso_private_key_for_session,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients;
@@ -105,7 +110,7 @@ fn encrypted_private_keys_report_that_a_passphrase_is_required() {
 fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Dana Example <dana@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("failed to generate password-protected certificate");
     let mut bytes = Vec::new();
@@ -176,7 +181,7 @@ fn imported_private_keys_stay_encrypted_on_disk() {
     let _env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Eve Example <eve@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("failed to generate password-protected certificate");
     let mut bytes = Vec::new();
@@ -205,7 +210,7 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
     let _env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Frank Example <frank@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("failed to generate password-protected certificate");
     let mut bytes = Vec::new();
@@ -278,7 +283,7 @@ fn new_entries_can_be_saved_in_a_secondary_store() {
     let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("failed to generate password-protected certificate");
     let mut bytes = Vec::new();
@@ -459,7 +464,7 @@ fn all_keys_mode_uses_a_nonstandard_layered_entry_format() {
     let store = env.root_dir().join("secondary-store");
     save_store_recipients(
         store.to_string_lossy().as_ref(),
-        &[key_a.fingerprint.clone(), key_b.fingerprint.clone()],
+        &[key_a.fingerprint.clone(), key_b.fingerprint],
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
     )
     .expect("save all-keys recipients");
@@ -471,7 +476,7 @@ fn all_keys_mode_uses_a_nonstandard_layered_entry_format() {
     )
     .expect("save all-keys entry");
 
-    let outer_layer = FlatpakCryptoContext::load_for_fingerprint(&key_a.fingerprint)
+    let outer_layer = IntegratedCryptoContext::load_for_fingerprint(&key_a.fingerprint)
         .expect("load first-layer decrypt context")
         .decrypt_entry(&store.join("team/service.gpg"))
         .expect("decrypt only the first layer");
@@ -618,7 +623,7 @@ fn new_entries_can_use_email_recipients() {
     let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("failed to generate password-protected certificate");
     let mut bytes = Vec::new();
@@ -654,7 +659,7 @@ fn store_recipients_work_without_a_selected_default_key() {
     let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
     let (cert, _) = CertBuilder::general_purpose(Some("Store Example <store@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("failed to generate password-protected certificate");
     let mut bytes = Vec::new();
@@ -707,7 +712,7 @@ fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
         .expect("import first private key");
 
     let (cert_b, _) = CertBuilder::general_purpose(Some("Key B <b@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("generate second certificate");
     let mut bytes_b = Vec::new();
@@ -767,7 +772,7 @@ fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
         .expect("import first private key");
 
     let (cert_b, _) = CertBuilder::general_purpose(Some("Key B <b@example.com>"))
-        .set_password(Some(password.clone()))
+        .set_password(Some(password))
         .generate()
         .expect("generate second certificate");
     let mut bytes_b = Vec::new();
@@ -813,7 +818,7 @@ fn store_recipients_save_can_remove_the_selected_private_key_from_recipients() {
 }
 
 #[test]
-fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() {
+fn integrated_backend_commits_git_backed_store_changes_with_private_key_identity() {
     let env = SystemBackendTestEnv::new();
     let (cert, bytes) = protected_cert("Git Signer <git-flatpak@example.com>");
     let imported =
@@ -825,7 +830,7 @@ fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() 
     let mut public_bytes = Vec::new();
     cert.serialize(&mut public_bytes)
         .expect("serialize public certificate");
-    env.import_public_key(&public_bytes)
+    SystemBackendTestEnv::import_public_key(&public_bytes)
         .expect("import public key for signature verification");
     env.init_store_git_repository()
         .expect("initialize git repository");
@@ -863,7 +868,7 @@ fn flatpak_backend_commits_git_backed_store_changes_with_private_key_identity() 
 }
 
 #[test]
-fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_selected_key() {
+fn integrated_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_selected_key() {
     let env = SystemBackendTestEnv::new();
     let (cert_a, bytes_a) = protected_cert("Entry Key <entry@example.com>");
     let imported_a =
@@ -879,14 +884,14 @@ fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_se
     cert_a
         .serialize(&mut public_bytes_a)
         .expect("serialize entry public certificate");
-    env.import_public_key(&public_bytes_a)
+    SystemBackendTestEnv::import_public_key(&public_bytes_a)
         .expect("import entry public key for signature verification");
 
     let mut public_bytes_b = Vec::new();
     cert_b
         .serialize(&mut public_bytes_b)
         .expect("serialize selected public certificate");
-    env.import_public_key(&public_bytes_b)
+    SystemBackendTestEnv::import_public_key(&public_bytes_b)
         .expect("import unrelated selected public key for signature verification");
     env.init_store_git_repository()
         .expect("initialize git repository");
@@ -922,7 +927,7 @@ fn flatpak_backend_commits_with_the_entry_private_key_instead_of_an_unrelated_se
 }
 
 #[test]
-fn flatpak_backend_commits_without_signature_when_private_key_is_locked() {
+fn integrated_backend_commits_without_signature_when_private_key_is_locked() {
     let env = SystemBackendTestEnv::new();
     let bytes = protected_cert_bytes("Locked Signer <locked-flatpak@example.com>");
     let imported =

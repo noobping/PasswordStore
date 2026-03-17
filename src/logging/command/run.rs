@@ -67,7 +67,7 @@ fn log_command_state(
     }
 }
 
-fn format_exit_status(status: &ExitStatus) -> String {
+fn format_exit_status(status: ExitStatus) -> String {
     #[cfg(unix)]
     if let Some(signal) = status.signal() {
         return format!("signal {signal}");
@@ -76,7 +76,7 @@ fn format_exit_status(status: &ExitStatus) -> String {
     status.to_string()
 }
 
-fn exit_status_is_error(status: &ExitStatus, options: CommandLogOptions) -> bool {
+fn exit_status_is_error(status: ExitStatus, options: CommandLogOptions) -> bool {
     #[cfg(unix)]
     if status.signal().is_some() {
         return true;
@@ -140,10 +140,10 @@ fn run_command_output_inner(
             log_command_state(
                 context,
                 &command,
-                &format_exit_status(&output.status),
+                &format_exit_status(output.status),
                 false,
                 options.redact_stdin,
-                exit_status_is_error(&output.status, options),
+                exit_status_is_error(output.status, options),
             );
             Ok(output)
         }
@@ -154,7 +154,7 @@ fn run_command_output_inner(
     }
 }
 
-pub(crate) fn run_command_output(
+pub fn run_command_output(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
@@ -162,8 +162,7 @@ pub(crate) fn run_command_output(
     run_command_output_inner(cmd, context, options)
 }
 
-#[cfg(keycord_standard_linux)]
-pub(crate) fn run_command_status(
+pub fn run_command_status(
     cmd: &mut Command,
     context: &str,
     options: CommandLogOptions,
@@ -171,7 +170,7 @@ pub(crate) fn run_command_status(
     run_command_output(cmd, context, options).map(|output| output.status)
 }
 
-pub(crate) fn run_command_with_input(
+pub fn run_command_with_input(
     cmd: &mut Command,
     context: &str,
     input: &str,
@@ -253,10 +252,10 @@ pub(crate) fn run_command_with_input(
     log_command_state(
         context,
         &command,
-        &format_exit_status(&output.status),
+        &format_exit_status(output.status),
         true,
         options.redact_stdin,
-        exit_status_is_error(&output.status, options),
+        exit_status_is_error(output.status, options),
     );
 
     Ok(output)

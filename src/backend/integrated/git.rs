@@ -1,8 +1,8 @@
-use super::super::keys::{
+use super::crypto::IntegratedCryptoContext;
+use super::keys::{
     cached_unlocked_ripasso_private_key, list_ripasso_private_keys,
     ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
 };
-use super::crypto::FlatpakCryptoContext;
 use super::recipients::recipient_contents;
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::logging::{
@@ -55,8 +55,7 @@ fn run_store_git_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.git_command();
+    let mut cmd = Preferences::git_command();
     cmd.arg("-C").arg(store_root);
     configure(&mut cmd);
     run_command_output(&mut cmd, context, options)
@@ -69,8 +68,7 @@ fn run_store_git_command_with_input(
     input: &str,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
-    let settings = Preferences::new();
-    let mut cmd = settings.git_command();
+    let mut cmd = Preferences::git_command();
     cmd.arg("-C").arg(store_root);
     configure(&mut cmd);
     run_command_with_input(&mut cmd, context, input, CommandLogOptions::DEFAULT)
@@ -223,22 +221,22 @@ fn commit_signing_key_requiring_unlock(
     Ok(None)
 }
 
-pub(crate) fn git_commit_private_key_requiring_unlock_for_entry(
+pub fn git_commit_private_key_requiring_unlock_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<Option<String>, String> {
-    let fingerprint = FlatpakCryptoContext::fingerprint_for_label(store_root, label)?;
+    let fingerprint = IntegratedCryptoContext::fingerprint_for_label(store_root, label)?;
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 
-pub(crate) fn git_commit_private_key_requiring_unlock_for_store_recipients(
+pub fn git_commit_private_key_requiring_unlock_for_store_recipients(
     store_root: &str,
     recipients: &[String],
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<Option<String>, String> {
     let recipients_contents = recipient_contents(recipients, private_key_requirement);
     let fingerprint =
-        match FlatpakCryptoContext::fingerprint_for_recipient_contents(&recipients_contents) {
+        match IntegratedCryptoContext::fingerprint_for_recipient_contents(&recipients_contents) {
             Ok(fingerprint) => fingerprint,
             Err(err)
                 if err.contains("is not available in the app.")
@@ -261,22 +259,20 @@ fn parse_private_key_user_id(user_id: &str, fingerprint: &str) -> (String, Strin
         return (fingerprint.to_string(), synthetic_commit_email(fingerprint));
     }
 
-    let email = if let Some(start) = trimmed.rfind('<') {
-        trimmed[start + 1..]
-            .find('>')
-            .map(|offset| trimmed[start + 1..start + 1 + offset].trim().to_string())
-            .filter(|value| !value.is_empty())
-    } else if trimmed.contains('@') && !trimmed.contains(' ') {
-        Some(trimmed.to_string())
-    } else {
-        None
-    };
+    let email = trimmed.rfind('<').map_or_else(
+        || (trimmed.contains('@') && !trimmed.contains(' ')).then(|| trimmed.to_string()),
+        |start| {
+            trimmed[start + 1..]
+                .find('>')
+                .map(|offset| trimmed[start + 1..start + 1 + offset].trim().to_string())
+                .filter(|value| !value.is_empty())
+        },
+    );
 
-    let name = if let Some(start) = trimmed.rfind('<') {
-        trimmed[..start].trim().trim_matches('"').to_string()
-    } else {
-        trimmed.to_string()
-    };
+    let name = trimmed.rfind('<').map_or_else(
+        || trimmed.to_string(),
+        |start| trimmed[..start].trim().trim_matches('"').to_string(),
+    );
 
     let email = email.unwrap_or_else(|| synthetic_commit_email(fingerprint));
     let name = if name.is_empty() { email.clone() } else { name };
@@ -320,13 +316,15 @@ fn commit_identity_from_private_key(key: &ManagedRipassoPrivateKey) -> CommitIde
         .user_ids
         .iter()
         .find(|user_id| !user_id.trim().is_empty())
-        .map(|user_id| parse_private_key_user_id(user_id, &key.fingerprint))
-        .unwrap_or_else(|| {
-            (
-                key.fingerprint.clone(),
-                synthetic_commit_email(&key.fingerprint),
-            )
-        });
+        .map_or_else(
+            || {
+                (
+                    key.fingerprint.clone(),
+                    synthetic_commit_email(&key.fingerprint),
+                )
+            },
+            |user_id| parse_private_key_user_id(user_id, &key.fingerprint),
+        );
 
     CommitIdentity {
         name,
@@ -591,7 +589,7 @@ pub(super) fn maybe_commit_git_paths(
     paths.dedup();
     if let Err(err) = commit_git_paths(store_root, message, &paths, explicit_fingerprint) {
         log_error(format!(
-            "Flatpak backend Git commit failed for {store_root}: {err}"
+            "Integrated backend Git commit failed for {store_root}: {err}"
         ));
     }
 }

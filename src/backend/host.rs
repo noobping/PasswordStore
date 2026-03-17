@@ -1,7 +1,5 @@
-mod command;
-
-use self::command::{ensure_success, run_store_command_output, run_store_command_with_input};
 use crate::backend::{
+    command::{ensure_success, run_store_command_output, run_store_command_with_input},
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
@@ -40,7 +38,7 @@ pub(super) fn read_password_line(
         .to_string())
 }
 
-pub(super) fn password_entry_is_readable(_store_root: &str, _label: &str) -> bool {
+pub(super) const fn password_entry_is_readable(_store_root: &str, _label: &str) -> bool {
     true
 }
 
@@ -130,7 +128,7 @@ pub(super) fn save_store_recipients(
     Ok(())
 }
 
-#[cfg(all(test, keycord_standard_linux))]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::{save_password_entry, save_store_recipients};
     use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
@@ -157,15 +155,18 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "SystemBackendTestEnv must stay alive for the full test to keep the temp store and env vars in place."
+    )]
     fn host_backend_initializes_git_for_new_stores() {
         let env = SystemBackendTestEnv::new();
 
-        let key = env
-            .generate_secret_key("Recipient <host-create@example.com>")
+        let key = SystemBackendTestEnv::generate_secret_key("Recipient <host-create@example.com>")
             .expect("generate host recipient key");
-        env.import_public_key(&key.public_key_bytes)
+        SystemBackendTestEnv::import_public_key(&key.public_key_bytes)
             .expect("import host recipient key");
-        env.trust_public_key(&key.fingerprint_hex)
+        SystemBackendTestEnv::trust_public_key(&key.fingerprint_hex)
             .expect("trust host recipient key");
 
         let store_root = env.store_root().to_string_lossy().to_string();

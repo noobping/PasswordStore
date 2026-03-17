@@ -1,4 +1,4 @@
-use super::super::keys::{
+use super::keys::{
     build_ripasso_crypto_from_key_ring, load_ripasso_key_ring, load_stored_ripasso_key_ring,
 };
 use super::paths::recipients_file_for_label;
@@ -9,12 +9,13 @@ use super::recipients::{
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use ripasso::crypto::{Crypto, Sequoia};
 use ripasso::pass::Recipient;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
 const REQUIRE_ALL_PRIVATE_KEYS_LAYER_HEADER: &str = "keycord-require-all-private-keys-v1";
 
-pub(super) struct FlatpakCryptoContext {
+pub(super) struct IntegratedCryptoContext {
     crypto: Sequoia,
     recipients: Vec<Recipient>,
     fingerprint: String,
@@ -22,7 +23,7 @@ pub(super) struct FlatpakCryptoContext {
     required_private_key_fingerprints: Vec<String>,
 }
 
-impl FlatpakCryptoContext {
+impl IntegratedCryptoContext {
     pub(super) fn load_for_fingerprint(fingerprint: &str) -> Result<Self, String> {
         let key_ring = load_ripasso_key_ring(fingerprint)?;
         let crypto = build_ripasso_crypto_from_key_ring(fingerprint, key_ring)?;
@@ -132,7 +133,7 @@ fn decrypt_password_entry_requiring_all_private_keys(
     let mut current = ciphertext.to_vec();
 
     for (index, fingerprint) in required_private_key_fingerprints.iter().enumerate() {
-        let context = FlatpakCryptoContext::load_for_fingerprint(fingerprint)?;
+        let context = IntegratedCryptoContext::load_for_fingerprint(fingerprint)?;
         let decrypted = decrypt_ciphertext_with_crypto(&context.crypto, &current)?;
         let is_final_layer = index + 1 == required_private_key_fingerprints.len();
         if is_final_layer {
@@ -156,7 +157,7 @@ fn encrypt_password_entry_requiring_all_private_keys(
     };
 
     let last_context =
-        FlatpakCryptoContext::load_for_recipient_contents(&format!("{last_fingerprint}\n"))?;
+        IntegratedCryptoContext::load_for_recipient_contents(&format!("{last_fingerprint}\n"))?;
     let mut current = encrypt_password_entry_with_crypto(
         &last_context.crypto,
         &last_context.recipients,
@@ -165,7 +166,7 @@ fn encrypt_password_entry_requiring_all_private_keys(
 
     for fingerprint in outer_fingerprints.iter().rev() {
         let context =
-            FlatpakCryptoContext::load_for_recipient_contents(&format!("{fingerprint}\n"))?;
+            IntegratedCryptoContext::load_for_recipient_contents(&format!("{fingerprint}\n"))?;
         let wrapped = wrap_required_private_key_layer(&current);
         current =
             encrypt_password_entry_with_crypto(&context.crypto, &context.recipients, &wrapped)?;
@@ -195,13 +196,13 @@ fn unwrap_required_private_key_layer(payload: &str) -> Result<Vec<u8>, String> {
 fn encode_hex(bytes: &[u8]) -> String {
     let mut encoded = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        encoded.push_str(&format!("{byte:02x}"));
+        write!(encoded, "{byte:02x}").expect("writing hex into a string should not fail");
     }
     encoded
 }
 
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return Err("Invalid all-keys encrypted password entry.".to_string());
     }
 

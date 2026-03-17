@@ -1,10 +1,9 @@
 mod run;
 mod streams;
 
-pub(crate) use self::run::run_command_output;
-#[cfg(keycord_standard_linux)]
-pub(crate) use self::run::run_command_status;
-pub(crate) use self::run::run_command_with_input;
+pub use self::run::run_command_output;
+pub use self::run::run_command_status;
+pub use self::run::run_command_with_input;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CommandLogOptions {

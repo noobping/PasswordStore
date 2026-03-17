@@ -1,4 +1,4 @@
-use super::crypto::FlatpakCryptoContext;
+use super::crypto::IntegratedCryptoContext;
 use super::entries::read_password_entry;
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::paths::{
@@ -26,7 +26,7 @@ fn decrypted_store_entries(
     Ok(decrypted)
 }
 
-pub(crate) fn save_store_recipients(
+pub fn save_store_recipients(
     store_root: &str,
     recipients: &[String],
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
@@ -35,12 +35,8 @@ pub(crate) fn save_store_recipients(
         ensure_store_directory(store_root).map_err(StoreRecipientsError::from_store_message)?;
     let decrypted_entries = decrypted_store_entries(&store_dir, store_root)
         .map_err(StoreRecipientsError::from_store_message)?;
-    let entry_labels = decrypted_entries
-        .iter()
-        .filter_map(|(entry_path, _)| label_from_entry_path(&store_dir, entry_path).ok())
-        .collect::<Vec<_>>();
     let recipients_contents = recipient_contents(recipients, private_key_requirement);
-    let context = FlatpakCryptoContext::load_for_recipient_contents(&recipients_contents)
+    let context = IntegratedCryptoContext::load_for_recipient_contents(&recipients_contents)
         .map_err(StoreRecipientsError::from_store_message)?;
     let recipients_path = store_dir.join(".gpg-id");
     let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
@@ -63,8 +59,9 @@ pub(crate) fn save_store_recipients(
         store_root,
         "Update password store recipients",
         std::iter::once(".gpg-id".to_string()).chain(
-            entry_labels
-                .into_iter()
+            decrypted_entries
+                .iter()
+                .filter_map(|(entry_path, _)| label_from_entry_path(&store_dir, entry_path).ok())
                 .map(|label| password_entry_git_path(&label)),
         ),
         Some(context.fingerprint()),

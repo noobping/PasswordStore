@@ -1,6 +1,6 @@
-use super::super::keys::ensure_ripasso_private_key_is_ready;
-use super::crypto::FlatpakCryptoContext;
+use super::crypto::IntegratedCryptoContext;
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
+use super::keys::ensure_ripasso_private_key_is_ready;
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
 use super::recipients::{
     decryption_candidate_fingerprints_for_entry,
@@ -14,10 +14,7 @@ use crate::logging::log_error;
 use std::fs;
 use std::path::Path;
 
-pub(crate) fn read_password_entry(
-    store_root: &str,
-    label: &str,
-) -> Result<String, PasswordEntryError> {
+pub fn read_password_entry(store_root: &str, label: &str) -> Result<String, PasswordEntryError> {
     let entry_path = entry_file_path(store_root, label).map_err(PasswordEntryError::other)?;
     if matches!(
         private_key_requirement_for_label(store_root, label),
@@ -30,7 +27,7 @@ pub(crate) fn read_password_entry(
                 )
             })?;
         ensure_required_private_keys_are_ready(&required_private_key_fingerprints)?;
-        let context = FlatpakCryptoContext::load_for_label(store_root, label)
+        let context = IntegratedCryptoContext::load_for_label(store_root, label)
             .map_err(PasswordEntryError::other)?;
         return context
             .decrypt_entry(&entry_path)
@@ -63,7 +60,7 @@ pub(crate) fn read_password_entry(
             }
         }
 
-        match FlatpakCryptoContext::load_for_fingerprint(&fingerprint)
+        match IntegratedCryptoContext::load_for_fingerprint(&fingerprint)
             .and_then(|context| context.decrypt_entry(&entry_path))
         {
             Ok(secret) => return Ok(secret),
@@ -89,19 +86,16 @@ pub(crate) fn read_password_entry(
     }))
 }
 
-pub(crate) fn read_password_line(
-    store_root: &str,
-    label: &str,
-) -> Result<String, PasswordEntryError> {
+pub fn read_password_line(store_root: &str, label: &str) -> Result<String, PasswordEntryError> {
     let secret = read_password_entry(store_root, label)?;
     Ok(secret.lines().next().unwrap_or_default().to_string())
 }
 
-pub(crate) fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
+pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
     recipients_password_entry_is_readable(store_root, label)
 }
 
-pub(crate) fn save_password_entry(
+pub fn save_password_entry(
     store_root: &str,
     label: &str,
     contents: &str,
@@ -120,7 +114,7 @@ pub(crate) fn save_password_entry(
         ));
     }
 
-    let context = FlatpakCryptoContext::load_for_label(store_root, label)
+    let context = IntegratedCryptoContext::load_for_label(store_root, label)
         .map_err(PasswordEntryWriteError::from_store_message)?;
     let ciphertext = context
         .encrypt_contents(contents)
@@ -138,7 +132,7 @@ pub(crate) fn save_password_entry(
     result
 }
 
-pub(crate) fn rename_password_entry(
+pub fn rename_password_entry(
     store_root: &str,
     old_label: &str,
     new_label: &str,
@@ -160,8 +154,7 @@ pub(crate) fn rename_password_entry(
     }
 
     ensure_parent_dir(&new_path).map_err(PasswordEntryWriteError::from_store_message)?;
-    fs::rename(&old_path, &new_path)
-        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
+    fs::rename(&old_path, &new_path).map_err(|err| PasswordEntryWriteError::from_io_error(&err))?;
     let result = cleanup_empty_store_dirs(store_root, &old_path)
         .map_err(PasswordEntryWriteError::from_store_message);
     if result.is_ok() {
@@ -178,15 +171,11 @@ pub(crate) fn rename_password_entry(
     result
 }
 
-pub(crate) fn delete_password_entry(
-    store_root: &str,
-    label: &str,
-) -> Result<(), PasswordEntryWriteError> {
+pub fn delete_password_entry(store_root: &str, label: &str) -> Result<(), PasswordEntryWriteError> {
     let commit_fingerprint = commit_identity_fingerprint_for_label(store_root, label);
     let entry_path =
         entry_file_path(store_root, label).map_err(PasswordEntryWriteError::from_store_message)?;
-    fs::remove_file(&entry_path)
-        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
+    fs::remove_file(&entry_path).map_err(|err| PasswordEntryWriteError::from_io_error(&err))?;
     let result = cleanup_empty_store_dirs(store_root, &entry_path)
         .map_err(PasswordEntryWriteError::from_store_message);
     if result.is_ok() {
@@ -201,11 +190,11 @@ pub(crate) fn delete_password_entry(
 }
 
 fn commit_identity_fingerprint_for_label(store_root: &str, label: &str) -> Option<String> {
-    match FlatpakCryptoContext::fingerprint_for_label(store_root, label) {
+    match IntegratedCryptoContext::fingerprint_for_label(store_root, label) {
         Ok(fingerprint) => Some(fingerprint),
         Err(err) => {
             log_error(format!(
-                "Failed to resolve Flatpak Git commit identity for {store_root}/{label}: {err}"
+                "Failed to resolve integrated Git commit identity for {store_root}/{label}: {err}"
             ));
             None
         }

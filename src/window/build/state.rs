@@ -19,7 +19,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub(super) fn new_password_popover_state(_widgets: &WindowWidgets) -> NewPasswordPopoverState {
-    let (dialog, store_dropdown, path_entry) = crate::password::new_item::build_new_password_dialog();
+    let (dialog, store_dropdown, path_entry) =
+        crate::password::new_item::build_new_password_dialog();
     NewPasswordPopoverState {
         dialog,
         path_entry,

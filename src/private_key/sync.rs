@@ -140,7 +140,8 @@ fn sync_app_private_keys_to_host() -> Result<(), String> {
             .into_iter()
             .filter(|key| !host_fingerprints.contains(&normalized_fingerprint(&key.fingerprint)))
             .map(|key| {
-                armored_ripasso_private_key(&key.fingerprint).map(|armored| (key.fingerprint, armored))
+                armored_ripasso_private_key(&key.fingerprint)
+                    .map(|armored| (key.fingerprint, armored))
             })
             .collect::<Result<Vec<_>, String>>()?;
 
@@ -162,4 +163,3 @@ fn sync_app_private_keys_to_host() -> Result<(), String> {
         Err("Private-key sync with the host is only available on Linux.".to_string())
     }
 }
-

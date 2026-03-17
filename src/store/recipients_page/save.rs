@@ -1,10 +1,14 @@
 use super::super::management::rebuild_stores_list;
 use super::super::recipients::stores_with_preferred_first;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsRequest};
-use crate::backend::{save_store_recipients, StoreRecipientsPrivateKeyRequirement};
+use crate::backend::{
+    save_store_recipients, store_recipients_private_key_requiring_unlock, StoreRecipientsError,
+    StoreRecipientsPrivateKeyRequirement,
+};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::git::prompt_private_key_unlock_for_store_git_commit_if_needed;
+use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use adw::gtk::ListBox;
@@ -62,6 +66,50 @@ fn maybe_prompt_store_recipients_git_unlock(
         private_key_requirement,
         &after_unlock,
     )
+}
+
+fn maybe_prompt_store_recipients_entry_unlock(
+    overlay: &ToastOverlay,
+    stores_list: &ListBox,
+    state: &StoreRecipientsPageState,
+    store_root: &str,
+    error: &StoreRecipientsError,
+) -> bool {
+    if !Preferences::new().uses_integrated_backend()
+        || !matches!(error, StoreRecipientsError::LockedPrivateKey(_))
+    {
+        return false;
+    }
+
+    let fingerprint = match store_recipients_private_key_requiring_unlock(store_root) {
+        Ok(Some(fingerprint)) => fingerprint,
+        Ok(None) => return false,
+        Err(err) => {
+            log_error(format!(
+                "Failed to resolve the locked private key for store recipients '{}': {err}",
+                store_root
+            ));
+            return false;
+        }
+    };
+
+    let overlay_for_retry = overlay.clone();
+    let stores_list_for_retry = stores_list.clone();
+    let state_for_retry = state.clone();
+    prompt_private_key_unlock_for_action(
+        overlay,
+        fingerprint,
+        Rc::new(move || {
+            save_store_recipients_async(
+                &overlay_for_retry,
+                &stores_list_for_retry,
+                &state_for_retry,
+                true,
+            );
+        }),
+        Rc::new(|_| {}),
+    );
+    true
 }
 
 fn save_store_recipients_async(
@@ -145,6 +193,16 @@ fn save_store_recipients_async(
                 finish_store_recipients_save(&state, true);
             }
             Err(err) => {
+                if maybe_prompt_store_recipients_entry_unlock(
+                    &overlay,
+                    &stores_list,
+                    &state,
+                    &request.store,
+                    &err,
+                ) {
+                    finish_store_recipients_save(&state, false);
+                    return;
+                }
                 log_error(format!(
                     "Failed to save store recipients for '{}': {err}",
                     request.store

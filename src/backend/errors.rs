@@ -31,6 +31,8 @@ fn store_message_is_locked_private_key(message: &str) -> bool {
 fn store_message_is_incompatible_private_key(message: &str) -> bool {
     message.contains("cannot decrypt password store entries")
         || message.contains("available private keys cannot decrypt")
+        || message.contains("no pkesks managed to decrypt the ciphertext")
+        || message.contains("no pkesk managed to decrypt the ciphertext")
 }
 
 fn store_message_is_invalid_store_path(lowered: &str) -> bool {
@@ -102,7 +104,12 @@ impl PasswordEntryError {
         let message = message.into();
         match classify_store_message(&message) {
             StoreMessageKind::EntryNotFound => Self::EntryNotFound(message),
-            _ => Self::other(message),
+            StoreMessageKind::MissingPrivateKey => Self::MissingPrivateKey(message),
+            StoreMessageKind::LockedPrivateKey => Self::LockedPrivateKey(message),
+            StoreMessageKind::IncompatiblePrivateKey => Self::IncompatiblePrivateKey(message),
+            StoreMessageKind::EntryAlreadyExists
+            | StoreMessageKind::InvalidStorePath
+            | StoreMessageKind::Other => Self::other(message),
         }
     }
 
@@ -320,7 +327,7 @@ impl PrivateKeyError {
 
 #[cfg(test)]
 mod tests {
-    use super::{PasswordEntryWriteError, StoreRecipientsError};
+    use super::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
     use std::io;
 
     #[test]
@@ -378,5 +385,13 @@ mod tests {
             .toast_message("Couldn't create the store."),
             "The selected store path is not a folder."
         );
+    }
+
+    #[test]
+    fn read_errors_classify_pkesks_failures_as_incompatible_private_keys() {
+        assert!(matches!(
+            PasswordEntryError::from_store_message("no pkesks managed to decrypt the ciphertext"),
+            PasswordEntryError::IncompatiblePrivateKey(_)
+        ));
     }
 }

@@ -330,8 +330,8 @@ mod tests {
     use super::{
         can_delete_without_undo_after_read_error, clear_undo_actions, has_undo_actions,
         move_entry_between_stores_action, pop_undo_action, push_undo_action, rename_entry_action,
-        restore_deleted_entry_action, restore_saved_entry_action, undo_action_restored_entry,
-        unavailable_undo_action, unavailable_undo_message, UndoAction,
+        restore_deleted_entry_action, restore_saved_entry_action, unavailable_undo_action,
+        unavailable_undo_message, undo_action_restored_entry, UndoAction,
     };
     use crate::backend::PasswordEntryError;
     use crate::password::model::PassEntry;

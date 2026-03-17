@@ -45,4 +45,3 @@ pub(super) fn sync_private_keys_from_host_if_enabled(state: &StoreRecipientsPage
 pub(super) fn sync_private_keys_to_host_if_enabled(state: &StoreRecipientsPageState) -> bool {
     sync_private_keys_if_enabled(state, PrivateKeySyncDirection::AppToHost)
 }
-

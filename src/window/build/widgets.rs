@@ -1,7 +1,7 @@
 use adw::glib::{object::IsA, Object};
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, CheckButton, ListBox, Revealer, ScrolledWindow,
-    SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
+    Box as GtkBox, Builder, Button, CheckButton, ListBox, Revealer, ScrolledWindow, SearchEntry,
+    SpinButton, Spinner, Stack, TextView, ToggleButton,
 };
 use adw::ActionRow;
 use adw::PreferencesGroup;
@@ -304,7 +304,10 @@ impl WindowWidgets {
                 "preferences_password_generator_min_symbols_spin",
             ),
             backend_preferences: required_object(builder, "backend_preferences"),
-            host_access_preferences_group: required_object(builder, "host_access_preferences_group"),
+            host_access_preferences_group: required_object(
+                builder,
+                "host_access_preferences_group",
+            ),
             backend_row: required_object(builder, "backend_row"),
             pass_command_row: required_object(builder, "pass_command_row"),
             sync_private_keys_with_host_row: required_object(

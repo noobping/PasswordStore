@@ -590,9 +590,9 @@ fn regex_query_matches(
     }
 
     match fields {
-        SearchRowFieldIndexState::Indexed(fields) => query
-            .compiled
-            .is_match(&regex_search_corpus(label, fields)),
+        SearchRowFieldIndexState::Indexed(fields) => {
+            query.compiled.is_match(&regex_search_corpus(label, fields))
+        }
         SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => false,
     }
 }

@@ -1,7 +1,7 @@
 use crate::backend::{
     command::{
-        ensure_success, run_host_program_output, run_store_command_output,
-        run_host_program_with_input, run_store_command_with_input,
+        ensure_success, run_host_program_output, run_host_program_with_input,
+        run_store_command_output, run_store_command_with_input,
     },
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
@@ -145,6 +145,12 @@ pub(super) fn save_store_recipients(
             .map_err(StoreRecipientsError::from_store_message)?;
     }
     Ok(())
+}
+
+pub(super) fn store_recipients_private_key_requiring_unlock(
+    _store_root: &str,
+) -> Result<Option<String>, String> {
+    Ok(None)
 }
 
 pub fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, String> {

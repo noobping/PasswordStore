@@ -428,8 +428,7 @@ pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
 mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
-        should_retry_open_password_entry, PasswordPageDisplay,
-        validate_password_save_contents,
+        should_retry_open_password_entry, validate_password_save_contents, PasswordPageDisplay,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::{OpenPassFile, UsernameFallbackError};

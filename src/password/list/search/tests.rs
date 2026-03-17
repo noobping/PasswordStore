@@ -1,7 +1,7 @@
 use super::index::is_stale_index_batch;
 use super::query::{
-    parse_search_query, row_matches_query, OTP_SEARCH_KEY, SearchClause, SearchComparison,
-    SearchQuery, StructuredSearchQuery, WEAK_PASSWORD_SEARCH_KEY,
+    parse_search_query, row_matches_query, SearchClause, SearchComparison, SearchQuery,
+    StructuredSearchQuery, OTP_SEARCH_KEY, WEAK_PASSWORD_SEARCH_KEY,
 };
 use super::SearchRowFieldIndexState;
 use crate::password::file::SearchablePassField;

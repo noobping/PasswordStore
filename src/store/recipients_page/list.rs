@@ -200,18 +200,12 @@ fn private_key_toggle_block_message(
     }
 }
 
-fn sync_private_key_delete_button(
-    delete_button: &adw::gtk::Button,
-    blocked_message: Option<&str>,
-) {
+fn sync_private_key_delete_button(delete_button: &adw::gtk::Button, blocked_message: Option<&str>) {
     delete_button.set_sensitive(blocked_message.is_none());
     delete_button.set_tooltip_text(Some(blocked_message.unwrap_or("Remove key file")));
 }
 
-fn sync_private_key_toggle_button(
-    toggle: &adw::gtk::CheckButton,
-    blocked_message: Option<&str>,
-) {
+fn sync_private_key_toggle_button(toggle: &adw::gtk::CheckButton, blocked_message: Option<&str>) {
     toggle.set_sensitive(blocked_message.is_none());
     toggle.set_tooltip_text(blocked_message);
 }
@@ -780,6 +774,9 @@ mod tests {
             Some("Keep at least one selected private key available.")
         );
         assert_eq!(private_key_toggle_block_message(true, true, false, 2), None);
-        assert_eq!(private_key_toggle_block_message(true, false, false, 1), None);
+        assert_eq!(
+            private_key_toggle_block_message(true, false, false, 1),
+            None
+        );
     }
 }

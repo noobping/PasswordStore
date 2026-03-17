@@ -21,7 +21,7 @@ use super::keys::{
     unlock_ripasso_private_key_for_session,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
-use super::store::save_store_recipients;
+use super::store::{save_store_recipients, store_recipients_private_key_requiring_unlock};
 use crate::backend::{
     test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryWriteError,
     PrivateKeyError, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
@@ -985,7 +985,10 @@ fn unreadable_entry_rename_commits_without_a_signature() {
 
     save_store_recipients(
         &store_root,
-        &[imported_a.fingerprint.clone(), imported_b.fingerprint.clone()],
+        &[
+            imported_a.fingerprint.clone(),
+            imported_b.fingerprint.clone(),
+        ],
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
     )
     .expect("save store recipients");
@@ -1004,7 +1007,10 @@ fn unreadable_entry_rename_commits_without_a_signature() {
     let subjects = env
         .store_git_commit_subjects()
         .expect("read commit subjects");
-    assert_eq!(subjects[0], "Rename password from team/service to team/renamed");
+    assert_eq!(
+        subjects[0],
+        "Rename password from team/service to team/renamed"
+    );
     assert_eq!(
         env.store_git_head_author().expect("read head author"),
         "Keycord <git@keycord.invalid>"
@@ -1032,7 +1038,10 @@ fn unreadable_entry_delete_commits_without_a_signature() {
 
     save_store_recipients(
         &store_root,
-        &[imported_a.fingerprint.clone(), imported_b.fingerprint.clone()],
+        &[
+            imported_a.fingerprint.clone(),
+            imported_b.fingerprint.clone(),
+        ],
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
     )
     .expect("save store recipients");
@@ -1144,6 +1153,31 @@ fn git_commit_unlock_helper_detects_a_locked_recipients_signing_key() {
             StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
         )
         .expect("resolve locked signing key"),
+        Some(imported.fingerprint)
+    );
+}
+
+#[test]
+fn store_recipients_unlock_helper_detects_a_locked_entry_key() {
+    let env = SystemBackendTestEnv::new();
+    let bytes = protected_cert_bytes("Locked Store Entry <locked-entry@example.com>");
+    let imported =
+        import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import private key");
+    let store_root = env.store_root().to_string_lossy().to_string();
+
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&imported.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save store recipients");
+    save_password_entry(&store_root, "team/service", "secret\nusername: alice", true)
+        .expect("save password entry");
+    clear_cached_unlocked_ripasso_private_keys();
+
+    assert_eq!(
+        store_recipients_private_key_requiring_unlock(&store_root)
+            .expect("resolve locked entry key"),
         Some(imported.fingerprint)
     );
 }

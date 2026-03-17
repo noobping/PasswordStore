@@ -213,7 +213,10 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
             return;
         };
         if let Some(message) = unavailable_undo_message(&action) {
-            state.password_page.overlay.add_toast(adw::Toast::new(message));
+            state
+                .password_page
+                .overlay
+                .add_toast(adw::Toast::new(message));
             return;
         }
 

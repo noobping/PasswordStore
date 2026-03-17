@@ -1,10 +1,10 @@
-use adw::prelude::*;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::clipboard::set_clipboard_text;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::ui::{connect_row_action, flat_icon_button_with_tooltip};
+use adw::prelude::*;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use adw::{ActionRow, PreferencesGroup, Toast, ToastOverlay};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]

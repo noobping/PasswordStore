@@ -3,7 +3,9 @@ use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
 use adw::gtk::{Box as GtkBox, DropDown, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::{ApplicationWindow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, WindowTitle};
+use adw::{
+    ApplicationWindow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, WindowTitle,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -15,11 +17,7 @@ pub struct NewPasswordPopoverState {
     pub store_roots: Rc<RefCell<Vec<String>>>,
 }
 
-fn dialog_content_shell(
-    title: &str,
-    subtitle: &str,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
+fn dialog_content_shell(title: &str, subtitle: &str, child: &impl IsA<adw::gtk::Widget>) -> GtkBox {
     let window_title = WindowTitle::builder().title(title).build();
     if !subtitle.trim().is_empty() {
         window_title.set_subtitle(subtitle);

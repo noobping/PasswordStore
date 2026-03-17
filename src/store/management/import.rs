@@ -71,7 +71,7 @@ impl PassImportRowState {
         stores: &[String],
     ) -> Self {
         let row = ActionRow::builder().title("Import passwords").build();
-        let icon = Image::from_icon_name("document-open-symbolic");
+        let icon = Image::from_icon_name("go-next-symbolic");
         row.add_suffix(&icon);
         list.append(&row);
 

@@ -74,6 +74,7 @@
           <li>Improve private key list refresh and actions</li>
           <li>Add tools page</li>
           <li>Show disabled options instead of hiding them</li>
+          <li>Add advanced search</li>
         </ul>
       </description>
     </release>

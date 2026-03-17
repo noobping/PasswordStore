@@ -2,8 +2,8 @@
 <interface>
   <object class="AdwApplicationWindow" id="main_window">
     <property name="title">Keycord</property>
-    <property name="default-width">600</property>
-    <property name="default-height">450</property>
+    <property name="default-width">850</property>
+    <property name="default-height">600</property>
     <property name="icon-name">io.github.noobping.keycord</property>
     <property name="content">
       <object class="AdwToolbarView">
@@ -136,12 +136,22 @@
                             <property name="propagate-natural-width">true</property>
                             <property name="propagate-natural-height">true</property>
                             <child>
-                              <object class="GtkListBox" id="list">
-                                <property name="hexpand">true</property>
-                                <property name="vexpand">true</property>
-                                <child type="placeholder">
-                                  <object class="AdwStatusPage">
-                                    <property name="icon-name">io.github.noobping.keycord</property>
+                              <object class="AdwClamp">
+                                <property name="maximum-size">900</property>
+                                <property name="tightening-threshold">600</property>
+                                <child>
+                                  <object class="GtkListBox" id="list">
+                                    <property name="hexpand">true</property>
+                                    <property name="vexpand">true</property>
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                    <child type="placeholder">
+                                      <object class="AdwStatusPage">
+                                        <property name="icon-name">io.github.noobping.keycord</property>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -180,243 +190,241 @@
                                 </child>
                               </object>
                             </child>
-
                             <child>
-                              <object class="AdwPasswordEntryRow" id="password_entry">
-                                <property name="title" translatable="yes">Password</property>
-                                <property name="visible">false</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">6</property>
-                                <child>
-                                  <object class="GtkButton" id="generate_password_button">
-                                    <property name="icon-name">view-refresh-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Generate password</property>
-                                    <property name="action-name">win.generate-password</property>
-                                    <style>
-                                      <class name="flat" />
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkToggleButton"
-                                    id="password_generator_settings_button">
-                                    <property name="icon-name">emblem-system-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Password generation settings</property>
-                                    <style>
-                                      <class name="flat" />
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="copy_password_button">
-                                    <property name="icon-name">edit-copy-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Copy password</property>
-                                    <style>
-                                      <class name="flat" />
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-
-                            <child>
-                              <object class="GtkRevealer" id="password_generator_settings_revealer">
-                                <property name="reveal-child">false</property>
-                                <property name="transition-type">slide-down</property>
+                              <object class="AdwClamp">
+                                <property name="maximum-size">900</property>
+                                <property name="tightening-threshold">600</property>
                                 <child>
                                   <object class="GtkBox">
                                     <property name="orientation">vertical</property>
-                                    <property name="margin-start">15</property>
-                                    <property name="margin-end">15</property>
-                                    <property name="margin-bottom">6</property>
                                     <child>
-                                      <object class="GtkListBox">
-                                        <property name="selection-mode">none</property>
-                                        <style>
-                                          <class name="boxed-list" />
-                                        </style>
+                                      <object class="AdwPasswordEntryRow" id="password_entry">
+                                        <property name="title" translatable="yes">Password</property>
+                                        <property name="visible">false</property>
+                                        <property name="margin-start">15</property>
+                                        <property name="margin-end">15</property>
+                                        <property name="margin-bottom">6</property>
                                         <child>
-                                          <object class="AdwActionRow">
-                                            <property name="title" translatable="yes">Length</property>
-                                            <property name="subtitle" translatable="yes">Total characters</property>
-                                            <child type="suffix">
-                                              <object class="GtkSpinButton"
-                                                id="password_generator_length_spin">
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="lower">1</property>
-                                                    <property name="upper">256</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">5</property>
-                                                    <property name="value">24</property>
-                                                  </object>
-                                                </property>
-                                                <property name="numeric">true</property>
-                                                <property name="width-chars">4</property>
-                                                <property name="valign">center</property>
-                                              </object>
-                                            </child>
+                                          <object class="GtkButton" id="generate_password_button">
+                                            <property name="icon-name">view-refresh-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Generate password</property>
+                                            <property name="action-name">win.generate-password</property>
+                                            <style>
+                                              <class name="flat" />
+                                            </style>
                                           </object>
                                         </child>
                                         <child>
-                                          <object class="AdwActionRow">
-                                            <property name="title" translatable="yes">Lowercase letters</property>
-                                            <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                            <child type="suffix">
-                                              <object class="GtkSpinButton"
-                                                id="password_generator_min_lowercase_spin">
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="lower">0</property>
-                                                    <property name="upper">256</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">5</property>
-                                                    <property name="value">1</property>
-                                                  </object>
-                                                </property>
-                                                <property name="numeric">true</property>
-                                                <property name="width-chars">4</property>
-                                                <property name="valign">center</property>
-                                              </object>
-                                            </child>
+                                          <object class="GtkToggleButton" id="password_generator_settings_button">
+                                            <property name="icon-name">emblem-system-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Password generation settings</property>
+                                            <style>
+                                              <class name="flat" />
+                                            </style>
                                           </object>
                                         </child>
                                         <child>
-                                          <object class="AdwActionRow">
-                                            <property name="title" translatable="yes">Uppercase letters</property>
-                                            <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                            <child type="suffix">
-                                              <object class="GtkSpinButton"
-                                                id="password_generator_min_uppercase_spin">
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="lower">0</property>
-                                                    <property name="upper">256</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">5</property>
-                                                    <property name="value">1</property>
-                                                  </object>
-                                                </property>
-                                                <property name="numeric">true</property>
-                                                <property name="width-chars">4</property>
-                                                <property name="valign">center</property>
-                                              </object>
-                                            </child>
+                                          <object class="GtkButton" id="copy_password_button">
+                                            <property name="icon-name">edit-copy-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Copy password</property>
+                                            <style>
+                                              <class name="flat" />
+                                            </style>
                                           </object>
                                         </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkRevealer" id="password_generator_settings_revealer">
+                                        <property name="reveal-child">false</property>
+                                        <property name="transition-type">slide-down</property>
                                         <child>
-                                          <object class="AdwActionRow">
-                                            <property name="title" translatable="yes">Numbers</property>
-                                            <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                            <child type="suffix">
-                                              <object class="GtkSpinButton"
-                                                id="password_generator_min_numbers_spin">
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="lower">0</property>
-                                                    <property name="upper">256</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">5</property>
-                                                    <property name="value">1</property>
+                                          <object class="GtkBox">
+                                            <property name="orientation">vertical</property>
+                                            <property name="margin-start">15</property>
+                                            <property name="margin-end">15</property>
+                                            <property name="margin-bottom">6</property>
+                                            <child>
+                                              <object class="GtkListBox">
+                                                <property name="selection-mode">none</property>
+                                                <style>
+                                                  <class name="boxed-list" />
+                                                </style>
+                                                <child>
+                                                  <object class="AdwActionRow">
+                                                    <property name="title" translatable="yes">Length</property>
+                                                    <property name="subtitle" translatable="yes">Total characters</property>
+                                                    <child type="suffix">
+                                                      <object class="GtkSpinButton" id="password_generator_length_spin">
+                                                        <property name="adjustment">
+                                                          <object class="GtkAdjustment">
+                                                            <property name="lower">1</property>
+                                                            <property name="upper">256</property>
+                                                            <property name="step-increment">1</property>
+                                                            <property name="page-increment">5</property>
+                                                            <property name="value">24</property>
+                                                          </object>
+                                                        </property>
+                                                        <property name="numeric">true</property>
+                                                        <property name="width-chars">4</property>
+                                                        <property name="valign">center</property>
+                                                      </object>
+                                                    </child>
                                                   </object>
-                                                </property>
-                                                <property name="numeric">true</property>
-                                                <property name="width-chars">4</property>
-                                                <property name="valign">center</property>
-                                              </object>
-                                            </child>
-                                          </object>
-                                        </child>
-                                        <child>
-                                          <object class="AdwActionRow">
-                                            <property name="title" translatable="yes">Symbols</property>
-                                            <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
-                                            <child type="suffix">
-                                              <object class="GtkSpinButton"
-                                                id="password_generator_min_symbols_spin">
-                                                <property name="adjustment">
-                                                  <object class="GtkAdjustment">
-                                                    <property name="lower">0</property>
-                                                    <property name="upper">256</property>
-                                                    <property name="step-increment">1</property>
-                                                    <property name="page-increment">5</property>
-                                                    <property name="value">1</property>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwActionRow">
+                                                    <property name="title" translatable="yes">Lowercase letters</property>
+                                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                                    <child type="suffix">
+                                                      <object class="GtkSpinButton" id="password_generator_min_lowercase_spin">
+                                                        <property name="adjustment">
+                                                          <object class="GtkAdjustment">
+                                                            <property name="lower">0</property>
+                                                            <property name="upper">256</property>
+                                                            <property name="step-increment">1</property>
+                                                            <property name="page-increment">5</property>
+                                                            <property name="value">1</property>
+                                                          </object>
+                                                        </property>
+                                                        <property name="numeric">true</property>
+                                                        <property name="width-chars">4</property>
+                                                        <property name="valign">center</property>
+                                                      </object>
+                                                    </child>
                                                   </object>
-                                                </property>
-                                                <property name="numeric">true</property>
-                                                <property name="width-chars">4</property>
-                                                <property name="valign">center</property>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwActionRow">
+                                                    <property name="title" translatable="yes">Uppercase letters</property>
+                                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                                    <child type="suffix">
+                                                      <object class="GtkSpinButton" id="password_generator_min_uppercase_spin">
+                                                        <property name="adjustment">
+                                                          <object class="GtkAdjustment">
+                                                            <property name="lower">0</property>
+                                                            <property name="upper">256</property>
+                                                            <property name="step-increment">1</property>
+                                                            <property name="page-increment">5</property>
+                                                            <property name="value">1</property>
+                                                          </object>
+                                                        </property>
+                                                        <property name="numeric">true</property>
+                                                        <property name="width-chars">4</property>
+                                                        <property name="valign">center</property>
+                                                      </object>
+                                                    </child>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwActionRow">
+                                                    <property name="title" translatable="yes">Numbers</property>
+                                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                                    <child type="suffix">
+                                                      <object class="GtkSpinButton" id="password_generator_min_numbers_spin">
+                                                        <property name="adjustment">
+                                                          <object class="GtkAdjustment">
+                                                            <property name="lower">0</property>
+                                                            <property name="upper">256</property>
+                                                            <property name="step-increment">1</property>
+                                                            <property name="page-increment">5</property>
+                                                            <property name="value">1</property>
+                                                          </object>
+                                                        </property>
+                                                        <property name="numeric">true</property>
+                                                        <property name="width-chars">4</property>
+                                                        <property name="valign">center</property>
+                                                      </object>
+                                                    </child>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwActionRow">
+                                                    <property name="title" translatable="yes">Symbols</property>
+                                                    <property name="subtitle" translatable="yes">Minimum count, 0 disables</property>
+                                                    <child type="suffix">
+                                                      <object class="GtkSpinButton" id="password_generator_min_symbols_spin">
+                                                        <property name="adjustment">
+                                                          <object class="GtkAdjustment">
+                                                            <property name="lower">0</property>
+                                                            <property name="upper">256</property>
+                                                            <property name="step-increment">1</property>
+                                                            <property name="page-increment">5</property>
+                                                            <property name="value">1</property>
+                                                          </object>
+                                                        </property>
+                                                        <property name="numeric">true</property>
+                                                        <property name="width-chars">4</property>
+                                                        <property name="valign">center</property>
+                                                      </object>
+                                                    </child>
+                                                  </object>
+                                                </child>
                                               </object>
                                             </child>
                                           </object>
                                         </child>
                                       </object>
                                     </child>
+                                    <child>
+                                      <object class="AdwEntryRow" id="username_entry">
+                                        <property name="title" translatable="yes">Username</property>
+                                        <property name="visible">false</property>
+                                        <property name="editable">false</property>
+                                        <property name="margin-start">15</property>
+                                        <property name="margin-end">15</property>
+                                        <property name="margin-bottom">6</property>
+                                        <child>
+                                          <object class="GtkButton" id="copy_username_button">
+                                            <property name="icon-name">edit-copy-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Copy username</property>
+                                            <style>
+                                              <class name="flat" />
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwPasswordEntryRow" id="otp_entry">
+                                        <property name="title" translatable="yes">OTP</property>
+                                        <property name="visible">false</property>
+                                        <property name="editable">true</property>
+                                        <property name="margin-start">15</property>
+                                        <property name="margin-end">15</property>
+                                        <property name="margin-bottom">6</property>
+                                        <child>
+                                          <object class="GtkButton" id="copy_otp_button">
+                                            <property name="icon-name">edit-copy-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Copy OTP</property>
+                                            <style>
+                                              <class name="flat" />
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkBox" id="dynamic_fields_box">
+                                        <property name="visible">false</property>
+                                        <property name="orientation">vertical</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkButton" id="add_otp_button">
+                                        <property name="visible">false</property>
+                                        <property name="label" translatable="yes">Add OTP secret</property>
+                                        <property name="halign">start</property>
+                                        <property name="margin-start">15</property>
+                                        <property name="margin-end">15</property>
+                                        <property name="margin-bottom">6</property>
+                                        <property name="action-name">win.add-otp-secret</property>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
                             </child>
-
-                            <child>
-                              <object class="AdwEntryRow" id="username_entry">
-                                <property name="title" translatable="yes">Username</property>
-                                <property name="visible">false</property>
-                                <property name="editable">false</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">6</property>
-                                <child>
-                                  <object class="GtkButton" id="copy_username_button">
-                                    <property name="icon-name">edit-copy-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Copy username</property>
-                                    <style>
-                                      <class name="flat" />
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-
-                            <child>
-                              <object class="AdwPasswordEntryRow" id="otp_entry">
-                                <property name="title" translatable="yes">OTP</property>
-                                <property name="visible">false</property>
-                                <property name="editable">true</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">6</property>
-                                <child>
-                                  <object class="GtkButton" id="copy_otp_button">
-                                    <property name="icon-name">edit-copy-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Copy OTP</property>
-                                    <style>
-                                      <class name="flat" />
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-
-                            <child>
-                              <object class="GtkBox" id="dynamic_fields_box">
-                                <property name="visible">false</property>
-                                <property name="orientation">vertical</property>
-                              </object>
-                            </child>
-
-                            <child>
-                              <object class="GtkButton" id="add_otp_button">
-                                <property name="visible">false</property>
-                                <property name="label" translatable="yes">Add OTP secret</property>
-                                <property name="halign">start</property>
-                                <property name="margin-start">15</property>
-                                <property name="margin-end">15</property>
-                                <property name="margin-bottom">6</property>
-                                <property name="action-name">win.add-otp-secret</property>
-                              </object>
-                            </child>
-
                           </object>
                         </child>
                       </object>

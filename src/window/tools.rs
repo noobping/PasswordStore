@@ -164,7 +164,7 @@ impl ToolsPageState {
             &self.list,
             WEAK_PASSWORDS_ROW_TITLE,
             WEAK_PASSWORDS_ROW_SUBTITLE,
-            "dialog-warning-symbolic",
+            "go-next-symbolic",
             move || state.prepare_weak_passwords_browser(),
         );
         *self.weak_passwords_tool_row.borrow_mut() = Some(weak_passwords_row);

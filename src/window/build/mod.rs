@@ -254,6 +254,14 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         &widgets.tools_page,
         &widgets.tools_list,
         &widgets.toast_overlay,
+        &widgets.tools_field_values_page,
+        &widgets.tools_field_values_search_entry,
+        &widgets.tools_field_values_list,
+        &widgets.tools_value_values_page,
+        &widgets.tools_value_values_search_entry,
+        &widgets.tools_value_values_list,
+        &widgets.list,
+        &widgets.search_entry,
     );
     initialize_store_import_page_ui(&widgets, &window_navigation_state);
     let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);

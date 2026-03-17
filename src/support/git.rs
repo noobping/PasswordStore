@@ -48,7 +48,6 @@ pub fn ensure_store_git_repository(root: &str) -> Result<(), String> {
     }
 }
 
-
 pub fn password_store_git_state_summary(root: &str) -> String {
     if !has_git_repository(root) {
         return format!(

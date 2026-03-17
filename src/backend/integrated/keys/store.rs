@@ -285,6 +285,16 @@ pub fn import_ripasso_private_key_bytes(
     bytes: &[u8],
     passphrase: Option<&str>,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    let key = store_ripasso_private_key_bytes(bytes)?;
+    let (unlocked_cert, _) = prepare_managed_private_key_bytes(bytes, passphrase)?;
+    cache_unlocked_ripasso_private_key(unlocked_cert);
+
+    Ok(key)
+}
+
+pub fn store_ripasso_private_key_bytes(
+    bytes: &[u8],
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let keys_dir = ripasso_keys_dir().map_err(PrivateKeyError::other)?;
     fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
@@ -296,14 +306,12 @@ pub fn import_ripasso_private_key_bytes(
             "That private key must be password protected before you can import it.",
         ));
     };
-    let (unlocked_cert, _) = prepare_managed_private_key_bytes(bytes, passphrase)?;
     let mut file = File::create(keys_dir.join(key.fingerprint.to_ascii_lowercase()))
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     stored_cert
         .as_tsk()
         .serialize(&mut file)
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
-    cache_unlocked_ripasso_private_key(unlocked_cert);
 
     Ok(key)
 }

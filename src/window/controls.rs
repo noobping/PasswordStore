@@ -6,7 +6,8 @@ use crate::password::page::{
     PasswordPageState,
 };
 use crate::password::undo::{
-    execute_undo_action, pop_undo_action, push_undo_action, undo_action_restored_entry,
+    execute_undo_action, pop_undo_action, push_undo_action, unavailable_undo_message,
+    undo_action_restored_entry,
 };
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
@@ -211,6 +212,10 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
         let Some(action) = pop_undo_action() else {
             return;
         };
+        if let Some(message) = unavailable_undo_message(&action) {
+            state.password_page.overlay.add_toast(adw::Toast::new(message));
+            return;
+        }
 
         let overlay = state.password_page.overlay.clone();
         let state_for_result = state.clone();

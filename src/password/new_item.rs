@@ -1,18 +1,66 @@
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
-use crate::support::ui::toggle_popover;
-use adw::gtk::{DropDown, Popover, StringList, INVALID_LIST_POSITION};
+use adw::gtk::{Box as GtkBox, DropDown, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::ApplicationWindow;
+use adw::{ApplicationWindow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, WindowTitle};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct NewPasswordPopoverState {
-    pub popover: Popover,
+    pub dialog: Dialog,
+    pub path_entry: EntryRow,
     pub store_dropdown: DropDown,
     pub store_roots: Rc<RefCell<Vec<String>>>,
+}
+
+fn dialog_content_shell(
+    title: &str,
+    subtitle: &str,
+    child: &impl IsA<adw::gtk::Widget>,
+) -> GtkBox {
+    let window_title = WindowTitle::builder().title(title).build();
+    if !subtitle.trim().is_empty() {
+        window_title.set_subtitle(subtitle);
+    }
+
+    let header = HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+
+    let shell = GtkBox::new(adw::gtk::Orientation::Vertical, 0);
+    shell.append(&header);
+    shell.append(child);
+    shell
+}
+
+pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow) {
+    let store_dropdown = DropDown::from_strings(&[]);
+    store_dropdown.set_visible(false);
+
+    let path_entry = EntryRow::new();
+    path_entry.set_title("Path or name");
+    path_entry.set_show_apply_button(true);
+
+    let group = PreferencesGroup::new();
+    group.add(&store_dropdown);
+    group.add(&path_entry);
+
+    let page = PreferencesPage::new();
+    page.add(&group);
+
+    let dialog = Dialog::builder()
+        .title("New item")
+        .content_width(420)
+        .follows_content_size(true)
+        .child(&dialog_content_shell(
+            "New item",
+            "Create a new pass file.",
+            &page,
+        ))
+        .build();
+
+    (dialog, store_dropdown, path_entry)
 }
 
 fn available_store_roots() -> Vec<String> {
@@ -61,12 +109,19 @@ pub fn register_open_new_password_action(
     window: &ApplicationWindow,
     state: &NewPasswordPopoverState,
 ) {
+    let window_for_action = window.clone();
+    let window_for_dialog = window.clone();
     let state = state.clone();
-    register_window_action(window, "open-new-password", move || {
-        if !state.popover.is_visible() {
-            sync_new_password_store_selector(&state);
+    register_window_action(&window_for_action, "open-new-password", move || {
+        if state.dialog.is_visible() {
+            state.dialog.force_close();
+            return;
         }
-        toggle_popover(&state.popover);
+
+        sync_new_password_store_selector(&state);
+        state.path_entry.set_text("");
+        state.dialog.present(Some(&window_for_dialog));
+        state.path_entry.grab_focus();
     });
 }
 

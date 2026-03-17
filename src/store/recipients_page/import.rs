@@ -1,4 +1,5 @@
 use super::list::rebuild_store_recipients_list;
+use super::sync::sync_private_keys_to_host_if_enabled;
 use super::StoreRecipientsPageState;
 use crate::backend::{
     import_ripasso_private_key_bytes, ripasso_private_key_requires_passphrase,
@@ -23,6 +24,7 @@ fn finish_private_key_import(
 ) {
     match result {
         Ok(_) => {
+            let _ = sync_private_keys_to_host_if_enabled(state);
             rebuild_store_recipients_list(state);
             activate_widget_action(&state.window, "win.reload-password-list");
             state

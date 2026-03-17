@@ -23,10 +23,10 @@ use crate::support::background::spawn_result_task;
 use crate::support::ui::{
     pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
 };
+use crate::support::validation::validate_pass_file_email_fields;
 use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
-use adw::gtk::Popover;
 use adw::prelude::*;
-use adw::Toast;
+use adw::{Dialog, Toast};
 use std::string::ToString;
 
 use self::editor::{
@@ -97,6 +97,10 @@ fn password_page_display(state: &PasswordPageState) -> PasswordPageDisplay {
     PasswordPageDisplay::Editor
 }
 
+fn validate_password_save_contents(contents: &str) -> Result<(), String> {
+    validate_pass_file_email_fields(contents).map_err(ToString::to_string)
+}
+
 fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSaveContext, String> {
     let pass_file = get_opened_pass_file().ok_or_else(|| "Open an item first.".to_string())?;
     let editor_contents = current_editor_contents(state);
@@ -119,6 +123,7 @@ fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSa
     let target_label = pass_file
         .updated_label_from_username(&state.username.text())
         .map_err(|err| username_fallback_failure_message(err).to_string())?;
+    validate_password_save_contents(&contents)?;
 
     Ok(PasswordSaveContext {
         previous_store: pass_file.store_path().to_string(),
@@ -247,7 +252,7 @@ pub fn begin_new_password_entry(
     state: &PasswordPageState,
     path: &str,
     store_root: Option<String>,
-    add_popover: &Popover,
+    add_dialog: &Dialog,
 ) {
     let path = path.trim();
     if path.is_empty() {
@@ -261,7 +266,7 @@ pub fn begin_new_password_entry(
         state
             .overlay
             .add_toast(Toast::new("Add a store folder first."));
-        add_popover.popdown();
+        add_dialog.force_close();
         return;
     }
     let template_contents =
@@ -277,7 +282,7 @@ pub fn begin_new_password_entry(
     state.otp.clear();
     push_navigation_page_if_needed(&state.nav, &state.page);
 
-    add_popover.popdown();
+    add_dialog.force_close();
     sync_editor_contents(state, &template_contents, template_pass_file.as_ref());
     sync_saved_password_state(state, &template_contents, false);
 }
@@ -424,6 +429,7 @@ mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
         should_retry_open_password_entry, PasswordPageDisplay,
+        validate_password_save_contents,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::{OpenPassFile, UsernameFallbackError};
@@ -542,6 +548,18 @@ mod tests {
         assert_eq!(
             pass_file.updated_label_from_username(""),
             Err(UsernameFallbackError::EmptyFilename)
+        );
+    }
+
+    #[test]
+    fn pass_file_save_validation_rejects_invalid_email_fields() {
+        assert_eq!(
+            validate_password_save_contents("secret\nemail: person@example.com"),
+            Ok(())
+        );
+        assert_eq!(
+            validate_password_save_contents("secret\nemail: invalid"),
+            Err("Email fields must use a valid email address.".to_string())
         );
     }
 }

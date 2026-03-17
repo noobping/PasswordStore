@@ -124,8 +124,8 @@
                         <child>
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
-                            <property name="placeholder-text" translatable="yes">find user matches '^Alice$'</property>
-                            <property name="tooltip-text" translatable="yes">Use find: or find with weak password, is, contains, matches/regex, NOT/AND/OR/with, quotes, and (?i) for case-insensitive regex.</property>
+                            <property name="placeholder-text" translatable="yes">find otp or reg (?i)^work/.+github$</property>
+                            <property name="tooltip-text" translatable="yes">Use find for field searches like weak password or otp, and use reg for regular expressions across names and searchable fields. find also supports is, contains, matches/regex, NOT/AND/OR/with, quotes, and (?i) for case-insensitive regex.</property>
                           </object>
                         </child>
 
@@ -528,7 +528,23 @@
                                     <property name="show-apply-button">true</property>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="AdwActionRow" id="sync_private_keys_with_host_row">
+                                    <property name="title" translatable="yes">Sync private keys with the host</property>
+                                    <property name="subtitle" translatable="yes">Keep Keycord's private keys and your computer's GPG private keys in step when host access is available.</property>
+                                    <property name="activatable">True</property>
+                                    <child type="suffix">
+                                      <object class="GtkCheckButton" id="sync_private_keys_with_host_check">
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
                               </object>
+                            </child>
+
+                            <child>
+                              <object class="AdwPreferencesGroup" id="host_access_preferences_group" />
                             </child>
 
                             <child>
@@ -1057,7 +1073,7 @@
                                         <child type="suffix">
                                           <object class="GtkImage"
                                             id="store_recipients_generate_key_icon">
-                                            <property name="icon-name">document-new-symbolic</property>
+                                            <property name="icon-name">go-next-symbolic</property>
                                           </object>
                                         </child>
                                       </object>

@@ -23,8 +23,7 @@ use std::rc::Rc;
 
 use self::field_values::FieldValueBrowserState;
 use self::menu::{
-    append_optional_flatpak_override_row, append_optional_log_row, append_optional_pass_import_row,
-    append_optional_setup_row,
+    append_optional_log_row, append_optional_pass_import_row, append_optional_setup_row,
 };
 use self::weak_passwords::WeakPasswordToolState;
 
@@ -172,7 +171,6 @@ impl ToolsPageState {
 
         append_optional_log_row(self);
         append_optional_setup_row(self);
-        append_optional_flatpak_override_row(self);
         append_optional_pass_import_row(self);
     }
 

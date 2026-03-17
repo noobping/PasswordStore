@@ -19,6 +19,7 @@ mod generate;
 mod import;
 mod list;
 mod save;
+mod sync;
 pub use self::save::{queue_store_recipients_autosave, register_store_recipients_save_action};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,6 +139,7 @@ pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
     import::connect_private_key_import_controls(state);
     generate::connect_private_key_generate_controls(state);
     list::connect_private_key_requirement_control(state);
+    generate::connect_private_key_generation_autofill(state);
     generate::connect_private_key_generation_submit(state);
 }
 

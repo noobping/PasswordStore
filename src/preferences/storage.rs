@@ -14,6 +14,7 @@ pub(super) struct PreferenceFile {
     pub(super) password_generation: Option<PasswordGenerationSettings>,
     pub(super) username_fallback_mode: Option<UsernameFallbackMode>,
     pub(super) ripasso_own_fingerprint: Option<String>,
+    pub(super) sync_private_keys_with_host: Option<bool>,
 }
 
 fn config_path() -> PathBuf {

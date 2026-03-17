@@ -54,6 +54,18 @@ pub(super) fn run_host_program_output(
         .map_err(|err| format!("Failed to run host program '{program}': {err}"))
 }
 
+pub(super) fn run_host_program_with_input(
+    program: &str,
+    args: &[&str],
+    input: &str,
+    action: &str,
+    log_options: CommandLogOptions,
+) -> Result<Output, String> {
+    let mut cmd = host_program_command(program, args);
+    run_command_with_input(&mut cmd, action, input, log_options)
+        .map_err(|err| format!("Failed to run host program '{program}': {err}"))
+}
+
 pub(super) fn ensure_success(output: Output, prefix: &str) -> Result<Output, String> {
     if output.status.success() {
         Ok(output)

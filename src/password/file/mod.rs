@@ -12,7 +12,9 @@ pub use self::compose::{
 };
 #[cfg(test)]
 pub use self::parse::structured_username_value;
-pub use self::parse::{canonical_search_field_key, searchable_pass_fields, SearchablePassField};
+pub use self::parse::{
+    canonical_search_field_key, pass_file_has_otp, searchable_pass_fields, SearchablePassField,
+};
 pub use self::parse::{parse_structured_pass_lines, structured_otp_line};
 pub use self::row_ui::{clear_box_children, rebuild_dynamic_fields_from_lines};
 #[cfg(test)]

@@ -90,7 +90,7 @@ impl SearchFilterController {
     }
 
     pub(super) fn start_indexing_if_needed(&self, list: &ListBox) {
-        if !self.state.query.borrow().is_structured() {
+        if !self.state.query.borrow().requires_index() {
             return;
         }
 
@@ -161,7 +161,7 @@ impl SearchFilterController {
 
     fn should_show_loading_placeholder(&self, list: &ListBox) -> bool {
         self.state.loading.get()
-            || (self.state.query.borrow().is_structured()
+            || (self.state.query.borrow().requires_index()
                 && self.state.indexing_generation.get() == Some(self.state.generation.get())
                 && !list_is_empty(list))
     }

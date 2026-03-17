@@ -19,13 +19,17 @@ pub enum StoreRecipientsPrivateKeyRequirement {
 }
 
 #[cfg(target_os = "linux")]
-pub use self::host::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
+pub use self::host::{
+    delete_host_gpg_private_key, import_host_gpg_private_key_bytes,
+    list_host_gpg_private_keys, armored_host_gpg_private_key, HostGpgPrivateKeySummary,
+};
 pub use integrated::{
     armored_ripasso_private_key, generate_ripasso_private_key, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
+    ripasso_private_key_title, store_ripasso_private_key_bytes,
+    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
 };
 pub use integrated::{
     git_commit_private_key_requiring_unlock_for_entry,

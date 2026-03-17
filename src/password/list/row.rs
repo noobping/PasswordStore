@@ -5,7 +5,8 @@ use crate::logging::log_error;
 use crate::password::model::PassEntry;
 use crate::password::undo::{
     delete_entry_with_optional_undo, move_entry_between_stores_action, move_entry_to_store,
-    push_undo_action, rename_entry_action, UndoError,
+    push_undo_action, rename_entry_action, unavailable_undo_action, unavailable_undo_message,
+    UndoError,
 };
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
@@ -64,6 +65,8 @@ pub(super) fn append_password_row(
     let unreadable_icon = build_unreadable_password_icon(!readable);
     let copy_button = flat_icon_button("edit-copy-symbolic");
     copy_button.set_visible(readable);
+    let open_icon = Image::from_icon_name("go-next-symbolic");
+    open_icon.set_visible(readable);
     let menu_button = MenuButton::builder()
         .icon_name("view-more-symbolic")
         .has_frame(false)
@@ -71,6 +74,7 @@ pub(super) fn append_password_row(
         .build();
     action_row.add_prefix(&unreadable_icon);
     action_row.add_suffix(&copy_button);
+    action_row.add_suffix(&open_icon);
     action_row.add_suffix(&menu_button);
 
     let text_edit_row = EntryRow::new();
@@ -257,7 +261,7 @@ fn connect_text_edit_actions(
             Ok(()) => {
                 *state.item.borrow_mut() =
                     PassEntry::from_label(entry.store_path.clone(), &new_label);
-                push_undo_action(rename_entry_action(&entry, &new_label));
+                push_row_undo_action(state.readable, rename_entry_action(&entry, &new_label));
                 sync_password_row_display(&state);
                 show_password_row_display(&state);
             }
@@ -366,9 +370,10 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
         move |result| match result {
             Ok(undo_action) => {
                 if let Some(undo_action) = undo_action {
+                    if let Some(message) = unavailable_undo_message(&undo_action) {
+                        overlay.add_toast(Toast::new(message));
+                    }
                     push_undo_action(undo_action);
-                } else {
-                    overlay.add_toast(Toast::new("Deleted. Undo unavailable."));
                 }
                 list.remove(&row);
             }
@@ -494,6 +499,14 @@ fn log_undo_error(action: &str, error: &UndoError) {
                 "Failed to {action}: rollback failed.\nAction error: {action_error}\nRollback error: {rollback_error}"
             ));
         }
+    }
+}
+
+fn push_row_undo_action(readable: bool, action: crate::password::undo::UndoAction) {
+    if readable {
+        push_undo_action(action);
+    } else {
+        push_undo_action(unavailable_undo_action());
     }
 }
 

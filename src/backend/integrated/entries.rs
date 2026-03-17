@@ -190,6 +190,10 @@ pub fn delete_password_entry(store_root: &str, label: &str) -> Result<(), Passwo
 }
 
 fn commit_identity_fingerprint_for_label(store_root: &str, label: &str) -> Option<String> {
+    if !password_entry_is_readable(store_root, label) {
+        return None;
+    }
+
     match IntegratedCryptoContext::fingerprint_for_label(store_root, label) {
         Ok(fingerprint) => Some(fingerprint),
         Err(err) => {

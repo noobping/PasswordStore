@@ -1,7 +1,7 @@
 use adw::glib::{object::IsA, Object};
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer,
-    ScrolledWindow, SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
+    Box as GtkBox, Builder, Button, CheckButton, ListBox, Revealer, ScrolledWindow,
+    SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
 };
 use adw::ActionRow;
 use adw::PreferencesGroup;
@@ -15,9 +15,6 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) back_button: Button,
     pub(in crate::window) add_button: Button,
     pub(in crate::window) find_button: Button,
-    pub(in crate::window) add_button_popover: Popover,
-    pub(in crate::window) new_password_store_dropdown: DropDown,
-    pub(in crate::window) path_entry: EntryRow,
     pub(in crate::window) git_button: Button,
     pub(in crate::window) store_button: Button,
     pub(in crate::window) window_title: WindowTitle,
@@ -104,8 +101,11 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) preferences_password_generator_min_numbers_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_symbols_spin: SpinButton,
     pub(in crate::window) backend_preferences: PreferencesGroup,
+    pub(in crate::window) host_access_preferences_group: PreferencesGroup,
     pub(in crate::window) backend_row: ComboRow,
     pub(in crate::window) pass_command_row: EntryRow,
+    pub(in crate::window) sync_private_keys_with_host_row: ActionRow,
+    pub(in crate::window) sync_private_keys_with_host_check: CheckButton,
     pub(in crate::window) git_busy_page: NavigationPage,
     pub(in crate::window) git_busy_status: StatusPage,
     pub(in crate::window) log_view: TextView,
@@ -122,9 +122,6 @@ impl WindowWidgets {
             back_button: required_object(builder, "back_button"),
             add_button: required_object(builder, "add_button"),
             find_button: required_object(builder, "find_button"),
-            add_button_popover: required_object(builder, "add_button_popover"),
-            new_password_store_dropdown: required_object(builder, "new_password_store_dropdown"),
-            path_entry: required_object(builder, "path_entry"),
             git_button: required_object(builder, "git_button"),
             store_button: required_object(builder, "store_button"),
             window_title: required_object(builder, "window_title"),
@@ -307,8 +304,17 @@ impl WindowWidgets {
                 "preferences_password_generator_min_symbols_spin",
             ),
             backend_preferences: required_object(builder, "backend_preferences"),
+            host_access_preferences_group: required_object(builder, "host_access_preferences_group"),
             backend_row: required_object(builder, "backend_row"),
             pass_command_row: required_object(builder, "pass_command_row"),
+            sync_private_keys_with_host_row: required_object(
+                builder,
+                "sync_private_keys_with_host_row",
+            ),
+            sync_private_keys_with_host_check: required_object(
+                builder,
+                "sync_private_keys_with_host_check",
+            ),
             git_busy_page: required_object(builder, "git_busy_page"),
             git_busy_status: required_object(builder, "git_busy_status"),
             log_view: required_object(builder, "log_view"),

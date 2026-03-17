@@ -1,15 +1,15 @@
 *.AppImage
 *.desktop
 *.lock
-*.sh
 *builder/
 *cache/
 *og.txt
 .cargo*
+.flatpak/*
 AppDir/
 excludelist
+patches/
 resources.xml
 squashfs*
 target/
 vendor/
-patches/

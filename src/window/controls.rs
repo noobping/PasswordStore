@@ -361,12 +361,18 @@ pub fn register_go_home_action(window: &adw::ApplicationWindow, state: &BackActi
 
 pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
+    app.set_accels_for_action("win.go-home", &["Home"]);
     app.set_accels_for_action("win.context-save", &["<primary>s"]);
+    app.set_accels_for_action("win.synchronize", &["<primary><shift>s"]);
     app.set_accels_for_action("win.context-undo", &["<primary>z"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
     app.set_accels_for_action("win.toggle-hidden-and-duplicates", &["<primary>h"]);
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
+    app.set_accels_for_action("win.open-store-picker", &["<primary><shift>n"]);
+    app.set_accels_for_action("win.open-raw-pass-file", &["<primary><shift>r"]);
+    app.set_accels_for_action("win.open-git", &["<primary>g"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
+    app.set_accels_for_action("win.open-tools", &["<primary>t"]);
     app.set_accels_for_action("app.shortcuts", &["<primary>question"]);
     configure_platform_shortcuts(app);
 }

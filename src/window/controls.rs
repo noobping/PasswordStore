@@ -102,6 +102,13 @@ enum ContextSaveTarget {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ContextReloadTarget {
+    PasswordList,
+    StoreRecipients,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VisibleContextPage {
     Root,
     Password,
@@ -140,6 +147,33 @@ fn context_save_target(
     context_save_target_from_page(page, has_host_permission())
 }
 
+const fn context_reload_target_from_page(page: VisibleContextPage) -> ContextReloadTarget {
+    match page {
+        VisibleContextPage::Root => ContextReloadTarget::PasswordList,
+        VisibleContextPage::StoreRecipients => ContextReloadTarget::StoreRecipients,
+        VisibleContextPage::Password | VisibleContextPage::Other => ContextReloadTarget::None,
+    }
+}
+
+fn context_reload_target(
+    navigation: &WindowNavigationState,
+    recipients_page: &NavigationPage,
+) -> ContextReloadTarget {
+    let page = if visible_navigation_page_is(&navigation.nav, recipients_page) {
+        VisibleContextPage::StoreRecipients
+    } else if navigation_stack_is_root(&navigation.nav) {
+        VisibleContextPage::Root
+    } else if visible_navigation_page_is(&navigation.nav, &navigation.text_page)
+        || visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page)
+    {
+        VisibleContextPage::Password
+    } else {
+        VisibleContextPage::Other
+    };
+
+    context_reload_target_from_page(page)
+}
+
 fn configure_platform_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-log", &["F12"]);
 }
@@ -167,6 +201,30 @@ pub fn register_context_save_action(
                 activate_widget_action(&dispatch_window, "win.synchronize");
             }
             ContextSaveTarget::None => {}
+        },
+    );
+}
+
+pub fn register_context_reload_action(
+    window: &ApplicationWindow,
+    navigation: &WindowNavigationState,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    let action_window = window.clone();
+    let dispatch_window = action_window.clone();
+    let navigation = navigation.clone();
+    let recipients_page = recipients_page.page.clone();
+    register_window_action(
+        &action_window,
+        "context-reload",
+        move || match context_reload_target(&navigation, &recipients_page) {
+            ContextReloadTarget::PasswordList => {
+                activate_widget_action(&dispatch_window, "win.reload-password-list");
+            }
+            ContextReloadTarget::StoreRecipients => {
+                activate_widget_action(&dispatch_window, "win.reload-store-recipients-list");
+            }
+            ContextReloadTarget::None => {}
         },
     );
 }
@@ -363,6 +421,7 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.go-home", &["Home"]);
     app.set_accels_for_action("win.context-save", &["<primary>s"]);
+    app.set_accels_for_action("win.context-reload", &["F5"]);
     app.set_accels_for_action("win.synchronize", &["<primary><shift>s"]);
     app.set_accels_for_action("win.context-undo", &["<primary>z"]);
     app.set_accels_for_action("win.toggle-find", &["<primary>f"]);
@@ -370,8 +429,10 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-store-picker", &["<primary><shift>n"]);
     app.set_accels_for_action("win.open-raw-pass-file", &["<primary><shift>r"]);
+    app.set_accels_for_action("win.add-otp-secret", &["<primary><shift>o"]);
+    app.set_accels_for_action("win.generate-password", &["<primary><shift>g"]);
     app.set_accels_for_action("win.open-git", &["<primary>g"]);
-    app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
+    app.set_accels_for_action("win.open-preferences", &["<primary>comma"]);
     app.set_accels_for_action("win.open-tools", &["<primary>t"]);
     app.set_accels_for_action("app.shortcuts", &["<primary>question"]);
     configure_platform_shortcuts(app);
@@ -429,8 +490,8 @@ pub fn apply_startup_query(
 #[cfg(test)]
 mod tests {
     use super::{
-        context_save_target_from_page, toggled_list_visibility, ContextSaveTarget,
-        VisibleContextPage,
+        context_reload_target_from_page, context_save_target_from_page, toggled_list_visibility,
+        ContextReloadTarget, ContextSaveTarget, VisibleContextPage,
     };
 
     #[test]
@@ -474,6 +535,34 @@ mod tests {
         assert_eq!(
             context_save_target_from_page(VisibleContextPage::Other, true),
             ContextSaveTarget::None
+        );
+    }
+
+    #[test]
+    fn context_reload_uses_the_root_password_list() {
+        assert_eq!(
+            context_reload_target_from_page(VisibleContextPage::Root),
+            ContextReloadTarget::PasswordList
+        );
+    }
+
+    #[test]
+    fn context_reload_uses_the_recipients_page_list() {
+        assert_eq!(
+            context_reload_target_from_page(VisibleContextPage::StoreRecipients),
+            ContextReloadTarget::StoreRecipients
+        );
+    }
+
+    #[test]
+    fn context_reload_is_disabled_on_editor_and_other_pages() {
+        assert_eq!(
+            context_reload_target_from_page(VisibleContextPage::Password),
+            ContextReloadTarget::None
+        );
+        assert_eq!(
+            context_reload_target_from_page(VisibleContextPage::Other),
+            ContextReloadTarget::None
         );
     }
 

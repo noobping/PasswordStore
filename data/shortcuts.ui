@@ -7,7 +7,7 @@
     <child>
       <object class="GtkShortcutsSection">
         <property name="section-name">shortcuts</property>
-        <property name="max-height">12</property>
+        <property name="max-height">15</property>
         <property name="title" translatable="yes">Keyboard Shortcuts</property>
         <child>
           <object class="GtkShortcutsGroup">
@@ -20,7 +20,7 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes">Save current page</property>
+                <property name="title" translatable="yes">Save current page or sync from home</property>
                 <property name="accelerator">&lt;Primary&gt;s</property>
               </object>
             </child>
@@ -28,6 +28,18 @@
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Open raw pass file</property>
                 <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;r</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Add OTP field</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;o</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Generate password</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;g</property>
               </object>
             </child>
             <child>
@@ -57,6 +69,12 @@
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Sync stores</property>
                 <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;s</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Refresh current list</property>
+                <property name="accelerator">F5</property>
               </object>
             </child>
           </object>
@@ -113,7 +131,7 @@
             <child>
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Open preferences</property>
-                <property name="accelerator">&lt;Primary&gt;p</property>
+                <property name="accelerator">&lt;Primary&gt;comma</property>
               </object>
             </child>
             <child>

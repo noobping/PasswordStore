@@ -31,9 +31,9 @@ use self::state::{
 use self::widgets::WindowWidgets;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, connect_search_visibility,
-    register_back_action, register_context_save_action, register_context_undo_action,
-    register_go_home_action, register_list_visibility_action, register_reload_password_list_action,
-    register_toggle_find_action, ListVisibilityState,
+    register_back_action, register_context_reload_action, register_context_save_action,
+    register_context_undo_action, register_go_home_action, register_list_visibility_action,
+    register_reload_password_list_action, register_toggle_find_action, ListVisibilityState,
 };
 use super::git::GitActionState;
 use super::git::{
@@ -340,6 +340,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     register_open_new_password_action(&widgets.window, &new_password_popover_state);
     register_context_save_action(
+        &widgets.window,
+        &window_navigation_state,
+        &store_recipients_page_state,
+    );
+    register_context_reload_action(
         &widgets.window,
         &window_navigation_state,
         &store_recipients_page_state,

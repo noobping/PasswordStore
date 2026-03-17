@@ -301,6 +301,10 @@ pub fn show_raw_pass_file_page(state: &PasswordPageState) {
 }
 
 pub fn add_empty_otp_secret(state: &PasswordPageState) {
+    if !state.otp_add_button.is_visible() {
+        return;
+    }
+
     add_empty_otp_secret_to_editor(state);
 }
 

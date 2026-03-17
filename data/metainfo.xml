@@ -30,10 +30,13 @@
   <description>
     <p>Works with password stores that use the standard pass layout, so existing data can stay in place and remain compatible with established workflows.</p>
     <ul>
-      <li>Search entries across more than one store</li>
-      <li>Work with structured fields or raw pass-file text</li>
       <li>Generate passwords and copy usernames, secrets, and one-time codes</li>
+      <li>Search across multiple stores</li>
+      <li>Find outdated accounts and detect weak passwords</li>
+      <li>Work with structured fields or raw pass-file text</li>
+      <li>Optional Git and GPG synchronization</li>
       <li>Manage recipients and private keys</li>
+      <li>Sign commits and manage Git remotes</li>
     </ul>
   </description>
 
@@ -68,13 +71,15 @@
   </screenshots>
 
   <releases>
-    <release version="0.8.2" date="2026-03-16">
+    <release version="0.8.2" date="2026-03-17">
       <description>
         <ul>
+          <li>Show disabled options instead of hiding them</li>
           <li>Improve private key list refresh and actions</li>
           <li>Add tools page</li>
-          <li>Show disabled options instead of hiding them</li>
           <li>Add advanced search</li>
+          <li>Add optional GPG synchronization</li>
+          <li>You can now manage Git remotes</li>
         </ul>
       </description>
     </release>

@@ -442,21 +442,13 @@ fn append_private_key_row_shell(
         .title(title.as_str())
         .subtitle(fingerprint)
         .build();
-    row.set_activatable(true);
+    row.set_activatable(false);
     row.add_prefix(&dim_label_icon("dialog-password-symbolic"));
 
     let toggle = adw::gtk::CheckButton::new();
     toggle.set_active(active);
     sync_private_key_toggle_button(&toggle, toggle_blocked_message);
     row.add_suffix(&toggle);
-
-    let toggle_for_row = toggle.clone();
-    row.connect_activated(move |_| {
-        if !toggle_for_row.is_sensitive() {
-            return;
-        }
-        toggle_for_row.set_active(!toggle_for_row.is_active());
-    });
 
     (row, toggle)
 }

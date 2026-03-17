@@ -1,10 +1,13 @@
-use crate::backend::read_password_entry;
+use crate::backend::{read_password_entry, read_password_line};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::clipboard::set_clipboard_text;
 #[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::logging::log_error;
 use crate::password::file::{searchable_pass_fields, SearchablePassField};
+use crate::password::model::OpenPassFile;
 use crate::password::opened::clear_opened_pass_file;
+use crate::password::page::{open_password_entry_page, PasswordPageState};
+use crate::password::strength::weak_password_reason;
 use crate::preferences::Preferences;
 #[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::setup::{
@@ -56,6 +59,18 @@ const VALUE_VALUES_EMPTY_TITLE: &str = "No values";
 const VALUE_VALUES_EMPTY_SUBTITLE: &str = "This field has no searchable values.";
 const VALUE_VALUES_FILTER_EMPTY_TITLE: &str = "No matching values";
 const VALUE_VALUES_FILTER_EMPTY_SUBTITLE: &str = "Try a different value filter.";
+const WEAK_PASSWORDS_TITLE: &str = "Find weak passwords";
+const WEAK_PASSWORDS_SUBTITLE: &str = "Scan the current list for passwords that fail basic checks.";
+const WEAK_PASSWORDS_ROW_TITLE: &str = "Find weak passwords";
+const WEAK_PASSWORDS_ROW_SUBTITLE: &str =
+    "Scan the current list for passwords that fail basic checks.";
+const WEAK_PASSWORDS_LOADING_TITLE: &str = "Scanning passwords";
+const WEAK_PASSWORDS_LOADING_SUBTITLE: &str = "Reading password lines from the current list.";
+const WEAK_PASSWORDS_EMPTY_TITLE: &str = "No weak passwords found";
+const WEAK_PASSWORDS_EMPTY_SUBTITLE: &str =
+    "No loaded pass files matched the current weak-password checks.";
+const WEAK_PASSWORDS_FILTER_EMPTY_TITLE: &str = "No matching results";
+const WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE: &str = "Try a different search term.";
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 const FLATPAK_HOST_OVERRIDE_COMMAND: &str =
@@ -68,15 +83,20 @@ pub struct ToolsPageState {
     pub page: NavigationPage,
     pub list: ListBox,
     pub overlay: ToastOverlay,
+    pub password_page: PasswordPageState,
     pub field_values_page: NavigationPage,
     pub field_values_search_entry: SearchEntry,
     pub field_values_list: ListBox,
     pub value_values_page: NavigationPage,
     pub value_values_search_entry: SearchEntry,
     pub value_values_list: ListBox,
+    pub weak_passwords_page: NavigationPage,
+    pub weak_passwords_search_entry: SearchEntry,
+    pub weak_passwords_list: ListBox,
     pub root_list: ListBox,
     pub root_search_entry: SearchEntry,
     browser: Rc<FieldValueBrowserState>,
+    weak_passwords: Rc<WeakPasswordToolState>,
 }
 
 #[derive(Default)]
@@ -85,6 +105,13 @@ struct FieldValueBrowserState {
     in_flight: Cell<bool>,
     catalog: RefCell<Option<FieldValueCatalog>>,
     selected_field: RefCell<Option<String>>,
+}
+
+#[derive(Default)]
+struct WeakPasswordToolState {
+    generation: Cell<u64>,
+    in_flight: Cell<bool>,
+    results: RefCell<Option<Vec<WeakPasswordFinding>>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -118,6 +145,21 @@ struct FieldValueCatalogBatch {
     catalog: FieldValueCatalog,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WeakPasswordFinding {
+    root: String,
+    label: String,
+    normalized_label: String,
+    reason: String,
+    normalized_reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WeakPasswordBatch {
+    generation: u64,
+    results: Vec<WeakPasswordFinding>,
+}
+
 impl ToolsPageState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -126,12 +168,16 @@ impl ToolsPageState {
         page: &NavigationPage,
         list: &ListBox,
         overlay: &ToastOverlay,
+        password_page: &PasswordPageState,
         field_values_page: &NavigationPage,
         field_values_search_entry: &SearchEntry,
         field_values_list: &ListBox,
         value_values_page: &NavigationPage,
         value_values_search_entry: &SearchEntry,
         value_values_list: &ListBox,
+        weak_passwords_page: &NavigationPage,
+        weak_passwords_search_entry: &SearchEntry,
+        weak_passwords_list: &ListBox,
         root_list: &ListBox,
         root_search_entry: &SearchEntry,
     ) -> Self {
@@ -141,15 +187,20 @@ impl ToolsPageState {
             page: page.clone(),
             list: list.clone(),
             overlay: overlay.clone(),
+            password_page: password_page.clone(),
             field_values_page: field_values_page.clone(),
             field_values_search_entry: field_values_search_entry.clone(),
             field_values_list: field_values_list.clone(),
             value_values_page: value_values_page.clone(),
             value_values_search_entry: value_values_search_entry.clone(),
             value_values_list: value_values_list.clone(),
+            weak_passwords_page: weak_passwords_page.clone(),
+            weak_passwords_search_entry: weak_passwords_search_entry.clone(),
+            weak_passwords_list: weak_passwords_list.clone(),
             root_list: root_list.clone(),
             root_search_entry: root_search_entry.clone(),
             browser: Rc::new(FieldValueBrowserState::default()),
+            weak_passwords: Rc::new(WeakPasswordToolState::default()),
         };
         state.connect_browser_handlers();
         state
@@ -165,6 +216,15 @@ impl ToolsPageState {
             FIELD_VALUES_ROW_SUBTITLE,
             "go-next-symbolic",
             move || state.open_field_values_browser(),
+        );
+
+        let state = self.clone();
+        append_action_row_with_button(
+            &self.list,
+            WEAK_PASSWORDS_ROW_TITLE,
+            WEAK_PASSWORDS_ROW_SUBTITLE,
+            "dialog-warning-symbolic",
+            move || state.open_weak_passwords_browser(),
         );
 
         append_optional_log_row(self);
@@ -188,6 +248,12 @@ impl ToolsPageState {
 
         {
             let state = self.clone();
+            self.weak_passwords_search_entry
+                .connect_search_changed(move |_| state.render_weak_passwords_list());
+        }
+
+        {
+            let state = self.clone();
             self.navigation
                 .nav
                 .connect_notify_local(Some("visible-page"), move |_, _| {
@@ -203,19 +269,23 @@ impl ToolsPageState {
         if visible_navigation_page_is(&self.navigation.nav, &self.value_values_page) {
             self.value_values_search_entry.grab_focus();
         }
+        if visible_navigation_page_is(&self.navigation.nav, &self.weak_passwords_page) {
+            self.weak_passwords_search_entry.grab_focus();
+        }
         if !self.browser_flow_is_visible() && self.browser_has_state() {
             self.reset_browser_state();
         }
     }
 
     fn open_field_values_browser(&self) {
+        self.reset_weak_passwords_state();
         self.reset_browser_state();
         let generation = next_generation(self.browser.generation.get());
         self.browser.generation.set(generation);
         self.browser.in_flight.set(true);
         self.render_field_list();
 
-        let requests = collect_loaded_field_value_requests(&self.root_list);
+        let requests = collect_loaded_entry_requests(&self.root_list);
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(
             &chrome,
@@ -243,6 +313,42 @@ impl ToolsPageState {
         );
     }
 
+    fn open_weak_passwords_browser(&self) {
+        self.reset_browser_state();
+        self.reset_weak_passwords_state();
+        let generation = next_generation(self.weak_passwords.generation.get());
+        self.weak_passwords.generation.set(generation);
+        self.weak_passwords.in_flight.set(true);
+        self.render_weak_passwords_list();
+
+        let requests = collect_loaded_entry_requests(&self.root_list);
+        let chrome = self.navigation.window_chrome();
+        show_secondary_page_chrome(
+            &chrome,
+            WEAK_PASSWORDS_TITLE,
+            WEAK_PASSWORDS_SUBTITLE,
+            false,
+        );
+        reveal_navigation_page(&self.navigation.nav, &self.weak_passwords_page);
+        self.weak_passwords_search_entry.grab_focus();
+
+        if requests.is_empty() {
+            self.apply_weak_password_batch(WeakPasswordBatch {
+                generation,
+                results: Vec::new(),
+            });
+            return;
+        }
+
+        let state_for_result = self.clone();
+        let state_for_disconnect = self.clone();
+        spawn_result_task(
+            move || build_weak_password_batch(generation, requests),
+            move |batch| state_for_result.apply_weak_password_batch(batch),
+            move || state_for_disconnect.handle_weak_password_disconnect(generation),
+        );
+    }
+
     fn open_value_values_browser(&self, field_key: &str) {
         let field_changed = self.browser.selected_field.borrow().as_deref() != Some(field_key);
         *self.browser.selected_field.borrow_mut() = Some(field_key.to_string());
@@ -260,6 +366,25 @@ impl ToolsPageState {
         );
         reveal_navigation_page(&self.navigation.nav, &self.value_values_page);
         self.value_values_search_entry.grab_focus();
+    }
+
+    fn apply_weak_password_batch(&self, batch: WeakPasswordBatch) {
+        if batch.generation != self.weak_passwords.generation.get() {
+            return;
+        }
+
+        self.weak_passwords.in_flight.set(false);
+        *self.weak_passwords.results.borrow_mut() = Some(batch.results);
+        self.render_weak_passwords_list();
+    }
+
+    fn handle_weak_password_disconnect(&self, generation: u64) {
+        if generation != self.weak_passwords.generation.get() {
+            return;
+        }
+
+        self.weak_passwords.in_flight.set(false);
+        self.render_weak_passwords_list();
     }
 
     fn apply_field_catalog_batch(&self, batch: FieldValueCatalogBatch) {
@@ -416,6 +541,69 @@ impl ToolsPageState {
         }
     }
 
+    fn render_weak_passwords_list(&self) {
+        clear_list_box(&self.weak_passwords_list);
+
+        if self.weak_passwords.in_flight.get() {
+            append_info_row(
+                &self.weak_passwords_list,
+                WEAK_PASSWORDS_LOADING_TITLE,
+                WEAK_PASSWORDS_LOADING_SUBTITLE,
+            );
+            return;
+        }
+
+        let Some(results) = self.weak_passwords.results.borrow().clone() else {
+            append_info_row(
+                &self.weak_passwords_list,
+                WEAK_PASSWORDS_EMPTY_TITLE,
+                WEAK_PASSWORDS_EMPTY_SUBTITLE,
+            );
+            return;
+        };
+
+        let query = self.weak_passwords_search_entry.text();
+        let query = query.as_str().trim().to_lowercase();
+        let results = results
+            .into_iter()
+            .filter(|result| {
+                query.is_empty()
+                    || result.normalized_label.contains(&query)
+                    || result.normalized_reason.contains(&query)
+            })
+            .collect::<Vec<_>>();
+
+        if results.is_empty() {
+            append_info_row(
+                &self.weak_passwords_list,
+                if query.is_empty() {
+                    WEAK_PASSWORDS_EMPTY_TITLE
+                } else {
+                    WEAK_PASSWORDS_FILTER_EMPTY_TITLE
+                },
+                if query.is_empty() {
+                    WEAK_PASSWORDS_EMPTY_SUBTITLE
+                } else {
+                    WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE
+                },
+            );
+            return;
+        }
+
+        for result in results {
+            let state = self.clone();
+            let root = result.root.clone();
+            let label = result.label.clone();
+            append_action_row_with_button(
+                &self.weak_passwords_list,
+                &result.label,
+                &result.reason,
+                "go-next-symbolic",
+                move || state.open_weak_password_entry(&root, &label),
+            );
+        }
+    }
+
     fn apply_root_search(&self, query: &str) {
         self.reset_browser_state();
         pop_navigation_to_root(&self.navigation.nav);
@@ -429,6 +617,14 @@ impl ToolsPageState {
         self.root_search_entry.set_text(query);
         self.root_list.invalidate_filter();
         self.root_search_entry.grab_focus();
+    }
+
+    fn open_weak_password_entry(&self, root: &str, label: &str) {
+        open_password_entry_page(
+            &self.password_page,
+            OpenPassFile::from_label(root, label),
+            true,
+        );
     }
 
     fn reset_browser_state(&self) {
@@ -448,6 +644,20 @@ impl ToolsPageState {
 
         clear_list_box(&self.field_values_list);
         clear_list_box(&self.value_values_list);
+    }
+
+    fn reset_weak_passwords_state(&self) {
+        self.weak_passwords
+            .generation
+            .set(next_generation(self.weak_passwords.generation.get()));
+        self.weak_passwords.in_flight.set(false);
+        *self.weak_passwords.results.borrow_mut() = None;
+
+        if !self.weak_passwords_search_entry.text().is_empty() {
+            self.weak_passwords_search_entry.set_text("");
+        }
+
+        clear_list_box(&self.weak_passwords_list);
     }
 
     fn browser_flow_is_visible(&self) -> bool {
@@ -544,7 +754,7 @@ fn append_optional_pass_import_row(state: &ToolsPageState) {
     schedule_store_import_row(&state.list, &settings, &state.window, &state.overlay);
 }
 
-fn collect_loaded_field_value_requests(list: &ListBox) -> Vec<FieldValueRequest> {
+fn collect_loaded_entry_requests(list: &ListBox) -> Vec<FieldValueRequest> {
     let mut requests = Vec::new();
     let mut child = list.first_child();
     while let Some(widget) = child {
@@ -566,6 +776,31 @@ fn collect_loaded_field_value_requests(list: &ListBox) -> Vec<FieldValueRequest>
     }
 
     requests
+}
+
+fn build_weak_password_batch(
+    generation: u64,
+    requests: Vec<FieldValueRequest>,
+) -> WeakPasswordBatch {
+    let results = requests
+        .into_iter()
+        .filter_map(|request| {
+            let password = read_password_line(&request.root, &request.label).ok()?;
+            let reason = weak_password_reason(&password)?;
+            Some(WeakPasswordFinding {
+                root: request.root,
+                label: request.label.to_string(),
+                normalized_label: request.label.to_lowercase(),
+                normalized_reason: reason.to_lowercase(),
+                reason,
+            })
+        })
+        .collect();
+
+    WeakPasswordBatch {
+        generation,
+        results,
+    }
 }
 
 fn build_field_value_catalog_batch(

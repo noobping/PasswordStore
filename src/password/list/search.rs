@@ -3,6 +3,7 @@ use crate::backend::read_password_entry;
 use crate::password::file::{
     canonical_search_field_key, searchable_pass_fields, SearchablePassField,
 };
+use crate::password::strength::weak_password_reason;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use adw::gtk::{ListBox, ListBoxRow};
@@ -12,6 +13,7 @@ use std::rc::Rc;
 
 const SEARCH_CONTROLLER_KEY: &str = "search-controller";
 pub(super) const SEARCH_FIELDS_KEY: &str = "search-fields";
+const WEAK_PASSWORD_SEARCH_KEY: &str = "__meta_weak_password";
 
 #[derive(Clone)]
 pub(super) struct SearchFilterController {
@@ -37,6 +39,7 @@ enum SearchQuery {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum StructuredSearchQuery {
     Clause(SearchClause),
+    WeakPassword,
     Not(Box<StructuredSearchQuery>),
     And(Box<StructuredSearchQuery>, Box<StructuredSearchQuery>),
     Or(Box<StructuredSearchQuery>, Box<StructuredSearchQuery>),
@@ -367,9 +370,21 @@ impl<'a> StructuredSearchParser<'a> {
             let query = self.parse_or()?;
             self.skip_whitespace();
             self.consume_char(')').then_some(query)
+        } else if self.parse_weak_password_predicate() {
+            Some(StructuredSearchQuery::WeakPassword)
         } else {
             Some(StructuredSearchQuery::Clause(self.parse_clause()?))
         }
+    }
+
+    fn parse_weak_password_predicate(&mut self) -> bool {
+        if !self.consume_keyword("WEAK") {
+            return false;
+        }
+
+        self.skip_whitespace();
+        let _ = self.consume_keyword("PASSWORDS") || self.consume_keyword("PASSWORD");
+        true
     }
 
     fn parse_clause(&mut self) -> Option<SearchClause> {
@@ -649,6 +664,7 @@ fn row_matches_query(label: &str, fields: &SearchRowFieldIndexState, query: &Sea
 fn structured_query_matches(fields: &[SearchablePassField], query: &StructuredSearchQuery) -> bool {
     match query {
         StructuredSearchQuery::Clause(clause) => clause_matches(fields, clause),
+        StructuredSearchQuery::WeakPassword => has_weak_password(fields),
         StructuredSearchQuery::Not(query) => !structured_query_matches(fields, query),
         StructuredSearchQuery::And(left, right) => {
             structured_query_matches(fields, left) && structured_query_matches(fields, right)
@@ -657,6 +673,12 @@ fn structured_query_matches(fields: &[SearchablePassField], query: &StructuredSe
             structured_query_matches(fields, left) || structured_query_matches(fields, right)
         }
     }
+}
+
+fn has_weak_password(fields: &[SearchablePassField]) -> bool {
+    fields
+        .iter()
+        .any(|field| field.key == WEAK_PASSWORD_SEARCH_KEY)
 }
 
 fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool {
@@ -706,7 +728,7 @@ fn build_search_index_batch(
             label: request.label.clone(),
             state: match read_password_entry(&request.root, &request.label) {
                 Ok(contents) => {
-                    SearchRowFieldIndexState::Indexed(searchable_pass_fields(&contents))
+                    SearchRowFieldIndexState::Indexed(indexed_fields_for_contents(&contents))
                 }
                 Err(_) => SearchRowFieldIndexState::Unavailable,
             },
@@ -717,6 +739,19 @@ fn build_search_index_batch(
         generation,
         results,
     }
+}
+
+fn indexed_fields_for_contents(contents: &str) -> Vec<SearchablePassField> {
+    let mut fields = searchable_pass_fields(contents);
+    if let Some(reason) = weak_password_reason(contents.lines().next().unwrap_or_default()) {
+        fields.push(SearchablePassField {
+            key: WEAK_PASSWORD_SEARCH_KEY.to_string(),
+            value: reason.clone(),
+            normalized_value: reason.to_lowercase(),
+        });
+    }
+
+    fields
 }
 
 fn collect_unindexed_requests(list: &ListBox) -> Vec<SearchIndexRequest> {
@@ -781,6 +816,7 @@ mod tests {
     use super::{
         is_stale_index_batch, parse_search_query, row_matches_query, SearchClause,
         SearchComparison, SearchQuery, SearchRowFieldIndexState, StructuredSearchQuery,
+        WEAK_PASSWORD_SEARCH_KEY,
     };
     use crate::password::file::SearchablePassField;
 
@@ -803,6 +839,10 @@ mod tests {
 
     fn not(query: StructuredSearchQuery) -> StructuredSearchQuery {
         StructuredSearchQuery::Not(Box::new(query))
+    }
+
+    fn weak_password() -> StructuredSearchQuery {
+        StructuredSearchQuery::WeakPassword
     }
 
     fn indexed_fields(entries: &[(&str, &str)]) -> SearchRowFieldIndexState {
@@ -1024,6 +1064,29 @@ mod tests {
                 "url",
                 SearchComparison::RegexNotMatch,
                 "gitlab|github",
+            ))
+        );
+    }
+
+    #[test]
+    fn weak_password_keyword_parses_as_a_structured_predicate() {
+        assert_eq!(
+            parse_search_query("find weak password"),
+            SearchQuery::Structured(weak_password())
+        );
+        assert_eq!(
+            parse_search_query("find weak"),
+            SearchQuery::Structured(weak_password())
+        );
+        assert_eq!(
+            parse_search_query("find not weak password"),
+            SearchQuery::Structured(not(weak_password()))
+        );
+        assert_eq!(
+            parse_search_query("find weak password and username==alice"),
+            SearchQuery::Structured(and(
+                weak_password(),
+                clause("username", SearchComparison::Exact, "alice"),
             ))
         );
     }
@@ -1257,6 +1320,25 @@ mod tests {
             "work/Bob/example",
             &indexed_fields(&[("username", "Bob")]),
             &negative,
+        ));
+    }
+
+    #[test]
+    fn weak_password_queries_match_only_rows_with_the_weak_password_flag() {
+        assert!(row_matches_query(
+            "alice",
+            &indexed_fields(&[(WEAK_PASSWORD_SEARCH_KEY, "Too short (6 characters)")]),
+            &SearchQuery::Structured(weak_password()),
+        ));
+        assert!(!row_matches_query(
+            "alice",
+            &indexed_fields(&[("username", "alice")]),
+            &SearchQuery::Structured(weak_password()),
+        ));
+        assert!(row_matches_query(
+            "alice",
+            &indexed_fields(&[("username", "alice")]),
+            &SearchQuery::Structured(not(weak_password())),
         ));
     }
 

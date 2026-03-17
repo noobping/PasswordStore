@@ -31,4 +31,4 @@ pub use self::entries::{
     delete_password_entry, password_entry_is_readable, read_password_entry, read_password_line,
     rename_password_entry, save_password_entry,
 };
-pub use self::store::save_store_recipients;
+pub use self::store::{save_store_recipients, store_recipients_private_key_requiring_unlock};

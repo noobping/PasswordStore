@@ -186,11 +186,15 @@ mod tests {
 
     #[test]
     fn pass_file_otp_detection_tracks_structured_or_bare_urls() {
-        assert!(pass_file_has_otp("secret\notpauth://totp/Example?secret=ABC"));
+        assert!(pass_file_has_otp(
+            "secret\notpauth://totp/Example?secret=ABC"
+        ));
         assert!(pass_file_has_otp(
             "secret\notpauth: otpauth://totp/Example?secret=ABC"
         ));
-        assert!(!pass_file_has_otp("secret\nusername: alice\nurl: https://example.com"));
+        assert!(!pass_file_has_otp(
+            "secret\nusername: alice\nurl: https://example.com"
+        ));
     }
 
     #[test]

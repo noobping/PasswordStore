@@ -28,10 +28,10 @@ pub fn read_password_entry(store_root: &str, label: &str) -> Result<String, Pass
             })?;
         ensure_required_private_keys_are_ready(&required_private_key_fingerprints)?;
         let context = IntegratedCryptoContext::load_for_label(store_root, label)
-            .map_err(PasswordEntryError::other)?;
+            .map_err(PasswordEntryError::from_store_message)?;
         return context
             .decrypt_entry(&entry_path)
-            .map_err(PasswordEntryError::other);
+            .map_err(PasswordEntryError::from_store_message);
     }
 
     let mut saw_locked_key = false;
@@ -64,7 +64,7 @@ pub fn read_password_entry(store_root: &str, label: &str) -> Result<String, Pass
             .and_then(|context| context.decrypt_entry(&entry_path))
         {
             Ok(secret) => return Ok(secret),
-            Err(err) => last_error = Some(PasswordEntryError::other(err)),
+            Err(err) => last_error = Some(PasswordEntryError::from_store_message(err)),
         }
     }
 

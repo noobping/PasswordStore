@@ -200,18 +200,12 @@ fn private_key_toggle_block_message(
     }
 }
 
-fn sync_private_key_delete_button(
-    delete_button: &adw::gtk::Button,
-    blocked_message: Option<&str>,
-) {
+fn sync_private_key_delete_button(delete_button: &adw::gtk::Button, blocked_message: Option<&str>) {
     delete_button.set_sensitive(blocked_message.is_none());
     delete_button.set_tooltip_text(Some(blocked_message.unwrap_or("Remove key file")));
 }
 
-fn sync_private_key_toggle_button(
-    toggle: &adw::gtk::CheckButton,
-    blocked_message: Option<&str>,
-) {
+fn sync_private_key_toggle_button(toggle: &adw::gtk::CheckButton, blocked_message: Option<&str>) {
     toggle.set_sensitive(blocked_message.is_none());
     toggle.set_tooltip_text(blocked_message);
 }
@@ -448,21 +442,13 @@ fn append_private_key_row_shell(
         .title(title.as_str())
         .subtitle(fingerprint)
         .build();
-    row.set_activatable(true);
+    row.set_activatable(false);
     row.add_prefix(&dim_label_icon("dialog-password-symbolic"));
 
     let toggle = adw::gtk::CheckButton::new();
     toggle.set_active(active);
     sync_private_key_toggle_button(&toggle, toggle_blocked_message);
     row.add_suffix(&toggle);
-
-    let toggle_for_row = toggle.clone();
-    row.connect_activated(move |_| {
-        if !toggle_for_row.is_sensitive() {
-            return;
-        }
-        toggle_for_row.set_active(!toggle_for_row.is_active());
-    });
 
     (row, toggle)
 }
@@ -780,6 +766,9 @@ mod tests {
             Some("Keep at least one selected private key available.")
         );
         assert_eq!(private_key_toggle_block_message(true, true, false, 2), None);
-        assert_eq!(private_key_toggle_block_message(true, false, false, 1), None);
+        assert_eq!(
+            private_key_toggle_block_message(true, false, false, 1),
+            None
+        );
     }
 }

@@ -1,9 +1,11 @@
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
-use adw::gtk::{Box as GtkBox, DropDown, StringList, INVALID_LIST_POSITION};
+use adw::gtk::{
+    Align, Box as GtkBox, Button, DropDown, Orientation, StringList, INVALID_LIST_POSITION,
+};
 use adw::prelude::*;
-use adw::{ApplicationWindow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage, WindowTitle};
+use adw::{ApplicationWindow, Dialog, EntryRow, HeaderBar, WindowTitle};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -11,15 +13,12 @@ use std::rc::Rc;
 pub struct NewPasswordPopoverState {
     pub dialog: Dialog,
     pub path_entry: EntryRow,
+    pub create_button: Button,
     pub store_dropdown: DropDown,
     pub store_roots: Rc<RefCell<Vec<String>>>,
 }
 
-fn dialog_content_shell(
-    title: &str,
-    subtitle: &str,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
+fn dialog_content_shell(title: &str, subtitle: &str, child: &impl IsA<adw::gtk::Widget>) -> GtkBox {
     let window_title = WindowTitle::builder().title(title).build();
     if !subtitle.trim().is_empty() {
         window_title.set_subtitle(subtitle);
@@ -34,7 +33,7 @@ fn dialog_content_shell(
     shell
 }
 
-pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow) {
+pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow, Button) {
     let store_dropdown = DropDown::from_strings(&[]);
     store_dropdown.set_visible(false);
 
@@ -42,12 +41,18 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow) {
     path_entry.set_title("Path or name");
     path_entry.set_show_apply_button(true);
 
-    let group = PreferencesGroup::new();
-    group.add(&store_dropdown);
-    group.add(&path_entry);
+    let create_button = Button::with_label("Create");
+    create_button.add_css_class("suggested-action");
+    create_button.set_halign(Align::End);
 
-    let page = PreferencesPage::new();
-    page.add(&group);
+    let page = GtkBox::new(Orientation::Vertical, 12);
+    page.set_margin_top(18);
+    page.set_margin_bottom(18);
+    page.set_margin_start(18);
+    page.set_margin_end(18);
+    page.append(&store_dropdown);
+    page.append(&path_entry);
+    page.append(&create_button);
 
     let dialog = Dialog::builder()
         .title("New item")
@@ -60,7 +65,7 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow) {
         ))
         .build();
 
-    (dialog, store_dropdown, path_entry)
+    (dialog, store_dropdown, path_entry, create_button)
 }
 
 fn available_store_roots() -> Vec<String> {
@@ -113,11 +118,6 @@ pub fn register_open_new_password_action(
     let window_for_dialog = window.clone();
     let state = state.clone();
     register_window_action(&window_for_action, "open-new-password", move || {
-        if state.dialog.is_visible() {
-            state.dialog.force_close();
-            return;
-        }
-
         sync_new_password_store_selector(&state);
         state.path_entry.set_text("");
         state.dialog.present(Some(&window_for_dialog));

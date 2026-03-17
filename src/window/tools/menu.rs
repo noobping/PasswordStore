@@ -8,15 +8,12 @@ use crate::setup::{
     uninstall_locally,
 };
 use crate::store::management::schedule_store_import_row;
-use crate::window::host_access::append_optional_host_access_list_row;
 #[cfg(any(debug_assertions, feature = "setup"))]
 use crate::support::ui::append_action_row_with_button;
+use crate::window::host_access::append_optional_host_access_list_row;
 #[cfg(debug_assertions)]
 use crate::window::navigation::show_log_page;
-#[cfg(any(
-    all(target_os = "linux", feature = "flatpak"),
-    all(target_os = "linux", feature = "setup")
-))]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 use adw::Toast;
 
 #[cfg(debug_assertions)]

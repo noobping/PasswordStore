@@ -29,7 +29,6 @@ use self::state::{
     preferences_action_state, store_recipients_page_state, window_navigation_state,
 };
 use self::widgets::WindowWidgets;
-use super::host_access::append_optional_host_access_group_row;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, connect_search_visibility,
     register_back_action, register_context_save_action, register_context_undo_action,
@@ -40,6 +39,7 @@ use super::git::GitActionState;
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
 };
+use super::host_access::append_optional_host_access_group_row;
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::{set_save_button_for_password, WindowNavigationState};
 use super::preferences::{
@@ -214,10 +214,7 @@ fn connect_window_behaviors(
         &widgets.otp_entry,
         &widgets.copy_otp_button,
     );
-    connect_new_password_submit(
-        password_list_state,
-        new_password_popover_state,
-    );
+    connect_new_password_submit(password_list_state, new_password_popover_state);
 
     let revealer = widgets.password_generator_settings_revealer.clone();
     widgets

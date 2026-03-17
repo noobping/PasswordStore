@@ -12,7 +12,7 @@ use crate::support::validation::validate_email_address;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::prelude::*;
 use adw::Toast;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 const PRIVATE_KEY_GENERATION_TITLE: &str = "Generate private key";
@@ -54,11 +54,7 @@ fn validate_private_key_generation_request(
     })
 }
 
-fn suggested_name_from_email(current_name: &str, email: &str) -> Option<String> {
-    if !current_name.trim().is_empty() {
-        return None;
-    }
-
+fn suggested_name_from_email(email: &str) -> Option<String> {
     let suggested = email
         .trim()
         .split_once('@')
@@ -67,13 +63,22 @@ fn suggested_name_from_email(current_name: &str, email: &str) -> Option<String> 
     (!suggested.is_empty()).then(|| suggested.to_string())
 }
 
-fn suggested_email_from_name(current_email: &str, name: &str) -> Option<String> {
-    if !current_email.trim().is_empty() {
+fn suggested_email_from_name(name: &str) -> Option<String> {
+    let suggested = name.trim();
+    (!suggested.is_empty()).then(|| format!("{suggested}@pass.store"))
+}
+
+fn next_autofilled_value(
+    current_value: &str,
+    previous_autofill: Option<&str>,
+    suggestion: Option<String>,
+) -> Option<String> {
+    let current_value = current_value.trim();
+    if !(current_value.is_empty() || previous_autofill == Some(current_value)) {
         return None;
     }
 
-    let suggested = name.trim();
-    (!suggested.is_empty()).then(|| format!("{suggested}@pass.store"))
+    Some(suggestion.unwrap_or_default())
 }
 
 fn finish_private_key_generation(
@@ -213,40 +218,59 @@ pub(super) fn connect_private_key_generation_autofill(state: &StoreRecipientsPag
     let name_row = state.platform.private_key_generation_name_row.clone();
     let email_row = state.platform.private_key_generation_email_row.clone();
     let syncing = Rc::new(Cell::new(false));
+    let last_autofilled_name = Rc::new(RefCell::new(None::<String>));
+    let last_autofilled_email = Rc::new(RefCell::new(None::<String>));
 
     {
         let name_row = name_row.clone();
-        let email_row = email_row.clone();
         let syncing = syncing.clone();
+        let last_autofilled_name = last_autofilled_name.clone();
         email_row.connect_changed(move |row| {
             if syncing.get() {
                 return;
             }
 
-            let Some(name) = suggested_name_from_email(&name_row.text(), &row.text()) else {
+            let next_name = next_autofilled_value(
+                &name_row.text(),
+                last_autofilled_name.borrow().as_deref(),
+                suggested_name_from_email(&row.text()),
+            );
+            let Some(name) = next_name else {
+                last_autofilled_name.borrow_mut().take();
                 return;
             };
 
+            let tracked_name = (!name.is_empty()).then_some(name.clone());
             syncing.set(true);
             name_row.set_text(&name);
             syncing.set(false);
+            last_autofilled_name.replace(tracked_name);
         });
     }
 
     {
         let email_row = email_row.clone();
+        let last_autofilled_email = last_autofilled_email.clone();
         name_row.connect_changed(move |row| {
             if syncing.get() {
                 return;
             }
 
-            let Some(email) = suggested_email_from_name(&email_row.text(), &row.text()) else {
+            let next_email = next_autofilled_value(
+                &email_row.text(),
+                last_autofilled_email.borrow().as_deref(),
+                suggested_email_from_name(&row.text()),
+            );
+            let Some(email) = next_email else {
+                last_autofilled_email.borrow_mut().take();
                 return;
             };
 
+            let tracked_email = (!email.is_empty()).then_some(email.clone());
             syncing.set(true);
             email_row.set_text(&email);
             syncing.set(false);
+            last_autofilled_email.replace(tracked_email);
         });
     }
 }
@@ -262,7 +286,7 @@ pub(super) fn connect_private_key_generate_controls(state: &StoreRecipientsPageS
 #[cfg(test)]
 mod tests {
     use super::{
-        suggested_email_from_name, suggested_name_from_email,
+        next_autofilled_value, suggested_email_from_name, suggested_name_from_email,
         validate_private_key_generation_request,
     };
 
@@ -289,16 +313,39 @@ mod tests {
     #[test]
     fn autofill_helpers_only_fill_empty_fields() {
         assert_eq!(
-            suggested_name_from_email("", "alice@example.com"),
+            suggested_name_from_email("alice@example.com"),
             Some("alice".to_string())
         );
-        assert_eq!(suggested_name_from_email("Alice", "bob@example.com"), None);
         assert_eq!(
-            suggested_email_from_name("", "alice"),
+            suggested_email_from_name("alice"),
             Some("alice@pass.store".to_string())
         );
+    }
+
+    #[test]
+    fn autofill_keeps_tracking_the_last_generated_value() {
         assert_eq!(
-            suggested_email_from_name("existing@example.com", "alice"),
+            next_autofilled_value(
+                "alice",
+                Some("alice"),
+                suggested_name_from_email("bob@example.com"),
+            ),
+            Some("bob".to_string())
+        );
+        assert_eq!(
+            next_autofilled_value(
+                "alice@pass.store",
+                Some("alice@pass.store"),
+                suggested_email_from_name("bob"),
+            ),
+            Some("bob@pass.store".to_string())
+        );
+        assert_eq!(
+            next_autofilled_value(
+                "custom@example.com",
+                Some("alice@pass.store"),
+                suggested_email_from_name("bob"),
+            ),
             None
         );
     }

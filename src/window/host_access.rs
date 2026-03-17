@@ -1,10 +1,10 @@
-use adw::prelude::*;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::clipboard::set_clipboard_text;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-use crate::support::ui::{connect_row_action, flat_icon_button_with_tooltip};
+use crate::support::ui::flat_icon_button_with_tooltip;
+use adw::prelude::*;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use adw::{ActionRow, PreferencesGroup, Toast, ToastOverlay};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
@@ -24,7 +24,7 @@ fn build_optional_host_access_row(overlay: &ToastOverlay) -> Option<ActionRow> {
         .title("Allow access to apps on this device")
         .subtitle("Keycord is running in a protected space, so some optional features stay off until you allow this. If you allow it, Keycord can use tools from your computer such as GPG, the Host backend, and pass import. If you don't, Keycord still works with the integrated backend.")
         .build();
-    row.set_activatable(true);
+    row.set_activatable(false);
 
     let button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy permission command");
     row.add_suffix(&button);
@@ -40,11 +40,6 @@ fn build_optional_host_access_row(overlay: &ToastOverlay) -> Option<ActionRow> {
             overlay.add_toast(Toast::new("Copied."));
         }
     });
-
-    {
-        let copy_action = copy_action.clone();
-        connect_row_action(&row, move || copy_action());
-    }
 
     button.connect_clicked(move |_| copy_action());
     Some(row)

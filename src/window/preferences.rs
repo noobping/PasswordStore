@@ -1,14 +1,14 @@
 use crate::logging::log_error;
+use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
+use crate::preferences::{BackendKind, Preferences, UsernameFallbackMode};
 use crate::private_key::sync::{
     preflight_host_to_app_private_key_sync, sync_private_keys_with_host, PrivateKeySyncDirection,
 };
-use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
-use crate::preferences::{BackendKind, Preferences, UsernameFallbackMode};
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
+use crate::support::actions::register_window_action;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
-use crate::support::actions::register_window_action;
 use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowPageState, APP_WINDOW_TITLE,
@@ -17,7 +17,7 @@ use adw::gtk::{CheckButton, ListBox, TextView};
 use adw::prelude::*;
 use adw::{ActionRow, AlertDialog, ComboRow, EntryRow};
 use adw::{Toast, ToastOverlay};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 fn sync_backend_preferences_rows(
@@ -84,11 +84,7 @@ fn host_private_key_sync_is_available() -> bool {
     }
 }
 
-fn sync_private_key_sync_row(
-    row: &ActionRow,
-    check: &CheckButton,
-    preferences: &Preferences,
-) {
+fn sync_private_key_sync_row(row: &ActionRow, check: &CheckButton, preferences: &Preferences) {
     let supported = cfg!(target_os = "linux");
     row.set_visible(supported);
     if !supported {
@@ -121,9 +117,13 @@ fn present_private_key_sync_confirmation(
     dialog.add_responses(&[("cancel", "Cancel"), ("sync", "Turn On")]);
     dialog.set_close_response("cancel");
     dialog.set_default_response(Some("sync"));
-    dialog.choose(window, None::<&adw::gio::Cancellable>, move |response| {
-        on_response(response == "sync");
+    let on_response = Rc::new(RefCell::new(Some(on_response)));
+    dialog.connect_response(None, move |_, response| {
+        if let Some(on_response) = on_response.borrow_mut().take() {
+            on_response(response == "sync");
+        }
     });
+    dialog.present(Some(window));
 }
 
 pub fn connect_pass_command_row(
@@ -229,7 +229,8 @@ pub fn connect_private_key_sync_row(state: &PreferencesActionState) {
                     .and_then(|_| sync_private_keys_with_host(PrivateKeySyncDirection::HostToApp))
                 {
                     Ok(()) => {
-                        if let Err(err) = confirm_preferences.set_sync_private_keys_with_host(true) {
+                        if let Err(err) = confirm_preferences.set_sync_private_keys_with_host(true)
+                        {
                             toast_preferences_save_error(
                                 &confirm_overlay,
                                 "private-key sync",

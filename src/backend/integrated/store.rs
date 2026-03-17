@@ -5,8 +5,10 @@ use super::paths::{
     collect_password_entry_files, ensure_store_directory, label_from_entry_path,
     with_updated_recipients_file,
 };
-use super::recipients::recipient_contents;
-use crate::backend::{StoreRecipientsError, StoreRecipientsPrivateKeyRequirement};
+use super::recipients::{preferred_ripasso_private_key_fingerprint_for_entry, recipient_contents};
+use crate::backend::{
+    PasswordEntryError, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
+};
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,6 +26,26 @@ fn decrypted_store_entries(
     }
 
     Ok(decrypted)
+}
+
+pub fn store_recipients_private_key_requiring_unlock(
+    store_root: &str,
+) -> Result<Option<String>, String> {
+    let store_dir = ensure_store_directory(store_root)?;
+
+    for entry_path in collect_password_entry_files(&store_dir)? {
+        let label = label_from_entry_path(&store_dir, &entry_path)?;
+        if !matches!(
+            read_password_entry(store_root, &label),
+            Err(PasswordEntryError::LockedPrivateKey(_))
+        ) {
+            continue;
+        }
+
+        return preferred_ripasso_private_key_fingerprint_for_entry(store_root, &label).map(Some);
+    }
+
+    Ok(None)
 }
 
 pub fn save_store_recipients(

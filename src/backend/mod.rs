@@ -20,8 +20,8 @@ pub enum StoreRecipientsPrivateKeyRequirement {
 
 #[cfg(target_os = "linux")]
 pub use self::host::{
-    delete_host_gpg_private_key, import_host_gpg_private_key_bytes,
-    list_host_gpg_private_keys, armored_host_gpg_private_key, HostGpgPrivateKeySummary,
+    armored_host_gpg_private_key, delete_host_gpg_private_key, import_host_gpg_private_key_bytes,
+    list_host_gpg_private_keys, HostGpgPrivateKeySummary,
 };
 pub use integrated::{
     armored_ripasso_private_key, generate_ripasso_private_key, import_ripasso_private_key_bytes,
@@ -85,5 +85,14 @@ pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
     dispatch_backend(
         || integrated::password_entry_is_readable(store_root, label),
         || host::password_entry_is_readable(store_root, label),
+    )
+}
+
+pub fn store_recipients_private_key_requiring_unlock(
+    store_root: &str,
+) -> Result<Option<String>, String> {
+    dispatch_backend(
+        || integrated::store_recipients_private_key_requiring_unlock(store_root),
+        || host::store_recipients_private_key_requiring_unlock(store_root),
     )
 }

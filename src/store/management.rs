@@ -11,10 +11,10 @@ use super::recipients::{
     read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
 };
 pub use super::recipients_page::{
-    connect_store_recipients_controls, register_store_recipients_save_action,
-    show_store_recipients_create_page, show_store_recipients_edit_page,
-    sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsPlatformState,
-    StoreRecipientsRequest,
+    connect_store_recipients_controls, register_store_recipients_reload_action,
+    register_store_recipients_save_action, show_store_recipients_create_page,
+    show_store_recipients_edit_page, sync_store_recipients_page_header, StoreRecipientsPageState,
+    StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;

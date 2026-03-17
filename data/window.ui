@@ -501,7 +501,6 @@
 
                             <child>
                               <object class="AdwPreferencesGroup" id="backend_preferences">
-                                <property name="visible">false</property>
                                 <property name="title" translatable="yes">Backend</property>
                                 <property name="description" translatable="yes">Choose how Keycord opens your data. Integrated is the default. Use Host to run your own command.</property>
                                 <child>

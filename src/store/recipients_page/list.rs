@@ -12,7 +12,6 @@ use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
     append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
 };
-use adw::gtk::Image;
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
 use std::rc::Rc;
@@ -152,7 +151,16 @@ fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipien
 }
 
 fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: bool) {
+    let uses_integrated_backend = Preferences::new().uses_integrated_backend();
     state.platform.require_all_row.set_visible(has_keys);
+    state
+        .platform
+        .require_all_row
+        .set_sensitive(uses_integrated_backend);
+    state
+        .platform
+        .require_all_check
+        .set_sensitive(uses_integrated_backend);
     state.platform.require_all_check.set_active(matches!(
         state.private_key_requirement.get(),
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys
@@ -263,32 +271,18 @@ fn append_private_key_status_suffixes(
     row: &ActionRow,
 ) {
     let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
-    if requires_unlock {
-        let icon_name = if unlocked {
-            "changes-allow-symbolic"
-        } else {
-            "changes-prevent-symbolic"
-        };
-        let tooltip = if unlocked {
-            "Key is unlocked for this session"
-        } else {
-            "Key requires unlocking before use"
-        };
-        let icon = Image::from_icon_name(icon_name);
-        icon.set_tooltip_text(Some(tooltip));
-        row.add_suffix(&icon);
-    }
-
     if !Preferences::new().uses_integrated_backend() {
         return;
     }
 
     if !unlocked && requires_unlock {
-        let unlock_button = flat_icon_button_with_tooltip("dialog-password-symbolic", "Unlock key");
+        let unlock_button = flat_icon_button_with_tooltip("changes-prevent-symbolic", "Unlock key");
         row.add_suffix(&unlock_button);
         let state = state.clone();
         let fingerprint = key.fingerprint.clone();
+        let finish_button = unlock_button.clone();
         unlock_button.connect_clicked(move |_| {
+            finish_button.set_sensitive(false);
             let after_unlock: Rc<dyn Fn()> = Rc::new({
                 let state = state.clone();
                 move || {
@@ -296,7 +290,14 @@ fn append_private_key_status_suffixes(
                     activate_widget_action(&state.window, "win.reload-password-list");
                 }
             });
-            let on_finish: Rc<dyn Fn(bool)> = Rc::new(|_| {});
+            let on_finish: Rc<dyn Fn(bool)> = Rc::new({
+                let finish_button = finish_button.clone();
+                move |success| {
+                    if !success {
+                        finish_button.set_sensitive(true);
+                    }
+                }
+            });
             prompt_private_key_unlock_for_action(
                 &state.platform.overlay,
                 fingerprint.clone(),

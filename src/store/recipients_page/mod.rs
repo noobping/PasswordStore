@@ -1,5 +1,6 @@
 use super::recipients::{read_store_gpg_recipients, read_store_private_key_requirement};
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::support::actions::register_window_action;
 use crate::support::ui::reveal_navigation_page;
 use crate::window::navigation::{
     set_save_button_for_password, show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE,
@@ -141,6 +142,20 @@ pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
 
 pub fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     list::rebuild_store_recipients_list(state);
+}
+
+pub fn register_store_recipients_reload_action(
+    window: &ApplicationWindow,
+    state: &StoreRecipientsPageState,
+) {
+    let state = state.clone();
+    register_window_action(window, "reload-store-recipients-list", move || {
+        if state.current_request().is_none() {
+            return;
+        }
+
+        rebuild_store_recipients_list(&state);
+    });
 }
 
 pub fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {

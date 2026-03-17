@@ -1,6 +1,6 @@
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
-use crate::support::runtime::git_network_operations_available;
+use crate::support::runtime::has_host_permission;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -48,31 +48,20 @@ pub fn ensure_store_git_repository(root: &str) -> Result<(), String> {
     }
 }
 
-fn password_store_without_repository_summary(root: &str) -> String {
-    format!(
-        "Password store Git state: {root} -> no Git repository detected, local commits disabled, network operations disabled."
-    )
-}
 
 pub fn password_store_git_state_summary(root: &str) -> String {
     if !has_git_repository(root) {
-        return password_store_without_repository_summary(root);
+        return format!(
+            "Password store Git state: {root} -> no Git repository detected, local commits disabled, network operations disabled."
+        );
     }
 
-    if git_network_operations_available() {
-        return password_store_git_state_summary_with_network(root);
+    if has_host_permission() {
+        return format!(
+            "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
+        );
     }
 
-    password_store_git_state_summary_without_network(root)
-}
-
-fn password_store_git_state_summary_with_network(root: &str) -> String {
-    format!(
-        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
-    )
-}
-
-fn password_store_git_state_summary_without_network(root: &str) -> String {
     format!(
         "Password store Git state: {root} -> Git repository detected, local commits enabled, remote sync disabled in this backend."
     )

@@ -4,8 +4,18 @@ use std::env;
 use std::process::Command;
 
 fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> Command {
-    let mut cmd = Command::new(program);
-    cmd.args(args);
+    let mut cmd = if env::var("FLATPAK_ID").is_ok() {
+        let mut cmd = Command::new("flatpak-spawn");
+        cmd.arg("--host")
+            .arg(&program)
+            .args(&args);
+        cmd
+    } else {
+        let mut cmd = Command::new(&program);
+        cmd.args(&args);
+        cmd
+    };
+
     for (key, value) in envs {
         cmd.env(key, value);
     }

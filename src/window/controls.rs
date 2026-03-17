@@ -11,7 +11,7 @@ use crate::password::undo::{
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-use crate::support::runtime::git_network_operations_available;
+use crate::support::runtime::has_host_permission;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::git::{handle_git_busy_back, GitActionState};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
@@ -110,12 +110,12 @@ enum VisibleContextPage {
 
 const fn context_save_target_from_page(
     page: VisibleContextPage,
-    synchronize_available: bool,
+    has_host_permission: bool,
 ) -> ContextSaveTarget {
     match page {
         VisibleContextPage::Password => ContextSaveTarget::Password,
         VisibleContextPage::StoreRecipients => ContextSaveTarget::StoreRecipients,
-        VisibleContextPage::Root if synchronize_available => ContextSaveTarget::Synchronize,
+        VisibleContextPage::Root if has_host_permission => ContextSaveTarget::Synchronize,
         VisibleContextPage::Root | VisibleContextPage::Other => ContextSaveTarget::None,
     }
 }
@@ -136,11 +136,7 @@ fn context_save_target(
         VisibleContextPage::Other
     };
 
-    context_save_target_from_page(page, synchronize_available())
-}
-
-const fn synchronize_available() -> bool {
-    git_network_operations_available()
+    context_save_target_from_page(page, has_host_permission())
 }
 
 fn configure_platform_shortcuts(app: &Application) {

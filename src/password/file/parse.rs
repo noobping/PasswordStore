@@ -3,6 +3,12 @@ use super::types::{
     OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
 };
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SearchablePassField {
+    pub key: String,
+    pub value: String,
+}
+
 pub fn structured_username_value(lines: &[(StructuredPassLine, Option<String>)]) -> Option<String> {
     lines.iter().find_map(|(line, value)| match line {
         StructuredPassLine::Username(_) => value.clone(),
@@ -17,6 +23,43 @@ pub fn structured_otp_line(
         StructuredPassLine::Otp(template) => value.clone().map(|url| (template.clone(), url)),
         _ => None,
     })
+}
+
+pub fn canonical_search_field_key(key: &str) -> Option<String> {
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+
+    if is_username_field_key(key) {
+        return Some("username".to_string());
+    }
+    if key.eq_ignore_ascii_case("otpauth") {
+        return Some("otpauth".to_string());
+    }
+
+    Some(key.to_ascii_lowercase())
+}
+
+pub fn searchable_pass_fields(contents: &str) -> Vec<SearchablePassField> {
+    let (_, structured_lines) = parse_structured_pass_lines(contents);
+    structured_lines
+        .into_iter()
+        .filter_map(|(line, value)| {
+            let value = value?;
+            let key = match line {
+                StructuredPassLine::Username(_) => Some("username".to_string()),
+                StructuredPassLine::Otp(_) => Some("otpauth".to_string()),
+                StructuredPassLine::Field(template) => canonical_search_field_key(&template.title),
+                StructuredPassLine::Preserved(_) => None,
+            }?;
+
+            Some(SearchablePassField {
+                key,
+                value: value.to_lowercase(),
+            })
+        })
+        .collect()
 }
 
 pub fn parse_structured_pass_lines(
@@ -88,4 +131,77 @@ fn trim_leading_spacing(value: &str) -> String {
     value
         .trim_start_matches(|c: char| c.is_ascii_whitespace())
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{searchable_pass_fields, SearchablePassField};
+
+    #[test]
+    fn username_aliases_share_the_username_key() {
+        assert_eq!(
+            searchable_pass_fields("secret\nlogin: Alice\nuser: Bob\nusername: Carol"),
+            vec![
+                SearchablePassField {
+                    key: "username".to_string(),
+                    value: "alice".to_string(),
+                },
+                SearchablePassField {
+                    key: "username".to_string(),
+                    value: "bob".to_string(),
+                },
+                SearchablePassField {
+                    key: "username".to_string(),
+                    value: "carol".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn dynamic_fields_are_indexed_by_their_pass_file_keys() {
+        assert_eq!(
+            searchable_pass_fields("secret\nUrl: https://example.com\nemail: Person@Example.com"),
+            vec![
+                SearchablePassField {
+                    key: "url".to_string(),
+                    value: "https://example.com".to_string(),
+                },
+                SearchablePassField {
+                    key: "email".to_string(),
+                    value: "person@example.com".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn otp_lines_are_indexed_under_otpauth() {
+        assert_eq!(
+            searchable_pass_fields("secret\notpauth://totp/Example\notpauth: otpauth://totp/Alt"),
+            vec![
+                SearchablePassField {
+                    key: "otpauth".to_string(),
+                    value: "otpauth://totp/example".to_string(),
+                },
+                SearchablePassField {
+                    key: "otpauth".to_string(),
+                    value: "otpauth://totp/alt".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn password_lines_and_preserved_text_do_not_become_search_fields() {
+        assert_eq!(
+            searchable_pass_fields(
+                "secret-value\nnotes without colon\n  \nurl: https://example.com"
+            ),
+            vec![SearchablePassField {
+                key: "url".to_string(),
+                value: "https://example.com".to_string(),
+            }]
+        );
+    }
 }

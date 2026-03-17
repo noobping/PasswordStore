@@ -1,15 +1,16 @@
 mod placeholder;
 mod row;
+mod search;
 
 use self::placeholder::{loading_placeholder, resolved_placeholder};
 use self::row::append_password_row;
+use self::search::{search_controller_for_list, SearchFilterController};
 use crate::backend::password_entry_is_readable;
 use crate::logging::{log_error, log_info};
 use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
-use crate::support::object_data::non_null_to_string_option;
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::clear_list_box;
 use adw::glib::Propagation;
@@ -18,8 +19,6 @@ use adw::gtk::{
 };
 use adw::prelude::*;
 use adw::ToastOverlay;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,6 +155,9 @@ pub fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
+    if let Some(controller) = search_controller_for_list(list) {
+        controller.begin_reload(has_store_dirs);
+    }
     let git_available = has_host_permission();
     log_store_git_state(&settings);
 
@@ -212,10 +214,14 @@ pub fn load_passwords_async(
             }
 
             update_list_actions(&actions_clone, context);
-            list_clone.set_placeholder(Some(&resolved_placeholder(
-                matches!(context.contents, ListContents::Empty),
-                has_store_dirs,
-            )));
+            if let Some(controller) = search_controller_for_list(&list_clone) {
+                controller.finish_reload(&list_clone);
+            } else {
+                list_clone.set_placeholder(Some(&resolved_placeholder(
+                    matches!(context.contents, ListContents::Empty),
+                    has_store_dirs,
+                )));
+            }
         },
         move || {
             let context = ListActionContext {
@@ -237,7 +243,12 @@ pub fn load_passwords_async(
                 },
             };
             update_list_actions(&actions_for_disconnect, context);
-            list_for_disconnect.set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
+            if let Some(controller) = search_controller_for_list(&list_for_disconnect) {
+                controller.finish_reload_failure(&list_for_disconnect);
+            } else {
+                list_for_disconnect
+                    .set_placeholder(Some(&resolved_placeholder(true, has_store_dirs)));
+            }
         },
     );
 }
@@ -250,26 +261,18 @@ const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> Coll
 }
 
 pub fn setup_search_filter(list: &ListBox, search_entry: &SearchEntry) {
-    let query = Rc::new(RefCell::new(String::new()));
+    let controller = SearchFilterController::new();
+    controller.register_for_list(list);
 
-    let query_for_filter = query.clone();
-    list.set_filter_func(move |row: &ListBoxRow| {
-        let query = query_for_filter.borrow();
-        if query.is_empty() {
-            return true;
-        }
+    let controller_for_filter = controller.clone();
+    list.set_filter_func(move |row: &ListBoxRow| controller_for_filter.matches_row(row));
 
-        if let Some(label) = non_null_to_string_option(row, "label") {
-            return label.to_lowercase().contains(query.as_str());
-        }
-
-        true
-    });
-
-    let query_for_entry = query;
+    let controller_for_entry = controller;
     let list_for_entry = list.clone();
     search_entry.connect_search_changed(move |entry| {
-        *query_for_entry.borrow_mut() = entry.text().to_string().to_lowercase();
+        controller_for_entry.update_query(entry.text().as_str());
+        controller_for_entry.start_indexing_if_needed(&list_for_entry);
+        controller_for_entry.update_placeholder(&list_for_entry);
         list_for_entry.invalidate_filter();
     });
 

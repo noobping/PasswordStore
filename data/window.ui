@@ -124,7 +124,7 @@
                         <child>
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
-                            <property name="placeholder-text" translatable="yes">find</property>
+                            <property name="placeholder-text" translatable="yes">find or find:key=value</property>
                           </object>
                         </child>
 

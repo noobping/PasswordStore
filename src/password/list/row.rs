@@ -1,3 +1,4 @@
+use super::search::{SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
 use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::logging::log_error;
@@ -9,7 +10,7 @@ use crate::password::undo::{
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
-use crate::support::object_data::set_string_data;
+use crate::support::object_data::{set_cloned_data, set_string_data};
 use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{
@@ -106,6 +107,7 @@ pub(super) fn append_password_row(
         text_edit_mode: Rc::new(RefCell::new(TextEditMode::RenameFile)),
     };
     sync_password_row_display(&state);
+    set_cloned_data(&row, SEARCH_FIELDS_KEY, SearchRowFieldIndexState::Unindexed);
 
     configure_password_row_menu(&menu_button, &state, readable, list, overlay);
     connect_copy_action(&state, &copy_button, overlay);

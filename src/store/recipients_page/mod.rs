@@ -107,6 +107,7 @@ pub struct StoreRecipientsPageState {
 pub struct StoreRecipientsPlatformState {
     pub overlay: ToastOverlay,
     pub host_gpg_warning_group: PreferencesGroup,
+    pub host_gpg_warning_row: ActionRow,
     pub add_group: PreferencesGroup,
     pub create_group: PreferencesGroup,
     pub git_group: PreferencesGroup,

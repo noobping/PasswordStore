@@ -46,6 +46,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_import_button: Button,
     pub(in crate::window) store_recipients_page: NavigationPage,
     pub(in crate::window) store_recipients_host_gpg_warning_group: PreferencesGroup,
+    pub(in crate::window) store_recipients_host_gpg_warning_row: ActionRow,
     pub(in crate::window) store_recipients_list: ListBox,
     pub(in crate::window) store_recipients_add_group: PreferencesGroup,
     pub(in crate::window) store_recipients_create_group: PreferencesGroup,
@@ -179,6 +180,10 @@ impl WindowWidgets {
             store_recipients_host_gpg_warning_group: required_object(
                 builder,
                 "store_recipients_host_gpg_warning_group",
+            ),
+            store_recipients_host_gpg_warning_row: required_object(
+                builder,
+                "store_recipients_host_gpg_warning_row",
             ),
             store_recipients_list: required_object(builder, "store_recipients_list"),
             store_recipients_add_group: required_object(builder, "store_recipients_add_group"),

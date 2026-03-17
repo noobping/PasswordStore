@@ -15,10 +15,11 @@ use crate::support::ui::{
 };
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
+use adw::glib::object::IsA;
 use adw::gtk::{Box as GtkBox, Button, ListBox, Orientation};
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
+    ActionRow, ApplicationWindow, Dialog, EntryRow, HeaderBar, NavigationPage, NavigationView,
     PreferencesGroup, PreferencesPage, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use std::cell::RefCell;
@@ -200,13 +201,33 @@ fn store_git_row_subtitle(store: &str) -> String {
     }
 }
 
+fn dialog_content_shell(
+    title: &str,
+    subtitle: Option<&str>,
+    child: &impl IsA<adw::gtk::Widget>,
+) -> GtkBox {
+    let window_title = WindowTitle::builder().title(title).build();
+    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
+        window_title.set_subtitle(subtitle);
+    }
+
+    let header = HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+
+    let shell = GtkBox::new(Orientation::Vertical, 0);
+    shell.append(&header);
+    shell.append(child);
+    shell
+}
+
 fn present_remote_dialog(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    store: &str,
     title: &str,
     initial_name: &str,
     initial_url: &str,
-    submit_label: &str,
+    _submit_label: &str,
     on_submit: impl Fn(String, String) -> Result<(), String> + 'static,
 ) {
     let name_row = EntryRow::new();
@@ -215,9 +236,7 @@ fn present_remote_dialog(
     let url_row = EntryRow::new();
     url_row.set_title("Remote URL");
     url_row.set_text(initial_url);
-
-    let save_button = Button::with_label(submit_label);
-    save_button.add_css_class("suggested-action");
+    url_row.set_show_apply_button(true);
 
     let group = PreferencesGroup::builder().build();
     group.add(&name_row);
@@ -226,31 +245,17 @@ fn present_remote_dialog(
     let page = PreferencesPage::new();
     page.add(&group);
 
-    let button_box = GtkBox::builder()
-        .orientation(Orientation::Horizontal)
-        .halign(adw::gtk::Align::End)
-        .margin_top(6)
-        .margin_bottom(6)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-    button_box.append(&save_button);
-
-    let content = GtkBox::new(Orientation::Vertical, 0);
-    content.append(&page);
-    content.append(&button_box);
-
     let dialog = Dialog::builder()
         .title(title)
         .content_width(460)
-        .child(&content)
+        .child(&dialog_content_shell(title, Some(store), &page))
         .build();
 
     let dialog_for_submit = dialog.clone();
     let overlay_for_submit = overlay.clone();
-    save_button.connect_clicked(move |_| {
+    url_row.connect_apply(move |row| {
         let name = name_row.text().trim().to_string();
-        let url = url_row.text().trim().to_string();
+        let url = row.text().trim().to_string();
         if name.is_empty() {
             overlay_for_submit.add_toast(Toast::new("Enter a remote name."));
             return;
@@ -335,6 +340,7 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
         present_remote_dialog(
             &state_for_edit.window,
             &state_for_edit.overlay,
+            &store_for_edit,
             "Edit remote",
             &current_name,
             &current_url,
@@ -429,6 +435,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     present_remote_dialog(
                         &add_state.window,
                         &add_state.overlay,
+                        &store_for_add,
                         "Add remote",
                         "",
                         "",

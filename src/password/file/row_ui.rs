@@ -1,5 +1,4 @@
 use super::types::{is_url_field_key, DynamicFieldRow, DynamicFieldTemplate, StructuredPassLine};
-#[cfg(keycord_linux)]
 use super::url::add_open_url_suffix;
 use crate::clipboard::add_copy_suffix;
 use adw::gtk::{Box as GtkBox, Widget};
@@ -7,13 +6,13 @@ use adw::{prelude::*, EntryRow, PasswordEntryRow, ToastOverlay};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub(crate) fn clear_box_children(box_widget: &GtkBox) {
+pub fn clear_box_children(box_widget: &GtkBox) {
     while let Some(child) = box_widget.first_child() {
         box_widget.remove(&child);
     }
 }
 
-pub(crate) fn rebuild_dynamic_fields_from_lines(
+pub fn rebuild_dynamic_fields_from_lines(
     box_widget: &GtkBox,
     overlay: &ToastOverlay,
     templates_state: &Rc<RefCell<Vec<StructuredPassLine>>>,
@@ -76,7 +75,6 @@ fn build_dynamic_field_row(
         apply_field_row_style(&row);
         let row_clone = row.clone();
         add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
-        #[cfg(keycord_linux)]
         if is_url_field_key(&template.raw_key) {
             let row_clone = row.clone();
             add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);

@@ -19,7 +19,7 @@ enum OpenPasswordErrorAction {
     None,
 }
 
-fn open_password_error_action(error: &PasswordEntryError) -> OpenPasswordErrorAction {
+const fn open_password_error_action(error: &PasswordEntryError) -> OpenPasswordErrorAction {
     if matches!(error, PasswordEntryError::LockedPrivateKey(_)) {
         return OpenPasswordErrorAction::PromptUnlock;
     }
@@ -55,6 +55,14 @@ pub(super) fn handle_open_password_entry_error(
                     Rc::new(move || {
                         open_password_entry_page(&retry_page_state, retry_pass_file.clone(), false);
                     }),
+                    Rc::new({
+                        let retry_page_state = state.clone();
+                        move |success| {
+                            if !success {
+                                activate_widget_action(&retry_page_state.nav, "win.go-home");
+                            }
+                        }
+                    }),
                 );
                 return true;
             }
@@ -82,11 +90,13 @@ pub(super) fn prompt_unlock_for_git_commit_if_needed(
     }
 
     let retry_state = state.clone();
+    let after_unlock: Rc<dyn Fn()> =
+        Rc::new(move || save_current_password_entry_without_git_unlock_prompt(&retry_state));
     prompt_private_key_unlock_for_entry_git_commit_if_needed(
         &state.overlay,
         pass_file.store_path(),
         &pass_file.label(),
-        Rc::new(move || save_current_password_entry_without_git_unlock_prompt(&retry_state)),
+        &after_unlock,
     )
 }
 

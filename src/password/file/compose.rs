@@ -4,7 +4,7 @@ use crate::password::model::OpenPassFile;
 use adw::prelude::*;
 use adw::EntryRow;
 
-pub(crate) fn structured_pass_contents(
+pub fn structured_pass_contents(
     password: &str,
     username_value: &str,
     otp_url: Option<&str>,
@@ -15,7 +15,7 @@ pub(crate) fn structured_pass_contents(
     structured_pass_contents_from_values(password, username_value, otp_url, templates, &values)
 }
 
-pub(crate) fn structured_pass_contents_from_values(
+pub fn structured_pass_contents_from_values(
     password: &str,
     username_value: &str,
     otp_url: Option<&str>,
@@ -55,7 +55,7 @@ pub(crate) fn structured_pass_contents_from_values(
     output
 }
 
-pub(crate) fn new_pass_file_contents_from_template(template: &str) -> String {
+pub fn new_pass_file_contents_from_template(template: &str) -> String {
     let template = template.trim_matches('\n');
     if template.is_empty() {
         String::new()
@@ -65,13 +65,12 @@ pub(crate) fn new_pass_file_contents_from_template(template: &str) -> String {
 }
 
 fn username_row_state(pass_file: Option<&OpenPassFile>) -> (Option<String>, bool) {
-    match pass_file.and_then(OpenPassFile::username) {
-        Some(username) => (Some(username.to_string()), true),
-        None => (None, false),
-    }
+    pass_file
+        .and_then(OpenPassFile::username)
+        .map_or((None, false), |username| (Some(username.to_string()), true))
 }
 
-pub(crate) fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
+pub fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>) {
     let (username, editable) = username_row_state(pass_file);
     if let Some(username) = username {
         row.set_text(&username);
@@ -84,7 +83,7 @@ pub(crate) fn sync_username_row(row: &EntryRow, pass_file: Option<&OpenPassFile>
     }
 }
 
-pub(crate) fn sync_username_row_from_parsed_lines(
+pub fn sync_username_row_from_parsed_lines(
     row: &EntryRow,
     pass_file: Option<&OpenPassFile>,
     lines: &[(StructuredPassLine, Option<String>)],

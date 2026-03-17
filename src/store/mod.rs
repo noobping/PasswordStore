@@ -1,4 +1,4 @@
-pub(crate) mod labels;
-pub(crate) mod management;
-pub(crate) mod recipients;
-pub(crate) mod recipients_page;
+pub mod labels;
+pub mod management;
+pub mod recipients;
+pub mod recipients_page;

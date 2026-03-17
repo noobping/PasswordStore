@@ -3,9 +3,7 @@ use crate::backend::{
     PrivateKeyError,
 };
 use crate::logging::log_error;
-use crate::private_key::dialog::{
-    build_private_key_progress_dialog, present_private_key_password_dialog,
-};
+use crate::private_key::dialog::present_private_key_password_dialog_with_close_handler;
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
@@ -25,54 +23,50 @@ fn start_private_key_unlock_for_action(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     fingerprint: String,
-    key_title: Option<String>,
     passphrase: String,
-    after_unlock: Rc<dyn Fn()>,
+    after_unlock: &Rc<dyn Fn()>,
+    on_finish: &Rc<dyn Fn(bool)>,
 ) {
-    let progress_dialog = build_private_key_progress_dialog(
-        window,
-        "Unlocking key",
-        key_title.as_deref(),
-        "Please wait.",
-    );
     let overlay = overlay.clone();
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let overlay_for_disconnect = overlay.clone();
     let window_for_result = window.clone();
     let after_unlock = after_unlock.clone();
+    let on_finish_for_result = on_finish.clone();
+    let on_finish_for_disconnect = on_finish.clone();
     spawn_result_task(
         move || unlock_ripasso_private_key_for_session(&fingerprint, &passphrase),
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
-                progress_dialog.force_close();
                 after_unlock();
                 activate_widget_action(&window_for_result, "win.reload-password-list");
-                overlay.add_toast(Toast::new("Key unlocked."));
+                on_finish_for_result(true);
             }
             Err(err) => {
-                progress_dialog.force_close();
                 log_error(format!("Failed to unlock ripasso private key: {err}"));
                 overlay.add_toast(Toast::new(err.unlock_message()));
+                on_finish_for_result(false);
             }
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
             log_error("Private key unlock worker disconnected unexpectedly.".to_string());
             show_unlock_failure_toast(&overlay_for_disconnect);
+            on_finish_for_disconnect(false);
         },
     );
 }
 
-pub(crate) fn prompt_private_key_unlock_for_action(
+pub fn prompt_private_key_unlock_for_action(
     overlay: &ToastOverlay,
     fingerprint: String,
     after_unlock: Rc<dyn Fn()>,
+    on_finish: Rc<dyn Fn(bool)>,
 ) {
     let Some(window) = toast_overlay_window(overlay) else {
         log_error(
             "Couldn't find the application window for the private key unlock dialog.".to_string(),
         );
         show_unlock_failure_toast(overlay);
+        on_finish(false);
         return;
     };
     let key_title = match ripasso_private_key_title(&fingerprint) {
@@ -87,8 +81,8 @@ pub(crate) fn prompt_private_key_unlock_for_action(
 
     let window_for_submit = window.clone();
     let overlay_for_submit = overlay.clone();
-    let title_for_submit = key_title.clone();
-    present_private_key_password_dialog(
+    let on_finish_for_close = on_finish.clone();
+    present_private_key_password_dialog_with_close_handler(
         &window,
         overlay,
         "Unlock key",
@@ -98,10 +92,11 @@ pub(crate) fn prompt_private_key_unlock_for_action(
                 &window_for_submit,
                 &overlay_for_submit,
                 fingerprint.clone(),
-                title_for_submit.clone(),
                 passphrase,
-                after_unlock.clone(),
+                &after_unlock,
+                &on_finish,
             );
         },
+        move || on_finish_for_close(false),
     );
 }

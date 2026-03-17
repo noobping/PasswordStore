@@ -1,12 +1,12 @@
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::preferences::Preferences;
 use std::fs;
-#[cfg(any(test, keycord_standard_linux))]
+#[cfg(test)]
 use std::{cell::RefCell, rc::Rc};
 
 const REQUIRE_ALL_PRIVATE_KEYS_METADATA: &str = "keycord-private-key-requirement=all";
 
-pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
+pub fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
     let path = std::path::Path::new(store_root).join(".gpg-id");
     let Ok(contents) = fs::read_to_string(path) else {
         return Vec::new();
@@ -15,7 +15,7 @@ pub(crate) fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
     parse_gpg_recipients(&contents)
 }
 
-pub(crate) fn read_store_private_key_requirement(
+pub fn read_store_private_key_requirement(
     store_root: &str,
 ) -> StoreRecipientsPrivateKeyRequirement {
     let path = std::path::Path::new(store_root).join(".gpg-id");
@@ -37,7 +37,7 @@ pub(crate) fn read_store_private_key_requirement(
     StoreRecipientsPrivateKeyRequirement::AnyManagedKey
 }
 
-pub(crate) fn store_gpg_recipients_subtitle(store_root: &str) -> String {
+pub fn store_gpg_recipients_subtitle(store_root: &str) -> String {
     let recipients = read_store_gpg_recipients(store_root);
     match recipients.len() {
         0 => "No recipients set".to_string(),
@@ -46,7 +46,7 @@ pub(crate) fn store_gpg_recipients_subtitle(store_root: &str) -> String {
     }
 }
 
-pub(crate) fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
+pub fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     for root in settings.paths() {
         let recipients = read_store_gpg_recipients(root.to_string_lossy().as_ref());
         if !recipients.is_empty() {
@@ -57,8 +57,8 @@ pub(crate) fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
     Vec::new()
 }
 
-#[cfg(any(test, keycord_standard_linux))]
-pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
+#[cfg(test)]
+pub fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
     let parsed = parse_gpg_recipients(input);
     if parsed.is_empty() {
         return false;
@@ -75,13 +75,12 @@ pub(crate) fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input
     values.len() > original_len
 }
 
-pub(crate) fn parse_gpg_recipients(value: &str) -> Vec<String> {
+pub fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
     for recipient in value.split([',', ';', '\n']) {
         let recipient = recipient
             .split_once('#')
-            .map(|(value, _)| value)
-            .unwrap_or(recipient);
+            .map_or(recipient, |(value, _)| value);
         let recipient = normalize_gpg_recipient(recipient);
         if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
             continue;
@@ -91,7 +90,7 @@ pub(crate) fn parse_gpg_recipients(value: &str) -> Vec<String> {
     recipients
 }
 
-pub(crate) fn normalize_gpg_recipient(value: &str) -> String {
+pub fn normalize_gpg_recipient(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return String::new();
@@ -108,7 +107,7 @@ pub(crate) fn normalize_gpg_recipient(value: &str) -> String {
     }
 }
 
-pub(crate) fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
+pub fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<String> {
     let mut ordered = vec![preferred.to_string()];
     for store in stores {
         if store != preferred {

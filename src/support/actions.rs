@@ -3,7 +3,7 @@ use adw::gtk::Widget;
 use adw::prelude::*;
 use adw::ApplicationWindow;
 
-pub(crate) fn register_window_action(
+pub fn register_window_action(
     window: &ApplicationWindow,
     name: &str,
     activate: impl Fn() + 'static,
@@ -13,6 +13,6 @@ pub(crate) fn register_window_action(
     window.add_action(&action);
 }
 
-pub(crate) fn activate_widget_action(widget: &impl IsA<Widget>, action_name: &str) {
+pub fn activate_widget_action(widget: &impl IsA<Widget>, action_name: &str) {
     let _ = widget.activate_action(action_name, None);
 }

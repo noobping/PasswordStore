@@ -15,7 +15,7 @@ const SENSITIVE_FIELD_HINTS: [&str; 8] = [
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DynamicFieldTemplate {
+pub struct DynamicFieldTemplate {
     pub(super) raw_key: String,
     pub(super) title: String,
     pub(super) separator_spacing: String,
@@ -23,13 +23,13 @@ pub(crate) struct DynamicFieldTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct UsernameFieldTemplate {
-    pub(crate) raw_key: String,
-    pub(crate) separator_spacing: String,
+pub struct UsernameFieldTemplate {
+    pub raw_key: String,
+    pub separator_spacing: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum OtpFieldTemplate {
+pub enum OtpFieldTemplate {
     BareUrl,
     Field {
         raw_key: String,
@@ -50,7 +50,7 @@ impl OtpFieldTemplate {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StructuredPassLine {
+pub enum StructuredPassLine {
     Field(DynamicFieldTemplate),
     Username(UsernameFieldTemplate),
     Otp(OtpFieldTemplate),
@@ -58,7 +58,7 @@ pub(crate) enum StructuredPassLine {
 }
 
 #[derive(Clone)]
-pub(crate) enum DynamicFieldRow {
+pub enum DynamicFieldRow {
     Plain(EntryRow),
     Secret(PasswordEntryRow),
 }

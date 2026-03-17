@@ -26,13 +26,31 @@ fn dialog_content_shell(
     shell
 }
 
+#[derive(Clone)]
+pub struct PrivateKeyDialogHandle {
+    dialog: Dialog,
+}
+
+impl PrivateKeyDialogHandle {
+    pub fn new(dialog: &Dialog) -> Self {
+        Self {
+            dialog: dialog.clone(),
+        }
+    }
+
+    pub fn force_close(&self) {
+        self.dialog.force_close();
+    }
+}
+
 pub fn build_private_key_progress_dialog(
     window: &ApplicationWindow,
     title: &str,
     subtitle: Option<&str>,
     description: &str,
 ) -> Dialog {
-    let status = StatusPage::builder().description(description).build();
+    let status = StatusPage::builder().build();
+    status.set_description(Some(description).filter(|description| !description.trim().is_empty()));
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
     let dialog = Dialog::builder()
@@ -91,10 +109,11 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
         .child(&dialog_content_shell(title, subtitle, &page))
         .build();
     let submitted = Rc::new(Cell::new(false));
+    let dialog_handle = PrivateKeyDialogHandle::new(&dialog);
 
-    let dialog_clone = dialog.clone();
     let overlay_clone = overlay.clone();
     let submitted_for_apply = submitted.clone();
+    let dialog_handle_for_apply = dialog_handle;
     password_row.connect_apply(move |row| {
         let passphrase = row.text().to_string();
         if passphrase.is_empty() {
@@ -104,7 +123,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
         }
 
         submitted_for_apply.set(true);
-        dialog_clone.close();
+        dialog_handle_for_apply.force_close();
         on_submit(passphrase);
     });
 

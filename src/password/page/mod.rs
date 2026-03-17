@@ -1,9 +1,5 @@
 mod editor;
-#[cfg(keycord_flatpak)]
-mod flatpak;
-#[cfg(not(keycord_linux))]
-mod non_linux;
-#[cfg(keycord_linux)]
+mod linux;
 mod standard;
 mod state;
 
@@ -22,6 +18,7 @@ use crate::password::opened::{
 };
 use crate::password::undo::{push_undo_action, restore_saved_entry_action};
 use crate::preferences::Preferences;
+use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{
     pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
@@ -30,22 +27,18 @@ use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_W
 use adw::gtk::Popover;
 use adw::prelude::*;
 use adw::Toast;
+use std::string::ToString;
 
 use self::editor::{
     add_empty_otp_secret as add_empty_otp_secret_to_editor, current_editor_contents,
     structured_editor_contents, sync_editor_contents,
 };
-#[cfg(keycord_flatpak)]
-use self::flatpak as platform;
-#[cfg(not(keycord_linux))]
-use self::non_linux as platform;
+use self::linux as platform;
 use self::platform::handle_open_password_entry_error;
-#[cfg(keycord_standard_linux)]
-use self::standard as platform;
-pub(crate) use self::state::PasswordPageState;
+pub use self::state::PasswordPageState;
 use self::state::{
     reset_password_editor, show_password_editor_chrome, show_password_editor_fields,
-    show_password_loading_state, show_password_open_error, sync_saved_password_state,
+    show_password_loading_state, sync_saved_password_state,
 };
 
 fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static str {
@@ -54,31 +47,149 @@ fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static
         .unwrap_or("Couldn't open the item.")
 }
 
-fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
+const fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
     error.save_toast_message()
 }
 
-fn username_fallback_failure_message(error: UsernameFallbackError) -> &'static str {
+const fn username_fallback_failure_message(error: UsernameFallbackError) -> &'static str {
     error.toast_message()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PasswordPageDisplay {
+    Hidden,
+    Loading,
+    Editor,
+}
+
+struct PasswordSaveContext {
+    pass_file: OpenPassFile,
+    contents: String,
+    previous_store: String,
+    previous_label: String,
+    previous_contents: String,
+    previous_entry_exists: bool,
+    target_label: Option<String>,
+}
+
 fn show_password_open_failure(state: &PasswordPageState, error: Option<&PasswordEntryError>) {
-    show_password_open_error(state);
+    activate_widget_action(&state.nav, "win.go-home");
     state
         .overlay
         .add_toast(Toast::new(password_open_failure_message(error)));
 }
 
-fn should_retry_open_password_entry(
-    page_visible: bool,
-    status_visible: bool,
-    entry_visible: bool,
+const fn should_retry_open_password_entry(
+    page_display: PasswordPageDisplay,
     has_opened_pass_file: bool,
 ) -> bool {
-    page_visible && status_visible && !entry_visible && has_opened_pass_file
+    matches!(page_display, PasswordPageDisplay::Loading) && has_opened_pass_file
 }
 
-pub(crate) fn open_password_entry_page(
+fn password_page_display(state: &PasswordPageState) -> PasswordPageDisplay {
+    if !visible_navigation_page_is(&state.nav, &state.page) {
+        return PasswordPageDisplay::Hidden;
+    }
+    if state.status.is_visible() && !state.entry.is_visible() {
+        return PasswordPageDisplay::Loading;
+    }
+
+    PasswordPageDisplay::Editor
+}
+
+fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSaveContext, String> {
+    let pass_file = get_opened_pass_file().ok_or_else(|| "Open an item first.".to_string())?;
+
+    let contents = current_editor_contents(state);
+    let password = contents.lines().next().unwrap_or_default().to_string();
+    if password.is_empty() {
+        return Err("Enter a password.".to_string());
+    }
+
+    let otp_url = state
+        .otp
+        .current_url_for_save()
+        .map_err(ToString::to_string)?;
+    let contents = if visible_navigation_page_is(&state.nav, &state.raw_page) {
+        contents
+    } else {
+        structured_pass_contents(
+            &state.entry.text(),
+            &state.username.text(),
+            otp_url.as_deref(),
+            &state.structured_templates.borrow(),
+            &state.dynamic_rows.borrow(),
+        )
+    };
+    let target_label = pass_file
+        .updated_label_from_username(&state.username.text())
+        .map_err(|err| username_fallback_failure_message(err).to_string())?;
+
+    Ok(PasswordSaveContext {
+        previous_store: pass_file.store_path().to_string(),
+        previous_label: pass_file.label(),
+        previous_contents: state.saved_contents.borrow().clone(),
+        previous_entry_exists: state.saved_entry_exists.get(),
+        pass_file,
+        contents,
+        target_label,
+    })
+}
+
+fn renamed_pass_file_after_save(
+    save_context: &PasswordSaveContext,
+    label: &str,
+) -> Result<OpenPassFile, PasswordEntryWriteError> {
+    let Some(target_label) = save_context
+        .target_label
+        .as_ref()
+        .filter(|target_label| target_label.as_str() != label)
+    else {
+        return Ok(save_context.pass_file.clone());
+    };
+
+    rename_password_entry(save_context.pass_file.store_path(), label, target_label)?;
+    let renamed_pass_file = OpenPassFile::from_label_with_mode(
+        save_context.pass_file.store_path(),
+        target_label,
+        save_context.pass_file.username_fallback_mode(),
+    );
+    set_opened_pass_file(renamed_pass_file.clone());
+    Ok(renamed_pass_file)
+}
+
+fn finish_password_save(
+    state: &PasswordPageState,
+    save_context: &PasswordSaveContext,
+    active_pass_file: &OpenPassFile,
+) {
+    let updated_pass_file =
+        refresh_opened_pass_file_from_contents(active_pass_file, &save_context.contents)
+            .or_else(|| Some(active_pass_file.clone()));
+    show_password_editor_fields(state);
+    sync_editor_contents(state, &save_context.contents, updated_pass_file.as_ref());
+    sync_saved_password_state(state, &save_context.contents, true);
+    let current_label = updated_pass_file
+        .as_ref()
+        .map_or_else(|| save_context.previous_label.clone(), OpenPassFile::label);
+    if !save_context.previous_entry_exists
+        || save_context.previous_contents != save_context.contents
+        || save_context.previous_label != current_label
+    {
+        push_undo_action(restore_saved_entry_action(
+            &save_context.previous_store,
+            &save_context.previous_label,
+            save_context
+                .previous_entry_exists
+                .then_some(save_context.previous_contents.as_str()),
+            save_context.pass_file.store_path(),
+            &current_label,
+        ));
+    }
+    state.overlay.add_toast(Toast::new("Saved."));
+}
+
+pub fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
     push_page: bool,
@@ -92,11 +203,11 @@ pub(crate) fn open_password_entry_page(
         push_navigation_page_if_needed(&state.nav, &state.page);
     }
 
-    let label_for_thread = pass_label.clone();
+    let label_for_thread = pass_label;
     let state_for_result = state.clone();
     let opened_pass_file_for_result = opened_pass_file.clone();
     let state_for_disconnect = state.clone();
-    let opened_pass_file_for_disconnect = opened_pass_file.clone();
+    let opened_pass_file_for_disconnect = opened_pass_file;
     spawn_result_task(
         move || read_password_entry(&store_for_thread, &label_for_thread),
         move |result| {
@@ -137,7 +248,7 @@ pub(crate) fn open_password_entry_page(
     );
 }
 
-pub(crate) fn begin_new_password_entry(
+pub fn begin_new_password_entry(
     state: &PasswordPageState,
     path: &str,
     store_root: Option<String>,
@@ -176,27 +287,28 @@ pub(crate) fn begin_new_password_entry(
     sync_saved_password_state(state, &template_contents, false);
 }
 
-pub(crate) fn show_raw_pass_file_page(state: &PasswordPageState) {
+pub fn show_raw_pass_file_page(state: &PasswordPageState) {
     let contents = structured_editor_contents(state);
     state.text.buffer().set_text(&contents);
 
-    let subtitle = get_opened_pass_file()
-        .map(|pass_file| pass_file.label())
-        .unwrap_or_else(|| APP_WINDOW_TITLE.to_string());
+    let subtitle = get_opened_pass_file().map_or_else(
+        || APP_WINDOW_TITLE.to_string(),
+        |pass_file| pass_file.label(),
+    );
     show_password_editor_chrome(state, "Raw Pass File", &subtitle);
 
     push_navigation_page_if_needed(&state.nav, &state.raw_page);
 }
 
-pub(crate) fn add_empty_otp_secret(state: &PasswordPageState) {
+pub fn add_empty_otp_secret(state: &PasswordPageState) {
     add_empty_otp_secret_to_editor(state);
 }
 
-pub(crate) fn password_page_has_unsaved_changes(state: &PasswordPageState) -> bool {
+pub fn password_page_has_unsaved_changes(state: &PasswordPageState) -> bool {
     current_editor_contents(state) != *state.saved_contents.borrow()
 }
 
-pub(crate) fn revert_unsaved_password_changes(state: &PasswordPageState) -> bool {
+pub fn revert_unsaved_password_changes(state: &PasswordPageState) -> bool {
     if !password_page_has_unsaved_changes(state) {
         return false;
     }
@@ -208,7 +320,7 @@ pub(crate) fn revert_unsaved_password_changes(state: &PasswordPageState) -> bool
     true
 }
 
-pub(crate) fn generate_password_entry(state: &PasswordPageState) {
+pub fn generate_password_entry(state: &PasswordPageState) {
     if !state.entry.is_visible() {
         return;
     }
@@ -224,105 +336,35 @@ pub(crate) fn generate_password_entry(state: &PasswordPageState) {
 }
 
 fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_prompt: bool) {
-    let Some(pass_file) = get_opened_pass_file() else {
-        state.overlay.add_toast(Toast::new("Open an item first."));
-        return;
-    };
-
-    let contents = current_editor_contents(state);
-    let password = contents.lines().next().unwrap_or_default().to_string();
-    if password.is_empty() {
-        state.overlay.add_toast(Toast::new("Enter a password."));
-        return;
-    }
-
-    let otp_url = match state.otp.current_url_for_save() {
-        Ok(otp_url) => otp_url,
+    let save_context = match prepare_password_save_context(state) {
+        Ok(save_context) => save_context,
         Err(message) => {
-            state.overlay.add_toast(Toast::new(message));
+            state.overlay.add_toast(Toast::new(&message));
             return;
         }
     };
-    let contents = if visible_navigation_page_is(&state.nav, &state.raw_page) {
-        contents
-    } else {
-        structured_pass_contents(
-            &state.entry.text(),
-            &state.username.text(),
-            otp_url.as_deref(),
-            &state.structured_templates.borrow(),
-            &state.dynamic_rows.borrow(),
-        )
-    };
-    let previous_store = pass_file.store_path().to_string();
-    let previous_label = pass_file.label();
-    let previous_contents = state.saved_contents.borrow().clone();
-    let previous_entry_exists = state.saved_entry_exists.get();
-    let target_label = match pass_file.updated_label_from_username(&state.username.text()) {
-        Ok(target_label) => target_label,
-        Err(err) => {
-            state
-                .overlay
-                .add_toast(Toast::new(username_fallback_failure_message(err)));
-            return;
-        }
-    };
+
     if allow_git_unlock_prompt
-        && platform::prompt_unlock_for_git_commit_if_needed(state, &pass_file)
+        && platform::prompt_unlock_for_git_commit_if_needed(state, &save_context.pass_file)
     {
         return;
     }
-    let label = pass_file.label();
-    match save_password_entry(pass_file.store_path(), &label, &contents, true) {
-        Ok(()) => {
-            let active_pass_file = if let Some(target_label) =
-                target_label.filter(|target_label| target_label != &label)
-            {
-                match rename_password_entry(pass_file.store_path(), &label, &target_label) {
-                    Ok(()) => {
-                        let renamed_pass_file = OpenPassFile::from_label_with_mode(
-                            pass_file.store_path(),
-                            &target_label,
-                            pass_file.username_fallback_mode(),
-                        );
-                        set_opened_pass_file(renamed_pass_file.clone());
-                        renamed_pass_file
-                    }
-                    Err(err) => {
-                        log_error(format!("Failed to move password entry after save: {err}"));
-                        state
-                            .overlay
-                            .add_toast(Toast::new(err.rename_toast_message()));
-                        return;
-                    }
-                }
-            } else {
-                pass_file.clone()
-            };
-            let updated_pass_file =
-                refresh_opened_pass_file_from_contents(&active_pass_file, &contents)
-                    .or(Some(active_pass_file));
-            show_password_editor_fields(state);
-            sync_editor_contents(state, &contents, updated_pass_file.as_ref());
-            sync_saved_password_state(state, &contents, true);
-            let current_label = updated_pass_file
-                .as_ref()
-                .map(OpenPassFile::label)
-                .unwrap_or_else(|| previous_label.clone());
-            if !previous_entry_exists
-                || previous_contents != contents
-                || previous_label != current_label
-            {
-                push_undo_action(restore_saved_entry_action(
-                    &previous_store,
-                    &previous_label,
-                    previous_entry_exists.then_some(previous_contents.as_str()),
-                    pass_file.store_path(),
-                    &current_label,
-                ));
+    let label = save_context.pass_file.label();
+    match save_password_entry(
+        save_context.pass_file.store_path(),
+        &label,
+        &save_context.contents,
+        true,
+    ) {
+        Ok(()) => match renamed_pass_file_after_save(&save_context, &label) {
+            Ok(active_pass_file) => finish_password_save(state, &save_context, &active_pass_file),
+            Err(err) => {
+                log_error(format!("Failed to move password entry after save: {err}"));
+                state
+                    .overlay
+                    .add_toast(Toast::new(err.rename_toast_message()));
             }
-            state.overlay.add_toast(Toast::new("Saved."));
-        }
+        },
         Err(err) => {
             log_error(format!("Failed to save password entry: {err}"));
             state
@@ -332,16 +374,15 @@ fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_
     }
 }
 
-pub(crate) fn save_current_password_entry(state: &PasswordPageState) {
+pub fn save_current_password_entry(state: &PasswordPageState) {
     save_current_password_entry_impl(state, true);
 }
 
-#[cfg(keycord_restricted)]
 pub(super) fn save_current_password_entry_without_git_unlock_prompt(state: &PasswordPageState) {
     save_current_password_entry_impl(state, false);
 }
 
-pub(crate) fn show_password_list_page(
+pub fn show_password_list_page(
     state: &PasswordPageState,
     show_hidden: bool,
     show_duplicates: bool,
@@ -371,14 +412,9 @@ pub(crate) fn show_password_list_page(
     );
 }
 
-pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
+pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
     let has_opened_pass_file = get_opened_pass_file().is_some();
-    if !should_retry_open_password_entry(
-        visible_navigation_page_is(&state.nav, &state.page),
-        state.status.is_visible(),
-        state.entry.is_visible(),
-        has_opened_pass_file,
-    ) {
+    if !should_retry_open_password_entry(password_page_display(state), has_opened_pass_file) {
         return false;
     }
 
@@ -392,29 +428,34 @@ pub(crate) fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> 
 mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
-        should_retry_open_password_entry,
+        should_retry_open_password_entry, PasswordPageDisplay,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::{OpenPassFile, UsernameFallbackError};
     use crate::preferences::UsernameFallbackMode;
 
-    #[cfg(keycord_restricted)]
     fn expected_missing_private_key_open_failure_message() -> &'static str {
         "Add a private key in Preferences."
     }
 
-    #[cfg(keycord_standard_linux)]
-    fn expected_missing_private_key_open_failure_message() -> &'static str {
-        "Couldn't open the item."
-    }
-
     #[test]
     fn retry_open_requires_a_hidden_editor_on_the_password_page_with_an_open_item() {
-        assert!(should_retry_open_password_entry(true, true, false, true));
-        assert!(!should_retry_open_password_entry(false, true, false, true));
-        assert!(!should_retry_open_password_entry(true, false, false, true));
-        assert!(!should_retry_open_password_entry(true, true, true, true));
-        assert!(!should_retry_open_password_entry(true, true, false, false));
+        assert!(should_retry_open_password_entry(
+            PasswordPageDisplay::Loading,
+            true,
+        ));
+        assert!(!should_retry_open_password_entry(
+            PasswordPageDisplay::Hidden,
+            true,
+        ));
+        assert!(!should_retry_open_password_entry(
+            PasswordPageDisplay::Editor,
+            true,
+        ));
+        assert!(!should_retry_open_password_entry(
+            PasswordPageDisplay::Loading,
+            false,
+        ));
     }
 
     #[test]

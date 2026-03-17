@@ -8,7 +8,7 @@ use std::sync::{OnceLock, RwLock};
 const MAX_UNDO_ACTIONS: usize = 32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum UndoAction {
+pub enum UndoAction {
     RestoreSavedEntry {
         previous_store: String,
         previous_label: String,
@@ -34,7 +34,7 @@ pub(crate) enum UndoAction {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum UndoError {
+pub enum UndoError {
     Read(PasswordEntryError),
     Write(PasswordEntryWriteError),
     Delete(PasswordEntryWriteError),
@@ -46,7 +46,7 @@ pub(crate) enum UndoError {
 }
 
 impl UndoError {
-    pub(crate) fn toast_message(&self) -> &'static str {
+    pub fn toast_message(&self) -> &'static str {
         match self {
             Self::Read(err) => err
                 .toast_message()
@@ -97,7 +97,7 @@ fn with_undo_stack_write<T>(f: impl FnOnce(&mut Vec<UndoAction>) -> T) -> T {
     }
 }
 
-pub(crate) fn push_undo_action(action: UndoAction) {
+pub fn push_undo_action(action: UndoAction) {
     with_undo_stack_write(|stack| {
         stack.push(action);
         if stack.len() > MAX_UNDO_ACTIONS {
@@ -107,12 +107,12 @@ pub(crate) fn push_undo_action(action: UndoAction) {
     });
 }
 
-pub(crate) fn pop_undo_action() -> Option<UndoAction> {
+pub fn pop_undo_action() -> Option<UndoAction> {
     with_undo_stack_write(Vec::pop)
 }
 
 #[cfg(test)]
-pub(crate) fn has_undo_actions() -> bool {
+pub fn has_undo_actions() -> bool {
     match undo_stack().read() {
         Ok(stack) => !stack.is_empty(),
         Err(poisoned) => !poisoned.into_inner().is_empty(),
@@ -120,11 +120,11 @@ pub(crate) fn has_undo_actions() -> bool {
 }
 
 #[cfg(test)]
-pub(crate) fn clear_undo_actions() {
+pub fn clear_undo_actions() {
     with_undo_stack_write(Vec::clear);
 }
 
-pub(crate) fn restore_deleted_entry_action(entry: &PassEntry, contents: String) -> UndoAction {
+pub fn restore_deleted_entry_action(entry: &PassEntry, contents: String) -> UndoAction {
     UndoAction::RestoreDeletedEntry {
         store: entry.store_path.clone(),
         label: entry.label(),
@@ -132,7 +132,7 @@ pub(crate) fn restore_deleted_entry_action(entry: &PassEntry, contents: String) 
     }
 }
 
-pub(crate) fn restore_saved_entry_action(
+pub fn restore_saved_entry_action(
     previous_store: &str,
     previous_label: &str,
     previous_contents: Option<&str>,
@@ -148,7 +148,7 @@ pub(crate) fn restore_saved_entry_action(
     }
 }
 
-pub(crate) fn rename_entry_action(entry: &PassEntry, new_label: &str) -> UndoAction {
+pub fn rename_entry_action(entry: &PassEntry, new_label: &str) -> UndoAction {
     UndoAction::RenameEntry {
         store: entry.store_path.clone(),
         old_label: entry.label(),
@@ -156,10 +156,7 @@ pub(crate) fn rename_entry_action(entry: &PassEntry, new_label: &str) -> UndoAct
     }
 }
 
-pub(crate) fn move_entry_between_stores_action(
-    entry: &PassEntry,
-    target_store: &str,
-) -> UndoAction {
+pub fn move_entry_between_stores_action(entry: &PassEntry, target_store: &str) -> UndoAction {
     UndoAction::MoveEntryBetweenStores {
         source_store: entry.store_path.clone(),
         target_store: target_store.to_string(),
@@ -167,9 +164,7 @@ pub(crate) fn move_entry_between_stores_action(
     }
 }
 
-pub(crate) fn delete_entry_with_optional_undo(
-    entry: &PassEntry,
-) -> Result<Option<UndoAction>, UndoError> {
+pub fn delete_entry_with_optional_undo(entry: &PassEntry) -> Result<Option<UndoAction>, UndoError> {
     match read_password_entry(&entry.store_path, &entry.label()) {
         Ok(contents) => {
             delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
@@ -183,8 +178,7 @@ pub(crate) fn delete_entry_with_optional_undo(
     }
 }
 
-#[cfg(keycord_restricted)]
-fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
+const fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
     matches!(
         error,
         PasswordEntryError::MissingPrivateKey(_)
@@ -193,22 +187,13 @@ fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool 
     )
 }
 
-#[cfg(keycord_standard_linux)]
-fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
-    let _ = error;
-    false
-}
-
-pub(crate) fn move_entry_to_store(
-    entry: &PassEntry,
-    target_store: &str,
-) -> Result<PassEntry, UndoError> {
+pub fn move_entry_to_store(entry: &PassEntry, target_store: &str) -> Result<PassEntry, UndoError> {
     let label = entry.label();
     move_entry_between_stores(&entry.store_path, target_store, &label)?;
     Ok(PassEntry::from_label(target_store.to_string(), &label))
 }
 
-pub(crate) fn execute_undo_action(action: &UndoAction) -> Result<(), UndoError> {
+pub fn execute_undo_action(action: &UndoAction) -> Result<(), UndoError> {
     match action {
         UndoAction::RestoreSavedEntry {
             previous_store,
@@ -241,7 +226,7 @@ pub(crate) fn execute_undo_action(action: &UndoAction) -> Result<(), UndoError> 
     }
 }
 
-pub(crate) fn undo_action_restored_entry(action: &UndoAction) -> Option<(String, String)> {
+pub fn undo_action_restored_entry(action: &UndoAction) -> Option<(String, String)> {
     match action {
         UndoAction::RestoreSavedEntry {
             previous_store,
@@ -395,18 +380,15 @@ mod tests {
 
     #[test]
     fn delete_without_undo_is_allowed_only_for_private_key_read_failures() {
-        #[cfg(keycord_restricted)]
-        {
-            assert!(can_delete_without_undo_after_read_error(
-                &PasswordEntryError::missing_private_key("missing"),
-            ));
-            assert!(can_delete_without_undo_after_read_error(
-                &PasswordEntryError::locked_private_key("locked"),
-            ));
-            assert!(can_delete_without_undo_after_read_error(
-                &PasswordEntryError::incompatible_private_key("incompatible"),
-            ));
-        }
+        assert!(can_delete_without_undo_after_read_error(
+            &PasswordEntryError::missing_private_key("missing"),
+        ));
+        assert!(can_delete_without_undo_after_read_error(
+            &PasswordEntryError::locked_private_key("locked"),
+        ));
+        assert!(can_delete_without_undo_after_read_error(
+            &PasswordEntryError::incompatible_private_key("incompatible"),
+        ));
 
         assert!(!can_delete_without_undo_after_read_error(
             &PasswordEntryError::other("other"),

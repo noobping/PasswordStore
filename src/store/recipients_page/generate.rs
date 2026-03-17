@@ -1,18 +1,19 @@
 use super::list::rebuild_store_recipients_list;
-use super::StoreRecipientsPageState;
+use super::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::backend::{generate_ripasso_private_key, ManagedRipassoPrivateKey, PrivateKeyError};
 use crate::logging::log_error;
-use crate::private_key::dialog::build_private_key_progress_dialog;
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::append_action_row_with_button;
-use adw::glib::object::IsA;
-use adw::gtk::{Box as GtkBox, Orientation};
-use adw::prelude::*;
-use adw::{
-    Dialog, EntryRow, HeaderBar, PasswordEntryRow, PreferencesGroup, PreferencesPage, Toast,
-    WindowTitle,
+use crate::support::ui::{
+    connect_row_and_button_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
+use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
+use adw::prelude::*;
+use adw::Toast;
+
+const PRIVATE_KEY_GENERATION_TITLE: &str = "Generate private key";
+const PRIVATE_KEY_GENERATION_SUBTITLE: &str =
+    "Create a password-protected private key for password stores.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PrivateKeyGenerationRequest {
@@ -54,31 +55,16 @@ fn validate_private_key_generation_request(
     })
 }
 
-fn dialog_content_shell(
-    title: &str,
-    subtitle: Option<&str>,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
-    if let Some(subtitle) = subtitle.filter(|value| !value.trim().is_empty()) {
-        window_title.set_subtitle(subtitle);
-    }
-
-    let header = HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-
-    let shell = GtkBox::new(Orientation::Vertical, 0);
-    shell.append(&header);
-    shell.append(child);
-    shell
-}
-
 fn finish_private_key_generation(
     state: &StoreRecipientsPageState,
     result: Result<ManagedRipassoPrivateKey, PrivateKeyError>,
 ) {
+    set_private_key_generation_loading(state, false);
+
     match result {
         Ok(_) => {
+            clear_private_key_generation_form(state);
+            pop_private_key_generation_page_if_visible(state);
             rebuild_store_recipients_list(state);
             activate_widget_action(&state.window, "win.reload-password-list");
             state
@@ -100,19 +86,16 @@ fn start_private_key_generation(
     state: &StoreRecipientsPageState,
     request: PrivateKeyGenerationRequest,
 ) {
-    let progress_dialog =
-        build_private_key_progress_dialog(&state.window, "Generating key", None, "Please wait.");
+    set_private_key_generation_loading(state, true);
     let state = state.clone();
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
     spawn_result_task(
         move || generate_ripasso_private_key(&request.name, &request.email, &request.passphrase),
         move |result| {
-            progress_dialog.force_close();
             finish_private_key_generation(&state, result);
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
+            set_private_key_generation_loading(&state_for_disconnect, false);
             log_error("Private key generation worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .platform
@@ -122,51 +105,75 @@ fn start_private_key_generation(
     );
 }
 
-fn present_private_key_generation_dialog(state: &StoreRecipientsPageState) {
-    let name_row = EntryRow::new();
-    name_row.set_title("Name");
+fn clear_private_key_generation_form(state: &StoreRecipientsPageState) {
+    state.platform.private_key_generation_name_row.set_text("");
+    state.platform.private_key_generation_email_row.set_text("");
+    state
+        .platform
+        .private_key_generation_password_row
+        .set_text("");
+    state
+        .platform
+        .private_key_generation_confirm_row
+        .set_text("");
+}
 
-    let email_row = EntryRow::new();
-    email_row.set_title("Email");
+fn set_private_key_generation_loading(state: &StoreRecipientsPageState, loading: bool) {
+    state.platform.private_key_generation_in_flight.set(loading);
+    let visible_child: &adw::gtk::Widget = if loading {
+        state.platform.private_key_generation_loading.upcast_ref()
+    } else {
+        state.platform.private_key_generation_form.upcast_ref()
+    };
+    state
+        .platform
+        .private_key_generation_stack
+        .set_visible_child(visible_child);
+}
 
-    let password_row = PasswordEntryRow::new();
-    password_row.set_title("Key password");
+fn pop_private_key_generation_page_if_visible(state: &StoreRecipientsPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.platform.private_key_generation_page) {
+        return;
+    }
 
-    let confirm_row = PasswordEntryRow::new();
-    confirm_row.set_title("Confirm password");
-    confirm_row.set_show_apply_button(true);
+    state.nav.pop();
+    sync_store_recipients_page_header(state);
+}
 
-    let group = PreferencesGroup::builder().build();
-    group.add(&name_row);
-    group.add(&email_row);
-    group.add(&password_row);
-    group.add(&confirm_row);
+fn show_private_key_generation_page(state: &StoreRecipientsPageState) {
+    let chrome = state.window_chrome();
+    show_secondary_page_chrome(
+        &chrome,
+        PRIVATE_KEY_GENERATION_TITLE,
+        PRIVATE_KEY_GENERATION_SUBTITLE,
+        false,
+    );
+    push_navigation_page_if_needed(&state.nav, &state.platform.private_key_generation_page);
 
-    let page = PreferencesPage::new();
-    page.add(&group);
+    if state.platform.private_key_generation_in_flight.get() {
+        set_private_key_generation_loading(state, true);
+        return;
+    }
 
-    let dialog = Dialog::builder()
-        .title("Generate private key")
-        .content_width(460)
-        .child(&dialog_content_shell(
-            "Generate private key",
-            Some("Create a password-protected private key for password stores."),
-            &page,
-        ))
-        .build();
+    clear_private_key_generation_form(state);
+    set_private_key_generation_loading(state, false);
+    state.platform.private_key_generation_name_row.grab_focus();
+}
 
-    let dialog_for_apply = dialog.clone();
+pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageState) {
     let overlay_for_apply = state.platform.overlay.clone();
     let state_for_apply = state.clone();
-    let name_row_for_apply = name_row.clone();
-    let email_row_for_apply = email_row.clone();
-    let password_row_for_apply = password_row.clone();
+    let name_row = state.platform.private_key_generation_name_row.clone();
+    let email_row = state.platform.private_key_generation_email_row.clone();
+    let password_row = state.platform.private_key_generation_password_row.clone();
+    let confirm_row = state.platform.private_key_generation_confirm_row.clone();
     let confirm_row_for_apply = confirm_row.clone();
+
     confirm_row.connect_apply(move |_| {
         let request = match validate_private_key_generation_request(
-            &name_row_for_apply.text(),
-            &email_row_for_apply.text(),
-            &password_row_for_apply.text(),
+            &name_row.text(),
+            &email_row.text(),
+            &password_row.text(),
             &confirm_row_for_apply.text(),
         ) {
             Ok(request) => request,
@@ -176,23 +183,17 @@ fn present_private_key_generation_dialog(state: &StoreRecipientsPageState) {
             }
         };
 
-        dialog_for_apply.close();
         start_private_key_generation(&state_for_apply, request);
     });
-
-    dialog.present(Some(&state.window));
 }
 
-pub(super) fn append_private_key_generate_row(state: &StoreRecipientsPageState) {
-    let list = state.list.clone();
+pub(super) fn connect_private_key_generate_controls(state: &StoreRecipientsPageState) {
+    let row = state.platform.generate_key_row.clone();
+    let button = state.platform.generate_key_button.clone();
     let state = state.clone();
-    append_action_row_with_button(
-        &list,
-        "Generate private key",
-        "Create a new password-protected key.",
-        "document-new-symbolic",
-        move || present_private_key_generation_dialog(&state),
-    );
+    connect_row_and_button_action(&row, &button, move || {
+        show_private_key_generation_page(&state);
+    });
 }
 
 #[cfg(test)]

@@ -26,27 +26,31 @@ fn with_opened_pass_file_write<T>(f: impl FnOnce(&mut Option<OpenPassFile>) -> T
     }
 }
 
-pub(crate) fn set_opened_pass_file(pass_file: OpenPassFile) {
+fn cloned_opened_pass_file(current: Option<&OpenPassFile>) -> Option<OpenPassFile> {
+    current.cloned()
+}
+
+pub fn set_opened_pass_file(pass_file: OpenPassFile) {
     with_opened_pass_file_write(|current| {
         *current = Some(pass_file);
     });
 }
 
-pub(crate) fn get_opened_pass_file() -> Option<OpenPassFile> {
-    with_opened_pass_file_read(|current| current.cloned())
+pub fn get_opened_pass_file() -> Option<OpenPassFile> {
+    with_opened_pass_file_read(cloned_opened_pass_file)
 }
 
-pub(crate) fn clear_opened_pass_file() {
+pub fn clear_opened_pass_file() {
     with_opened_pass_file_write(|current| {
         *current = None;
     });
 }
 
-pub(crate) fn is_opened_pass_file(pass_file: &OpenPassFile) -> bool {
+pub fn is_opened_pass_file(pass_file: &OpenPassFile) -> bool {
     with_opened_pass_file_read(|current| current == Some(pass_file))
 }
 
-pub(crate) fn refresh_opened_pass_file_from_contents(
+pub fn refresh_opened_pass_file_from_contents(
     pass_file: &OpenPassFile,
     contents: &str,
 ) -> Option<OpenPassFile> {

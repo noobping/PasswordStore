@@ -31,23 +31,6 @@ enum TextEditMode {
 const UNREADABLE_PASSWORD_ROW_TOOLTIP: &str =
     "This item can't be opened with the private keys currently available in the app. File actions are still available, but copy and move-to-store are disabled until a compatible private key is available.";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct PasswordRowCapabilities {
-    can_open: bool,
-    show_copy_button: bool,
-    allow_move_to_store: bool,
-    show_unreadable_warning: bool,
-}
-
-fn password_row_capabilities(readable: bool) -> PasswordRowCapabilities {
-    PasswordRowCapabilities {
-        can_open: readable,
-        show_copy_button: readable,
-        allow_move_to_store: readable,
-        show_unreadable_warning: !readable,
-    }
-}
-
 #[derive(Clone)]
 struct PasswordRowState {
     item: Rc<RefCell<PassEntry>>,
@@ -68,19 +51,18 @@ pub(super) fn append_password_row(
     readable: bool,
     overlay: &ToastOverlay,
 ) {
-    let capabilities = password_row_capabilities(readable);
     let row = ListBoxRow::new();
-    row.set_activatable(capabilities.can_open);
+    row.set_activatable(readable);
     let stack = Stack::new();
 
     let action_row = ActionRow::builder()
         .title(item.basename.clone())
         .subtitle(item.relative_path.clone())
-        .activatable(capabilities.can_open)
+        .activatable(readable)
         .build();
-    let unreadable_icon = build_unreadable_password_icon(capabilities.show_unreadable_warning);
+    let unreadable_icon = build_unreadable_password_icon(!readable);
     let copy_button = flat_icon_button("edit-copy-symbolic");
-    copy_button.set_visible(capabilities.show_copy_button);
+    copy_button.set_visible(readable);
     let menu_button = MenuButton::builder()
         .icon_name("view-more-symbolic")
         .has_frame(false)
@@ -115,23 +97,17 @@ pub(super) fn append_password_row(
         item: Rc::new(RefCell::new(item)),
         readable,
         row: row.clone(),
-        stack: stack.clone(),
-        action_row: action_row.clone(),
-        text_edit_row: text_edit_row.clone(),
-        store_edit_row: store_edit_row.clone(),
-        store_dropdown: store_dropdown.clone(),
+        stack,
+        action_row,
+        text_edit_row,
+        store_edit_row,
+        store_dropdown,
         store_roots: Rc::new(RefCell::new(Vec::new())),
         text_edit_mode: Rc::new(RefCell::new(TextEditMode::RenameFile)),
     };
     sync_password_row_display(&state);
 
-    configure_password_row_menu(
-        &menu_button,
-        &state,
-        capabilities.allow_move_to_store,
-        list,
-        overlay,
-    );
+    configure_password_row_menu(&menu_button, &state, readable, list, overlay);
     connect_copy_action(&state, &copy_button, overlay);
     connect_text_edit_actions(&state, &text_cancel_button, overlay);
     connect_store_move_actions(
@@ -307,7 +283,7 @@ fn enter_store_edit_mode(state: &PasswordRowState, overlay: &ToastOverlay) {
         stores
             .iter()
             .position(|store| store == &state.item.borrow().store_path)
-            .map(|index| index as u32)
+            .and_then(|index| u32::try_from(index).ok())
             .unwrap_or(INVALID_LIST_POSITION),
     );
     *state.store_roots.borrow_mut() = stores;
@@ -439,7 +415,6 @@ fn show_password_row_display(state: &PasswordRowState) {
 
 fn sync_password_row_display(state: &PasswordRowState) {
     let item = state.item.borrow();
-    let capabilities = password_row_capabilities(state.readable);
     state.action_row.set_title(&item.basename);
     state.action_row.set_subtitle(&item.relative_path);
 
@@ -448,7 +423,7 @@ fn sync_password_row_display(state: &PasswordRowState) {
     set_string_data(
         &state.row,
         "openable",
-        if capabilities.can_open {
+        if state.readable {
             "true".to_string()
         } else {
             "false".to_string()
@@ -522,13 +497,20 @@ fn log_undo_error(action: &str, error: &UndoError) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        entry_parent_directory, moved_file_label, password_row_capabilities, renamed_file_label,
-    };
+    use super::{entry_parent_directory, moved_file_label, renamed_file_label};
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::PassEntry;
     use crate::password::undo::UndoError;
+    use adw::prelude::*;
     use std::path::PathBuf;
+    use std::sync::OnceLock;
+
+    fn initialize_widget_tests() {
+        static INIT: OnceLock<()> = OnceLock::new();
+        INIT.get_or_init(|| {
+            adw::init().expect("initialize libadwaita for widget tests");
+        });
+    }
 
     #[test]
     fn rename_pass_file_changes_only_the_file_name() {
@@ -575,29 +557,16 @@ mod tests {
 
     #[test]
     fn store_move_read_errors_keep_specific_open_toasts() {
-        #[cfg(keycord_restricted)]
-        {
-            let error = UndoError::Read(PasswordEntryError::missing_private_key("missing"));
-            assert_eq!(error.toast_message(), "Add a private key in Preferences.");
-        }
+        let error = UndoError::Read(PasswordEntryError::missing_private_key("missing"));
+        assert_eq!(error.toast_message(), "Add a private key in Preferences.");
 
-        #[cfg(keycord_standard_linux)]
-        {
-            let error = UndoError::Read(PasswordEntryError::other("missing"));
-            assert_eq!(error.toast_message(), "Couldn't undo the last change.");
-        }
+        let error = UndoError::Read(PasswordEntryError::other("missing"));
+        assert_eq!(error.toast_message(), "Couldn't undo the last change.");
     }
 
     #[test]
     fn unreadable_rows_keep_only_file_management_actions() {
-        assert_eq!(
-            password_row_capabilities(false),
-            super::PasswordRowCapabilities {
-                can_open: false,
-                show_copy_button: false,
-                allow_move_to_store: false,
-                show_unreadable_warning: true,
-            }
-        );
+        initialize_widget_tests();
+        assert!(super::build_unreadable_password_icon(true).is_visible());
     }
 }

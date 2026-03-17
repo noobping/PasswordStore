@@ -2,27 +2,129 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
-use crate::support::object_data::{non_null_to_string_option, set_string_data};
+use crate::support::object_data::{
+    cloned_data, non_null_to_string_option, set_cloned_data, set_string_data,
+};
 use crate::support::pass_import::{
     available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
 };
-use crate::support::ui::{append_action_row_with_button, flat_icon_button_with_tooltip};
+use crate::support::ui::{
+    connect_row_and_button_action, flat_icon_button, push_navigation_page_if_needed,
+    visible_navigation_page_is,
+};
+use crate::window::navigation::{
+    show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
+};
 use adw::gtk::{
-    Align, Box as GtkBox, Button, DropDown, FileChooserAction, FileChooserNative, ListBox,
-    Orientation, ResponseType,
+    Button, FileChooserAction, FileChooserNative, ListBox, ResponseType, ScrolledWindow, Stack,
 };
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast,
+    ActionRow, ApplicationWindow, ComboRow, EntryRow, NavigationPage, StatusPage, Toast,
     ToastOverlay,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::dialogs::{build_progress_dialog, dialog_content_shell};
-
 const STORE_LIST_REFRESH_ID_KEY: &str = "store-list-refresh-id";
+const STORE_IMPORT_PAGE_STATE_KEY: &str = "store-import-page-state";
+const STORE_IMPORT_TITLE: &str = "Import passwords";
+const STORE_IMPORT_SUBTITLE: &str = "Use pass import to import into an existing store.";
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+enum PassImportSourceState {
+    #[default]
+    Checking,
+    Unavailable,
+    Available(Vec<String>),
+}
+
+impl PassImportSourceState {
+    const fn is_available(&self) -> bool {
+        matches!(self, Self::Available(sources) if !sources.is_empty())
+    }
+
+    fn sources(&self) -> Option<&[String]> {
+        match self {
+            Self::Available(sources) if !sources.is_empty() => Some(sources),
+            Self::Checking | Self::Unavailable | Self::Available(_) => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PassImportRowState {
+    settings: Preferences,
+    window: ApplicationWindow,
+    overlay: ToastOverlay,
+    row: ActionRow,
+    button: Button,
+    source_state: Rc<RefCell<PassImportSourceState>>,
+}
+
+impl PassImportRowState {
+    fn new(
+        list: &ListBox,
+        settings: &Preferences,
+        window: &ApplicationWindow,
+        overlay: &ToastOverlay,
+        stores: &[String],
+    ) -> Self {
+        let row = ActionRow::builder().title("Import passwords").build();
+        let button = flat_icon_button("document-open-symbolic");
+        row.add_suffix(&button);
+        list.append(&row);
+
+        let state = Self {
+            settings: settings.clone(),
+            window: window.clone(),
+            overlay: overlay.clone(),
+            row,
+            button,
+            source_state: Rc::new(RefCell::new(PassImportSourceState::Checking)),
+        };
+        state.sync(stores);
+
+        let open_state = state.clone();
+        connect_row_and_button_action(&state.row, &state.button, move || open_state.open());
+
+        state
+    }
+
+    fn open(&self) {
+        let stores = self.settings.stores();
+        let source_state = self.source_state.borrow();
+        if !pass_import_row_enabled(
+            self.settings.uses_host_command_backend(),
+            &stores,
+            &source_state,
+        ) {
+            return;
+        }
+
+        let Some(import_sources) = source_state.sources() else {
+            return;
+        };
+
+        show_pass_import_page(&self.window, &stores, import_sources, &self.overlay);
+    }
+
+    fn set_source_state(&self, source_state: PassImportSourceState, stores: &[String]) {
+        *self.source_state.borrow_mut() = source_state;
+        self.sync(stores);
+    }
+
+    fn sync(&self, stores: &[String]) {
+        sync_pass_import_row(
+            &self.row,
+            &self.button,
+            self.settings.uses_host_command_backend(),
+            stores,
+            &self.source_state.borrow(),
+        );
+    }
+}
 
 fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
     let file = dialog.file()?;
@@ -38,11 +140,33 @@ fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Op
     Some(path.to_string_lossy().to_string())
 }
 
-pub(super) fn should_show_pass_import_row(stores: &[String], import_sources: &[String]) -> bool {
-    !stores.is_empty() && !import_sources.is_empty()
+const fn pass_import_row_enabled(
+    uses_host_command_backend: bool,
+    stores: &[String],
+    source_state: &PassImportSourceState,
+) -> bool {
+    uses_host_command_backend && !stores.is_empty() && source_state.is_available()
 }
 
-fn import_source_subtitle(source_path: Option<&str>) -> &'static str {
+const fn pass_import_row_subtitle(
+    uses_host_command_backend: bool,
+    stores: &[String],
+    source_state: &PassImportSourceState,
+) -> &'static str {
+    if !uses_host_command_backend {
+        "Switch Backend to Host command to use pass import."
+    } else if stores.is_empty() {
+        "Add a store to use pass import."
+    } else if source_state.is_available() {
+        "Use pass import with your custom pass command."
+    } else if matches!(source_state, PassImportSourceState::Checking) {
+        "Checking pass import availability."
+    } else {
+        "pass import is not available."
+    }
+}
+
+const fn import_source_subtitle(source_path: Option<&str>) -> &'static str {
     if source_path.is_some() {
         ""
     } else {
@@ -61,101 +185,166 @@ fn stores_list_refresh_is_current(list: &ListBox, refresh_id: &str) -> bool {
     non_null_to_string_option(list, STORE_LIST_REFRESH_ID_KEY).as_deref() == Some(refresh_id)
 }
 
-fn build_import_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialog {
-    build_progress_dialog(window, "Importing passwords", Some(store), "Please wait.")
+#[derive(Clone)]
+pub struct StoreImportPageState {
+    pub window: ApplicationWindow,
+    pub navigation: WindowNavigationState,
+    pub overlay: ToastOverlay,
+    pub page: NavigationPage,
+    pub stack: Stack,
+    pub form: ScrolledWindow,
+    pub loading: StatusPage,
+    pub store_dropdown: ComboRow,
+    pub source_dropdown: ComboRow,
+    pub source_path_row: ActionRow,
+    pub source_file_button: Button,
+    pub source_folder_button: Button,
+    pub source_clear_button: Button,
+    pub target_path_row: EntryRow,
+    pub import_button: Button,
+    pub store_roots: Rc<RefCell<Vec<String>>>,
+    pub import_sources: Rc<RefCell<Vec<String>>>,
+    pub source_path: Rc<RefCell<Option<String>>>,
+    pub in_flight: Rc<Cell<bool>>,
 }
 
-fn present_pass_import_dialog<F>(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
+impl StoreImportPageState {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        window: &ApplicationWindow,
+        navigation: &WindowNavigationState,
+        overlay: &ToastOverlay,
+        page: &NavigationPage,
+        stack: &Stack,
+        form: &ScrolledWindow,
+        loading: &StatusPage,
+        store_dropdown: &ComboRow,
+        source_dropdown: &ComboRow,
+        source_path_row: &ActionRow,
+        source_file_button: &Button,
+        source_folder_button: &Button,
+        source_clear_button: &Button,
+        target_path_row: &EntryRow,
+        import_button: &Button,
+    ) -> Self {
+        Self {
+            window: window.clone(),
+            navigation: navigation.clone(),
+            overlay: overlay.clone(),
+            page: page.clone(),
+            stack: stack.clone(),
+            form: form.clone(),
+            loading: loading.clone(),
+            store_dropdown: store_dropdown.clone(),
+            source_dropdown: source_dropdown.clone(),
+            source_path_row: source_path_row.clone(),
+            source_file_button: source_file_button.clone(),
+            source_folder_button: source_folder_button.clone(),
+            source_clear_button: source_clear_button.clone(),
+            target_path_row: target_path_row.clone(),
+            import_button: import_button.clone(),
+            store_roots: Rc::new(RefCell::new(Vec::new())),
+            import_sources: Rc::new(RefCell::new(Vec::new())),
+            source_path: Rc::new(RefCell::new(None)),
+            in_flight: Rc::new(Cell::new(false)),
+        }
+    }
+}
+
+fn set_store_import_loading(state: &StoreImportPageState, loading: bool) {
+    state.in_flight.set(loading);
+    let visible_child: &adw::gtk::Widget = if loading {
+        state.loading.upcast_ref()
+    } else {
+        state.form.upcast_ref()
+    };
+    state.stack.set_visible_child(visible_child);
+}
+
+fn pop_store_import_page_if_visible(state: &StoreImportPageState) {
+    if !visible_navigation_page_is(&state.navigation.nav, &state.page) {
+        return;
+    }
+
+    state.navigation.nav.pop();
+    let chrome = state.navigation.window_chrome();
+    show_secondary_page_chrome(&chrome, "Tools", "Utilities and maintenance", false);
+}
+
+fn reset_store_import_form(state: &StoreImportPageState) {
+    state.store_dropdown.set_selected(0);
+    state.source_dropdown.set_selected(0);
+    *state.source_path.borrow_mut() = None;
+    state
+        .source_path_row
+        .set_subtitle(import_source_subtitle(None));
+    state.target_path_row.set_text("");
+}
+
+fn sync_store_import_models(
+    state: &StoreImportPageState,
     stores: &[String],
     import_sources: &[String],
-    on_submit: F,
-) where
-    F: Fn(PassImportRequest) + 'static,
-{
+) {
     let store_labels = shortened_store_labels(stores);
     let store_label_refs = store_labels.iter().map(String::as_str).collect::<Vec<_>>();
+    let store_model = adw::gtk::StringList::new(&store_label_refs);
+    state.store_dropdown.set_model(Some(&store_model));
+    *state.store_roots.borrow_mut() = stores.to_vec();
+
     let source_refs = import_sources
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    let source_model = adw::gtk::StringList::new(&source_refs);
+    state.source_dropdown.set_model(Some(&source_model));
+    *state.import_sources.borrow_mut() = import_sources.to_vec();
+}
 
-    let store_dropdown = DropDown::from_strings(&store_label_refs);
-    store_dropdown.set_valign(Align::Center);
-    let store_row = ActionRow::builder().title("Store").build();
-    store_row.add_suffix(&store_dropdown);
+fn show_pass_import_page(
+    window: &ApplicationWindow,
+    stores: &[String],
+    import_sources: &[String],
+    overlay: &ToastOverlay,
+) {
+    let Some(state) = cloned_data::<_, StoreImportPageState>(window, STORE_IMPORT_PAGE_STATE_KEY)
+    else {
+        log_error("Store import page state was not initialized.".to_string());
+        overlay.add_toast(Toast::new("Couldn't open the import page."));
+        return;
+    };
 
-    let source_dropdown = DropDown::from_strings(&source_refs);
-    source_dropdown.set_valign(Align::Center);
-    let source_row = ActionRow::builder().title("Importer").build();
-    source_row.add_suffix(&source_dropdown);
+    let chrome = state.navigation.window_chrome();
+    show_secondary_page_chrome(&chrome, STORE_IMPORT_TITLE, STORE_IMPORT_SUBTITLE, false);
+    push_navigation_page_if_needed(&state.navigation.nav, &state.page);
 
-    let source_path = Rc::new(RefCell::new(None::<String>));
-    let source_path_row = ActionRow::builder()
-        .title("Import source")
-        .subtitle(import_source_subtitle(None))
-        .build();
-    let source_file_button = flat_icon_button_with_tooltip("paper-symbolic", "Choose source file");
-    let source_folder_button =
-        flat_icon_button_with_tooltip("folder-open-symbolic", "Choose source folder");
-    let source_clear_button =
-        flat_icon_button_with_tooltip("edit-clear-symbolic", "Clear source path");
-    source_path_row.add_suffix(&source_file_button);
-    source_path_row.add_suffix(&source_folder_button);
-    source_path_row.add_suffix(&source_clear_button);
+    if state.in_flight.get() {
+        set_store_import_loading(&state, true);
+        return;
+    }
 
-    let target_path_row = EntryRow::new();
-    target_path_row.set_title("Store subfolder");
+    sync_store_import_models(&state, stores, import_sources);
+    reset_store_import_form(&state);
+    set_store_import_loading(&state, false);
+    state.store_dropdown.grab_focus();
+}
 
-    let group = PreferencesGroup::builder().build();
-    group.add(&store_row);
-    group.add(&source_row);
-    group.add(&source_path_row);
-    group.add(&target_path_row);
-
-    let page = PreferencesPage::new();
-    page.add(&group);
-
-    let import_button = Button::builder()
-        .label("Import")
-        .halign(Align::End)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_end(12)
-        .css_classes(vec!["suggested-action"])
-        .build();
-
-    let content = GtkBox::new(Orientation::Vertical, 0);
-    content.append(&page);
-    content.append(&import_button);
-
-    let dialog = Dialog::builder()
-        .title("Import passwords")
-        .content_width(460)
-        .child(&dialog_content_shell(
-            "Import passwords",
-            Some("Use pass import to import into an existing store."),
-            &content,
-        ))
-        .build();
+pub fn initialize_store_import_page(state: &StoreImportPageState) {
+    set_cloned_data(&state.window, STORE_IMPORT_PAGE_STATE_KEY, state.clone());
 
     {
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let source_path = source_path.clone();
-        let source_path_row = source_path_row.clone();
-        source_file_button.connect_clicked(move |_| {
+        let state = state.clone();
+        state.source_file_button.connect_clicked(move |_| {
             let dialog = FileChooserNative::new(
                 Some("Choose import source file"),
-                Some(&window),
+                Some(&state.window),
                 FileChooserAction::Open,
                 Some("Select"),
                 Some("Cancel"),
             );
-            let overlay = overlay.clone();
-            let source_path = source_path.clone();
-            let source_path_row = source_path_row.clone();
+            let overlay = state.overlay.clone();
+            let source_path = state.source_path.clone();
+            let source_path_row = state.source_path_row.clone();
             dialog.connect_response(move |dialog, response| {
                 if response == ResponseType::Accept {
                     if let Some(path) = selected_local_path(dialog, &overlay) {
@@ -170,21 +359,18 @@ fn present_pass_import_dialog<F>(
     }
 
     {
-        let window = window.clone();
-        let overlay = overlay.clone();
-        let source_path = source_path.clone();
-        let source_path_row = source_path_row.clone();
-        source_folder_button.connect_clicked(move |_| {
+        let state = state.clone();
+        state.source_folder_button.connect_clicked(move |_| {
             let dialog = FileChooserNative::new(
                 Some("Choose import source folder"),
-                Some(&window),
+                Some(&state.window),
                 FileChooserAction::SelectFolder,
                 Some("Select"),
                 Some("Cancel"),
             );
-            let overlay = overlay.clone();
-            let source_path = source_path.clone();
-            let source_path_row = source_path_row.clone();
+            let overlay = state.overlay.clone();
+            let source_path = state.source_path.clone();
+            let source_path_row = state.source_path_row.clone();
             dialog.connect_response(move |dialog, response| {
                 if response == ResponseType::Accept {
                     if let Some(path) = selected_local_path(dialog, &overlay) {
@@ -199,127 +385,130 @@ fn present_pass_import_dialog<F>(
     }
 
     {
-        let source_path = source_path.clone();
-        let source_path_row = source_path_row.clone();
-        source_clear_button.connect_clicked(move |_| {
+        let source_path = state.source_path.clone();
+        let source_path_row = state.source_path_row.clone();
+        state.source_clear_button.connect_clicked(move |_| {
             *source_path.borrow_mut() = None;
             source_path_row.set_subtitle(import_source_subtitle(None));
         });
     }
 
-    let dialog_clone = dialog.clone();
-    let overlay_clone = overlay.clone();
-    let stores = stores.to_vec();
-    let import_sources = import_sources.to_vec();
-    import_button.connect_clicked(move |_| {
-        let Some(store_root) = stores.get(store_dropdown.selected() as usize).cloned() else {
-            overlay_clone.add_toast(Toast::new("Choose a store."));
-            return;
-        };
-        let Some(source) = import_sources
-            .get(source_dropdown.selected() as usize)
-            .cloned()
-        else {
-            overlay_clone.add_toast(Toast::new("Choose an importer."));
-            return;
-        };
+    {
+        let state = state.clone();
+        let import_button = state.import_button.clone();
+        import_button.connect_clicked(move |_| {
+            let store_roots = state.store_roots.borrow();
+            let Some(store_root) = store_roots
+                .get(state.store_dropdown.selected() as usize)
+                .cloned()
+            else {
+                state.overlay.add_toast(Toast::new("Choose a store."));
+                return;
+            };
 
-        dialog_clone.close();
-        on_submit(PassImportRequest {
-            store_root,
-            source,
-            source_path: source_path.borrow().clone(),
-            target_path: normalize_optional_text(&target_path_row.text()),
+            let import_sources = state.import_sources.borrow();
+            let Some(source) = import_sources
+                .get(state.source_dropdown.selected() as usize)
+                .cloned()
+            else {
+                state.overlay.add_toast(Toast::new("Choose an importer."));
+                return;
+            };
+
+            let request = PassImportRequest {
+                store_root,
+                source,
+                source_path: state.source_path.borrow().clone(),
+                target_path: normalize_optional_text(&state.target_path_row.text()),
+            };
+            start_pass_import(&state, request);
         });
-    });
-
-    dialog.present(Some(window));
+    }
 }
 
-fn start_pass_import(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    request: PassImportRequest,
+fn finish_pass_import(
+    state: &StoreImportPageState,
+    result: Result<(), String>,
+    request: &PassImportRequest,
 ) {
-    let progress_dialog = build_import_progress_dialog(window, &request.store_root);
-    let progress_dialog_for_disconnect = progress_dialog.clone();
-    let overlay = overlay.clone();
-    let overlay_for_disconnect = overlay.clone();
+    set_store_import_loading(state, false);
+
+    match result {
+        Ok(()) => {
+            reset_store_import_form(state);
+            pop_store_import_page_if_visible(state);
+            state.overlay.add_toast(Toast::new("Passwords imported."));
+        }
+        Err(err) => {
+            log_error(format!(
+                "Failed to import passwords into '{}' from '{}': {err}",
+                request.store_root, request.source
+            ));
+            state
+                .overlay
+                .add_toast(Toast::new("Couldn't import passwords."));
+        }
+    }
+}
+
+fn start_pass_import(state: &StoreImportPageState, request: PassImportRequest) {
+    set_store_import_loading(state, true);
+    let state = state.clone();
+    let state_for_disconnect = state.clone();
     let store_for_error = request.store_root.clone();
     let source_for_error = request.source.clone();
+    let request_for_result = request.clone();
     spawn_result_task(
         move || run_pass_import(&request),
         move |result| {
-            progress_dialog.force_close();
-            match result {
-                Ok(()) => overlay.add_toast(Toast::new("Passwords imported.")),
-                Err(err) => {
-                    log_error(format!(
-                        "Failed to import passwords into '{store_for_error}' from '{source_for_error}': {err}"
-                    ));
-                    overlay.add_toast(Toast::new(&err));
-                }
-            }
+            finish_pass_import(&state, result, &request_for_result);
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
-            overlay_for_disconnect.add_toast(Toast::new("Couldn't import passwords."));
+            set_store_import_loading(&state_for_disconnect, false);
+            log_error(format!(
+                "Pass import worker disconnected unexpectedly while importing into '{store_for_error}' from '{source_for_error}'."
+            ));
+            state_for_disconnect
+                .overlay
+                .add_toast(Toast::new("Couldn't import passwords."));
         },
     );
 }
 
-fn append_store_import_row(
-    list: &ListBox,
-    settings: &Preferences,
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    import_sources: Vec<String>,
+fn sync_pass_import_row(
+    row: &ActionRow,
+    button: &Button,
+    uses_host_command_backend: bool,
+    stores: &[String],
+    source_state: &PassImportSourceState,
 ) {
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    append_action_row_with_button(
-        list,
-        "Import passwords",
-        "Use pass import with an existing store.",
-        "document-open-symbolic",
-        move || {
-            let stores = settings.stores();
-            if stores.is_empty() {
-                overlay.add_toast(Toast::new("Add a store first."));
-                return;
-            }
-
-            if !should_show_pass_import_row(&stores, &import_sources) {
-                overlay.add_toast(Toast::new("pass import is not available."));
-                return;
-            }
-
-            present_pass_import_dialog(&window, &overlay, &stores, &import_sources, {
-                let window = window.clone();
-                let overlay = overlay.clone();
-                move |request| start_pass_import(&window, &overlay, request)
-            });
-        },
-    );
+    let enabled = pass_import_row_enabled(uses_host_command_backend, stores, source_state);
+    row.set_subtitle(pass_import_row_subtitle(
+        uses_host_command_backend,
+        stores,
+        source_state,
+    ));
+    row.set_activatable(enabled);
+    row.set_sensitive(enabled);
+    button.set_sensitive(enabled);
 }
 
-pub(super) fn schedule_store_import_row(
+pub fn schedule_store_import_row(
     list: &ListBox,
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
-    stores: Vec<String>,
 ) {
     let refresh_id = next_store_list_refresh_id();
     set_string_data(list, STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
 
+    let stores = settings.stores();
+    let row_state = PassImportRowState::new(list, settings, window, overlay, &stores);
+
     let list_for_result = list.clone();
-    let settings = settings.clone();
-    let window = window.clone();
-    let overlay = overlay.clone();
-    let stores_for_result = stores.clone();
-    let refresh_id_for_result = refresh_id.clone();
+    let stores_for_result = stores;
+    let refresh_id_for_result = refresh_id;
+    let row_state_for_result = row_state;
     spawn_result_task(
         available_pass_import_sources,
         move |result| {
@@ -327,19 +516,73 @@ pub(super) fn schedule_store_import_row(
                 return;
             }
 
-            let Ok(import_sources) = result else {
-                return;
-            };
-            if should_show_pass_import_row(&stores_for_result, &import_sources) {
-                append_store_import_row(
-                    &list_for_result,
-                    &settings,
-                    &window,
-                    &overlay,
-                    import_sources,
-                );
-            }
+            let source_state = result.map_or(
+                PassImportSourceState::Unavailable,
+                PassImportSourceState::Available,
+            );
+            row_state_for_result.set_source_state(source_state, &stores_for_result);
         },
         move || {},
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{pass_import_row_enabled, pass_import_row_subtitle, PassImportSourceState};
+
+    #[test]
+    fn pass_import_row_is_enabled_only_when_every_requirement_is_met() {
+        assert!(!pass_import_row_enabled(
+            false,
+            &["/tmp/store".to_string()],
+            &PassImportSourceState::Available(vec!["bitwarden".to_string()]),
+        ));
+        assert!(!pass_import_row_enabled(
+            true,
+            &[],
+            &PassImportSourceState::Available(vec!["bitwarden".to_string()]),
+        ));
+        assert!(!pass_import_row_enabled(
+            true,
+            &["/tmp/store".to_string()],
+            &PassImportSourceState::Unavailable,
+        ));
+        assert!(pass_import_row_enabled(
+            true,
+            &["/tmp/store".to_string()],
+            &PassImportSourceState::Available(vec!["bitwarden".to_string()]),
+        ));
+    }
+
+    #[test]
+    fn pass_import_row_subtitle_matches_the_current_requirement() {
+        assert_eq!(
+            pass_import_row_subtitle(
+                false,
+                &["/tmp/store".to_string()],
+                &PassImportSourceState::Available(vec!["bitwarden".to_string()]),
+            ),
+            "Switch Backend to Host command to use pass import."
+        );
+        assert_eq!(
+            pass_import_row_subtitle(true, &[], &PassImportSourceState::Checking),
+            "Add a store to use pass import."
+        );
+        assert_eq!(
+            pass_import_row_subtitle(
+                true,
+                &["/tmp/store".to_string()],
+                &PassImportSourceState::Checking,
+            ),
+            "Checking pass import availability."
+        );
+        assert_eq!(
+            pass_import_row_subtitle(
+                true,
+                &["/tmp/store".to_string()],
+                &PassImportSourceState::Unavailable,
+            ),
+            "pass import is not available."
+        );
+    }
 }

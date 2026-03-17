@@ -22,8 +22,8 @@ enum OtpMode {
 }
 
 #[derive(Clone)]
-pub(crate) struct PasswordOtpState {
-    pub(crate) row: PasswordEntryRow,
+pub struct PasswordOtpState {
+    pub row: PasswordEntryRow,
     overlay: ToastOverlay,
     template: Rc<RefCell<Option<OtpFieldTemplate>>>,
     url: Rc<RefCell<Option<String>>>,
@@ -33,7 +33,7 @@ pub(crate) struct PasswordOtpState {
 }
 
 impl PasswordOtpState {
-    pub(crate) fn new(row: &PasswordEntryRow, overlay: &ToastOverlay) -> Self {
+    pub fn new(row: &PasswordEntryRow, overlay: &ToastOverlay) -> Self {
         let countdown = OtpCountdownCircle::new();
 
         row.set_activatable(true);
@@ -52,7 +52,7 @@ impl PasswordOtpState {
         state
     }
 
-    pub(crate) fn clear(&self) {
+    pub fn clear(&self) {
         self.bump_refresh_generation();
         self.template.borrow_mut().take();
         self.url.borrow_mut().take();
@@ -67,7 +67,7 @@ impl PasswordOtpState {
         self.countdown.set_tooltip_text(None);
     }
 
-    pub(crate) fn sync_from_parsed_lines(
+    pub fn sync_from_parsed_lines(
         &self,
         lines: &[(StructuredPassLine, Option<String>)],
         show_errors: bool,
@@ -90,7 +90,7 @@ impl PasswordOtpState {
         self.render(show_errors);
     }
 
-    pub(crate) fn current_url(&self) -> Option<String> {
+    pub fn current_url(&self) -> Option<String> {
         if self.is_editing() {
             self.url_for_current_secret()
         } else {
@@ -98,7 +98,7 @@ impl PasswordOtpState {
         }
     }
 
-    pub(crate) fn current_url_for_save(&self) -> Result<Option<String>, &'static str> {
+    pub fn current_url_for_save(&self) -> Result<Option<String>, &'static str> {
         let Some(url) = self.current_url() else {
             return Ok(None);
         };
@@ -115,7 +115,7 @@ impl PasswordOtpState {
         Ok(Some(url))
     }
 
-    pub(crate) fn add_empty_secret(&self) {
+    pub fn add_empty_secret(&self) {
         *self.template.borrow_mut() = Some(OtpFieldTemplate::BareUrl);
         *self.url.borrow_mut() = Some(EMPTY_OTP_URL.to_string());
         self.row.set_visible(true);
@@ -159,7 +159,7 @@ impl PasswordOtpState {
         });
     }
 
-    pub(crate) fn has_otp(&self) -> bool {
+    pub fn has_otp(&self) -> bool {
         self.template.borrow().is_some()
     }
 
@@ -289,9 +289,11 @@ impl PasswordOtpState {
     }
 
     fn set_live_code(&self, code: &str, remaining: u64, period: u64) {
+        let remaining = u32::try_from(remaining).unwrap_or(u32::MAX);
+        let period = u32::try_from(period).unwrap_or(u32::MAX);
         self.row.set_text(code);
         self.countdown
-            .set_fraction(remaining as f64 / period as f64);
+            .set_fraction(f64::from(remaining) / f64::from(period));
         self.countdown
             .set_tooltip_text(Some(&format!("{remaining}s remaining")));
     }

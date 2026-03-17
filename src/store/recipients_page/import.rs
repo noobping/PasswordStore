@@ -6,11 +6,11 @@ use crate::backend::{
 };
 use crate::logging::log_error;
 use crate::private_key::dialog::{
-    build_private_key_progress_dialog, present_private_key_password_dialog,
+    build_private_key_progress_dialog, present_private_key_password_dialog, PrivateKeyDialogHandle,
 };
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::append_action_row_with_button;
+use crate::support::ui::connect_row_and_button_action;
 use adw::gio;
 use adw::gtk::{gdk::Display, FileChooserAction, FileChooserNative, ResponseType};
 use adw::prelude::*;
@@ -45,9 +45,13 @@ fn start_private_key_import(
     bytes: Vec<u8>,
     passphrase: Option<String>,
 ) {
-    let progress_dialog =
-        build_private_key_progress_dialog(&state.window, "Importing key", None, "Please wait.");
     let state = state.clone();
+    let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
+        &state.window,
+        "Importing key",
+        None,
+        "Please wait.",
+    ));
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
     spawn_result_task(
@@ -163,26 +167,18 @@ fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
     });
 }
 
-pub(super) fn append_private_key_clipboard_import_row(state: &StoreRecipientsPageState) {
-    let list = state.list.clone();
-    let state = state.clone();
-    append_action_row_with_button(
-        &list,
-        "Import private key from clipboard",
-        "Read an armored private key from the clipboard.",
-        "edit-paste-symbolic",
-        move || import_private_key_from_clipboard(&state),
-    );
-}
+pub(super) fn connect_private_key_import_controls(state: &StoreRecipientsPageState) {
+    let clipboard_row = state.platform.import_clipboard_row.clone();
+    let clipboard_button = state.platform.import_clipboard_button.clone();
+    let clipboard_state = state.clone();
+    connect_row_and_button_action(&clipboard_row, &clipboard_button, move || {
+        import_private_key_from_clipboard(&clipboard_state);
+    });
 
-pub(super) fn append_private_key_import_row(state: &StoreRecipientsPageState) {
-    let list = state.list.clone();
-    let state = state.clone();
-    append_action_row_with_button(
-        &list,
-        "Import private key",
-        "Choose a private key file.",
-        "document-open-symbolic",
-        move || open_private_key_picker(&state),
-    );
+    let file_row = state.platform.import_file_row.clone();
+    let file_button = state.platform.import_file_button.clone();
+    let file_state = state.clone();
+    connect_row_and_button_action(&file_row, &file_button, move || {
+        open_private_key_picker(&file_state);
+    });
 }

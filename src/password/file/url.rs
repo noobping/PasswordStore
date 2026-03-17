@@ -3,7 +3,7 @@ use crate::support::ui::flat_icon_button_with_tooltip;
 use adw::prelude::*;
 use adw::{EntryRow, Toast, ToastOverlay};
 
-pub(crate) fn uri_to_open(value: &str) -> Option<String> {
+pub fn uri_to_open(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {
         return None;
@@ -16,7 +16,6 @@ pub(crate) fn uri_to_open(value: &str) -> Option<String> {
     }
 }
 
-#[cfg(keycord_linux)]
 pub(super) fn add_open_url_suffix(
     row: &EntryRow,
     text: impl Fn() -> String + 'static,

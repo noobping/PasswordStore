@@ -6,7 +6,7 @@ use std::time::Duration;
 
 const BACKGROUND_TASK_POLL_INTERVAL_MS: u64 = 50;
 
-pub(crate) fn spawn_result_task<T, Task, HandleResult, HandleDisconnect>(
+pub fn spawn_result_task<T, Task, HandleResult, HandleDisconnect>(
     task: Task,
     handle_result: HandleResult,
     handle_disconnect: HandleDisconnect,

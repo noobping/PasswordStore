@@ -1,4 +1,3 @@
-pub(crate) mod dialog;
-#[cfg(keycord_flatpak)]
-pub(crate) mod git;
-pub(crate) mod unlock;
+pub mod dialog;
+pub mod git;
+pub mod unlock;

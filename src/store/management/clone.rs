@@ -68,11 +68,8 @@ fn present_clone_url_dialog<F>(
     dialog.present(Some(window));
 }
 
-pub(crate) fn prompt_store_clone<F>(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    on_submit: F,
-) where
+pub fn prompt_store_clone<F>(window: &ApplicationWindow, overlay: &ToastOverlay, on_submit: F)
+where
     F: Fn(String, String) + 'static,
 {
     let window = window.clone();
@@ -95,10 +92,7 @@ pub(crate) fn prompt_store_clone<F>(
                 &window_for_dialog,
                 &overlay_for_dialog,
                 &store_for_dialog,
-                {
-                    let store = store.clone();
-                    move |url| on_submit(store.clone(), url)
-                },
+                move |url| on_submit(store.clone(), url),
             );
         },
     );
@@ -161,11 +155,11 @@ fn start_store_clone(
     let store_for_thread = store.clone();
     let store_for_result = store.clone();
     let store_for_disconnect = store;
-    let window_for_result = window.clone();
+    let window_for_result = window;
     let overlay_for_disconnect = overlay.clone();
-    let settings_for_result = settings.clone();
-    let list_for_result = list.clone();
-    let recipients_page_for_result = recipients_page.clone();
+    let settings_for_result = settings;
+    let list_for_result = list;
+    let recipients_page_for_result = recipients_page;
     spawn_result_task(
         move || clone_store_repository(&url, &store_for_thread),
         move |result| match result {
@@ -197,8 +191,7 @@ fn start_store_clone(
         move || {
             progress_dialog_for_disconnect.force_close();
             log_error(format!(
-                "Restore stopped unexpectedly for store '{}'.",
-                store_for_disconnect
+                "Restore stopped unexpectedly for store '{store_for_disconnect}'."
             ));
             overlay_for_disconnect.add_toast(Toast::new("Restore stopped unexpectedly."));
         },

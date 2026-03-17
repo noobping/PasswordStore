@@ -97,6 +97,12 @@ enum UsernameSource {
     Field,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParsedUsernameField {
+    Empty,
+    Value(String),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UsernameFallbackError {
     EmptyFilename,
@@ -104,7 +110,7 @@ pub enum UsernameFallbackError {
 }
 
 impl UsernameFallbackError {
-    pub fn toast_message(self) -> &'static str {
+    pub const fn toast_message(self) -> &'static str {
         match self {
             Self::EmptyFilename => "Enter a username.",
             Self::NestedFilename => "Use a single file name for the username.",
@@ -118,17 +124,22 @@ fn username_from_contents_or_path(
     fallback_mode: UsernameFallbackMode,
 ) -> (Option<String>, UsernameSource) {
     if let Some(username) = extract_username_field_from_contents(output) {
-        return (Some(username.unwrap_or_default()), UsernameSource::Field);
+        let username = match username {
+            ParsedUsernameField::Empty => String::new(),
+            ParsedUsernameField::Value(username) => username,
+        };
+        return (Some(username), UsernameSource::Field);
     }
 
     let username_source = match fallback_mode {
         UsernameFallbackMode::Folder => UsernameSource::FolderFallback,
         UsernameFallbackMode::Filename => UsernameSource::FilenameFallback,
     };
-    match entry.username_from_label(fallback_mode) {
-        Some(username) => (Some(username), username_source),
-        None => (None, UsernameSource::None),
-    }
+    entry
+        .username_from_label(fallback_mode)
+        .map_or((None, UsernameSource::None), |username| {
+            (Some(username), username_source)
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,14 +198,14 @@ impl OpenPassFile {
     }
 
     #[cfg(test)]
-    pub(crate) fn username_is_derived_from_label(&self) -> bool {
+    pub const fn username_is_derived_from_label(&self) -> bool {
         matches!(
             self.username_source,
             UsernameSource::FolderFallback | UsernameSource::FilenameFallback
         )
     }
 
-    pub fn username_fallback_mode(&self) -> UsernameFallbackMode {
+    pub const fn username_fallback_mode(&self) -> UsernameFallbackMode {
         self.username_fallback_mode
     }
 
@@ -222,7 +233,7 @@ impl OpenPassFile {
     }
 }
 
-fn extract_username_field_from_contents(output: &str) -> Option<Option<String>> {
+fn extract_username_field_from_contents(output: &str) -> Option<ParsedUsernameField> {
     output.lines().skip(1).find_map(|line| {
         let (key, value) = line.split_once(':')?;
         let key = key.trim().to_ascii_lowercase();
@@ -232,16 +243,14 @@ fn extract_username_field_from_contents(output: &str) -> Option<Option<String>> 
 
         let value = value.trim();
         if value.is_empty() {
-            Some(None)
+            Some(ParsedUsernameField::Empty)
         } else {
-            Some(Some(value.to_string()))
+            Some(ParsedUsernameField::Value(value.to_string()))
         }
     })
 }
 
-pub fn collect_all_password_items_with_options(
-    options: CollectItemsOptions,
-) -> io::Result<Vec<PassEntry>> {
+pub fn collect_all_password_items_with_options(options: CollectItemsOptions) -> Vec<PassEntry> {
     let settings = Preferences::new();
     let roots = settings.paths();
     let mut result: Vec<PassEntry> = Vec::new();
@@ -262,7 +271,7 @@ pub fn collect_all_password_items_with_options(
             .then_with(|| left.relative_path.cmp(&right.relative_path))
             .then_with(|| left.basename.cmp(&right.basename))
     });
-    Ok(result)
+    result
 }
 
 fn collapse_duplicate_store_entries(items: Vec<PassEntry>) -> Vec<PassEntry> {
@@ -331,15 +340,11 @@ fn collect_items_in_dir(
     let entries = fs::read_dir(root)?;
 
     for entry_result in entries {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let Ok(entry) = entry_result else { continue };
 
         let path = entry.path();
-        let file_type = match entry.file_type() {
-            Ok(t) => t,
-            Err(_) => continue,
+        let Ok(file_type) = entry.file_type() else {
+            continue;
         };
 
         if file_type.is_dir() {

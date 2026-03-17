@@ -11,12 +11,12 @@ const NUMBER_CHARS: &[u8] = b"0123456789";
 const SYMBOL_CHARS: &[u8] = b"!@#$%^&*()-_=+[]{};:,.?/";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct PasswordGenerationSettings {
-    pub(crate) length: u32,
-    pub(crate) min_lowercase: u32,
-    pub(crate) min_uppercase: u32,
-    pub(crate) min_numbers: u32,
-    pub(crate) min_symbols: u32,
+pub struct PasswordGenerationSettings {
+    pub length: u32,
+    pub min_lowercase: u32,
+    pub min_uppercase: u32,
+    pub min_numbers: u32,
+    pub min_symbols: u32,
 }
 
 impl Default for PasswordGenerationSettings {
@@ -32,7 +32,7 @@ impl Default for PasswordGenerationSettings {
 }
 
 impl PasswordGenerationSettings {
-    pub(crate) fn normalized(&self) -> Self {
+    pub fn normalized(&self) -> Self {
         let mut normalized = self.clone();
         normalized.length = normalized.length.max(1);
 
@@ -44,7 +44,7 @@ impl PasswordGenerationSettings {
         normalized
     }
 
-    pub(crate) fn minimum_length(&self) -> u32 {
+    pub const fn minimum_length(&self) -> u32 {
         self.min_lowercase + self.min_uppercase + self.min_numbers + self.min_symbols
     }
 
@@ -69,17 +69,17 @@ impl PasswordGenerationSettings {
 }
 
 #[derive(Clone)]
-pub(crate) struct PasswordGenerationControls {
-    pub(crate) length: SpinButton,
-    pub(crate) min_lowercase: SpinButton,
-    pub(crate) min_uppercase: SpinButton,
-    pub(crate) min_numbers: SpinButton,
-    pub(crate) min_symbols: SpinButton,
+pub struct PasswordGenerationControls {
+    pub length: SpinButton,
+    pub min_lowercase: SpinButton,
+    pub min_uppercase: SpinButton,
+    pub min_numbers: SpinButton,
+    pub min_symbols: SpinButton,
     syncing: Rc<Cell<bool>>,
 }
 
 impl PasswordGenerationControls {
-    pub(crate) fn new(
+    pub fn new(
         length: &SpinButton,
         min_lowercase: &SpinButton,
         min_uppercase: &SpinButton,
@@ -96,17 +96,17 @@ impl PasswordGenerationControls {
         }
     }
 
-    pub(crate) fn settings(&self) -> PasswordGenerationSettings {
+    pub fn settings(&self) -> PasswordGenerationSettings {
         PasswordGenerationSettings {
-            length: self.length.value_as_int().max(1) as u32,
-            min_lowercase: self.min_lowercase.value_as_int().max(0) as u32,
-            min_uppercase: self.min_uppercase.value_as_int().max(0) as u32,
-            min_numbers: self.min_numbers.value_as_int().max(0) as u32,
-            min_symbols: self.min_symbols.value_as_int().max(0) as u32,
+            length: self.length.value_as_int().max(1).cast_unsigned(),
+            min_lowercase: self.min_lowercase.value_as_int().max(0).cast_unsigned(),
+            min_uppercase: self.min_uppercase.value_as_int().max(0).cast_unsigned(),
+            min_numbers: self.min_numbers.value_as_int().max(0).cast_unsigned(),
+            min_symbols: self.min_symbols.value_as_int().max(0).cast_unsigned(),
         }
     }
 
-    pub(crate) fn set_settings(&self, settings: &PasswordGenerationSettings) {
+    pub fn set_settings(&self, settings: &PasswordGenerationSettings) {
         let settings = settings.normalized();
         self.syncing.set(true);
 
@@ -119,7 +119,7 @@ impl PasswordGenerationControls {
         self.syncing.set(false);
     }
 
-    pub(crate) fn connect_changed(&self, changed: Rc<dyn Fn()>) {
+    pub fn connect_changed(&self, changed: &Rc<dyn Fn()>) {
         for spin in [
             self.length.clone(),
             self.min_lowercase.clone(),
@@ -138,7 +138,7 @@ impl PasswordGenerationControls {
     }
 }
 
-pub(crate) fn generate_password(settings: &PasswordGenerationSettings) -> String {
+pub fn generate_password(settings: &PasswordGenerationSettings) -> String {
     let settings = settings.normalized();
     let mut chars = Vec::with_capacity(settings.length as usize);
     let mut rng = OsRng;
@@ -191,8 +191,12 @@ fn random_char(pool: &[u8], rng: &mut OsRng) -> char {
 }
 
 fn set_spin_value(spin: &SpinButton, value: u32) {
-    if spin.value_as_int() != value as i32 {
-        spin.set_value(value as f64);
+    let Ok(value) = i32::try_from(value) else {
+        return;
+    };
+
+    if spin.value_as_int() != value {
+        spin.set_value(f64::from(value));
     }
 }
 

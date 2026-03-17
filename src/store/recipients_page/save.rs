@@ -4,39 +4,14 @@ use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRe
 use crate::backend::{save_store_recipients, StoreRecipientsPrivateKeyRequirement};
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-#[cfg(keycord_flatpak)]
 use crate::private_key::git::prompt_private_key_unlock_for_store_git_commit_if_needed;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
-#[cfg(keycord_flatpak)]
 use std::rc::Rc;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AutosaveAction {
-    Skip,
-    Queue,
-    Trigger,
-}
-
-fn autosave_action(
-    has_request: bool,
-    has_recipients: bool,
-    is_dirty: bool,
-    save_in_flight: bool,
-) -> AutosaveAction {
-    if !has_request || !has_recipients || !is_dirty {
-        return AutosaveAction::Skip;
-    }
-    if save_in_flight {
-        return AutosaveAction::Queue;
-    }
-
-    AutosaveAction::Trigger
-}
-
-fn should_reschedule_after_finish(
+const fn should_reschedule_after_finish(
     save_queued: bool,
     include_dirty: bool,
     recipients_dirty: bool,
@@ -56,7 +31,6 @@ fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty:
     }
 }
 
-#[cfg(keycord_flatpak)]
 fn maybe_prompt_store_recipients_git_unlock(
     overlay: &ToastOverlay,
     stores_list: &ListBox,
@@ -73,40 +47,28 @@ fn maybe_prompt_store_recipients_git_unlock(
     let overlay_for_retry = overlay.clone();
     let stores_list_for_retry = stores_list.clone();
     let state_for_retry = state.clone();
+    let after_unlock: Rc<dyn Fn()> = Rc::new(move || {
+        save_store_recipients_async(
+            &overlay_for_retry,
+            &stores_list_for_retry,
+            &state_for_retry,
+            false,
+        );
+    });
     prompt_private_key_unlock_for_store_git_commit_if_needed(
         &state.platform.overlay,
         store_root,
         recipients,
         private_key_requirement,
-        Rc::new(move || {
-            save_store_recipients_async(
-                &overlay_for_retry,
-                &stores_list_for_retry,
-                &state_for_retry,
-                false,
-            );
-        }),
+        &after_unlock,
     )
-}
-
-#[cfg(keycord_standard_linux)]
-fn maybe_prompt_store_recipients_git_unlock(
-    _overlay: &ToastOverlay,
-    _stores_list: &ListBox,
-    _state: &StoreRecipientsPageState,
-    _store_root: &str,
-    _recipients: &[String],
-    _private_key_requirement: StoreRecipientsPrivateKeyRequirement,
-    _allow_git_unlock_prompt: bool,
-) -> bool {
-    false
 }
 
 fn save_store_recipients_async(
     overlay: &ToastOverlay,
     stores_list: &ListBox,
     state: &StoreRecipientsPageState,
-    _allow_git_unlock_prompt: bool,
+    allow_git_unlock_prompt: bool,
 ) {
     let Some(request) = state.current_request() else {
         return;
@@ -128,7 +90,7 @@ fn save_store_recipients_async(
         &request.store,
         &recipients,
         private_key_requirement,
-        _allow_git_unlock_prompt,
+        allow_git_unlock_prompt,
     ) {
         return;
     }
@@ -143,7 +105,6 @@ fn save_store_recipients_async(
     let overlay = overlay.clone();
     let stores_list = stores_list.clone();
     let state = state.clone();
-    let request = request.clone();
     let overlay_for_disconnect = overlay.clone();
     let state_for_disconnect = state.clone();
     let mode_for_disconnect = request.mode;
@@ -158,7 +119,7 @@ fn save_store_recipients_async(
         move |result| match result {
             Ok(()) => {
                 let settings = Preferences::new();
-                *state.saved_recipients.borrow_mut() = recipients.clone();
+                state.saved_recipients.borrow_mut().clone_from(&recipients);
                 state
                     .saved_private_key_requirement
                     .set(private_key_requirement);
@@ -202,22 +163,22 @@ fn save_store_recipients_async(
     );
 }
 
-pub(crate) fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) {
-    match autosave_action(
-        state.current_request().is_some(),
-        !state.recipients.borrow().is_empty(),
-        state.recipients_are_dirty(),
-        state.save_in_flight.get(),
-    ) {
-        AutosaveAction::Skip => {}
-        AutosaveAction::Queue => state.save_queued.set(true),
-        AutosaveAction::Trigger => {
-            activate_widget_action(&state.window, "win.save-store-recipients")
-        }
+pub fn queue_store_recipients_autosave(state: &StoreRecipientsPageState) {
+    if state.current_request().is_none()
+        || state.recipients.borrow().is_empty()
+        || !state.recipients_are_dirty()
+    {
+        return;
+    }
+
+    if state.save_in_flight.get() {
+        state.save_queued.set(true);
+    } else {
+        activate_widget_action(&state.window, "win.save-store-recipients");
     }
 }
 
-pub(crate) fn register_store_recipients_save_action(
+pub fn register_store_recipients_save_action(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     stores_list: &ListBox,
@@ -233,39 +194,7 @@ pub(crate) fn register_store_recipients_save_action(
 
 #[cfg(test)]
 mod tests {
-    use super::{autosave_action, should_reschedule_after_finish, AutosaveAction};
-
-    #[test]
-    fn autosave_skips_without_a_request_or_recipients_or_changes() {
-        assert_eq!(
-            autosave_action(false, true, true, false),
-            AutosaveAction::Skip
-        );
-        assert_eq!(
-            autosave_action(true, false, true, false),
-            AutosaveAction::Skip
-        );
-        assert_eq!(
-            autosave_action(true, true, false, false),
-            AutosaveAction::Skip
-        );
-    }
-
-    #[test]
-    fn autosave_queues_while_a_save_is_in_flight() {
-        assert_eq!(
-            autosave_action(true, true, true, true),
-            AutosaveAction::Queue
-        );
-    }
-
-    #[test]
-    fn autosave_triggers_only_when_it_can_save_now() {
-        assert_eq!(
-            autosave_action(true, true, true, false),
-            AutosaveAction::Trigger
-        );
-    }
+    use super::should_reschedule_after_finish;
 
     #[test]
     fn finish_reschedules_for_queued_or_still_dirty_changes() {

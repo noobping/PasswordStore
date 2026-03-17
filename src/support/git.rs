@@ -1,12 +1,10 @@
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
+use crate::support::runtime::git_network_operations_available;
 use std::path::Path;
 use std::process::{Command, Output};
 
-#[cfg(keycord_flatpak)]
-use crate::support::runtime::git_network_operations_available;
-
-pub(crate) fn has_git_repository(root: &str) -> bool {
+pub fn has_git_repository(root: &str) -> bool {
     Path::new(root).join(".git").exists()
 }
 
@@ -27,14 +25,14 @@ fn run_store_git_command(
     context: &str,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
-    let mut cmd = Preferences::new().git_command();
+    let mut cmd = Preferences::git_command();
     cmd.arg("-C").arg(root);
     configure(&mut cmd);
     run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
         .map_err(|err| format!("Failed to run git command: {err}"))
 }
 
-pub(crate) fn ensure_store_git_repository(root: &str) -> Result<(), String> {
+pub fn ensure_store_git_repository(root: &str) -> Result<(), String> {
     if has_git_repository(root) {
         return Ok(());
     }
@@ -56,8 +54,7 @@ fn password_store_without_repository_summary(root: &str) -> String {
     )
 }
 
-#[cfg(keycord_flatpak)]
-pub(crate) fn password_store_git_state_summary(root: &str) -> String {
+pub fn password_store_git_state_summary(root: &str) -> String {
     if !has_git_repository(root) {
         return password_store_without_repository_summary(root);
     }
@@ -69,30 +66,12 @@ pub(crate) fn password_store_git_state_summary(root: &str) -> String {
     password_store_git_state_summary_without_network(root)
 }
 
-#[cfg(keycord_standard_linux)]
-pub(crate) fn password_store_git_state_summary(root: &str) -> String {
-    if !has_git_repository(root) {
-        return password_store_without_repository_summary(root);
-    }
-
-    password_store_git_state_summary_with_network(root)
-}
-
-#[cfg(keycord_flatpak)]
-fn password_store_git_state_summary_with_network(root: &str) -> String {
-    format!(
-        "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled through host commands."
-    )
-}
-
-#[cfg(keycord_standard_linux)]
 fn password_store_git_state_summary_with_network(root: &str) -> String {
     format!(
         "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations enabled."
     )
 }
 
-#[cfg(keycord_flatpak)]
 fn password_store_git_state_summary_without_network(root: &str) -> String {
     format!(
         "Password store Git state: {root} -> Git repository detected, local commits enabled, network operations disabled because host command execution is unavailable."

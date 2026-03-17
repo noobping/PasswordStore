@@ -11,56 +11,49 @@ use crate::password::undo::{
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-#[cfg(keycord_flatpak)]
 use crate::support::runtime::git_network_operations_available;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
+use crate::window::git::{handle_git_busy_back, GitActionState};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
-use adw::gtk::{ListBox, SearchEntry};
+use adw::gtk::{Button, ListBox, SearchEntry};
 use adw::prelude::*;
 use adw::ToastOverlay;
 use adw::{Application, ApplicationWindow, NavigationPage};
 use std::cell::Cell;
 use std::rc::Rc;
 
-#[cfg(keycord_flatpak)]
-mod flatpak;
-#[cfg(keycord_flatpak)]
-use self::flatpak as platform;
-#[cfg(not(keycord_linux))]
-mod non_linux;
-#[cfg(not(keycord_linux))]
-use self::non_linux as platform;
-#[cfg(keycord_standard_linux)]
-mod standard;
-#[cfg(keycord_standard_linux)]
-use self::standard as platform;
+#[derive(Clone)]
+pub struct PlatformBackActionState {
+    pub git_actions: GitActionState,
+}
 
-pub(crate) use self::platform::PlatformBackActionState;
-use self::platform::{before_back_action, configure_shortcuts};
+fn before_back_action(state: &PlatformBackActionState) -> bool {
+    handle_git_busy_back(&state.git_actions)
+}
 
 #[derive(Clone)]
-pub(crate) struct ListVisibilityState {
+pub struct ListVisibilityState {
     show_hidden: Rc<Cell<bool>>,
     show_duplicates: Rc<Cell<bool>>,
 }
 
 impl ListVisibilityState {
-    pub(crate) fn new(show_hidden: bool, show_duplicates: bool) -> Self {
+    pub fn new(show_hidden: bool, show_duplicates: bool) -> Self {
         Self {
             show_hidden: Rc::new(Cell::new(show_hidden)),
             show_duplicates: Rc::new(Cell::new(show_duplicates)),
         }
     }
 
-    pub(crate) fn show_hidden(&self) -> bool {
+    pub fn show_hidden(&self) -> bool {
         self.show_hidden.get()
     }
 
-    pub(crate) fn show_duplicates(&self) -> bool {
+    pub fn show_duplicates(&self) -> bool {
         self.show_duplicates.get()
     }
 
-    pub(crate) fn toggle_all(&self) -> (bool, bool) {
+    pub fn toggle_all(&self) -> (bool, bool) {
         let (show_hidden, show_duplicates) =
             toggled_list_visibility(self.show_hidden(), self.show_duplicates());
         self.show_hidden.set(show_hidden);
@@ -69,34 +62,34 @@ impl ListVisibilityState {
     }
 }
 
-fn toggled_list_visibility(show_hidden: bool, show_duplicates: bool) -> (bool, bool) {
+const fn toggled_list_visibility(show_hidden: bool, show_duplicates: bool) -> (bool, bool) {
     let show_all = !(show_hidden && show_duplicates);
     (show_all, show_all)
 }
 
 #[derive(Clone)]
-pub(crate) struct BackActionState {
-    pub(crate) password_page: PasswordPageState,
-    pub(crate) recipients_page: StoreRecipientsPageState,
-    pub(crate) navigation: WindowNavigationState,
-    pub(crate) visibility: ListVisibilityState,
-    pub(crate) platform: PlatformBackActionState,
+pub struct BackActionState {
+    pub password_page: PasswordPageState,
+    pub recipients_page: StoreRecipientsPageState,
+    pub navigation: WindowNavigationState,
+    pub visibility: ListVisibilityState,
+    pub platform: PlatformBackActionState,
 }
 
 #[derive(Clone)]
-pub(crate) struct ListVisibilityActionState {
-    pub(crate) overlay: ToastOverlay,
-    pub(crate) list: ListBox,
-    pub(crate) navigation: WindowNavigationState,
-    pub(crate) visibility: ListVisibilityState,
+pub struct ListVisibilityActionState {
+    pub overlay: ToastOverlay,
+    pub list: ListBox,
+    pub navigation: WindowNavigationState,
+    pub visibility: ListVisibilityState,
 }
 
 #[derive(Clone)]
-pub(crate) struct ContextUndoActionState {
-    pub(crate) password_page: PasswordPageState,
-    pub(crate) recipients_page: StoreRecipientsPageState,
-    pub(crate) navigation: WindowNavigationState,
-    pub(crate) visibility: ListVisibilityState,
+pub struct ContextUndoActionState {
+    pub password_page: PasswordPageState,
+    pub recipients_page: StoreRecipientsPageState,
+    pub navigation: WindowNavigationState,
+    pub visibility: ListVisibilityState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,57 +100,54 @@ enum ContextSaveTarget {
     None,
 }
 
-fn context_save_target_from_flags(
-    at_root: bool,
-    text_page_visible: bool,
-    raw_page_visible: bool,
-    recipients_page_visible: bool,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VisibleContextPage {
+    Root,
+    Password,
+    StoreRecipients,
+    Other,
+}
+
+const fn context_save_target_from_page(
+    page: VisibleContextPage,
     synchronize_available: bool,
 ) -> ContextSaveTarget {
-    if text_page_visible || raw_page_visible {
-        return ContextSaveTarget::Password;
+    match page {
+        VisibleContextPage::Password => ContextSaveTarget::Password,
+        VisibleContextPage::StoreRecipients => ContextSaveTarget::StoreRecipients,
+        VisibleContextPage::Root if synchronize_available => ContextSaveTarget::Synchronize,
+        VisibleContextPage::Root | VisibleContextPage::Other => ContextSaveTarget::None,
     }
-
-    if recipients_page_visible {
-        return ContextSaveTarget::StoreRecipients;
-    }
-
-    if at_root && synchronize_available {
-        return ContextSaveTarget::Synchronize;
-    }
-
-    ContextSaveTarget::None
 }
 
 fn context_save_target(
     navigation: &WindowNavigationState,
     recipients_page: &NavigationPage,
 ) -> ContextSaveTarget {
-    context_save_target_from_flags(
-        navigation_stack_is_root(&navigation.nav),
-        visible_navigation_page_is(&navigation.nav, &navigation.text_page),
-        visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page),
-        visible_navigation_page_is(&navigation.nav, recipients_page),
-        synchronize_available(),
-    )
+    let page = if visible_navigation_page_is(&navigation.nav, &navigation.text_page)
+        || visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page)
+    {
+        VisibleContextPage::Password
+    } else if visible_navigation_page_is(&navigation.nav, recipients_page) {
+        VisibleContextPage::StoreRecipients
+    } else if navigation_stack_is_root(&navigation.nav) {
+        VisibleContextPage::Root
+    } else {
+        VisibleContextPage::Other
+    };
+
+    context_save_target_from_page(page, synchronize_available())
 }
 
-#[cfg(keycord_flatpak)]
-fn synchronize_available() -> bool {
+const fn synchronize_available() -> bool {
     git_network_operations_available()
 }
 
-#[cfg(not(keycord_linux))]
-fn synchronize_available() -> bool {
-    false
+fn configure_platform_shortcuts(app: &Application) {
+    app.set_accels_for_action("win.open-log", &["F12"]);
 }
 
-#[cfg(keycord_standard_linux)]
-fn synchronize_available() -> bool {
-    true
-}
-
-pub(crate) fn register_context_save_action(
+pub fn register_context_save_action(
     window: &ApplicationWindow,
     navigation: &WindowNavigationState,
     recipients_page: &StoreRecipientsPageState,
@@ -171,13 +161,13 @@ pub(crate) fn register_context_save_action(
         "context-save",
         move || match context_save_target(&navigation, &recipients_page) {
             ContextSaveTarget::Password => {
-                activate_widget_action(&dispatch_window, "win.save-password")
+                activate_widget_action(&dispatch_window, "win.save-password");
             }
             ContextSaveTarget::StoreRecipients => {
-                activate_widget_action(&dispatch_window, "win.save-store-recipients")
+                activate_widget_action(&dispatch_window, "win.save-store-recipients");
             }
             ContextSaveTarget::Synchronize => {
-                activate_widget_action(&dispatch_window, "win.synchronize")
+                activate_widget_action(&dispatch_window, "win.synchronize");
             }
             ContextSaveTarget::None => {}
         },
@@ -208,10 +198,7 @@ fn reload_password_list(
     );
 }
 
-pub(crate) fn register_context_undo_action(
-    window: &ApplicationWindow,
-    state: &ContextUndoActionState,
-) {
+pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextUndoActionState) {
     let state = state.clone();
     register_window_action(window, "context-undo", move || {
         let editing_password =
@@ -283,21 +270,50 @@ pub(crate) fn register_context_undo_action(
     });
 }
 
-pub(crate) fn register_toggle_find_action(
+pub fn register_toggle_find_action(
     window: &adw::ApplicationWindow,
+    find_button: &Button,
     search_entry: &SearchEntry,
+    list: &ListBox,
 ) {
+    let find_button = find_button.clone();
     let search_entry = search_entry.clone();
+    let list = list.clone();
     register_window_action(window, "toggle-find", move || {
-        let visible = search_entry.is_visible();
-        search_entry.set_visible(!visible);
-        if !visible {
-            search_entry.grab_focus();
+        if !find_button.is_visible() {
+            hide_and_clear_search_entry(&search_entry, &list);
+            return;
+        }
+
+        if search_entry.is_visible() {
+            hide_and_clear_search_entry(&search_entry, &list);
+            return;
+        }
+
+        search_entry.set_visible(true);
+        search_entry.grab_focus();
+    });
+}
+
+pub fn connect_search_visibility(find_button: &Button, search_entry: &SearchEntry, list: &ListBox) {
+    let search_entry = search_entry.clone();
+    let list = list.clone();
+    find_button.connect_visible_notify(move |button| {
+        if !button.is_visible() {
+            hide_and_clear_search_entry(&search_entry, &list);
         }
     });
 }
 
-pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionState) {
+fn hide_and_clear_search_entry(search_entry: &SearchEntry, list: &ListBox) {
+    search_entry.set_visible(false);
+    if !search_entry.text().is_empty() {
+        search_entry.set_text("");
+    }
+    list.invalidate_filter();
+}
+
+pub fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionState) {
     let state = state.clone();
     register_window_action(window, "back", move || {
         if before_back_action(&state.platform) {
@@ -318,7 +334,18 @@ pub(crate) fn register_back_action(window: &adw::ApplicationWindow, state: &Back
     });
 }
 
-pub(crate) fn configure_window_shortcuts(app: &Application) {
+pub fn register_go_home_action(window: &adw::ApplicationWindow, state: &BackActionState) {
+    let state = state.clone();
+    register_window_action(window, "go-home", move || {
+        show_password_list_page(
+            &state.password_page,
+            state.visibility.show_hidden(),
+            state.visibility.show_duplicates(),
+        );
+    });
+}
+
+pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.back", &["Escape"]);
     app.set_accels_for_action("win.context-save", &["<primary>s"]);
     app.set_accels_for_action("win.context-undo", &["<primary>z"]);
@@ -327,10 +354,10 @@ pub(crate) fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>p"]);
     app.set_accels_for_action("app.shortcuts", &["<primary>question"]);
-    configure_shortcuts(app);
+    configure_platform_shortcuts(app);
 }
 
-pub(crate) fn register_list_visibility_action(
+pub fn register_list_visibility_action(
     window: &adw::ApplicationWindow,
     state: &ListVisibilityActionState,
 ) {
@@ -350,7 +377,7 @@ pub(crate) fn register_list_visibility_action(
     });
 }
 
-pub(crate) fn register_reload_password_list_action(
+pub fn register_reload_password_list_action(
     window: &adw::ApplicationWindow,
     state: &ListVisibilityActionState,
 ) {
@@ -365,7 +392,7 @@ pub(crate) fn register_reload_password_list_action(
     });
 }
 
-pub(crate) fn apply_startup_query(
+pub fn apply_startup_query(
     startup_query: Option<String>,
     search_entry: &SearchEntry,
     list: &ListBox,
@@ -381,16 +408,19 @@ pub(crate) fn apply_startup_query(
 
 #[cfg(test)]
 mod tests {
-    use super::{context_save_target_from_flags, toggled_list_visibility, ContextSaveTarget};
+    use super::{
+        context_save_target_from_page, toggled_list_visibility, ContextSaveTarget,
+        VisibleContextPage,
+    };
 
     #[test]
     fn context_save_prefers_password_pages() {
         assert_eq!(
-            context_save_target_from_flags(false, true, false, false, true),
+            context_save_target_from_page(VisibleContextPage::Password, true),
             ContextSaveTarget::Password
         );
         assert_eq!(
-            context_save_target_from_flags(false, false, true, true, true),
+            context_save_target_from_page(VisibleContextPage::Password, true),
             ContextSaveTarget::Password
         );
     }
@@ -398,7 +428,7 @@ mod tests {
     #[test]
     fn context_save_uses_recipients_page_before_list_mode() {
         assert_eq!(
-            context_save_target_from_flags(false, false, false, true, true),
+            context_save_target_from_page(VisibleContextPage::StoreRecipients, true),
             ContextSaveTarget::StoreRecipients
         );
     }
@@ -406,7 +436,7 @@ mod tests {
     #[test]
     fn context_save_uses_sync_on_the_root_list_page() {
         assert_eq!(
-            context_save_target_from_flags(true, false, false, false, true),
+            context_save_target_from_page(VisibleContextPage::Root, true),
             ContextSaveTarget::Synchronize
         );
     }
@@ -414,7 +444,7 @@ mod tests {
     #[test]
     fn context_save_skips_sync_when_git_is_unavailable() {
         assert_eq!(
-            context_save_target_from_flags(true, false, false, false, false),
+            context_save_target_from_page(VisibleContextPage::Root, false),
             ContextSaveTarget::None
         );
     }
@@ -422,7 +452,7 @@ mod tests {
     #[test]
     fn context_save_is_disabled_on_other_secondary_pages() {
         assert_eq!(
-            context_save_target_from_flags(false, false, false, false, true),
+            context_save_target_from_page(VisibleContextPage::Other, true),
             ContextSaveTarget::None
         );
     }

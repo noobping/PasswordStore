@@ -1,5 +1,4 @@
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
-#[cfg(keycord_flatpak)]
 use crate::preferences::BackendKind;
 use crate::preferences::Preferences;
 use crate::support::git::has_git_repository;
@@ -22,14 +21,6 @@ fn syncable_store_roots(stores: &[String]) -> Vec<&str> {
         .collect()
 }
 
-#[cfg(keycord_standard_linux)]
-fn sync_store_command(settings: &Preferences, store_root: &str) -> Command {
-    let mut cmd = settings.remote_git_command();
-    cmd.arg("-C").arg(store_root);
-    cmd
-}
-
-#[cfg(keycord_flatpak)]
 fn sync_store_command_for_backend(
     settings: &Preferences,
     backend: BackendKind,
@@ -40,20 +31,18 @@ fn sync_store_command_for_backend(
         cmd.arg("git");
         cmd
     } else {
-        let mut cmd = settings.remote_git_command();
+        let mut cmd = Preferences::remote_git_command();
         cmd.arg("-C").arg(store_root);
         cmd
     }
 }
 
-#[cfg(keycord_flatpak)]
 fn sync_store_command(settings: &Preferences, store_root: &str) -> Command {
     sync_store_command_for_backend(settings, settings.backend_kind(), store_root)
 }
 
 pub(super) fn run_clone_operation_at_root(url: &str, store_root: &str) -> GitOperationResult {
-    let settings = Preferences::new();
-    let mut cmd = settings.remote_git_command();
+    let mut cmd = Preferences::remote_git_command();
     cmd.arg("clone").arg(url).arg(store_root);
     match run_command_output(
         &mut cmd,
@@ -88,7 +77,7 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
                         .lines()
                         .rev()
                         .find(|line| line.contains("fatal:"))
-                        .unwrap_or(stderr.trim());
+                        .unwrap_or_else(|| stderr.trim());
                     log_error(format!(
                         "Password store sync failed for {root}: {fatal_line}"
                     ));
@@ -107,12 +96,9 @@ pub(super) fn run_sync_operation() -> GitOperationResult {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(keycord_standard_linux)]
     use super::sync_store_command;
-    #[cfg(keycord_flatpak)]
     use super::sync_store_command_for_backend;
     use super::syncable_store_roots;
-    #[cfg(keycord_flatpak)]
     use crate::preferences::BackendKind;
     use crate::preferences::Preferences;
     use crate::support::git::has_git_repository;
@@ -148,50 +134,41 @@ mod tests {
         let _ = fs::remove_dir_all(&plain_store);
     }
 
-    #[cfg(keycord_flatpak)]
     #[test]
-    fn flatpak_host_command_sync_uses_pass_git_with_store_environment() {
+    fn linux_host_command_sync_uses_pass_git_with_store_environment() {
         let settings = Preferences::new();
         let cmd = sync_store_command_for_backend(&settings, BackendKind::HostCommand, "/tmp/store");
 
-        assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
-        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
+        assert_eq!(cmd.get_program().to_string_lossy(), "pass");
         assert_eq!(
             cmd.get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec![
-                "--host".to_string(),
-                "env".to_string(),
-                "PASSWORD_STORE_DIR=/tmp/store".to_string(),
-                "pass".to_string(),
-                "git".to_string(),
-            ]
+            vec!["git".to_string()]
         );
+        assert!(cmd
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key, value)))
+            .any(|(key, value)| {
+                key.to_string_lossy() == "PASSWORD_STORE_DIR"
+                    && value.to_string_lossy() == "/tmp/store"
+            }));
     }
 
-    #[cfg(keycord_flatpak)]
     #[test]
-    fn flatpak_integrated_sync_uses_host_git_at_store_root() {
+    fn linux_integrated_sync_uses_git_at_store_root() {
         let settings = Preferences::new();
         let cmd = sync_store_command_for_backend(&settings, BackendKind::Integrated, "/tmp/store");
 
-        assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
-        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
+        assert_eq!(cmd.get_program().to_string_lossy(), "git");
         assert_eq!(
             cmd.get_args()
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
-            vec![
-                "--host".to_string(),
-                "git".to_string(),
-                "-C".to_string(),
-                "/tmp/store".to_string(),
-            ]
+            vec!["-C".to_string(), "/tmp/store".to_string()]
         );
     }
 
-    #[cfg(keycord_standard_linux)]
     #[test]
     fn standard_sync_uses_git_at_store_root() {
         let settings = Preferences::new();

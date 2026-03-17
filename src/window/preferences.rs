@@ -1,40 +1,104 @@
 use crate::logging::log_error;
 use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
-use crate::preferences::{Preferences, UsernameFallbackMode};
+use crate::preferences::{BackendKind, Preferences, UsernameFallbackMode};
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::register_window_action;
 use crate::support::ui::push_navigation_page_if_needed;
-use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
-use adw::gtk::{Button, CheckButton, ListBox, TextView};
+use crate::window::navigation::{
+    show_secondary_page_chrome, HasWindowChrome, WindowPageState, APP_WINDOW_TITLE,
+};
+use adw::gtk::{CheckButton, ListBox, TextView};
 use adw::prelude::*;
-use adw::{ApplicationWindow, NavigationPage, NavigationView, Toast, ToastOverlay, WindowTitle};
-#[cfg(keycord_linux)]
 use adw::{ComboRow, EntryRow};
+use adw::{Toast, ToastOverlay};
 use std::cell::Cell;
 use std::rc::Rc;
 
-#[cfg(keycord_flatpak)]
-mod flatpak;
-#[cfg(not(keycord_linux))]
-mod non_linux;
-#[cfg(keycord_setup)]
-mod setup;
-#[cfg(keycord_standard_linux)]
-mod standard;
+fn sync_backend_preferences_rows(
+    backend_row: &ComboRow,
+    pass_row: &EntryRow,
+    preferences: &Preferences,
+) {
+    let backend = preferences.backend_kind();
+    if backend_row.selected() != backend.combo_position() {
+        backend_row.set_selected(backend.combo_position());
+    }
+    pass_row.set_visible(preferences.uses_host_command_backend());
+}
 
-#[cfg(keycord_flatpak)]
-use self::flatpak as platform;
-#[cfg(not(keycord_linux))]
-use self::non_linux as platform;
-#[cfg(keycord_standard_linux)]
-use self::standard as platform;
+fn backend_row_model() -> adw::gtk::StringList {
+    adw::gtk::StringList::new(&[
+        BackendKind::Integrated.label(),
+        BackendKind::HostCommand.label(),
+    ])
+}
 
-#[cfg(keycord_linux)]
-pub(crate) use self::platform::{
-    connect_backend_row, connect_pass_command_row, initialize_backend_row,
-};
-#[cfg(keycord_setup)]
-pub(crate) use self::setup::register_install_locally_action;
+pub fn initialize_backend_row(
+    backend_row: &ComboRow,
+    pass_row: &EntryRow,
+    preferences: &Preferences,
+) {
+    let model = backend_row_model();
+    backend_row.set_model(Some(&model));
+    backend_row.set_visible(true);
+    sync_backend_preferences_rows(backend_row, pass_row, preferences);
+}
+
+pub fn connect_pass_command_row(
+    pass_row: &EntryRow,
+    overlay: &ToastOverlay,
+    preferences: &Preferences,
+) {
+    let overlay = overlay.clone();
+    let preferences = preferences.clone();
+    pass_row.connect_apply(move |row| {
+        let text = row.text().to_string();
+        let text = text.trim();
+        if text.is_empty() {
+            overlay.add_toast(Toast::new("Enter a command."));
+            return;
+        }
+        if let Err(err) = preferences.set_command(text) {
+            toast_preferences_save_error(&overlay, "host command", &err);
+        }
+    });
+}
+
+pub fn connect_backend_row(
+    backend_row: &ComboRow,
+    pass_row: &EntryRow,
+    overlay: &ToastOverlay,
+    preferences: &Preferences,
+    on_changed: impl Fn() + 'static,
+) {
+    let overlay = overlay.clone();
+    let preferences = preferences.clone();
+    let pass_row = pass_row.clone();
+    let on_changed = Rc::new(on_changed);
+    backend_row.connect_selected_notify(move |row| {
+        let selected_backend = BackendKind::from_combo_position(row.selected());
+        let current_backend = preferences.backend_kind();
+        if selected_backend == current_backend {
+            pass_row.set_visible(preferences.uses_host_command_backend());
+            return;
+        }
+
+        if let Err(err) = preferences.set_backend_kind(selected_backend) {
+            pass_row.set_visible(preferences.uses_host_command_backend());
+            row.set_selected(current_backend.combo_position());
+            toast_preferences_save_error(&overlay, "backend", &err);
+            return;
+        }
+
+        pass_row.set_visible(preferences.uses_host_command_backend());
+        on_changed();
+    });
+}
+
+fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Preferences) {
+    state.pass_row.set_text(&settings.command_value());
+    sync_backend_preferences_rows(&state.backend_row, &state.pass_row, settings);
+}
 
 pub(super) fn toast_preferences_save_error(
     overlay: &ToastOverlay,
@@ -49,35 +113,20 @@ pub(super) fn toast_preferences_save_error(
 }
 
 #[derive(Clone)]
-pub(crate) struct PreferencesActionState {
-    pub(crate) window: ApplicationWindow,
-    pub(crate) nav: NavigationView,
-    pub(crate) page: NavigationPage,
-    pub(crate) back: Button,
-    pub(crate) add: Button,
-    pub(crate) find: Button,
-    pub(crate) git: Button,
-    pub(crate) store: Button,
-    pub(crate) save: Button,
-    pub(crate) raw: Button,
-    pub(crate) win: WindowTitle,
-    pub(crate) template_view: TextView,
-    pub(crate) username_folder_check: CheckButton,
-    pub(crate) username_filename_check: CheckButton,
-    pub(crate) generator_controls: PasswordGenerationControls,
-    pub(crate) stores_list: ListBox,
-    pub(crate) overlay: ToastOverlay,
-    pub(crate) recipients_page: StoreRecipientsPageState,
-    #[cfg(keycord_linux)]
-    pub(crate) pass_row: EntryRow,
-    #[cfg(keycord_linux)]
-    pub(crate) backend_row: ComboRow,
+pub struct PreferencesActionState {
+    pub page_state: WindowPageState,
+    pub template_view: TextView,
+    pub username_folder_check: CheckButton,
+    pub username_filename_check: CheckButton,
+    pub generator_controls: PasswordGenerationControls,
+    pub stores_list: ListBox,
+    pub overlay: ToastOverlay,
+    pub recipients_page: StoreRecipientsPageState,
+    pub pass_row: EntryRow,
+    pub backend_row: ComboRow,
 }
 
-pub(crate) fn connect_new_password_template_autosave(
-    template_view: &TextView,
-    overlay: &ToastOverlay,
-) {
+pub fn connect_new_password_template_autosave(template_view: &TextView, overlay: &ToastOverlay) {
     let overlay = overlay.clone();
     let preferences = Preferences::new();
     let buffer = template_view.buffer();
@@ -103,14 +152,14 @@ fn sync_username_fallback_checks(
     filename_check.set_active(filename_active);
 }
 
-fn username_fallback_check_state(mode: UsernameFallbackMode) -> (bool, bool) {
+const fn username_fallback_check_state(mode: UsernameFallbackMode) -> (bool, bool) {
     match mode {
         UsernameFallbackMode::Folder => (true, false),
         UsernameFallbackMode::Filename => (false, true),
     }
 }
 
-pub(crate) fn connect_username_fallback_autosave(
+pub fn connect_username_fallback_autosave(
     folder_check: &CheckButton,
     filename_check: &CheckButton,
     overlay: &ToastOverlay,
@@ -154,30 +203,24 @@ pub(crate) fn connect_username_fallback_autosave(
     }
 }
 
-pub(crate) fn connect_password_generation_autosave(
+pub fn connect_password_generation_autosave(
     controls: &PasswordGenerationControls,
     mirrors: &[PasswordGenerationControls],
     overlay: &ToastOverlay,
 ) {
-    sync_password_generation_controls(controls, &Preferences::new().password_generation_settings());
+    let preferences = Preferences::new();
+    let initial_settings = preferences.password_generation_settings();
+    sync_password_generation_controls(controls, &initial_settings);
     for mirror in mirrors {
-        sync_password_generation_controls(
-            mirror,
-            &Preferences::new().password_generation_settings(),
-        );
+        sync_password_generation_controls(mirror, &initial_settings);
     }
 
     let controls = controls.clone();
+    let changed_controls = controls.clone();
     let mirrors = mirrors.to_vec();
     let overlay = overlay.clone();
-    let preferences = Preferences::new();
     let syncing = Rc::new(Cell::new(false));
     let changed: Rc<dyn Fn()> = Rc::new({
-        let controls = controls.clone();
-        let mirrors = mirrors.clone();
-        let overlay = overlay.clone();
-        let preferences = preferences.clone();
-        let syncing = syncing.clone();
         move || {
             if syncing.get() {
                 return;
@@ -185,18 +228,18 @@ pub(crate) fn connect_password_generation_autosave(
 
             syncing.set(true);
             let stored = preferences.password_generation_settings();
-            let updated = controls.settings().normalized();
+            let updated = changed_controls.settings().normalized();
             let save_result = preferences.set_password_generation_settings(&updated);
             match save_result {
                 Ok(()) => {
-                    sync_password_generation_controls(&controls, &updated);
+                    sync_password_generation_controls(&changed_controls, &updated);
                     for mirror in &mirrors {
                         sync_password_generation_controls(mirror, &updated);
                     }
                 }
                 Err(err) => {
                     toast_preferences_save_error(&overlay, "password generation", &err);
-                    sync_password_generation_controls(&controls, &stored);
+                    sync_password_generation_controls(&changed_controls, &stored);
                     for mirror in &mirrors {
                         sync_password_generation_controls(mirror, &stored);
                     }
@@ -205,29 +248,29 @@ pub(crate) fn connect_password_generation_autosave(
             syncing.set(false);
         }
     });
-    controls.connect_changed(changed);
+    controls.connect_changed(&changed);
 }
 
-pub(crate) fn sync_password_generation_controls(
+pub fn sync_password_generation_controls(
     controls: &PasswordGenerationControls,
     settings: &PasswordGenerationSettings,
 ) {
     controls.set_settings(settings);
 }
 
-pub(crate) fn register_open_preferences_action(
-    window: &ApplicationWindow,
+pub fn register_open_preferences_action(
+    window: &adw::ApplicationWindow,
     state: &PreferencesActionState,
 ) {
     let state = state.clone();
     register_window_action(window, "open-preferences", move || {
-        let chrome = state.window_chrome();
+        let chrome = state.page_state.window_chrome();
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
 
-        push_navigation_page_if_needed(&state.nav, &state.page);
+        push_navigation_page_if_needed(&state.page_state.nav, &state.page_state.page);
 
         let settings = Preferences::new();
-        platform::refresh_open_preferences_state(&state, &settings);
+        refresh_open_preferences_state(&state, &settings);
         sync_username_fallback_checks(
             &state.username_folder_check,
             &state.username_filename_check,
@@ -244,7 +287,7 @@ pub(crate) fn register_open_preferences_action(
         rebuild_store_list(
             &state.stores_list,
             &settings,
-            &state.window,
+            &state.page_state.window,
             &state.overlay,
             &state.recipients_page,
         );

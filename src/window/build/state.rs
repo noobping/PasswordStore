@@ -13,15 +13,10 @@ use crate::window::controls::{
     PlatformBackActionState,
 };
 use crate::window::git::GitActionState;
-use crate::window::navigation::WindowNavigationState;
+use crate::window::navigation::{WindowNavigationState, WindowPageState};
 use crate::window::preferences::PreferencesActionState;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
-#[cfg(keycord_standard_linux)]
-use adw::EntryRow;
-#[cfg(keycord_restricted)]
-use adw::ToastOverlay;
 
 pub(super) fn new_password_popover_state(widgets: &WindowWidgets) -> NewPasswordPopoverState {
     NewPasswordPopoverState {
@@ -72,19 +67,28 @@ pub(super) fn password_page_state(
     }
 }
 
-#[cfg(keycord_restricted)]
-fn build_store_recipients_platform_state(overlay: &ToastOverlay) -> StoreRecipientsPlatformState {
+fn build_store_recipients_platform_state(widgets: &WindowWidgets) -> StoreRecipientsPlatformState {
     StoreRecipientsPlatformState {
-        overlay: overlay.clone(),
-    }
-}
-
-#[cfg(keycord_standard_linux)]
-fn build_store_recipients_platform_state(
-    store_recipients_entry: &EntryRow,
-) -> StoreRecipientsPlatformState {
-    StoreRecipientsPlatformState {
-        entry: store_recipients_entry.clone(),
+        overlay: widgets.toast_overlay.clone(),
+        add_group: widgets.store_recipients_add_group.clone(),
+        create_group: widgets.store_recipients_create_group.clone(),
+        import_clipboard_row: widgets.store_recipients_import_clipboard_row.clone(),
+        import_clipboard_button: widgets.store_recipients_import_clipboard_button.clone(),
+        import_file_row: widgets.store_recipients_import_file_row.clone(),
+        import_file_button: widgets.store_recipients_import_file_button.clone(),
+        generate_key_row: widgets.store_recipients_generate_key_row.clone(),
+        generate_key_button: widgets.store_recipients_generate_key_button.clone(),
+        require_all_row: widgets.store_recipients_require_all_row.clone(),
+        require_all_check: widgets.store_recipients_require_all_check.clone(),
+        private_key_generation_page: widgets.private_key_generation_page.clone(),
+        private_key_generation_stack: widgets.private_key_generation_stack.clone(),
+        private_key_generation_form: widgets.private_key_generation_form.clone(),
+        private_key_generation_loading: widgets.private_key_generation_loading.clone(),
+        private_key_generation_name_row: widgets.private_key_generation_name_row.clone(),
+        private_key_generation_email_row: widgets.private_key_generation_email_row.clone(),
+        private_key_generation_password_row: widgets.private_key_generation_password_row.clone(),
+        private_key_generation_confirm_row: widgets.private_key_generation_confirm_row.clone(),
+        private_key_generation_in_flight: Rc::new(Cell::new(false)),
     }
 }
 
@@ -128,23 +132,8 @@ fn build_store_recipients_page_state(
     }
 }
 
-#[cfg(keycord_restricted)]
 pub(super) fn store_recipients_page_state(widgets: &WindowWidgets) -> StoreRecipientsPageState {
-    build_store_recipients_page_state(
-        widgets,
-        build_store_recipients_platform_state(&widgets.toast_overlay),
-    )
-}
-
-#[cfg(keycord_standard_linux)]
-pub(super) fn store_recipients_page_state(
-    widgets: &WindowWidgets,
-    store_recipients_entry: &EntryRow,
-) -> StoreRecipientsPageState {
-    build_store_recipients_page_state(
-        widgets,
-        build_store_recipients_platform_state(store_recipients_entry),
-    )
+    build_store_recipients_page_state(widgets, build_store_recipients_platform_state(widgets))
 }
 
 pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigationState {
@@ -153,7 +142,8 @@ pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigati
         text_page: widgets.text_page.clone(),
         raw_text_page: widgets.raw_text_page.clone(),
         settings_page: widgets.settings_page.clone(),
-        #[cfg(keycord_linux)]
+        tools_page: widgets.tools_page.clone(),
+        store_import_page: widgets.store_import_page.clone(),
         log_page: widgets.log_page.clone(),
         back: widgets.back_button.clone(),
         add: widgets.add_button.clone(),
@@ -167,14 +157,11 @@ pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigati
     }
 }
 
-pub(super) fn preferences_action_state(
-    widgets: &WindowWidgets,
-    recipients_page: &StoreRecipientsPageState,
-) -> PreferencesActionState {
-    PreferencesActionState {
+fn window_page_state(widgets: &WindowWidgets, page: &adw::NavigationPage) -> WindowPageState {
+    WindowPageState {
         window: widgets.window.clone(),
         nav: widgets.navigation_view.clone(),
-        page: widgets.settings_page.clone(),
+        page: page.clone(),
         back: widgets.back_button.clone(),
         add: widgets.add_button.clone(),
         find: widgets.find_button.clone(),
@@ -183,6 +170,15 @@ pub(super) fn preferences_action_state(
         save: widgets.save_button.clone(),
         raw: widgets.open_raw_button.clone(),
         win: widgets.window_title.clone(),
+    }
+}
+
+pub(super) fn preferences_action_state(
+    widgets: &WindowWidgets,
+    recipients_page: &StoreRecipientsPageState,
+) -> PreferencesActionState {
+    PreferencesActionState {
+        page_state: window_page_state(widgets, &widgets.settings_page),
         template_view: widgets.new_pass_file_template_view.clone(),
         username_folder_check: widgets.preferences_username_folder_check.clone(),
         username_filename_check: widgets.preferences_username_filename_check.clone(),
@@ -196,9 +192,7 @@ pub(super) fn preferences_action_state(
         stores_list: widgets.password_stores.clone(),
         overlay: widgets.toast_overlay.clone(),
         recipients_page: recipients_page.clone(),
-        #[cfg(keycord_linux)]
         pass_row: widgets.pass_command_row.clone(),
-        #[cfg(keycord_linux)]
         backend_row: widgets.backend_row.clone(),
     }
 }

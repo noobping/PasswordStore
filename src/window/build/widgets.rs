@@ -1,25 +1,17 @@
-#[cfg(keycord_standard_linux)]
-use adw::gio::Menu;
 use adw::glib::{object::IsA, Object};
-#[cfg(keycord_restricted)]
-use adw::gtk::MenuButton;
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer, SearchEntry,
-    SpinButton, TextView, ToggleButton,
+    Box as GtkBox, Builder, Button, CheckButton, DropDown, ListBox, Popover, Revealer,
+    ScrolledWindow, SearchEntry, SpinButton, Stack, TextView, ToggleButton,
 };
-#[cfg(keycord_linux)]
+use adw::ActionRow;
 use adw::PreferencesGroup;
 use adw::{
-    ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow, StatusPage,
-    ToastOverlay, WindowTitle,
+    ApplicationWindow, ComboRow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
+    StatusPage, ToastOverlay, WindowTitle,
 };
 
 pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) window: ApplicationWindow,
-    #[cfg(keycord_standard_linux)]
-    pub(in crate::window) primary_menu: Menu,
-    #[cfg(keycord_restricted)]
-    pub(in crate::window) primary_menu_button: MenuButton,
     pub(in crate::window) back_button: Button,
     pub(in crate::window) add_button: Button,
     pub(in crate::window) find_button: Button,
@@ -32,9 +24,40 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) save_button: Button,
     pub(in crate::window) toast_overlay: ToastOverlay,
     pub(in crate::window) settings_page: NavigationPage,
+    pub(in crate::window) tools_page: NavigationPage,
+    pub(in crate::window) tools_list: ListBox,
+    pub(in crate::window) store_import_page: NavigationPage,
+    pub(in crate::window) store_import_stack: Stack,
+    pub(in crate::window) store_import_form: ScrolledWindow,
+    pub(in crate::window) store_import_loading: StatusPage,
+    pub(in crate::window) store_import_store_dropdown: ComboRow,
+    pub(in crate::window) store_import_source_dropdown: ComboRow,
+    pub(in crate::window) store_import_source_path_row: ActionRow,
+    pub(in crate::window) store_import_source_file_button: Button,
+    pub(in crate::window) store_import_source_folder_button: Button,
+    pub(in crate::window) store_import_source_clear_button: Button,
+    pub(in crate::window) store_import_target_path_row: EntryRow,
+    pub(in crate::window) store_import_button: Button,
     pub(in crate::window) store_recipients_page: NavigationPage,
     pub(in crate::window) store_recipients_list: ListBox,
-    #[cfg(keycord_linux)]
+    pub(in crate::window) store_recipients_add_group: PreferencesGroup,
+    pub(in crate::window) store_recipients_create_group: PreferencesGroup,
+    pub(in crate::window) store_recipients_import_clipboard_row: ActionRow,
+    pub(in crate::window) store_recipients_import_clipboard_button: Button,
+    pub(in crate::window) store_recipients_import_file_row: ActionRow,
+    pub(in crate::window) store_recipients_import_file_button: Button,
+    pub(in crate::window) store_recipients_generate_key_row: ActionRow,
+    pub(in crate::window) store_recipients_generate_key_button: Button,
+    pub(in crate::window) store_recipients_require_all_row: ActionRow,
+    pub(in crate::window) store_recipients_require_all_check: CheckButton,
+    pub(in crate::window) private_key_generation_page: NavigationPage,
+    pub(in crate::window) private_key_generation_stack: Stack,
+    pub(in crate::window) private_key_generation_form: ScrolledWindow,
+    pub(in crate::window) private_key_generation_loading: StatusPage,
+    pub(in crate::window) private_key_generation_name_row: EntryRow,
+    pub(in crate::window) private_key_generation_email_row: EntryRow,
+    pub(in crate::window) private_key_generation_password_row: PasswordEntryRow,
+    pub(in crate::window) private_key_generation_confirm_row: PasswordEntryRow,
     pub(in crate::window) log_page: NavigationPage,
     pub(in crate::window) new_pass_file_template_view: TextView,
     pub(in crate::window) preferences_username_folder_check: CheckButton,
@@ -68,28 +91,22 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) preferences_password_generator_min_uppercase_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_numbers_spin: SpinButton,
     pub(in crate::window) preferences_password_generator_min_symbols_spin: SpinButton,
-    #[cfg(keycord_linux)]
     pub(in crate::window) backend_preferences: PreferencesGroup,
-    #[cfg(keycord_linux)]
-    pub(in crate::window) backend_row: adw::ComboRow,
-    #[cfg(keycord_linux)]
+    pub(in crate::window) backend_row: ComboRow,
     pub(in crate::window) pass_command_row: EntryRow,
-    #[cfg(keycord_linux)]
     pub(in crate::window) git_busy_page: NavigationPage,
-    #[cfg(keycord_linux)]
     pub(in crate::window) git_busy_status: StatusPage,
-    #[cfg(keycord_linux)]
     pub(in crate::window) log_view: TextView,
 }
 
 impl WindowWidgets {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "This is a flat builder-to-widget registry; splitting it further would add indirection without reducing logic."
+    )]
     pub(in crate::window) fn load(builder: &Builder) -> Self {
         Self {
             window: required_object(builder, "main_window"),
-            #[cfg(keycord_standard_linux)]
-            primary_menu: required_object(builder, "primary_menu"),
-            #[cfg(keycord_restricted)]
-            primary_menu_button: required_object(builder, "primary_menu_button"),
             back_button: required_object(builder, "back_button"),
             add_button: required_object(builder, "add_button"),
             find_button: required_object(builder, "find_button"),
@@ -102,9 +119,91 @@ impl WindowWidgets {
             save_button: required_object(builder, "save_button"),
             toast_overlay: required_object(builder, "toast_overlay"),
             settings_page: required_object(builder, "settings_page"),
+            tools_page: required_object(builder, "tools_page"),
+            tools_list: required_object(builder, "tools_list"),
+            store_import_page: required_object(builder, "store_import_page"),
+            store_import_stack: required_object(builder, "store_import_stack"),
+            store_import_form: required_object(builder, "store_import_form"),
+            store_import_loading: required_object(builder, "store_import_loading"),
+            store_import_store_dropdown: required_object(builder, "store_import_store_dropdown"),
+            store_import_source_dropdown: required_object(builder, "store_import_source_dropdown"),
+            store_import_source_path_row: required_object(builder, "store_import_source_path_row"),
+            store_import_source_file_button: required_object(
+                builder,
+                "store_import_source_file_button",
+            ),
+            store_import_source_folder_button: required_object(
+                builder,
+                "store_import_source_folder_button",
+            ),
+            store_import_source_clear_button: required_object(
+                builder,
+                "store_import_source_clear_button",
+            ),
+            store_import_target_path_row: required_object(builder, "store_import_target_path_row"),
+            store_import_button: required_object(builder, "store_import_button"),
             store_recipients_page: required_object(builder, "store_recipients_page"),
             store_recipients_list: required_object(builder, "store_recipients_list"),
-            #[cfg(keycord_linux)]
+            store_recipients_add_group: required_object(builder, "store_recipients_add_group"),
+            store_recipients_create_group: required_object(
+                builder,
+                "store_recipients_create_group",
+            ),
+            store_recipients_import_clipboard_row: required_object(
+                builder,
+                "store_recipients_import_clipboard_row",
+            ),
+            store_recipients_import_clipboard_button: required_object(
+                builder,
+                "store_recipients_import_clipboard_button",
+            ),
+            store_recipients_import_file_row: required_object(
+                builder,
+                "store_recipients_import_file_row",
+            ),
+            store_recipients_import_file_button: required_object(
+                builder,
+                "store_recipients_import_file_button",
+            ),
+            store_recipients_generate_key_row: required_object(
+                builder,
+                "store_recipients_generate_key_row",
+            ),
+            store_recipients_generate_key_button: required_object(
+                builder,
+                "store_recipients_generate_key_button",
+            ),
+            store_recipients_require_all_row: required_object(
+                builder,
+                "store_recipients_require_all_row",
+            ),
+            store_recipients_require_all_check: required_object(
+                builder,
+                "store_recipients_require_all_check",
+            ),
+            private_key_generation_page: required_object(builder, "private_key_generation_page"),
+            private_key_generation_stack: required_object(builder, "private_key_generation_stack"),
+            private_key_generation_form: required_object(builder, "private_key_generation_form"),
+            private_key_generation_loading: required_object(
+                builder,
+                "private_key_generation_loading",
+            ),
+            private_key_generation_name_row: required_object(
+                builder,
+                "private_key_generation_name_row",
+            ),
+            private_key_generation_email_row: required_object(
+                builder,
+                "private_key_generation_email_row",
+            ),
+            private_key_generation_password_row: required_object(
+                builder,
+                "private_key_generation_password_row",
+            ),
+            private_key_generation_confirm_row: required_object(
+                builder,
+                "private_key_generation_confirm_row",
+            ),
             log_page: required_object(builder, "log_page"),
             new_pass_file_template_view: required_object(builder, "new_pass_file_template_view"),
             preferences_username_folder_check: required_object(
@@ -180,17 +279,11 @@ impl WindowWidgets {
                 builder,
                 "preferences_password_generator_min_symbols_spin",
             ),
-            #[cfg(keycord_linux)]
             backend_preferences: required_object(builder, "backend_preferences"),
-            #[cfg(keycord_linux)]
             backend_row: required_object(builder, "backend_row"),
-            #[cfg(keycord_linux)]
             pass_command_row: required_object(builder, "pass_command_row"),
-            #[cfg(keycord_linux)]
             git_busy_page: required_object(builder, "git_busy_page"),
-            #[cfg(keycord_linux)]
             git_busy_status: required_object(builder, "git_busy_status"),
-            #[cfg(keycord_linux)]
             log_view: required_object(builder, "log_view"),
         }
     }

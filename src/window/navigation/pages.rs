@@ -1,37 +1,33 @@
-use super::{
-    restore_window_for_current_page, show_secondary_page_chrome, HasWindowChrome,
-    WindowNavigationState,
-};
+use super::chrome::show_secondary_page_chrome;
+use super::restore::restore_window_for_current_page;
+use super::state::{HasWindowChrome, WindowNavigationState};
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::ui::{
     navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
-#[cfg(keycord_linux)]
-pub(crate) fn show_log_page(state: &WindowNavigationState) {
+pub fn show_log_page(state: &WindowNavigationState) {
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Logs", "Details", false);
 
     push_navigation_page_if_needed(&state.nav, &state.log_page);
 }
 
-pub(crate) fn show_git_busy_page(
+pub fn show_git_busy_page(
     state: &WindowNavigationState,
     page: &NavigationPage,
     status: &StatusPage,
     title: &str,
-    description: Option<&str>,
 ) {
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Working", title, false);
     status.set_title(title);
-    status.set_description(description);
 
     push_navigation_page_if_needed(&state.nav, page);
 }
 
-pub(crate) fn finish_git_busy_page(
+pub fn finish_git_busy_page(
     window: &ApplicationWindow,
     state: &WindowNavigationState,
     busy_page: &NavigationPage,

@@ -73,30 +73,16 @@ pub(super) fn connect_new_password_submit(
     page_state: &PasswordPageState,
     popover_state: &NewPasswordPopoverState,
 ) {
-    fn submit_new_password_entry(
-        page_state: &PasswordPageState,
-        popover_state: &NewPasswordPopoverState,
-    ) {
-        begin_new_password_entry(
-            page_state,
-            &popover_state.path_entry.text(),
-            selected_new_password_store(popover_state),
-            &popover_state.dialog,
-        );
-    }
-
     let page_state_for_apply = page_state.clone();
     let popover_state_for_apply = popover_state.clone();
     let path_entry = popover_state_for_apply.path_entry.clone();
     path_entry.connect_apply(move |_| {
-        submit_new_password_entry(&page_state_for_apply, &popover_state_for_apply);
-    });
-
-    let page_state_for_click = page_state.clone();
-    let popover_state_for_click = popover_state.clone();
-    let create_button = popover_state_for_click.create_button.clone();
-    create_button.connect_clicked(move |_| {
-        submit_new_password_entry(&page_state_for_click, &popover_state_for_click);
+        begin_new_password_entry(
+            &page_state_for_apply,
+            &popover_state_for_apply.path_entry.text(),
+            selected_new_password_store(&popover_state_for_apply),
+            &popover_state_for_apply.dialog,
+        );
     });
 }
 

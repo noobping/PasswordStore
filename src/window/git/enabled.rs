@@ -5,6 +5,7 @@ use self::operations::{run_sync_operation, GitOperationResult};
 use crate::logging::log_error;
 use crate::password::list::{load_passwords_async, PasswordListActions};
 use crate::preferences::Preferences;
+use crate::store::git_page::StoreGitPageState;
 use crate::store::management::{prompt_store_clone, StoreRecipientsPageState};
 use crate::support::actions::register_window_action;
 use crate::support::background::spawn_result_task;
@@ -26,6 +27,7 @@ pub struct GitActionState {
     pub list: ListBox,
     pub navigation: WindowNavigationState,
     pub recipients_page: StoreRecipientsPageState,
+    pub store_git_page: StoreGitPageState,
     pub busy_page: NavigationPage,
     pub busy_status: StatusPage,
     pub visibility: ListVisibilityState,
@@ -36,6 +38,7 @@ impl GitActionState {
         widgets: &WindowWidgets,
         navigation: &WindowNavigationState,
         recipients_page: &StoreRecipientsPageState,
+        store_git_page: &StoreGitPageState,
         visibility: &ListVisibilityState,
     ) -> Self {
         Self {
@@ -44,6 +47,7 @@ impl GitActionState {
             list: widgets.list.clone(),
             navigation: navigation.clone(),
             recipients_page: recipients_page.clone(),
+            store_git_page: store_git_page.clone(),
             busy_page: widgets.git_busy_page.clone(),
             busy_status: widgets.git_busy_status.clone(),
             visibility: visibility.clone(),
@@ -100,6 +104,7 @@ fn restore_after_git_operation(state: &GitActionState) {
         &state.navigation,
         &state.busy_page,
         &state.recipients_page,
+        &state.store_git_page,
         set_git_busy_actions_enabled,
     );
 }
@@ -245,6 +250,10 @@ pub fn handle_git_busy_back(state: &GitActionState) -> bool {
     }
 
     state.navigation.nav.pop();
-    let _ = restore_window_for_current_page(&state.navigation, &state.recipients_page);
+    let _ = restore_window_for_current_page(
+        &state.navigation,
+        &state.recipients_page,
+        &state.store_git_page,
+    );
     true
 }

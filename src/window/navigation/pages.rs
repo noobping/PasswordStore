@@ -1,6 +1,7 @@
 use super::chrome::show_secondary_page_chrome;
 use super::restore::restore_window_for_current_page;
 use super::state::{HasWindowChrome, WindowNavigationState};
+use crate::store::git_page::StoreGitPageState;
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::ui::{
     navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
@@ -32,6 +33,7 @@ pub fn finish_git_busy_page(
     state: &WindowNavigationState,
     busy_page: &NavigationPage,
     recipients_page: &StoreRecipientsPageState,
+    store_git_page: &StoreGitPageState,
     set_actions_enabled: fn(&ApplicationWindow, bool),
 ) {
     set_actions_enabled(window, true);
@@ -50,5 +52,5 @@ pub fn finish_git_busy_page(
         }
     }
 
-    let _ = restore_window_for_current_page(state, recipients_page);
+    let _ = restore_window_for_current_page(state, recipients_page, store_git_page);
 }

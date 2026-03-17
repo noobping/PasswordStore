@@ -26,14 +26,15 @@ use self::actions::{
 use self::state::{
     back_action_state, build_git_action_state, context_undo_action_state,
     list_visibility_action_state, new_password_popover_state, password_page_state,
-    preferences_action_state, store_recipients_page_state, window_navigation_state,
+    preferences_action_state, store_git_page_state, store_recipients_page_state,
+    window_navigation_state,
 };
 use self::widgets::WindowWidgets;
 use super::controls::{
     apply_startup_query, configure_window_shortcuts, connect_search_visibility,
-    register_back_action, register_context_save_action, register_context_undo_action,
-    register_go_home_action, register_list_visibility_action, register_reload_password_list_action,
-    register_toggle_find_action, ListVisibilityState,
+    register_back_action, register_context_reload_action, register_context_save_action,
+    register_context_undo_action, register_go_home_action, register_list_visibility_action,
+    register_reload_password_list_action, register_toggle_find_action, ListVisibilityState,
 };
 use super::git::GitActionState;
 use super::git::{
@@ -56,8 +57,11 @@ use crate::support::runtime::{has_host_permission, log_runtime_capabilities_once
 
 const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
 
-fn build_store_recipients_page_state(widgets: &WindowWidgets) -> StoreRecipientsPageState {
-    store_recipients_page_state(widgets)
+fn build_store_recipients_page_state(
+    widgets: &WindowWidgets,
+    store_git_page: &crate::store::git_page::StoreGitPageState,
+) -> StoreRecipientsPageState {
+    store_recipients_page_state(widgets, store_git_page)
 }
 
 fn register_platform_window_actions(
@@ -270,7 +274,9 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);
     let password_list_state = password_page_state(&widgets, &password_otp_state);
     let list_visibility = ListVisibilityState::new(false, false);
-    let store_recipients_page_state = build_store_recipients_page_state(&widgets);
+    let store_git_page_state = store_git_page_state(&widgets);
+    let store_recipients_page_state =
+        build_store_recipients_page_state(&widgets, &store_git_page_state);
     let window_navigation_state = window_navigation_state(&widgets);
     let tools_page_state = ToolsPageState::new(
         &widgets.window,
@@ -297,11 +303,13 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         &widgets,
         &window_navigation_state,
         &store_recipients_page_state,
+        &store_git_page_state,
         &list_visibility,
     );
     let back_action_state = back_action_state(
         &password_list_state,
         &store_recipients_page_state,
+        &store_git_page_state,
         &window_navigation_state,
         &list_visibility,
         &git_action_state,
@@ -311,6 +319,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let context_undo_state = context_undo_action_state(
         &password_list_state,
         &store_recipients_page_state,
+        &store_git_page_state,
         &window_navigation_state,
         &list_visibility,
     );
@@ -340,6 +349,11 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
 
     register_open_new_password_action(&widgets.window, &new_password_popover_state);
     register_context_save_action(
+        &widgets.window,
+        &window_navigation_state,
+        &store_recipients_page_state,
+    );
+    register_context_reload_action(
         &widgets.window,
         &window_navigation_state,
         &store_recipients_page_state,

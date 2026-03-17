@@ -7,7 +7,7 @@
     <child>
       <object class="GtkShortcutsSection">
         <property name="section-name">shortcuts</property>
-        <property name="max-height">12</property>
+        <property name="max-height">15</property>
         <property name="title" translatable="yes">Keyboard Shortcuts</property>
         <child>
           <object class="GtkShortcutsGroup">
@@ -20,8 +20,26 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes">Save current page</property>
+                <property name="title" translatable="yes">Save current page or sync from home</property>
                 <property name="accelerator">&lt;Primary&gt;s</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open raw pass file</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;r</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Add OTP field</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;o</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Generate password</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;g</property>
               </object>
             </child>
             <child>
@@ -47,11 +65,23 @@
                 <property name="accelerator">&lt;Primary&gt;h</property>
               </object>
             </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Sync stores</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;s</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Refresh current list</property>
+                <property name="accelerator">F5</property>
+              </object>
+            </child>
           </object>
         </child>
         <child>
           <object class="GtkShortcutsGroup">
-            <property name="title" translatable="yes">General</property>
+            <property name="title" translatable="yes">Navigation</property>
             <child>
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Go back</property>
@@ -60,8 +90,48 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Go home</property>
+                <property name="accelerator">Home</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Add or create store</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;n</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open Git tools</property>
+                <property name="accelerator">&lt;Primary&gt;g</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes">Tools</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open tools</property>
+                <property name="accelerator">&lt;Primary&gt;t</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut" id="shortcuts_open_logs">
+                <property name="title" translatable="yes">Open logs</property>
+                <property name="accelerator">F12</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes">General</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Open preferences</property>
-                <property name="accelerator">&lt;Primary&gt;p</property>
+                <property name="accelerator">&lt;Primary&gt;comma</property>
               </object>
             </child>
             <child>
@@ -74,12 +144,6 @@
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">About</property>
                 <property name="accelerator">F1</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkShortcutsShortcut" id="shortcuts_open_logs">
-                <property name="title" translatable="yes">Open logs</property>
-                <property name="accelerator">F12</property>
               </object>
             </child>
           </object>

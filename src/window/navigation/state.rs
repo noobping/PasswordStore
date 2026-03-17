@@ -1,4 +1,5 @@
 use crate::password::page::PasswordPageState;
+use crate::store::git_page::StoreGitPageState;
 use crate::store::management::StoreRecipientsPageState;
 use adw::gtk::Button;
 use adw::{ApplicationWindow, EntryRow, NavigationPage, NavigationView, WindowTitle};
@@ -82,4 +83,5 @@ impl_has_window_chrome!(
     WindowPageState,
     PasswordPageState,
     StoreRecipientsPageState,
+    StoreGitPageState,
 );

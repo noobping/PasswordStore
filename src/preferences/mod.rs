@@ -12,7 +12,7 @@ mod storage;
 use self::restricted::default_store_dirs;
 use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 
-const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nurl:";
+const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nemail:url:";
 const APP_ID: &str = env!("APP_ID");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

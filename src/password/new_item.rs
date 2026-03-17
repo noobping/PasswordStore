@@ -1,11 +1,12 @@
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
-use adw::gtk::{
-    Align, Box as GtkBox, Button, DropDown, Orientation, StringList, INVALID_LIST_POSITION,
-};
+use adw::gtk::{Box as GtkBox, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::{ApplicationWindow, Dialog, EntryRow, HeaderBar, WindowTitle};
+use adw::{
+    ApplicationWindow, ComboRow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage,
+    WindowTitle,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -13,8 +14,7 @@ use std::rc::Rc;
 pub struct NewPasswordPopoverState {
     pub dialog: Dialog,
     pub path_entry: EntryRow,
-    pub create_button: Button,
-    pub store_dropdown: DropDown,
+    pub store_dropdown: ComboRow,
     pub store_roots: Rc<RefCell<Vec<String>>>,
 }
 
@@ -33,31 +33,25 @@ fn dialog_content_shell(title: &str, subtitle: &str, child: &impl IsA<adw::gtk::
     shell
 }
 
-pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow, Button) {
-    let store_dropdown = DropDown::from_strings(&[]);
+pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow) {
+    let store_dropdown = ComboRow::new();
+    store_dropdown.set_title("Store");
     store_dropdown.set_visible(false);
 
     let path_entry = EntryRow::new();
     path_entry.set_title("Path or name");
     path_entry.set_show_apply_button(true);
 
-    let create_button = Button::with_label("Create");
-    create_button.add_css_class("suggested-action");
-    create_button.set_halign(Align::End);
+    let group = PreferencesGroup::new();
+    group.add(&store_dropdown);
+    group.add(&path_entry);
 
-    let page = GtkBox::new(Orientation::Vertical, 12);
-    page.set_margin_top(18);
-    page.set_margin_bottom(18);
-    page.set_margin_start(18);
-    page.set_margin_end(18);
-    page.append(&store_dropdown);
-    page.append(&path_entry);
-    page.append(&create_button);
+    let page = PreferencesPage::new();
+    page.add(&group);
 
     let dialog = Dialog::builder()
         .title("New item")
-        .content_width(420)
-        .follows_content_size(true)
+        .content_width(460)
         .child(&dialog_content_shell(
             "New item",
             "Create a new pass file.",
@@ -65,7 +59,7 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, DropDown, EntryRow, Button
         ))
         .build();
 
-    (dialog, store_dropdown, path_entry, create_button)
+    (dialog, store_dropdown, path_entry)
 }
 
 fn available_store_roots() -> Vec<String> {

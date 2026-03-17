@@ -12,6 +12,7 @@ use crate::clipboard::set_clipboard_text;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
+use crate::store::git_page::rebuild_store_recipients_git_row;
 use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
     append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
@@ -167,6 +168,27 @@ fn selected_available_private_key_count(
         .count()
 }
 
+fn private_key_is_currently_usable(key: &AvailablePrivateKey) -> bool {
+    match key {
+        AvailablePrivateKey::Managed(key) => {
+            let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
+            unlocked || !requires_unlock
+        }
+        AvailablePrivateKey::HostOnly(_) => true,
+    }
+}
+
+fn selected_usable_private_key_count(recipients: &[String], keys: &[AvailablePrivateKey]) -> usize {
+    keys.iter()
+        .filter(|key| {
+            recipients
+                .iter()
+                .any(|recipient| recipient_matches_available_private_key(recipient, key))
+                && private_key_is_currently_usable(key)
+        })
+        .count()
+}
+
 fn private_key_delete_block_message(
     active: bool,
     require_all_selected_keys: bool,
@@ -185,16 +207,19 @@ fn private_key_delete_block_message(
 
 fn private_key_toggle_block_message(
     active: bool,
-    locked: bool,
+    usable: bool,
     require_all_selected_keys: bool,
     selected_available_keys: usize,
+    selected_usable_keys: usize,
 ) -> Option<&'static str> {
-    if !(active && locked) {
+    if !active {
         None
     } else if require_all_selected_keys {
         Some("Keep this key selected while all selected private keys are required.")
     } else if selected_available_keys <= 1 {
         Some("Keep at least one selected private key available.")
+    } else if usable && selected_usable_keys <= 1 {
+        Some("Unlock another selected private key before clearing this one.")
     } else {
         None
     }
@@ -379,6 +404,7 @@ fn load_available_private_keys(
 
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
+    rebuild_store_recipients_git_row(state);
     sync_host_gpg_warning_group(state, false);
     let _ = sync_private_keys_from_host_if_enabled(state);
 
@@ -403,6 +429,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     let current_recipients = state.recipients.borrow().clone();
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
     let selected_available_keys = selected_available_private_key_count(&current_recipients, &keys);
+    let selected_usable_keys = selected_usable_private_key_count(&current_recipients, &keys);
     sync_private_key_requirement_row(state, managed_key_count > 0);
     sync_host_gpg_warning_group(state, show_host_gpg_warning);
 
@@ -423,10 +450,18 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
     for key in keys {
         match key {
-            AvailablePrivateKey::Managed(key) => {
-                append_managed_private_key_row(state, &key, selected_available_keys)
-            }
-            AvailablePrivateKey::HostOnly(key) => append_host_private_key_row(state, &key),
+            AvailablePrivateKey::Managed(key) => append_managed_private_key_row(
+                state,
+                &key,
+                selected_available_keys,
+                selected_usable_keys,
+            ),
+            AvailablePrivateKey::HostOnly(key) => append_host_private_key_row(
+                state,
+                &key,
+                selected_available_keys,
+                selected_usable_keys,
+            ),
         }
     }
 }
@@ -457,6 +492,7 @@ fn append_managed_private_key_row(
     state: &StoreRecipientsPageState,
     key: &ManagedRipassoPrivateKey,
     selected_available_keys: usize,
+    selected_usable_keys: usize,
 ) {
     let active = state
         .recipients
@@ -468,12 +504,13 @@ fn append_managed_private_key_row(
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys
     );
     let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
-    let locked = !unlocked && requires_unlock;
+    let usable = unlocked || !requires_unlock;
     let toggle_blocked_message = private_key_toggle_block_message(
         active,
-        locked,
+        usable,
         require_all_selected_keys,
         selected_available_keys,
+        selected_usable_keys,
     );
     let delete_blocked_message = private_key_delete_block_message(
         active,
@@ -500,13 +537,33 @@ fn append_managed_private_key_row(
     connect_managed_private_key_row_actions(state, key, &toggle, &copy_button, &delete_button);
 }
 
-fn append_host_private_key_row(state: &StoreRecipientsPageState, key: &HostGpgPrivateKeySummary) {
+fn append_host_private_key_row(
+    state: &StoreRecipientsPageState,
+    key: &HostGpgPrivateKeySummary,
+    selected_available_keys: usize,
+    selected_usable_keys: usize,
+) {
     let active = state
         .recipients
         .borrow()
         .iter()
         .any(|recipient| recipient_matches_parts(recipient, &key.fingerprint, &key.user_ids));
-    let (row, toggle) = append_private_key_row_shell(&key.title(), &key.fingerprint, active, None);
+    let toggle_blocked_message = private_key_toggle_block_message(
+        active,
+        true,
+        matches!(
+            state.private_key_requirement.get(),
+            StoreRecipientsPrivateKeyRequirement::AllManagedKeys
+        ),
+        selected_available_keys,
+        selected_usable_keys,
+    );
+    let (row, toggle) = append_private_key_row_shell(
+        &key.title(),
+        &key.fingerprint,
+        active,
+        toggle_blocked_message,
+    );
 
     let copy_button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy fingerprint");
     row.add_suffix(&copy_button);
@@ -758,16 +815,27 @@ mod tests {
     #[test]
     fn locked_checked_keys_only_block_unchecking_when_they_are_required() {
         assert_eq!(
-            private_key_toggle_block_message(true, true, true, 2),
+            private_key_toggle_block_message(true, true, true, 2, 2),
             Some("Keep this key selected while all selected private keys are required.")
         );
         assert_eq!(
-            private_key_toggle_block_message(true, true, false, 1),
+            private_key_toggle_block_message(true, true, false, 1, 1),
             Some("Keep at least one selected private key available.")
         );
-        assert_eq!(private_key_toggle_block_message(true, true, false, 2), None);
         assert_eq!(
-            private_key_toggle_block_message(true, false, false, 1),
+            private_key_toggle_block_message(true, true, false, 2, 1),
+            Some("Unlock another selected private key before clearing this one.")
+        );
+        assert_eq!(
+            private_key_toggle_block_message(true, true, false, 2, 2),
+            None
+        );
+        assert_eq!(
+            private_key_toggle_block_message(true, false, false, 1, 0),
+            Some("Keep at least one selected private key available.")
+        );
+        assert_eq!(
+            private_key_toggle_block_message(true, false, false, 2, 0),
             None
         );
     }

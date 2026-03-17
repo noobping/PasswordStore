@@ -1,4 +1,6 @@
-use adw::gtk::{Button, Image, ListBox, Popover};
+use adw::gtk::{
+    Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, Popover, Spinner,
+};
 use adw::prelude::*;
 use adw::{ActionRow, NavigationPage, NavigationView};
 use std::rc::Rc;
@@ -28,6 +30,25 @@ pub fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
     list.append(&row);
 }
 
+pub fn append_spinner_row(list: &ListBox) {
+    let spinner = Spinner::builder().spinning(true).build();
+    let container = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .halign(Align::Center)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    container.append(&spinner);
+
+    let row = ListBoxRow::new();
+    row.set_activatable(false);
+    row.set_selectable(false);
+    row.set_child(Some(&container));
+    list.append(&row);
+}
+
 pub fn flat_icon_button(icon_name: &str) -> Button {
     let button = Button::from_icon_name(icon_name);
     button.add_css_class("flat");
@@ -52,7 +73,7 @@ pub fn append_action_row_with_button(
     subtitle: &str,
     icon_name: &str,
     action: impl Fn() + 'static,
-) {
+) -> ActionRow {
     let row = ActionRow::builder().title(title).subtitle(subtitle).build();
     row.set_activatable(true);
 
@@ -63,6 +84,8 @@ pub fn append_action_row_with_button(
     let action = Rc::new(action);
     let row_action = action.clone();
     row.connect_activated(move |_| row_action());
+
+    row
 }
 
 pub fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {

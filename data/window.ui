@@ -125,7 +125,7 @@
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
                             <property name="placeholder-text" translatable="yes">find user matches '^Alice$'</property>
-                            <property name="tooltip-text" translatable="yes">Use find: or find with weak password, is, contains, matches/regex, NOT/AND/OR, quotes, and (?i) for case-insensitive regex.</property>
+                            <property name="tooltip-text" translatable="yes">Use find: or find with weak password, is, contains, matches/regex, NOT/AND/OR/with, quotes, and (?i) for case-insensitive regex.</property>
                           </object>
                         </child>
 
@@ -475,12 +475,6 @@
                                     <style>
                                       <class name="boxed-list" />
                                     </style>
-                                    <child type="placeholder">
-                                      <object class="AdwActionRow" id="stores_row">
-                                        <property name="title">No folders added</property>
-                                        <property name="subtitle">Add an existing folder or create a new store.</property>
-                                      </object>
-                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -990,6 +984,31 @@
                         <property name="propagate-natural-height">true</property>
                         <child>
                           <object class="AdwPreferencesPage">
+                            <child>
+                              <object class="AdwPreferencesGroup" id="store_recipients_host_gpg_warning_group">
+                                <property name="visible">false</property>
+                                <child>
+                                  <object class="GtkListBox" id="store_recipients_host_gpg_warning_list">
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                    <child>
+                                      <object class="AdwActionRow" id="store_recipients_host_gpg_warning_row">
+                                        <property name="title" translatable="yes">Couldn't inspect host GPG keys</property>
+                                        <property name="subtitle" translatable="yes">Valid host keys may appear unavailable here.</property>
+                                        <property name="activatable">False</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">dialog-warning-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
                             <child>
                               <object class="AdwPreferencesGroup" id="store_recipients_keys_group">
                                 <child>

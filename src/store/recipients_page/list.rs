@@ -5,6 +5,9 @@ use crate::backend::{
     ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
     StoreRecipientsPrivateKeyRequirement,
 };
+#[cfg(target_os = "linux")]
+use crate::backend::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
+use crate::clipboard::set_clipboard_text;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
@@ -14,7 +17,60 @@ use crate::support::ui::{
 };
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
+use std::collections::HashSet;
 use std::rc::Rc;
+
+#[cfg(not(target_os = "linux"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct HostGpgPrivateKeySummary {
+    fingerprint: String,
+    user_ids: Vec<String>,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl HostGpgPrivateKeySummary {
+    fn title(&self) -> String {
+        self.user_ids
+            .first()
+            .cloned()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "Unnamed host private key".to_string())
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, String> {
+    Ok(Vec::new())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum AvailablePrivateKey {
+    Managed(ManagedRipassoPrivateKey),
+    HostOnly(HostGpgPrivateKeySummary),
+}
+
+impl AvailablePrivateKey {
+    fn fingerprint(&self) -> &str {
+        match self {
+            Self::Managed(key) => &key.fingerprint,
+            Self::HostOnly(key) => &key.fingerprint,
+        }
+    }
+
+    fn user_ids(&self) -> &[String] {
+        match self {
+            Self::Managed(key) => &key.user_ids,
+            Self::HostOnly(key) => &key.user_ids,
+        }
+    }
+
+    fn title(&self) -> String {
+        match self {
+            Self::Managed(key) => key.title(),
+            Self::HostOnly(key) => key.title(),
+        }
+    }
+}
 
 fn inspect_private_key_lock_state(fingerprint: &str) -> (bool, bool) {
     let unlocked = match is_ripasso_private_key_unlocked(fingerprint) {
@@ -39,24 +95,37 @@ fn inspect_private_key_lock_state(fingerprint: &str) -> (bool, bool) {
     (unlocked, requires_unlock)
 }
 
+fn recipient_matches_parts(recipient: &str, fingerprint: &str, user_ids: &[String]) -> bool {
+    let recipient = recipient.trim();
+    recipient.eq_ignore_ascii_case(fingerprint)
+        || user_ids
+            .iter()
+            .any(|user_id| user_id.eq_ignore_ascii_case(recipient))
+}
+
 pub(super) fn recipient_matches_private_key(
     recipient: &str,
     key: &ManagedRipassoPrivateKey,
 ) -> bool {
-    let recipient = recipient.trim();
-    recipient.eq_ignore_ascii_case(&key.fingerprint)
-        || key
-            .user_ids
-            .iter()
-            .any(|user_id: &String| user_id.eq_ignore_ascii_case(recipient))
+    recipient_matches_parts(recipient, &key.fingerprint, &key.user_ids)
+}
+
+fn recipient_matches_available_private_key(recipient: &str, key: &AvailablePrivateKey) -> bool {
+    recipient_matches_parts(recipient, key.fingerprint(), key.user_ids())
 }
 
 fn set_private_key_recipient_enabled(
     state: &StoreRecipientsPageState,
-    key: &ManagedRipassoPrivateKey,
+    fingerprint: &str,
+    user_ids: &[String],
     enabled: bool,
 ) -> bool {
-    set_private_key_recipient_values(&mut state.recipients.borrow_mut(), key, enabled)
+    set_private_key_recipient_values(
+        &mut state.recipients.borrow_mut(),
+        fingerprint,
+        user_ids,
+        enabled,
+    )
 }
 
 fn set_private_key_requirement(
@@ -72,13 +141,14 @@ fn set_private_key_requirement(
 
 fn set_private_key_recipient_values(
     recipients: &mut Vec<String>,
-    key: &ManagedRipassoPrivateKey,
+    fingerprint: &str,
+    user_ids: &[String],
     enabled: bool,
 ) -> bool {
     let before = recipients.clone();
-    recipients.retain(|value| !recipient_matches_private_key(value, key));
+    recipients.retain(|value| !recipient_matches_parts(value, fingerprint, user_ids));
     if enabled {
-        recipients.push(key.fingerprint.clone());
+        recipients.push(fingerprint.to_string());
     }
     *recipients != before
 }
@@ -96,14 +166,14 @@ fn sync_private_key_delete_button(delete_button: &adw::gtk::Button, active: bool
 
 fn unresolved_private_key_recipients(
     recipients: &[String],
-    keys: &[ManagedRipassoPrivateKey],
+    keys: &[AvailablePrivateKey],
 ) -> Vec<String> {
     let mut unresolved = Vec::new();
 
     for recipient in recipients {
         if keys
             .iter()
-            .any(|key| recipient_matches_private_key(recipient, key))
+            .any(|key| recipient_matches_available_private_key(recipient, key))
         {
             continue;
         }
@@ -167,6 +237,10 @@ fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: 
     ));
 }
 
+fn sync_host_gpg_warning_group(state: &StoreRecipientsPageState, visible: bool) {
+    state.platform.host_gpg_warning_group.set_visible(visible);
+}
+
 pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPageState) {
     let row = state.platform.require_all_row.clone();
     let check = state.platform.require_all_check.clone();
@@ -188,10 +262,79 @@ pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPag
     });
 }
 
+fn merge_available_private_keys(
+    managed_keys: Vec<ManagedRipassoPrivateKey>,
+    host_keys: Vec<HostGpgPrivateKeySummary>,
+) -> Vec<AvailablePrivateKey> {
+    let mut seen_fingerprints: HashSet<String> = managed_keys
+        .iter()
+        .map(|key| key.fingerprint.to_ascii_lowercase())
+        .collect();
+    let mut keys: Vec<AvailablePrivateKey> = managed_keys
+        .into_iter()
+        .map(AvailablePrivateKey::Managed)
+        .collect();
+
+    for key in host_keys {
+        if seen_fingerprints.insert(key.fingerprint.to_ascii_lowercase()) {
+            keys.push(AvailablePrivateKey::HostOnly(key));
+        }
+    }
+
+    keys.sort_by(|left, right| {
+        left.title()
+            .to_ascii_lowercase()
+            .cmp(&right.title().to_ascii_lowercase())
+            .then_with(|| left.fingerprint().cmp(right.fingerprint()))
+    });
+    keys
+}
+
+fn should_show_host_gpg_warning(
+    uses_host_backend: bool,
+    host_keys: &Result<Vec<HostGpgPrivateKeySummary>, String>,
+) -> bool {
+    uses_host_backend && host_keys.is_err()
+}
+
+fn load_available_private_keys(
+    managed_keys: Vec<ManagedRipassoPrivateKey>,
+    uses_host_backend: bool,
+) -> (Vec<AvailablePrivateKey>, bool) {
+    if !uses_host_backend {
+        return (
+            managed_keys
+                .into_iter()
+                .map(AvailablePrivateKey::Managed)
+                .collect(),
+            false,
+        );
+    }
+
+    let host_keys = list_host_gpg_private_keys();
+    let show_warning = should_show_host_gpg_warning(uses_host_backend, &host_keys);
+    match host_keys {
+        Ok(host_keys) => (merge_available_private_keys(managed_keys, host_keys), false),
+        Err(err) => {
+            log_error(format!(
+                "Failed to inspect host GPG private keys for recipients: {err}"
+            ));
+            (
+                managed_keys
+                    .into_iter()
+                    .map(AvailablePrivateKey::Managed)
+                    .collect(),
+                show_warning,
+            )
+        }
+    }
+}
+
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
+    sync_host_gpg_warning_group(state, false);
 
-    let keys = match list_ripasso_private_keys() {
+    let managed_keys = match list_ripasso_private_keys() {
         Ok(keys) => keys,
         Err(err) => {
             log_error(format!("Failed to load private keys for recipients: {err}"));
@@ -205,9 +348,14 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         }
     };
 
+    let uses_host_backend = Preferences::new().uses_host_command_backend();
+    let managed_key_count = managed_keys.len();
+    let (keys, show_host_gpg_warning) =
+        load_available_private_keys(managed_keys, uses_host_backend);
     let current_recipients = state.recipients.borrow().clone();
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
-    sync_private_key_requirement_row(state, !keys.is_empty());
+    sync_private_key_requirement_row(state, managed_key_count > 0);
+    sync_host_gpg_warning_group(state, show_host_gpg_warning);
 
     if keys.is_empty() {
         if unresolved_recipients.is_empty() {
@@ -225,20 +373,22 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     append_unresolved_private_key_rows(state, &unresolved_recipients);
 
     for key in keys {
-        append_private_key_row(state, &key);
+        match key {
+            AvailablePrivateKey::Managed(key) => append_managed_private_key_row(state, &key),
+            AvailablePrivateKey::HostOnly(key) => append_host_private_key_row(state, &key),
+        }
     }
 }
 
-fn append_private_key_row(state: &StoreRecipientsPageState, key: &ManagedRipassoPrivateKey) {
-    let active = state
-        .recipients
-        .borrow()
-        .iter()
-        .any(|recipient| recipient_matches_private_key(recipient, key));
-    let title = adw::glib::markup_escape_text(&key.title());
+fn append_private_key_row_shell(
+    title: &str,
+    fingerprint: &str,
+    active: bool,
+) -> (ActionRow, adw::gtk::CheckButton) {
+    let title = adw::glib::markup_escape_text(title);
     let row = ActionRow::builder()
         .title(title.as_str())
-        .subtitle(&key.fingerprint)
+        .subtitle(fingerprint)
         .build();
     row.set_activatable(true);
     row.add_prefix(&dim_label_icon("dialog-password-symbolic"));
@@ -246,6 +396,25 @@ fn append_private_key_row(state: &StoreRecipientsPageState, key: &ManagedRipasso
     let toggle = adw::gtk::CheckButton::new();
     toggle.set_active(active);
     row.add_suffix(&toggle);
+
+    let toggle_for_row = toggle.clone();
+    row.connect_activated(move |_| {
+        toggle_for_row.set_active(!toggle_for_row.is_active());
+    });
+
+    (row, toggle)
+}
+
+fn append_managed_private_key_row(
+    state: &StoreRecipientsPageState,
+    key: &ManagedRipassoPrivateKey,
+) {
+    let active = state
+        .recipients
+        .borrow()
+        .iter()
+        .any(|recipient| recipient_matches_private_key(recipient, key));
+    let (row, toggle) = append_private_key_row_shell(&key.title(), &key.fingerprint, active);
     append_private_key_status_suffixes(state, key, &row);
 
     let copy_button =
@@ -257,12 +426,45 @@ fn append_private_key_row(state: &StoreRecipientsPageState, key: &ManagedRipasso
     row.add_suffix(&delete_button);
     state.list.append(&row);
 
-    let toggle_for_row = toggle.clone();
-    row.connect_activated(move |_| {
-        toggle_for_row.set_active(!toggle_for_row.is_active());
+    connect_managed_private_key_row_actions(state, key, &toggle, &copy_button, &delete_button);
+}
+
+fn append_host_private_key_row(state: &StoreRecipientsPageState, key: &HostGpgPrivateKeySummary) {
+    let active = state
+        .recipients
+        .borrow()
+        .iter()
+        .any(|recipient| recipient_matches_parts(recipient, &key.fingerprint, &key.user_ids));
+    let (row, toggle) = append_private_key_row_shell(&key.title(), &key.fingerprint, active);
+
+    let copy_button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy fingerprint");
+    row.add_suffix(&copy_button);
+    state.list.append(&row);
+
+    let state_for_toggle = state.clone();
+    let fingerprint_for_toggle = key.fingerprint.clone();
+    let user_ids_for_toggle = key.user_ids.clone();
+    toggle.connect_toggled(move |button| {
+        if set_private_key_recipient_enabled(
+            &state_for_toggle,
+            &fingerprint_for_toggle,
+            &user_ids_for_toggle,
+            button.is_active(),
+        ) {
+            queue_store_recipients_autosave(&state_for_toggle);
+        }
     });
 
-    connect_private_key_row_actions(state, key, &toggle, &copy_button, &delete_button);
+    let overlay = state.platform.overlay.clone();
+    let fingerprint_for_copy = key.fingerprint.clone();
+    let copy_button_for_click = copy_button.clone();
+    copy_button.connect_clicked(move |_| {
+        let _ = set_clipboard_text(
+            &fingerprint_for_copy,
+            &overlay,
+            Some(&copy_button_for_click),
+        );
+    });
 }
 
 fn append_private_key_status_suffixes(
@@ -308,7 +510,7 @@ fn append_private_key_status_suffixes(
     }
 }
 
-fn connect_private_key_row_actions(
+fn connect_managed_private_key_row_actions(
     state: &StoreRecipientsPageState,
     key: &ManagedRipassoPrivateKey,
     toggle: &adw::gtk::CheckButton,
@@ -316,11 +518,16 @@ fn connect_private_key_row_actions(
     delete_button: &adw::gtk::Button,
 ) {
     let state_for_toggle = state.clone();
-    let key_for_toggle = key.clone();
+    let fingerprint_for_toggle = key.fingerprint.clone();
+    let user_ids_for_toggle = key.user_ids.clone();
     let delete_for_toggle = delete_button.clone();
     toggle.connect_toggled(move |button| {
-        if set_private_key_recipient_enabled(&state_for_toggle, &key_for_toggle, button.is_active())
-        {
+        if set_private_key_recipient_enabled(
+            &state_for_toggle,
+            &fingerprint_for_toggle,
+            &user_ids_for_toggle,
+            button.is_active(),
+        ) {
             sync_private_key_delete_button(&delete_for_toggle, button.is_active());
             queue_store_recipients_autosave(&state_for_toggle);
         }
@@ -364,4 +571,77 @@ fn connect_private_key_row_actions(
             .overlay
             .add_toast(Toast::new("Key removed."));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        merge_available_private_keys, should_show_host_gpg_warning,
+        unresolved_private_key_recipients, AvailablePrivateKey, HostGpgPrivateKeySummary,
+    };
+    use crate::backend::ManagedRipassoPrivateKey;
+
+    #[test]
+    fn merged_private_keys_prefer_managed_duplicates() {
+        let managed = ManagedRipassoPrivateKey {
+            fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+            user_ids: vec!["Managed User <managed@example.com>".to_string()],
+        };
+        let merged = merge_available_private_keys(
+            vec![managed.clone()],
+            vec![
+                HostGpgPrivateKeySummary {
+                    fingerprint: managed.fingerprint.clone(),
+                    user_ids: vec!["Host Duplicate <host@example.com>".to_string()],
+                },
+                HostGpgPrivateKeySummary {
+                    fingerprint: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
+                    user_ids: vec!["Host Only <host-only@example.com>".to_string()],
+                },
+            ],
+        );
+
+        assert_eq!(merged.len(), 2);
+        assert!(merged.iter().any(|key| matches!(
+            key,
+            AvailablePrivateKey::Managed(found) if found == &managed
+        )));
+        assert!(merged.iter().any(|key| matches!(
+            key,
+            AvailablePrivateKey::HostOnly(found)
+                if found.fingerprint == "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+        )));
+    }
+
+    #[test]
+    fn unresolved_recipients_consider_host_only_keys() {
+        let unresolved = unresolved_private_key_recipients(
+            &[
+                "Host User <host@example.com>".to_string(),
+                "missing@example.com".to_string(),
+            ],
+            &[AvailablePrivateKey::HostOnly(HostGpgPrivateKeySummary {
+                fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                user_ids: vec!["Host User <host@example.com>".to_string()],
+            })],
+        );
+
+        assert_eq!(unresolved, vec!["missing@example.com".to_string()]);
+    }
+
+    #[test]
+    fn host_gpg_warning_only_shows_for_host_backend_failures() {
+        assert!(should_show_host_gpg_warning(
+            true,
+            &Err("gpg unavailable".to_string())
+        ));
+        assert!(!should_show_host_gpg_warning(
+            false,
+            &Err("gpg unavailable".to_string())
+        ));
+        assert!(!should_show_host_gpg_warning(
+            true,
+            &Ok(Vec::<HostGpgPrivateKeySummary>::new())
+        ));
+    }
 }

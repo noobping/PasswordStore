@@ -277,7 +277,7 @@ pub fn register_toggle_find_action(
     let list = list.clone();
     register_window_action(window, "toggle-find", move || {
         if !find_button.is_visible() {
-            hide_and_clear_search_entry(&search_entry, &list);
+            hide_search_entry(&search_entry);
             return;
         }
 
@@ -295,18 +295,28 @@ pub fn connect_search_visibility(find_button: &Button, search_entry: &SearchEntr
     let search_entry = search_entry.clone();
     let list = list.clone();
     find_button.connect_visible_notify(move |button| {
-        if !button.is_visible() {
-            hide_and_clear_search_entry(&search_entry, &list);
+        if button.is_visible() {
+            if !search_entry.text().is_empty() {
+                search_entry.set_visible(true);
+                list.invalidate_filter();
+            }
+            return;
         }
+
+        hide_search_entry(&search_entry);
     });
 }
 
 fn hide_and_clear_search_entry(search_entry: &SearchEntry, list: &ListBox) {
-    search_entry.set_visible(false);
+    hide_search_entry(search_entry);
     if !search_entry.text().is_empty() {
         search_entry.set_text("");
     }
     list.invalidate_filter();
+}
+
+fn hide_search_entry(search_entry: &SearchEntry) {
+    search_entry.set_visible(false);
 }
 
 pub fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionState) {

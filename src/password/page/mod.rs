@@ -99,19 +99,14 @@ fn password_page_display(state: &PasswordPageState) -> PasswordPageDisplay {
 
 fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSaveContext, String> {
     let pass_file = get_opened_pass_file().ok_or_else(|| "Open an item first.".to_string())?;
-
-    let contents = current_editor_contents(state);
-    let password = contents.lines().next().unwrap_or_default().to_string();
-    if password.is_empty() {
-        return Err("Enter a password.".to_string());
-    }
+    let editor_contents = current_editor_contents(state);
 
     let otp_url = state
         .otp
         .current_url_for_save()
         .map_err(ToString::to_string)?;
     let contents = if visible_navigation_page_is(&state.nav, &state.raw_page) {
-        contents
+        editor_contents
     } else {
         structured_pass_contents(
             &state.entry.text(),

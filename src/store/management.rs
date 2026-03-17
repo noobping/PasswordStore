@@ -19,7 +19,9 @@ pub use super::recipients_page::{
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
-use crate::support::ui::{append_action_row_with_button, clear_list_box, flat_icon_button};
+use crate::support::ui::{
+    append_action_row_with_button, append_info_row, clear_list_box, flat_icon_button,
+};
 use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
@@ -157,9 +159,26 @@ pub fn rebuild_stores_list(
     clear_list_box(stores_list);
 
     let stores = settings.stores();
+    if stores.is_empty() {
+        append_empty_store_list_row(stores_list);
+        return;
+    }
+
     for store in &stores {
         append_store_row(stores_list, settings, store, recipients_page);
     }
+}
+
+fn append_empty_store_list_row(list: &ListBox) {
+    let (title, subtitle) = empty_store_list_placeholder_copy();
+    append_info_row(list, title, subtitle);
+}
+
+const fn empty_store_list_placeholder_copy() -> (&'static str, &'static str) {
+    (
+        "No password stores",
+        "Add an existing folder or create a new store.",
+    )
 }
 
 pub fn rebuild_store_actions_list(
@@ -209,13 +228,13 @@ fn append_store_row(
 
     let settings = settings.clone();
     let list = list.clone();
-    let row_for_delete = row.clone();
     let store = store.to_string();
-    let recipients_page = recipients_page.clone();
+    let recipients_page_for_edit = recipients_page.clone();
+    let recipients_page_for_delete = recipients_page.clone();
     let store_for_edit = store.clone();
 
     row.connect_activated(move |_| {
-        show_store_recipients_edit_page(&recipients_page, &store_for_edit);
+        show_store_recipients_edit_page(&recipients_page_for_edit, &store_for_edit);
     });
 
     delete_button.connect_clicked(move |_| {
@@ -223,7 +242,7 @@ fn append_store_row(
             if let Err(err) = settings.set_stores(stores) {
                 log_error(format!("Failed to save stores: {err}"));
             } else {
-                list.remove(&row_for_delete);
+                rebuild_stores_list(&list, &settings, &recipients_page_for_delete);
             }
         }
     });
@@ -340,8 +359,9 @@ pub fn register_open_store_picker_action(
 #[cfg(test)]
 mod tests {
     use super::{
-        initial_recipients_for_store_creation, selected_store_folder_mode,
-        updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
+        empty_store_list_placeholder_copy, initial_recipients_for_store_creation,
+        selected_store_folder_mode, updated_stores_after_add, updated_stores_after_delete,
+        SelectedStoreFolderMode,
     };
 
     #[test]
@@ -397,6 +417,17 @@ mod tests {
         assert_eq!(
             selected_store_folder_mode(false),
             SelectedStoreFolderMode::AddExisting
+        );
+    }
+
+    #[test]
+    fn empty_store_list_has_placeholder_copy() {
+        assert_eq!(
+            empty_store_list_placeholder_copy(),
+            (
+                "No password stores",
+                "Add an existing folder or create a new store."
+            )
         );
     }
 }

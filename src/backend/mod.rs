@@ -18,6 +18,8 @@ pub enum StoreRecipientsPrivateKeyRequirement {
     AllManagedKeys,
 }
 
+#[cfg(target_os = "linux")]
+pub use self::host::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
 pub use integrated::{
     armored_ripasso_private_key, generate_ripasso_private_key, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys,

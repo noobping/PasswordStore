@@ -59,6 +59,14 @@ impl Preferences {
         build_command(program, args, envs)
     }
 
+    pub fn host_program_command(&self, program: &str, args: &[&str]) -> Command {
+        build_command(
+            program.to_string(),
+            args.iter().map(|arg| (*arg).to_string()).collect(),
+            &[],
+        )
+    }
+
     pub fn backend_kind(&self) -> BackendKind {
         stored_backend_kind(self)
     }
@@ -106,5 +114,37 @@ mod tests {
 
         assert_eq!(cmd.get_program().to_string_lossy(), "git");
         assert_eq!(cmd.get_args().count(), 0);
+    }
+
+    #[test]
+    fn linux_host_program_command_uses_requested_program_and_args() {
+        let cmd =
+            crate::preferences::Preferences::new().host_program_command("gpg", &["--version"]);
+
+        #[cfg(all(target_os = "linux", feature = "flatpak"))]
+        {
+            assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
+            assert_eq!(
+                cmd.get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                vec![
+                    "--host".to_string(),
+                    "gpg".to_string(),
+                    "--version".to_string()
+                ]
+            );
+        }
+
+        #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+        {
+            assert_eq!(cmd.get_program().to_string_lossy(), "gpg");
+            assert_eq!(
+                cmd.get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                vec!["--version".to_string()]
+            );
+        }
     }
 }

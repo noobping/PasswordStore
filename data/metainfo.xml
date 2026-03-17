@@ -71,7 +71,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.8.2" date="2026-03-17">
+    <release version="0.9.0" date="2026-03-17">
       <description>
         <ul>
           <li>Show disabled options instead of hiding them</li>

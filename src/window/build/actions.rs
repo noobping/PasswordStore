@@ -1,6 +1,9 @@
 use crate::clipboard::connect_copy_button;
 use crate::password::model::OpenPassFile;
-use crate::password::new_item::{selected_new_password_store, NewPasswordPopoverState};
+use crate::password::new_item::{
+    clear_new_password_dialog_error, selected_new_password_store, show_new_password_dialog_error,
+    NewPasswordPopoverState,
+};
 use crate::password::page::{
     add_empty_otp_secret, begin_new_password_entry, generate_password_entry,
     open_password_entry_page, save_current_password_entry, show_raw_pass_file_page,
@@ -77,12 +80,15 @@ pub(super) fn connect_new_password_submit(
     let popover_state_for_apply = popover_state.clone();
     let path_entry = popover_state_for_apply.path_entry.clone();
     path_entry.connect_apply(move |_| {
-        begin_new_password_entry(
+        clear_new_password_dialog_error(&popover_state_for_apply);
+        if let Err(message) = begin_new_password_entry(
             &page_state_for_apply,
             &popover_state_for_apply.path_entry.text(),
             selected_new_password_store(&popover_state_for_apply),
             &popover_state_for_apply.dialog,
-        );
+        ) {
+            show_new_password_dialog_error(&popover_state_for_apply, message);
+        }
     });
 }
 

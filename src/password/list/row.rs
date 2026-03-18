@@ -73,8 +73,8 @@ pub(super) fn append_password_row(
         .css_classes(vec!["flat"])
         .build();
     action_row.add_prefix(&unreadable_icon);
-    action_row.add_suffix(&copy_button);
     action_row.add_suffix(&open_icon);
+    action_row.add_suffix(&copy_button);
     action_row.add_suffix(&menu_button);
 
     let text_edit_row = EntryRow::new();

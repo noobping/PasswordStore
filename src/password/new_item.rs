@@ -1,7 +1,7 @@
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
-use adw::gtk::{Box as GtkBox, StringList, INVALID_LIST_POSITION};
+use adw::gtk::{Align, Box as GtkBox, Label, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
 use adw::{
     ApplicationWindow, ComboRow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage,
@@ -15,6 +15,7 @@ pub struct NewPasswordPopoverState {
     pub dialog: Dialog,
     pub path_entry: EntryRow,
     pub store_dropdown: ComboRow,
+    pub error_label: Label,
     pub store_roots: Rc<RefCell<Vec<String>>>,
 }
 
@@ -33,7 +34,7 @@ fn dialog_content_shell(title: &str, subtitle: &str, child: &impl IsA<adw::gtk::
     shell
 }
 
-pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow) {
+pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow, Label) {
     let store_dropdown = ComboRow::new();
     store_dropdown.set_title("Store");
     store_dropdown.set_visible(false);
@@ -49,17 +50,41 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow) {
     let page = PreferencesPage::new();
     page.add(&group);
 
+    let error_label = Label::new(None);
+    error_label.set_halign(Align::Start);
+    error_label.set_wrap(true);
+    error_label.add_css_class("error");
+    error_label.add_css_class("caption");
+    error_label.set_margin_top(6);
+    error_label.set_margin_start(18);
+    error_label.set_margin_end(18);
+    error_label.set_margin_bottom(18);
+    error_label.set_visible(false);
+
+    let content = GtkBox::new(adw::gtk::Orientation::Vertical, 0);
+    content.append(&page);
+    content.append(&error_label);
+
     let dialog = Dialog::builder()
         .title("New item")
-        .content_width(460)
+        .content_height(280)
+        .content_width(800)
+        .follows_content_size(true)
         .child(&dialog_content_shell(
             "New item",
             "Create a new pass file.",
-            &page,
+            &content,
         ))
         .build();
 
-    (dialog, store_dropdown, path_entry)
+    {
+        let error_label = error_label.clone();
+        path_entry.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
+
+    (dialog, store_dropdown, path_entry, error_label)
 }
 
 fn available_store_roots() -> Vec<String> {
@@ -114,9 +139,19 @@ pub fn register_open_new_password_action(
     register_window_action(&window_for_action, "open-new-password", move || {
         sync_new_password_store_selector(&state);
         state.path_entry.set_text("");
+        clear_new_password_dialog_error(&state);
         state.dialog.present(Some(&window_for_dialog));
         state.path_entry.grab_focus();
     });
+}
+
+pub fn show_new_password_dialog_error(state: &NewPasswordPopoverState, message: &str) {
+    state.error_label.set_label(message);
+    state.error_label.set_visible(true);
+}
+
+pub fn clear_new_password_dialog_error(state: &NewPasswordPopoverState) {
+    state.error_label.set_visible(false);
 }
 
 #[cfg(test)]

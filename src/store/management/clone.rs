@@ -8,7 +8,7 @@ use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{append_action_row_with_button, dim_label_icon};
 use crate::window::clone_store_repository;
-use adw::gtk::ListBox;
+use adw::gtk::{Align, Box as GtkBox, Label, ListBox, Orientation};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, Dialog, EntryRow, PreferencesGroup, PreferencesPage, Toast,
@@ -25,12 +25,12 @@ fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialo
     )
 }
 
-fn present_clone_url_dialog<F>(
-    window: &ApplicationWindow,
-    overlay: &ToastOverlay,
-    store: &str,
-    on_submit: F,
-) where
+fn clone_url_dialog_error_message(url: &str) -> Option<&'static str> {
+    url.trim().is_empty().then_some("Enter a repository URL.")
+}
+
+fn present_clone_url_dialog<F>(window: &ApplicationWindow, store: &str, on_submit: F)
+where
     F: Fn(String) + 'static,
 {
     let url_row = EntryRow::new();
@@ -43,28 +43,54 @@ fn present_clone_url_dialog<F>(
     let page = PreferencesPage::new();
     page.add(&group);
 
+    let error_label = Label::new(None);
+    error_label.set_halign(Align::Start);
+    error_label.set_wrap(true);
+    error_label.add_css_class("error");
+    error_label.add_css_class("caption");
+    error_label.set_margin_top(6);
+    error_label.set_margin_start(18);
+    error_label.set_margin_end(18);
+    error_label.set_margin_bottom(18);
+    error_label.set_visible(false);
+
+    let content = GtkBox::new(Orientation::Vertical, 0);
+    content.append(&page);
+    content.append(&error_label);
+
     let dialog = Dialog::builder()
         .title("Restore password store")
-        .content_width(460)
+        .content_height(280)
+        .content_width(800)
+        .follows_content_size(true)
         .child(&dialog_content_shell(
             "Restore password store",
             Some(store),
-            &page,
+            &content,
         ))
         .build();
 
     let dialog_clone = dialog.clone();
-    let overlay_clone = overlay.clone();
+    let error_label_for_apply = error_label.clone();
     url_row.connect_apply(move |row| {
         let url = row.text().trim().to_string();
-        if url.is_empty() {
-            overlay_clone.add_toast(Toast::new("Enter a repository URL."));
+        if let Some(message) = clone_url_dialog_error_message(&url) {
+            error_label_for_apply.set_label(message);
+            error_label_for_apply.set_visible(true);
             return;
         }
+        error_label_for_apply.set_visible(false);
 
         dialog_clone.close();
         on_submit(url);
     });
+
+    {
+        let error_label = error_label.clone();
+        url_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
 
     dialog.present(Some(window));
 }
@@ -86,15 +112,11 @@ where
         &picker_overlay,
         move |store| {
             let window_for_dialog = window.clone();
-            let overlay_for_dialog = overlay.clone();
             let store_for_dialog = store.clone();
             let on_submit = on_submit.clone();
-            present_clone_url_dialog(
-                &window_for_dialog,
-                &overlay_for_dialog,
-                &store_for_dialog,
-                move |url| on_submit(store.clone(), url),
-            );
+            present_clone_url_dialog(&window_for_dialog, &store_for_dialog, move |url| {
+                on_submit(store.clone(), url)
+            });
         },
     );
 }
@@ -148,6 +170,27 @@ pub(super) fn append_store_clone_row(
             });
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clone_url_dialog_error_message;
+
+    #[test]
+    fn clone_url_dialog_requires_a_repository_url() {
+        assert_eq!(
+            clone_url_dialog_error_message(""),
+            Some("Enter a repository URL.")
+        );
+        assert_eq!(
+            clone_url_dialog_error_message("   "),
+            Some("Enter a repository URL.")
+        );
+        assert_eq!(
+            clone_url_dialog_error_message("ssh://git@example.test/repo.git"),
+            None
+        );
+    }
 }
 
 fn start_store_clone(

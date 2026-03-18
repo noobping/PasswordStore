@@ -1,8 +1,8 @@
-use adw::gtk::{Box as GtkBox, Orientation, Spinner};
+use adw::gtk::{Align, Box as GtkBox, Label, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{
     ApplicationWindow, Dialog, HeaderBar, PasswordEntryRow, PreferencesGroup, PreferencesPage,
-    StatusPage, Toast, ToastOverlay, WindowTitle,
+    StatusPage, ToastOverlay, WindowTitle,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -63,6 +63,13 @@ pub fn build_private_key_progress_dialog(
     dialog
 }
 
+fn private_key_password_dialog_error_message(passphrase: &str) -> Option<&'static str> {
+    passphrase
+        .trim()
+        .is_empty()
+        .then_some("Enter the key password.")
+}
+
 pub fn present_private_key_password_dialog<F>(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -84,7 +91,7 @@ pub fn present_private_key_password_dialog<F>(
 
 pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     window: &ApplicationWindow,
-    overlay: &ToastOverlay,
+    _overlay: &ToastOverlay,
     title: &str,
     subtitle: Option<&str>,
     on_submit: F,
@@ -103,29 +110,54 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     let page = PreferencesPage::new();
     page.add(&password_group);
 
+    let error_label = Label::new(None);
+    error_label.set_halign(Align::Start);
+    error_label.set_wrap(true);
+    error_label.add_css_class("error");
+    error_label.add_css_class("caption");
+    error_label.set_margin_top(6);
+    error_label.set_margin_start(18);
+    error_label.set_margin_end(18);
+    error_label.set_margin_bottom(18);
+    error_label.set_visible(false);
+
+    let content = GtkBox::new(Orientation::Vertical, 0);
+    content.append(&page);
+    content.append(&error_label);
+
     let dialog = Dialog::builder()
         .title(title)
-        .content_width(460)
-        .child(&dialog_content_shell(title, subtitle, &page))
+        .content_height(280)
+        .content_width(800)
+        .follows_content_size(true)
+        .child(&dialog_content_shell(title, subtitle, &content))
         .build();
     let submitted = Rc::new(Cell::new(false));
     let dialog_handle = PrivateKeyDialogHandle::new(&dialog);
 
-    let overlay_clone = overlay.clone();
     let submitted_for_apply = submitted.clone();
     let dialog_handle_for_apply = dialog_handle;
+    let error_label_for_apply = error_label.clone();
     password_row.connect_apply(move |row| {
         let passphrase = row.text().to_string();
-        if passphrase.is_empty() {
-            let toast = Toast::new("Enter the key password.");
-            overlay_clone.add_toast(toast);
+        if let Some(message) = private_key_password_dialog_error_message(&passphrase) {
+            error_label_for_apply.set_label(message);
+            error_label_for_apply.set_visible(true);
             return;
         }
+        error_label_for_apply.set_visible(false);
 
         submitted_for_apply.set(true);
         dialog_handle_for_apply.force_close();
         on_submit(passphrase);
     });
+
+    {
+        let error_label = error_label.clone();
+        password_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
 
     dialog.connect_closed(move |_| {
         if !submitted.get() {
@@ -134,4 +166,22 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     });
 
     dialog.present(Some(window));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::private_key_password_dialog_error_message;
+
+    #[test]
+    fn private_key_password_dialog_requires_a_non_empty_passphrase() {
+        assert_eq!(
+            private_key_password_dialog_error_message(""),
+            Some("Enter the key password.")
+        );
+        assert_eq!(
+            private_key_password_dialog_error_message("   "),
+            Some("Enter the key password.")
+        );
+        assert_eq!(private_key_password_dialog_error_message("secret"), None);
+    }
 }

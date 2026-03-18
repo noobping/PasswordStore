@@ -253,21 +253,16 @@ pub fn begin_new_password_entry(
     path: &str,
     store_root: Option<String>,
     add_dialog: &Dialog,
-) {
+) -> Result<(), &'static str> {
     let path = path.trim();
     if path.is_empty() {
-        state.overlay.add_toast(Toast::new("Enter a name."));
-        return;
+        return Err("Enter a name.");
     }
 
     let settings = Preferences::new();
     let store_root = store_root.unwrap_or_else(|| settings.store());
     if store_root.trim().is_empty() {
-        state
-            .overlay
-            .add_toast(Toast::new("Add a store folder first."));
-        add_dialog.force_close();
-        return;
+        return Err("Add a store folder first.");
     }
     let template_contents =
         new_pass_file_contents_from_template(&settings.new_pass_file_template());
@@ -285,6 +280,7 @@ pub fn begin_new_password_entry(
     add_dialog.force_close();
     sync_editor_contents(state, &template_contents, template_pass_file.as_ref());
     sync_saved_password_state(state, &template_contents, false);
+    Ok(())
 }
 
 pub fn show_raw_pass_file_page(state: &PasswordPageState) {

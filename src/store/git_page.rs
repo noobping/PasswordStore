@@ -16,7 +16,7 @@ use crate::support::ui::{
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::glib::object::IsA;
-use adw::gtk::{Box as GtkBox, Button, ListBox, Orientation};
+use adw::gtk::{Align, Box as GtkBox, Button, Label, ListBox, Orientation};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, Dialog, EntryRow, HeaderBar, NavigationPage, NavigationView,
@@ -325,6 +325,33 @@ fn remote_name_exists(name: &str, existing_names: &[String]) -> bool {
         .any(|existing_name| existing_name.eq_ignore_ascii_case(name))
 }
 
+fn remote_url_exists(url: &str, existing_urls: &[String]) -> bool {
+    let url = url.trim();
+    existing_urls.iter().any(|existing_url| existing_url == url)
+}
+
+fn remote_dialog_error_message(
+    name: &str,
+    url: &str,
+    existing_names: &[String],
+    existing_urls: &[String],
+) -> Option<&'static str> {
+    if name.trim().is_empty() {
+        return Some("Enter a remote name.");
+    }
+    if remote_name_exists(name, existing_names) {
+        return Some("That remote name already exists.");
+    }
+    if url.trim().is_empty() {
+        return Some("Enter a remote URL.");
+    }
+    if remote_url_exists(url, existing_urls) {
+        return Some("That remote URL already exists.");
+    }
+
+    None
+}
+
 fn next_autofilled_remote_name(
     current_value: &str,
     previous_autofill: Option<&str>,
@@ -340,16 +367,17 @@ fn next_autofilled_remote_name(
 
 fn present_remote_dialog(
     window: &ApplicationWindow,
-    overlay: &ToastOverlay,
     store: &str,
     title: &str,
     initial_name: &str,
     initial_url: &str,
     existing_names: Vec<String>,
+    existing_urls: Vec<String>,
     _submit_label: &str,
     on_submit: impl Fn(String, String) -> Result<(), String> + 'static,
 ) {
     let existing_names = Rc::new(existing_names);
+    let existing_urls = Rc::new(existing_urls);
     let name_row = EntryRow::new();
     name_row.set_title("Remote name");
     name_row.set_text(initial_name);
@@ -395,30 +423,48 @@ fn present_remote_dialog(
     let page = PreferencesPage::new();
     page.add(&group);
 
+    let error_label = Label::new(None);
+    error_label.set_halign(Align::Start);
+    error_label.set_wrap(true);
+    error_label.add_css_class("error");
+    error_label.add_css_class("caption");
+    error_label.set_margin_top(6);
+    error_label.set_margin_start(18);
+    error_label.set_margin_end(18);
+    error_label.set_margin_bottom(18);
+    error_label.set_visible(false);
+
+    let content = GtkBox::new(Orientation::Vertical, 0);
+    content.append(&page);
+    content.append(&error_label);
+
     let dialog = Dialog::builder()
         .title(title)
-        .content_width(460)
-        .child(&dialog_content_shell(title, Some(store), &page))
+        .content_height(280)
+        .content_width(800)
+        .follows_content_size(true)
+        .child(&dialog_content_shell(title, Some(store), &content))
         .build();
 
     let dialog_for_submit = dialog.clone();
-    let overlay_for_submit = overlay.clone();
+    let name_row_for_submit = name_row.clone();
     let existing_names_for_submit = existing_names.clone();
+    let existing_urls_for_submit = existing_urls.clone();
+    let error_label_for_submit = error_label.clone();
     url_row.connect_apply(move |row| {
-        let name = name_row.text().trim().to_string();
+        let name = name_row_for_submit.text().trim().to_string();
         let url = row.text().trim().to_string();
-        if name.is_empty() {
-            overlay_for_submit.add_toast(Toast::new("Enter a remote name."));
+        if let Some(message) = remote_dialog_error_message(
+            &name,
+            &url,
+            existing_names_for_submit.as_slice(),
+            existing_urls_for_submit.as_slice(),
+        ) {
+            error_label_for_submit.set_label(message);
+            error_label_for_submit.set_visible(true);
             return;
         }
-        if remote_name_exists(&name, existing_names_for_submit.as_slice()) {
-            overlay_for_submit.add_toast(Toast::new("That remote name already exists."));
-            return;
-        }
-        if url.is_empty() {
-            overlay_for_submit.add_toast(Toast::new("Enter a remote URL."));
-            return;
-        }
+        error_label_for_submit.set_visible(false);
 
         match on_submit(name, url) {
             Ok(()) => {
@@ -426,10 +472,24 @@ fn present_remote_dialog(
             }
             Err(err) => {
                 log_error(format!("Git remote dialog failed: {err}"));
-                overlay_for_submit.add_toast(Toast::new("Couldn't save that remote."));
+                error_label_for_submit.set_label("Couldn't save that remote.");
+                error_label_for_submit.set_visible(true);
             }
         }
     });
+
+    {
+        let error_label = error_label.clone();
+        name_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
+    {
+        let error_label = error_label.clone();
+        url_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
 
     dialog.present(Some(window));
 }
@@ -477,6 +537,7 @@ fn append_remote_row(
     name: &str,
     url: &str,
     existing_names: Vec<String>,
+    existing_urls: Vec<String>,
 ) {
     let row = ActionRow::builder().title(name).subtitle(url).build();
     row.set_activatable(false);
@@ -500,12 +561,12 @@ fn append_remote_row(
         let current_name_for_submit = current_name.clone();
         present_remote_dialog(
             &state_for_edit.window,
-            &state_for_edit.overlay,
             &store_for_edit,
             "Edit remote",
             &current_name,
             &current_url,
             existing_names.clone(),
+            existing_urls.clone(),
             "Save",
             move |next_name, next_url| {
                 update_store_git_remote(
@@ -567,6 +628,11 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                 .iter()
                 .map(|remote| remote.name.clone())
                 .collect::<Vec<_>>();
+            let existing_remote_urls = status
+                .remotes
+                .iter()
+                .map(|remote| remote.url.clone())
+                .collect::<Vec<_>>();
             if status.remotes.is_empty() {
                 append_status_row(
                     &state.remotes_list,
@@ -588,6 +654,12 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                             })
                             .cloned()
                             .collect(),
+                        status
+                            .remotes
+                            .iter()
+                            .filter(|existing_remote| existing_remote.name != remote.name)
+                            .map(|existing_remote| existing_remote.url.clone())
+                            .collect(),
                     );
                 }
             }
@@ -604,12 +676,12 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     let store_for_submit = store_for_add.clone();
                     present_remote_dialog(
                         &add_state.window,
-                        &add_state.overlay,
                         &store_for_add,
                         "Add remote",
                         "",
                         "",
                         existing_remote_names.clone(),
+                        existing_remote_urls.clone(),
                         "Add",
                         move |name, url| {
                             add_store_git_remote(&store_for_submit, &name, &url)?;
@@ -768,8 +840,8 @@ pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
 mod tests {
     use super::{
         next_autofilled_remote_name, next_available_remote_name, remote_count_subtitle,
-        remote_name_exists, store_git_row_state, suggested_remote_name_from_url, StoreGitHead,
-        StoreGitRepositoryStatus,
+        remote_dialog_error_message, remote_name_exists, remote_url_exists, store_git_row_state,
+        suggested_remote_name_from_url, StoreGitHead, StoreGitRepositoryStatus,
     };
     use crate::support::git::GitRemote;
 
@@ -856,5 +928,63 @@ mod tests {
         assert!(remote_name_exists("origin", &existing));
         assert!(remote_name_exists("ORIGIN", &existing));
         assert!(!remote_name_exists("origin-2", &existing));
+    }
+
+    #[test]
+    fn remote_url_validation_rejects_existing_urls() {
+        let existing = vec![
+            "ssh://git@example.test/repo.git".to_string(),
+            "https://example.test/repo.git".to_string(),
+        ];
+
+        assert!(remote_url_exists(
+            "ssh://git@example.test/repo.git",
+            &existing
+        ));
+        assert!(remote_url_exists(
+            " ssh://git@example.test/repo.git ",
+            &existing
+        ));
+        assert!(!remote_url_exists(
+            "ssh://git@example.test/other.git",
+            &existing
+        ));
+    }
+
+    #[test]
+    fn remote_dialog_validation_reports_the_first_relevant_error() {
+        let existing_names = vec!["origin".to_string()];
+        let existing_urls = vec!["ssh://git@example.test/repo.git".to_string()];
+
+        assert_eq!(
+            remote_dialog_error_message("", "", &existing_names, &existing_urls),
+            Some("Enter a remote name.")
+        );
+        assert_eq!(
+            remote_dialog_error_message("origin", "", &existing_names, &existing_urls),
+            Some("That remote name already exists.")
+        );
+        assert_eq!(
+            remote_dialog_error_message("upstream", "", &existing_names, &existing_urls),
+            Some("Enter a remote URL.")
+        );
+        assert_eq!(
+            remote_dialog_error_message(
+                "upstream",
+                "ssh://git@example.test/repo.git",
+                &existing_names,
+                &existing_urls,
+            ),
+            Some("That remote URL already exists.")
+        );
+        assert_eq!(
+            remote_dialog_error_message(
+                "upstream",
+                "ssh://git@example.test/other.git",
+                &existing_names,
+                &existing_urls,
+            ),
+            None
+        );
     }
 }

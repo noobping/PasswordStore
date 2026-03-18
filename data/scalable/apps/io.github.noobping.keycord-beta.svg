@@ -1,57 +1,35 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-
-<title>Keycord Devel</title>
-
-<defs>
-  <clipPath id="top">
-    <path d="M34 18H90C102 18 112 28 112 40V78C112 90 102 100 90 100H34C24 100 16 92 16 82V36C16 26 24 18 34 18Z"/>
-  </clipPath>
-</defs>
-
-<!-- cord loop -->
-<path d="M92 24C103 24 112 33 112 44C112 54 104 62 94 64"
-      stroke="#9141AC"
-      stroke-width="10"
-      stroke-linecap="round"
-      fill="none"/>
-
-<!-- plug -->
-<rect x="88" y="12" width="22" height="14" rx="4" fill="#C061CB"/>
-<rect x="93" y="6" width="3" height="8" rx="1.5" fill="#C061CB"/>
-<rect x="101" y="6" width="3" height="8" rx="1.5" fill="#C061CB"/>
-
-<!-- key front -->
-<path d="M34 42H90C102 42 112 52 112 64V96C112 108 102 116 90 116H34C24 116 16 108 16 98V52C16 46 24 42 34 42Z"
-      fill="#1A5FB4"/>
-
-<!-- key top -->
-<path d="M34 18H90C102 18 112 28 112 40V78C112 90 102 100 90 100H34C24 100 16 92 16 82V36C16 26 24 18 34 18Z"
-      fill="#62A0EA"/>
-
-<!-- stripes -->
-<g clip-path="url(#top)">
-  <rect x="-40" y="0" width="36" height="200" transform="rotate(-35)" fill="#26A269"/>
-  <rect x="-8" y="0" width="16" height="200" transform="rotate(-35)" fill="#99C1F1"/>
-  <rect x="18" y="0" width="36" height="200" transform="rotate(-35)" fill="#26A269"/>
-</g>
-
-<!-- cord entering key -->
-<path d="M94 64C86 66 80 72 80 80V86"
-      stroke="#613583"
-      stroke-width="10"
-      stroke-linecap="round"/>
-
-<!-- K -->
-<path d="M40 50V74"
-      stroke="#F8E45C"
-      stroke-width="8"
-      stroke-linecap="round"/>
-
-<path d="M64 50L48 62L66 74"
-      stroke="#F6D32D"
-      stroke-width="8"
-      stroke-linecap="round"
-      stroke-linejoin="round"/>
-
+<svg width="100%" height="100%" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b6a85"/>
+      <stop offset="100%" stop-color="#4b5870"/>
+    </linearGradient>
+    <linearGradient id="strap" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7fa6d6"/>
+      <stop offset="100%" stop-color="#95b8dd"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f1f4f8"/>
+      <stop offset="100%" stop-color="#dbe1ea"/>
+    </linearGradient>
+    <linearGradient id="devAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#88c0d0"/>
+      <stop offset="100%" stop-color="#5e81ac"/>
+    </linearGradient>
+  </defs>
+  <!-- Body -->
+  <rect x="12" y="12" width="104" height="104" rx="10" fill="url(#bg)"/>
+  <!-- Top detail -->
+  <rect x="27.5" y="18.75" width="72" height="8" rx="4" fill="#ffffff" opacity="0.08"/>
+  <!-- Lanyard -->
+  <path    d="M48 34       C38 50, 41 72, 58 89       C61 92, 64 95, 64 95       C64 95, 67 92, 70 89       C87 72, 90 50, 80 34"    fill="none"    stroke="url(#strap)"    stroke-width="9"    stroke-linecap="round"    stroke-linejoin="round"/>
+  <!-- Ring -->
+  <circle cx="64.8" cy="112" r="9" fill="none" stroke="url(#metal)" stroke-width="3.5"/>
+  <!-- Connector (dev accent) -->
+  <rect x="54.5" y="93" width="20" height="10" rx="3" fill="url(#devAccent)"/>
+  <!-- Tiny code mark -->
+  <g stroke="#2e3440" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M61.5 95.9 L59.6 98 L61.5 100.1"/>
+    <path d="M67.5 95.9 L69.4 98 L67.5 100.1"/>
+  </g>
 </svg>

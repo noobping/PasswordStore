@@ -1,21 +1,28 @@
-<svg width="100%" height="100%" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
-<!-- Cord back loop -->
-<path d="M88 24 C100 24 108 33 108 45 C108 56 101 65 91 67" stroke="#9141AC" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" transform="translate(4.298271604938272 -0.2528395061728396) scale(1)"/>
-<!-- Cord entering the key -->
-<path d="M91 67 C85 69 81 74 81 79 V84" stroke="#613583" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-<!-- Key front/profile -->
-<path d="M24 44 H84 C94.493 44 103 52.507 103 63 V87 C103 97.493 94.493 106 84 106 H24 C13.507 106 5 97.493 5 87 V63 C5 52.507 13.507 44 24 44Z" fill="#1A5FB4" transform="translate(7.079506172839507 8.849382716049387) scale(1)"/>
-<!-- Key top surface -->
-<path d="M24 22 H84 C94.493 22 103 30.507 103 41 V69 C103 79.493 94.493 88 84 88 H24 C13.507 88 5 79.493 5 69 V41 C5 30.507 13.507 22 24 22Z" fill="#62A0EA" transform="translate(6.573827160493828 5.3096296296296295) scale(1)"/>
-<!-- Split line between top and front -->
-<path d="M5 69 C5 79.493 13.507 88 24 88 H84 C94.493 88 103 79.493 103 69" stroke="#3584E4" stroke-width="2" stroke-linecap="round" transform="translate(7.079506172839507 6.320987654320987) scale(1)"/>
-<!-- Inner highlight groove -->
-<path d="M31 35 H75 C81.075 35 86 39.925 86 46 V53" stroke="#99C1F1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" transform="translate(2.7812345679012345 4.551111111111111) scale(1)"/>
-<!-- Main K mark -->
-<path d="M38 44V66" stroke="#F8E45C" stroke-width="8" stroke-linecap="round" transform="translate(6.573827160493827 7.58518518518518) scale(1)"/>
-<path d="M61 44 L46 55 L63 66" stroke="#F6D32D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" transform="translate(5.562469135802469 7.838024691358024) scale(1)"/>
-<!-- Plug head -->
-<rect x="85" y="12" width="18" height="14" rx="4" fill="#C061CB" transform="translate(-0.7585185185185186 5.562469135802469) scale(1)"/>
-<rect x="89" y="8" width="3" height="8" rx="1.5" fill="#C061CB" transform="translate(-1.0113580246913576 3.7925925925925936) scale(1)"/>
-<rect x="96" y="8" width="3" height="8" rx="1.5" fill="#C061CB" transform="translate(-1.5170370370370372 4.045432098765432) scale(1)"/>
+<svg width="100%" height="100%" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b6a85"/>
+      <stop offset="100%" stop-color="#4b5870"/>
+    </linearGradient>
+    <linearGradient id="strap" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7fa6d6"/>
+      <stop offset="100%" stop-color="#95b8dd"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f1f4f8"/>
+      <stop offset="100%" stop-color="#dbe1ea"/>
+    </linearGradient>
+  </defs>
+  <!-- Body -->
+  <rect x="12" y="12" width="104" height="104" rx="10" fill="url(#bg)" stroke="#ffffff" stroke-opacity="0.08"/>
+  <!-- Top detail (shifted up) -->
+  <rect x="26" y="19" width="72" height="8" rx="4" fill="#ffffff" opacity="0.08" transform="translate(1.517037037037037 -0.2528395061728395) scale(1)"/>
+  <!-- Lanyard (shifted up slightly) -->
+  <path d="M48 34 C38 50, 41 72, 58 89 C61 92, 64 95, 64 95 C64 95, 67 92, 70 89 C87 72, 90 50, 80 34" fill="none" stroke="url(#strap)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Connector -->
+  <rect x="54.5" y="93" width="20" height="10" rx="3" fill="#4b556b"/>
+  <!-- Clip -->
+  <rect x="57.8" y="97" width="14" height="9" rx="3" fill="url(#metal)"/>
+  <!-- Ring -->
+  <circle cx="64.8" cy="112" r="9" fill="none" stroke="url(#metal)" stroke-width="3.5"/>
 </svg>

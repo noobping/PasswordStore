@@ -71,6 +71,15 @@
   </screenshots>
 
   <releases>
+    <release version="0.9.1" date="2026-03-18">
+      <description>
+        <ul>
+          <li>Add the option to copy the logs</li>
+          <li>Fix optional Git synchronization</li>
+          <li>Changed the app icon to a keycord</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-03-17">
       <description>
         <ul>

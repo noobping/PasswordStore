@@ -90,6 +90,19 @@ fn git_commit_subjects(path: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
+fn git_status_porcelain(path: &Path) -> Result<String, String> {
+    let output = ensure_success(
+        "git status",
+        Command::new("git")
+            .args(["-C"])
+            .arg(path)
+            .args(["status", "--porcelain=v1", "--untracked-files=all"])
+            .output()
+            .map_err(|err| format!("Failed to start git status: {err}"))?,
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn import_public_key(bytes: &[u8]) -> Result<(), String> {
     let mut child = Command::new("gpg")
         .args(["--batch", "--yes", "--import"])
@@ -266,6 +279,10 @@ impl SystemBackendTestEnv {
 
     pub fn store_git_commit_subjects(&self) -> Result<Vec<String>, String> {
         git_commit_subjects(self.store_root())
+    }
+
+    pub fn store_git_status_porcelain(&self) -> Result<String, String> {
+        git_status_porcelain(self.store_root())
     }
 
     pub fn store_git_head_author(&self) -> Result<String, String> {

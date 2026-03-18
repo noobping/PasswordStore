@@ -22,7 +22,7 @@ use adw::{
     ActionRow, ApplicationWindow, Dialog, EntryRow, HeaderBar, NavigationPage, NavigationView,
     PreferencesGroup, PreferencesPage, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -124,12 +124,33 @@ fn repository_subtitle(status: &StoreGitRepositoryStatus) -> String {
     if !status.has_repository {
         return "No Git repository yet. Add a remote to initialize one.".to_string();
     }
+    if status.dirty && status.has_outgoing_commits && status.has_incoming_commits {
+        return "Repository found. Local changes must be committed or discarded before sync, and local and remote commits are waiting to sync."
+            .to_string();
+    }
+    if status.dirty && status.has_outgoing_commits {
+        return "Repository found. Local changes must be committed or discarded before sync, and local commits are waiting to sync."
+            .to_string();
+    }
+    if status.dirty && status.has_incoming_commits {
+        return "Repository found. Local changes must be committed or discarded before sync, and remote commits are waiting to sync."
+            .to_string();
+    }
     if status.dirty {
         return "Repository found. Local changes must be committed or discarded before sync."
             .to_string();
     }
 
     match &status.head {
+        StoreGitHead::Branch(_) if status.has_outgoing_commits && status.has_incoming_commits => {
+            "Repository found. Local and remote commits are waiting to sync.".to_string()
+        }
+        StoreGitHead::Branch(_) if status.has_outgoing_commits => {
+            "Repository found. Local commits are waiting to sync.".to_string()
+        }
+        StoreGitHead::Branch(_) if status.has_incoming_commits => {
+            "Repository found. Remote commits are waiting to sync.".to_string()
+        }
         StoreGitHead::Branch(_) => "Repository found and ready for remote management.".to_string(),
         StoreGitHead::UnbornBranch(branch) => {
             format!("Repository found. Create the first commit on '{branch}' before syncing.")
@@ -153,6 +174,16 @@ fn branch_subtitle(status: &StoreGitRepositoryStatus) -> String {
 }
 
 fn remote_count_subtitle(status: &StoreGitRepositoryStatus) -> String {
+    if status.has_outgoing_commits && status.has_incoming_commits {
+        return "Local and remote commits are waiting to sync.".to_string();
+    }
+    if status.has_outgoing_commits {
+        return "Local commits are waiting to sync.".to_string();
+    }
+    if status.has_incoming_commits {
+        return "Remote commits are waiting to sync.".to_string();
+    }
+
     match status.remotes.len() {
         0 => "No remotes configured.".to_string(),
         1 => "1 remote configured.".to_string(),
@@ -178,11 +209,34 @@ fn sync_subtitle(status: &StoreGitRepositoryStatus) -> String {
     if status.remotes.is_empty() {
         return "Add at least one remote before syncing.".to_string();
     }
+    if status.dirty && status.has_outgoing_commits && status.has_incoming_commits {
+        return "Commit or discard local changes before syncing. Local and remote commits are also waiting to sync."
+            .to_string();
+    }
+    if status.dirty && status.has_outgoing_commits {
+        return "Commit or discard local changes before syncing. Local commits are also waiting to sync."
+            .to_string();
+    }
+    if status.dirty && status.has_incoming_commits {
+        return "Commit or discard local changes before syncing. Remote commits are also waiting to sync."
+            .to_string();
+    }
     if status.dirty {
         return "Commit or discard local changes before syncing.".to_string();
     }
 
     match &status.head {
+        StoreGitHead::Branch(branch)
+            if status.has_outgoing_commits && status.has_incoming_commits =>
+        {
+            format!("Local and remote commits are waiting to sync on '{branch}'.")
+        }
+        StoreGitHead::Branch(branch) if status.has_outgoing_commits => {
+            format!("Local commits are ready to push on '{branch}'.")
+        }
+        StoreGitHead::Branch(branch) if status.has_incoming_commits => {
+            format!("Remote commits are ready to merge into '{branch}'.")
+        }
         StoreGitHead::Branch(branch) => {
             format!("Fetch, merge, and push the current '{branch}' branch across all remotes.")
         }
@@ -193,12 +247,31 @@ fn sync_subtitle(status: &StoreGitRepositoryStatus) -> String {
     }
 }
 
-fn store_git_row_subtitle(store: &str) -> String {
-    match store_git_repository_status(store) {
-        Ok(status) if sync_allowed(&status) => remote_count_subtitle(&status),
-        Ok(status) => sync_subtitle(&status),
-        Err(_) => "Couldn't inspect Git remotes.".to_string(),
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StoreGitRowState {
+    subtitle: String,
+    enabled: bool,
+}
+
+fn store_git_row_state(status: Result<StoreGitRepositoryStatus, String>) -> StoreGitRowState {
+    match status {
+        Ok(status) if sync_allowed(&status) => StoreGitRowState {
+            subtitle: remote_count_subtitle(&status),
+            enabled: true,
+        },
+        Ok(status) => StoreGitRowState {
+            subtitle: sync_subtitle(&status),
+            enabled: true,
+        },
+        Err(_) => StoreGitRowState {
+            subtitle: "Couldn't inspect Git remotes.".to_string(),
+            enabled: false,
+        },
     }
+}
+
+fn store_git_row_state_for_store(store: &str) -> StoreGitRowState {
+    store_git_row_state(store_git_repository_status(store))
 }
 
 fn dialog_content_shell(
@@ -220,6 +293,51 @@ fn dialog_content_shell(
     shell
 }
 
+fn next_available_remote_name(base: &str, existing_names: &[String]) -> String {
+    if !existing_names
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(base))
+    {
+        return base.to_string();
+    }
+
+    let mut suffix = 2;
+    loop {
+        let candidate = format!("{base}-{suffix}");
+        if !existing_names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&candidate))
+        {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+fn suggested_remote_name_from_url(url: &str, existing_names: &[String]) -> Option<String> {
+    (!url.trim().is_empty()).then(|| next_available_remote_name("origin", existing_names))
+}
+
+fn remote_name_exists(name: &str, existing_names: &[String]) -> bool {
+    let name = name.trim();
+    existing_names
+        .iter()
+        .any(|existing_name| existing_name.eq_ignore_ascii_case(name))
+}
+
+fn next_autofilled_remote_name(
+    current_value: &str,
+    previous_autofill: Option<&str>,
+    suggestion: Option<String>,
+) -> Option<String> {
+    let current_value = current_value.trim();
+    if !(current_value.is_empty() || previous_autofill == Some(current_value)) {
+        return None;
+    }
+
+    Some(suggestion.unwrap_or_default())
+}
+
 fn present_remote_dialog(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -227,9 +345,11 @@ fn present_remote_dialog(
     title: &str,
     initial_name: &str,
     initial_url: &str,
+    existing_names: Vec<String>,
     _submit_label: &str,
     on_submit: impl Fn(String, String) -> Result<(), String> + 'static,
 ) {
+    let existing_names = Rc::new(existing_names);
     let name_row = EntryRow::new();
     name_row.set_title("Remote name");
     name_row.set_text(initial_name);
@@ -237,6 +357,36 @@ fn present_remote_dialog(
     url_row.set_title("Remote URL");
     url_row.set_text(initial_url);
     url_row.set_show_apply_button(true);
+
+    let syncing = Rc::new(Cell::new(false));
+    let last_autofilled_name = Rc::new(RefCell::new(None::<String>));
+    {
+        let name_row = name_row.clone();
+        let syncing = syncing.clone();
+        let last_autofilled_name = last_autofilled_name.clone();
+        let existing_names = existing_names.clone();
+        url_row.connect_changed(move |row| {
+            if syncing.get() {
+                return;
+            }
+
+            let next_name = next_autofilled_remote_name(
+                &name_row.text(),
+                last_autofilled_name.borrow().as_deref(),
+                suggested_remote_name_from_url(&row.text(), existing_names.as_slice()),
+            );
+            let Some(name) = next_name else {
+                last_autofilled_name.borrow_mut().take();
+                return;
+            };
+
+            let tracked_name = (!name.is_empty()).then_some(name.clone());
+            syncing.set(true);
+            name_row.set_text(&name);
+            syncing.set(false);
+            last_autofilled_name.replace(tracked_name);
+        });
+    }
 
     let group = PreferencesGroup::builder().build();
     group.add(&name_row);
@@ -253,11 +403,16 @@ fn present_remote_dialog(
 
     let dialog_for_submit = dialog.clone();
     let overlay_for_submit = overlay.clone();
+    let existing_names_for_submit = existing_names.clone();
     url_row.connect_apply(move |row| {
         let name = name_row.text().trim().to_string();
         let url = row.text().trim().to_string();
         if name.is_empty() {
             overlay_for_submit.add_toast(Toast::new("Enter a remote name."));
+            return;
+        }
+        if remote_name_exists(&name, existing_names_for_submit.as_slice()) {
+            overlay_for_submit.add_toast(Toast::new("That remote name already exists."));
             return;
         }
         if url.is_empty() {
@@ -316,7 +471,13 @@ fn sync_related_views(state: &StoreGitPageState) {
     activate_widget_action(&state.window, "win.reload-password-list");
 }
 
-fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &str) {
+fn append_remote_row(
+    state: &StoreGitPageState,
+    store: &str,
+    name: &str,
+    url: &str,
+    existing_names: Vec<String>,
+) {
     let row = ActionRow::builder().title(name).subtitle(url).build();
     row.set_activatable(false);
     row.add_prefix(&dim_label_icon("git-symbolic"));
@@ -344,6 +505,7 @@ fn append_remote_row(state: &StoreGitPageState, store: &str, name: &str, url: &s
             "Edit remote",
             &current_name,
             &current_url,
+            existing_names.clone(),
             "Save",
             move |next_name, next_url| {
                 update_store_git_remote(
@@ -400,6 +562,11 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
 
     match store_git_repository_status(&store) {
         Ok(status) => {
+            let existing_remote_names = status
+                .remotes
+                .iter()
+                .map(|remote| remote.name.clone())
+                .collect::<Vec<_>>();
             if status.remotes.is_empty() {
                 append_status_row(
                     &state.remotes_list,
@@ -409,7 +576,19 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                 );
             } else {
                 for remote in &status.remotes {
-                    append_remote_row(state, &store, &remote.name, &remote.url);
+                    append_remote_row(
+                        state,
+                        &store,
+                        &remote.name,
+                        &remote.url,
+                        existing_remote_names
+                            .iter()
+                            .filter(|existing_name| {
+                                !existing_name.eq_ignore_ascii_case(&remote.name)
+                            })
+                            .cloned()
+                            .collect(),
+                    );
                 }
             }
 
@@ -430,6 +609,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                         "Add remote",
                         "",
                         "",
+                        existing_remote_names.clone(),
                         "Add",
                         move |name, url| {
                             add_store_git_remote(&store_for_submit, &name, &url)?;
@@ -496,7 +676,9 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                                     log_error(format!(
                                         "Failed to sync password store '{store_for_result}': {err}"
                                     ));
-                                    state_for_result.overlay.add_toast(Toast::new(&err));
+                                    state_for_result
+                                        .overlay
+                                        .add_toast(Toast::new("Couldn't sync store."));
                                 }
                             }
                         },
@@ -566,16 +748,113 @@ pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
     }
 
     let store = request.store.clone();
-    let subtitle = store_git_row_subtitle(&store);
+    let row_state = store_git_row_state_for_store(&store);
     let git_page = state.platform.store_git_page.clone();
     let row = append_action_row_with_button(
         &state.platform.git_list,
         "Git remotes",
-        &subtitle,
+        &row_state.subtitle,
         "go-next-symbolic",
         move || {
             show_store_git_page(&git_page, store.clone());
         },
     );
     row.add_prefix(&dim_label_icon("git-symbolic"));
+    row.set_sensitive(row_state.enabled);
+    row.set_activatable(row_state.enabled);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        next_autofilled_remote_name, next_available_remote_name, remote_count_subtitle,
+        remote_name_exists, store_git_row_state, suggested_remote_name_from_url, StoreGitHead,
+        StoreGitRepositoryStatus,
+    };
+    use crate::support::git::GitRemote;
+
+    #[test]
+    fn git_row_is_disabled_when_git_state_cannot_be_inspected() {
+        let state = store_git_row_state(Err("boom".to_string()));
+
+        assert_eq!(state.subtitle, "Couldn't inspect Git remotes.");
+        assert!(!state.enabled);
+    }
+
+    #[test]
+    fn git_row_stays_enabled_when_git_state_is_available() {
+        let status = StoreGitRepositoryStatus {
+            has_repository: true,
+            head: StoreGitHead::Branch("main".to_string()),
+            dirty: false,
+            has_outgoing_commits: false,
+            has_incoming_commits: false,
+            remotes: vec![GitRemote {
+                name: "origin".to_string(),
+                url: "ssh://example.test/repo.git".to_string(),
+            }],
+        };
+
+        let state = store_git_row_state(Ok(status.clone()));
+
+        assert_eq!(state.subtitle, remote_count_subtitle(&status));
+        assert!(state.enabled);
+    }
+
+    #[test]
+    fn remote_name_autofill_suggests_origin_for_non_empty_urls() {
+        assert_eq!(
+            suggested_remote_name_from_url("ssh://git@example.test/repo.git", &[]),
+            Some("origin".to_string())
+        );
+        assert_eq!(suggested_remote_name_from_url("", &[]), None);
+    }
+
+    #[test]
+    fn remote_name_autofill_only_updates_empty_or_last_autofilled_values() {
+        assert_eq!(
+            next_autofilled_remote_name(
+                "",
+                None,
+                suggested_remote_name_from_url("ssh://git@example.test/repo.git", &[]),
+            ),
+            Some("origin".to_string())
+        );
+        assert_eq!(
+            next_autofilled_remote_name(
+                "origin",
+                Some("origin"),
+                suggested_remote_name_from_url("ssh://git@example.test/other.git", &[]),
+            ),
+            Some("origin".to_string())
+        );
+        assert_eq!(
+            next_autofilled_remote_name(
+                "upstream",
+                Some("origin"),
+                suggested_remote_name_from_url("ssh://git@example.test/repo.git", &[]),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn remote_name_autofill_uses_the_next_available_origin_name() {
+        let existing = vec!["origin".to_string(), "origin-2".to_string()];
+
+        assert_eq!(next_available_remote_name("origin", &existing), "origin-3");
+        assert_eq!(
+            suggested_remote_name_from_url("ssh://git@example.test/repo.git", &existing),
+            Some("origin-3".to_string())
+        );
+    }
+
+    #[test]
+    fn remote_name_validation_rejects_existing_names_case_insensitively() {
+        let existing = vec!["origin".to_string(), "upstream".to_string()];
+
+        assert!(remote_name_exists("origin", &existing));
+        assert!(remote_name_exists("ORIGIN", &existing));
+        assert!(!remote_name_exists("origin-2", &existing));
+    }
 }

@@ -14,6 +14,7 @@ use sequoia_openpgp::policy::StandardPolicy;
 use sequoia_openpgp::serialize::stream::{Armorer, Message, Signer};
 use sequoia_openpgp::{self as openpgp, Cert};
 use std::io::Cursor;
+use std::path::Path;
 use std::process::{Command, Output};
 use std::sync::Arc;
 
@@ -56,10 +57,24 @@ fn run_store_git_command(
     options: CommandLogOptions,
 ) -> Result<Output, String> {
     let mut cmd = Preferences::git_command();
-    cmd.arg("-C").arg(store_root);
+    cmd.arg("--git-dir").arg(Path::new(store_root).join(".git"));
     configure(&mut cmd);
     run_command_output(&mut cmd, context, options)
         .map_err(|err| format!("Failed to run git command: {err}"))
+}
+
+fn run_store_git_work_tree_command(
+    store_root: &str,
+    context: &str,
+    configure: impl FnOnce(&mut Command),
+    options: CommandLogOptions,
+) -> Result<Output, String> {
+    let mut cmd = Preferences::git_command();
+    cmd.arg("--git-dir").arg(Path::new(store_root).join(".git"));
+    cmd.arg("--work-tree").arg(store_root);
+    configure(&mut cmd);
+    run_command_output(&mut cmd, context, options)
+        .map_err(|err| format!("Failed to run work-tree git command: {err}"))
 }
 
 fn run_store_git_command_with_input(
@@ -69,14 +84,14 @@ fn run_store_git_command_with_input(
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
     let mut cmd = Preferences::git_command();
-    cmd.arg("-C").arg(store_root);
+    cmd.arg("--git-dir").arg(Path::new(store_root).join(".git"));
     configure(&mut cmd);
     run_command_with_input(&mut cmd, context, input, CommandLogOptions::DEFAULT)
         .map_err(|err| format!("Failed to run git command: {err}"))
 }
 
 fn stage_git_paths(store_root: &str, paths: &[String]) -> Result<(), String> {
-    let output = run_store_git_command(
+    let output = run_store_git_work_tree_command(
         store_root,
         "Stage password store Git changes",
         |cmd| {
@@ -92,7 +107,7 @@ fn stage_git_paths(store_root: &str, paths: &[String]) -> Result<(), String> {
 }
 
 fn staged_git_paths_have_changes(store_root: &str, paths: &[String]) -> Result<bool, String> {
-    let output = run_store_git_command(
+    let output = run_store_git_work_tree_command(
         store_root,
         "Check staged password store Git changes",
         |cmd| {

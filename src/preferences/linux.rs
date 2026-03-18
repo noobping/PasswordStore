@@ -7,6 +7,9 @@ fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> C
     let mut cmd = if env::var("FLATPAK_ID").is_ok() {
         let mut cmd = Command::new("flatpak-spawn");
         cmd.arg("--host").arg(&program).args(&args);
+        // Host-spawned commands inherit the caller's cwd by default, which can
+        // be a sandbox-only path. Use a stable directory instead.
+        cmd.current_dir("/");
         cmd
     } else {
         let mut cmd = Command::new(&program);
@@ -38,12 +41,18 @@ fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> C
 }
 
 pub(super) fn remote_git_command() -> Command {
-    Command::new("git")
+    build_command("git".to_string(), Vec::new(), &[])
+}
+
+fn local_git_command() -> Command {
+    let mut cmd = Command::new("git");
+    cmd.current_dir("/");
+    cmd
 }
 
 impl Preferences {
     pub fn git_command() -> Command {
-        Command::new("git")
+        local_git_command()
     }
 
     pub fn remote_git_command() -> Command {
@@ -82,7 +91,7 @@ impl Preferences {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_command, remote_git_command};
+    use super::{build_command, local_git_command, remote_git_command};
 
     #[test]
     fn linux_host_command_sets_requested_environment_variables() {
@@ -112,8 +121,32 @@ mod tests {
     fn linux_remote_git_uses_system_git() {
         let cmd = remote_git_command();
 
+        #[cfg(all(target_os = "linux", feature = "flatpak"))]
+        {
+            assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
+            assert_eq!(
+                cmd.get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                vec!["--host".to_string(), "git".to_string()]
+            );
+            assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
+        }
+
+        #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+        {
+            assert_eq!(cmd.get_program().to_string_lossy(), "git");
+            assert_eq!(cmd.get_args().count(), 0);
+        }
+    }
+
+    #[test]
+    fn linux_local_git_uses_a_stable_working_directory() {
+        let cmd = local_git_command();
+
         assert_eq!(cmd.get_program().to_string_lossy(), "git");
         assert_eq!(cmd.get_args().count(), 0);
+        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
     }
 
     #[test]
@@ -134,6 +167,7 @@ mod tests {
                     "--version".to_string()
                 ]
             );
+            assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
         }
 
         #[cfg(not(all(target_os = "linux", feature = "flatpak")))]

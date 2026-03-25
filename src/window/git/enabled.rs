@@ -85,6 +85,7 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "open-new-password",
         "toggle-find",
         "open-git",
+        "add-pass-field",
         "open-raw-pass-file",
         "clean-pass-file",
         "git-clone",

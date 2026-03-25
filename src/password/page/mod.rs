@@ -32,8 +32,8 @@ use adw::{Dialog, Toast};
 use std::string::ToString;
 
 use self::editor::{
-    add_empty_otp_secret as add_empty_otp_secret_to_editor, current_editor_contents,
-    structured_editor_contents, sync_editor_contents,
+    add_empty_dynamic_field, add_empty_otp_secret as add_empty_otp_secret_to_editor,
+    current_editor_contents, focus_field_add_row, structured_editor_contents, sync_editor_contents,
 };
 use self::linux as platform;
 use self::platform::handle_open_password_entry_error;
@@ -318,6 +318,25 @@ pub fn add_empty_otp_secret(state: &PasswordPageState) {
     }
 
     add_empty_otp_secret_to_editor(state);
+}
+
+pub fn focus_add_pass_field_input(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.entry.is_visible() {
+        return;
+    }
+
+    focus_field_add_row(state);
+}
+
+pub fn add_pass_field_from_input(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.entry.is_visible() {
+        return;
+    }
+
+    match add_empty_dynamic_field(state, &state.field_add_row.text(), None) {
+        Ok(()) => state.field_add_row.set_text(""),
+        Err(message) => state.overlay.add_toast(Toast::new(message)),
+    }
 }
 
 pub fn clean_pass_file(state: &PasswordPageState) {

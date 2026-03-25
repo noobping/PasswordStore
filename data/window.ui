@@ -421,6 +421,17 @@
                                       </object>
                                     </child>
                                     <child>
+                                      <object class="AdwEntryRow" id="add_field_row">
+                                        <property name="visible">false</property>
+                                        <property name="title" translatable="yes">Add field</property>
+                                        <property name="show-apply-button">true</property>
+                                        <property name="editable">true</property>
+                                        <property name="margin-start">15</property>
+                                        <property name="margin-end">15</property>
+                                        <property name="margin-bottom">6</property>
+                                      </object>
+                                    </child>
+                                    <child>
                                       <object class="GtkButton" id="add_otp_button">
                                         <property name="visible">false</property>
                                         <property name="label" translatable="yes">Add OTP secret</property>

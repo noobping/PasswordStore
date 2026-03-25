@@ -5,9 +5,9 @@ use crate::password::new_item::{
     NewPasswordPopoverState,
 };
 use crate::password::page::{
-    add_empty_otp_secret, begin_new_password_entry, clean_pass_file, generate_password_entry,
-    open_password_entry_page, save_current_password_entry, show_raw_pass_file_page,
-    PasswordPageState,
+    add_empty_otp_secret, add_pass_field_from_input, begin_new_password_entry, clean_pass_file,
+    focus_add_pass_field_input, generate_password_entry, open_password_entry_page,
+    save_current_password_entry, show_raw_pass_file_page, PasswordPageState,
 };
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
@@ -98,6 +98,14 @@ pub(super) fn register_password_page_actions(
 ) {
     {
         let page_state = page_state.clone();
+        let add_field_row = page_state.field_add_row.clone();
+        add_field_row.connect_apply(move |_| {
+            add_pass_field_from_input(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
         register_window_action(window, "save-password", move || {
             save_current_password_entry(&page_state);
         });
@@ -114,6 +122,13 @@ pub(super) fn register_password_page_actions(
         let page_state = page_state.clone();
         register_window_action(window, "add-otp-secret", move || {
             add_empty_otp_secret(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
+        register_window_action(window, "add-pass-field", move || {
+            focus_add_pass_field_input(&page_state);
         });
     }
 

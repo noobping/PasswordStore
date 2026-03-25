@@ -523,7 +523,7 @@ fn append_remote_row(
     row.set_activatable(false);
     row.add_prefix(&dim_label_icon("git-symbolic"));
 
-    let edit_button = flat_icon_button_with_tooltip("document-save-symbolic", "Edit remote");
+    let edit_button = flat_icon_button_with_tooltip("edit-symbolic", "Edit remote");
     row.add_suffix(&edit_button);
 
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove remote");

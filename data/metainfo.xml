@@ -32,8 +32,9 @@
     <ul>
       <li>Generate passwords and copy usernames, secrets, and one-time codes</li>
       <li>Search across multiple stores</li>
-      <li>Find outdated accounts and detect weak passwords</li>
-      <li>Work with structured fields or raw pass-file text</li>
+      <li>Identify outdated accounts and weak passwords</li>
+      <li>Support both structured fields and raw pass file text</li>
+      <li>Optional multi-layered encryption</li>
       <li>Optional Git and GPG synchronization</li>
       <li>Manage recipients and private keys</li>
       <li>Sign commits and manage Git remotes</li>

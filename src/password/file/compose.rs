@@ -105,6 +105,11 @@ pub fn apply_pass_file_template_contents(contents: &str, template: &str) -> Stri
     structured_pass_contents_from_lines(&password, &current_lines)
 }
 
+pub fn pass_file_has_missing_template_fields(contents: &str, template: &str) -> bool {
+    !new_pass_file_contents_from_template(template).is_empty()
+        && apply_pass_file_template_contents(contents, template) != contents
+}
+
 pub fn new_pass_file_contents_from_template(template: &str) -> String {
     let template = template.trim_matches('\n');
     if template.is_empty() {

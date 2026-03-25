@@ -7,8 +7,8 @@ use crate::password::new_item::{
 use crate::password::page::{
     add_empty_otp_secret, add_pass_field_from_input, apply_pass_file_template,
     begin_new_password_entry, clean_pass_file, focus_add_pass_field_input, generate_password_entry,
-    open_password_entry_page, save_current_password_entry, show_raw_pass_file_page,
-    PasswordPageState,
+    open_password_entry_page, refresh_apply_template_button, save_current_password_entry,
+    show_raw_pass_file_page, PasswordPageState,
 };
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
@@ -97,6 +97,14 @@ pub(super) fn register_password_page_actions(
     window: &adw::ApplicationWindow,
     page_state: &PasswordPageState,
 ) {
+    {
+        let page_state = page_state.clone();
+        let buffer = page_state.text.buffer();
+        buffer.connect_changed(move |_| {
+            refresh_apply_template_button(&page_state);
+        });
+    }
+
     {
         let page_state = page_state.clone();
         let add_field_row = page_state.field_add_row.clone();

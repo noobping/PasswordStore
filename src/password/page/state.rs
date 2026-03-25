@@ -84,7 +84,7 @@ pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
     state.entry.set_visible(true);
     state.raw.set_visible(true);
     state.field_add_row.set_visible(true);
-    state.template_button.set_visible(true);
+    state.template_button.set_visible(false);
     state.clean_button.set_visible(true);
     state.otp_add_button.set_visible(false);
     hide_password_generator_settings(state);

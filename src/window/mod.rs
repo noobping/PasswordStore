@@ -17,7 +17,8 @@ pub use self::git::clone_store_repository;
 mod tests {
     use crate::password::file::{
         apply_pass_file_template_contents, clean_pass_file_contents,
-        new_pass_file_contents_from_template, parse_structured_pass_lines, structured_otp_line,
+        new_pass_file_contents_from_template, parse_structured_pass_lines,
+        pass_file_has_missing_template_fields, structured_otp_line,
         structured_pass_contents_from_values, structured_username_value, uri_to_open,
         OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
     };
@@ -184,5 +185,17 @@ mod tests {
             "secret\nUser: alice\notpauth://totp/Example?secret=ABC\nurl: https://example.com\napi key:\nnotes"
                 .to_string()
         );
+    }
+
+    #[test]
+    fn template_button_hides_when_template_is_empty_or_already_applied() {
+        assert!(!pass_file_has_missing_template_fields(
+            "secret\nusername:",
+            ""
+        ));
+        assert!(!pass_file_has_missing_template_fields(
+            "secret\nusername:\nurl: https://example.com",
+            "username:\nurl: https://example.com"
+        ));
     }
 }

@@ -5,7 +5,8 @@ mod state;
 
 use super::file::{
     apply_pass_file_template_contents, clean_pass_file_contents,
-    new_pass_file_contents_from_template, structured_pass_contents,
+    new_pass_file_contents_from_template, pass_file_has_missing_template_fields,
+    structured_pass_contents,
 };
 use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
@@ -340,6 +341,10 @@ pub fn add_pass_field_from_input(state: &PasswordPageState) {
     }
 }
 
+pub fn refresh_apply_template_button(state: &PasswordPageState) {
+    sync_apply_template_button(state, &current_editor_contents(state));
+}
+
 pub fn apply_pass_file_template(state: &PasswordPageState) {
     let editing_structured = visible_navigation_page_is(&state.nav, &state.page);
     let editing_raw = visible_navigation_page_is(&state.nav, &state.raw_page);
@@ -365,6 +370,15 @@ pub fn apply_pass_file_template(state: &PasswordPageState) {
     state
         .overlay
         .add_toast(Toast::new("Added missing template fields."));
+}
+
+fn sync_apply_template_button(state: &PasswordPageState, contents: &str) {
+    state
+        .template_button
+        .set_visible(pass_file_has_missing_template_fields(
+            contents,
+            &Preferences::new().new_pass_file_template(),
+        ));
 }
 
 pub fn clean_pass_file(state: &PasswordPageState) {

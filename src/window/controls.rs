@@ -438,6 +438,7 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-store-picker", &["<primary><shift>n"]);
     app.set_accels_for_action("win.open-raw-pass-file", &["<primary><shift>r"]);
     app.set_accels_for_action("win.add-otp-secret", &["<primary><shift>o"]);
+    app.set_accels_for_action("win.clean-pass-file", &["<primary><shift>k"]);
     app.set_accels_for_action("win.generate-password", &["<primary><shift>g"]);
     app.set_accels_for_action("win.open-git", &["<primary>g"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>comma"]);

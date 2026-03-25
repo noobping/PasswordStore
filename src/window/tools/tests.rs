@@ -2,7 +2,7 @@ use super::field_values::{
     field_value_catalog_from_entries, format_exact_field_query, matching_items_subtitle,
     unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
 };
-use super::tool_rows_enabled;
+use super::{tool_browser_flow_is_visible, tool_rows_enabled};
 use crate::password::file::SearchablePassField;
 use std::collections::BTreeMap;
 
@@ -111,4 +111,20 @@ fn tool_rows_disable_while_any_tool_is_busy() {
     assert!(!tool_rows_enabled(true, false));
     assert!(!tool_rows_enabled(false, true));
     assert!(!tool_rows_enabled(true, true));
+}
+
+#[test]
+fn tool_browser_flow_stays_visible_while_a_password_entry_is_open() {
+    assert!(tool_browser_flow_is_visible(
+        false, false, false, true, false, false
+    ));
+    assert!(tool_browser_flow_is_visible(
+        false, false, false, false, true, false
+    ));
+    assert!(tool_browser_flow_is_visible(
+        false, false, false, false, false, true
+    ));
+    assert!(!tool_browser_flow_is_visible(
+        false, false, false, false, false, false
+    ));
 }

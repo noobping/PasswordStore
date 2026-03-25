@@ -422,7 +422,7 @@ fn first_visible_row(list: &ListBox) -> Option<ListBoxRow> {
     let mut index = 0;
     loop {
         let row = list.row_at_index(index)?;
-        if row.is_visible() {
+        if row.is_child_visible() {
             return Some(row);
         }
         index += 1;

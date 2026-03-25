@@ -129,7 +129,7 @@ fn placeholder_state_for_list(list: &ListBox) -> Option<PasswordListPlaceholderS
 fn has_visible_rows(list: &ListBox) -> bool {
     let mut index = 0;
     while let Some(row) = list.row_at_index(index) {
-        if row.is_visible() {
+        if row.is_child_visible() {
             return true;
         }
         index += 1;

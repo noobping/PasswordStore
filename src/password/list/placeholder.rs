@@ -17,16 +17,13 @@ pub(super) struct PasswordListPlaceholderState {
 }
 
 impl PasswordListPlaceholderState {
-    fn show_loading(&self, list: &ListBox) {
-        self.sync(
-            list,
-            PlaceholderPresentation {
-                icon_name: APP_ID,
-                title: LOADING_TITLE,
-                description: Some(LOADING_DESCRIPTION),
-                spinner: true,
-            },
-        );
+    fn show_loading(&self) {
+        self.show_status(PlaceholderPresentation {
+            icon_name: APP_ID,
+            title: LOADING_TITLE,
+            description: Some(LOADING_DESCRIPTION),
+            spinner: true,
+        });
     }
 
     fn show_resolved(&self, list: &ListBox, empty: bool, has_store_dirs: bool) {
@@ -63,6 +60,10 @@ impl PasswordListPlaceholderState {
             return;
         }
 
+        self.show_status(presentation);
+    }
+
+    fn show_status(&self, presentation: PlaceholderPresentation) {
         self.status.set_icon_name(Some(presentation.icon_name));
         self.status.set_title(presentation.title);
         self.status.set_description(presentation.description);
@@ -101,7 +102,7 @@ pub(super) fn register_placeholder_state(
 
 pub(super) fn show_loading_placeholder(list: &ListBox) {
     if let Some(state) = placeholder_state_for_list(list) {
-        state.show_loading(list);
+        state.show_loading();
         return;
     }
 

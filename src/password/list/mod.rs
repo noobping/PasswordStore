@@ -502,8 +502,8 @@ fn next_password_list_render_generation(current: Option<u64>) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_items_options, list_action_visibility, should_show_root_git_button,
-        next_password_list_render_generation, should_show_root_store_button, GitAvailability,
+        collect_items_options, list_action_visibility, next_password_list_render_generation,
+        should_show_root_git_button, should_show_root_store_button, GitAvailability,
         ListActionContext, ListActionVisibility, ListActionsMode, ListContents, StoreSetup,
         Visibility,
     };

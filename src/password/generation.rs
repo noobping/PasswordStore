@@ -1,6 +1,6 @@
 use adw::gtk::SpinButton;
-use rand::rngs::OsRng;
-use rand::seq::SliceRandom;
+use rand::seq::{IndexedRandom, SliceRandom};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -141,7 +141,7 @@ impl PasswordGenerationControls {
 pub fn generate_password(settings: &PasswordGenerationSettings) -> String {
     let settings = settings.normalized();
     let mut chars = Vec::with_capacity(settings.length as usize);
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
 
     append_random_chars(
         &mut chars,
@@ -180,13 +180,13 @@ pub fn generate_password(settings: &PasswordGenerationSettings) -> String {
     chars.into_iter().collect()
 }
 
-fn append_random_chars(output: &mut Vec<char>, pool: &[u8], count: usize, rng: &mut OsRng) {
+fn append_random_chars(output: &mut Vec<char>, pool: &[u8], count: usize, rng: &mut impl Rng) {
     for _ in 0..count {
         output.push(random_char(pool, rng));
     }
 }
 
-fn random_char(pool: &[u8], rng: &mut OsRng) -> char {
+fn random_char(pool: &[u8], rng: &mut impl Rng) -> char {
     *pool.choose(rng).expect("character pools are never empty") as char
 }
 

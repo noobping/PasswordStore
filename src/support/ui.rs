@@ -45,9 +45,9 @@ pub fn append_spinner_row(list: &ListBox) {
 
 pub fn wrapped_dialog_body(child: &impl IsA<adw::gtk::Widget>) -> ScrolledWindow {
     let clamp = Clamp::new();
-    clamp.set_maximum_size(560);
-    clamp.set_tightening_threshold(400);
-    clamp.set_size_request(420, -1);
+    clamp.set_maximum_size(800);
+    clamp.set_tightening_threshold(500);
+    clamp.set_size_request(360, -1);
     clamp.set_child(Some(child));
 
     ScrolledWindow::builder()

@@ -110,6 +110,7 @@ pub struct StoreRecipientsPlatformState {
     pub host_gpg_warning_row: ActionRow,
     pub add_group: PreferencesGroup,
     pub create_group: PreferencesGroup,
+    pub options_group: PreferencesGroup,
     pub git_group: PreferencesGroup,
     pub git_list: ListBox,
     pub add_hardware_key_row: ActionRow,
@@ -201,6 +202,7 @@ fn show_store_recipients_page(
     state.save_queued.set(false);
     state.platform.add_group.set_visible(true);
     state.platform.create_group.set_visible(true);
+    state.platform.options_group.set_visible(true);
     rebuild_store_recipients_list(state);
     sync_store_recipients_page_header(state);
 

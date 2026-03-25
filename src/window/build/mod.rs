@@ -43,7 +43,9 @@ use super::git::GitActionState;
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
 };
-use super::host_access::append_optional_host_access_group_row;
+use super::host_access::{
+    append_optional_host_access_group_row, append_optional_smartcard_access_row,
+};
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::{set_save_button_for_password, WindowNavigationState};
 use super::preferences::{
@@ -113,6 +115,17 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
         &widgets.sync_private_keys_with_host_row,
         &widgets.sync_private_keys_with_host_check,
         preferences,
+    );
+}
+
+fn initialize_store_recipients_permissions(widgets: &WindowWidgets) {
+    append_optional_smartcard_access_row(
+        &widgets.store_recipients_add_list,
+        &widgets.toast_overlay,
+        &[
+            &widgets.store_recipients_add_hardware_key_row,
+            &widgets.store_recipients_import_hardware_key_row,
+        ],
     );
 }
 
@@ -287,6 +300,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
     let store_git_page_state = store_git_page_state(&widgets);
     let store_recipients_page_state =
         build_store_recipients_page_state(&widgets, &store_git_page_state);
+    initialize_store_recipients_permissions(&widgets);
     let window_navigation_state = window_navigation_state(&widgets);
     let tools_page_state = ToolsPageState::new(
         &widgets.window,

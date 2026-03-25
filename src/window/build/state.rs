@@ -108,6 +108,7 @@ fn build_store_recipients_platform_state(
         host_gpg_warning_row: widgets.store_recipients_host_gpg_warning_row.clone(),
         add_group: widgets.store_recipients_add_group.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
+        options_group: widgets.store_recipients_options_group.clone(),
         git_group: widgets.store_recipients_git_group.clone(),
         git_list: widgets.store_recipients_git_list.clone(),
         add_hardware_key_row: widgets.store_recipients_add_hardware_key_row.clone(),

@@ -9,17 +9,16 @@ use crate::support::git::{
 };
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::{
-    append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
-    flat_icon_button_with_tooltip, navigation_stack_contains_page, push_navigation_page_if_needed,
-    reveal_navigation_page, visible_navigation_page_is,
+    append_action_row_with_button, append_info_row, clear_list_box, dialog_content_shell,
+    dim_label_icon, flat_icon_button_with_tooltip, navigation_stack_contains_page,
+    push_navigation_page_if_needed, reveal_navigation_page, visible_navigation_page_is,
 };
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
-use adw::glib::object::IsA;
 use adw::gtk::{Align, Box as GtkBox, Button, Label, ListBox, Orientation};
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, Dialog, EntryRow, HeaderBar, NavigationPage, NavigationView,
+    ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
     PreferencesGroup, PreferencesPage, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use std::cell::{Cell, RefCell};
@@ -274,25 +273,6 @@ fn store_git_row_state_for_store(store: &str) -> StoreGitRowState {
     store_git_row_state(store_git_repository_status(store))
 }
 
-fn dialog_content_shell(
-    title: &str,
-    subtitle: Option<&str>,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
-    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
-        window_title.set_subtitle(subtitle);
-    }
-
-    let header = HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-
-    let shell = GtkBox::new(Orientation::Vertical, 0);
-    shell.append(&header);
-    shell.append(child);
-    shell
-}
-
 fn next_available_remote_name(base: &str, existing_names: &[String]) -> String {
     if !existing_names
         .iter()
@@ -543,7 +523,7 @@ fn append_remote_row(
     row.set_activatable(false);
     row.add_prefix(&dim_label_icon("git-symbolic"));
 
-    let edit_button = flat_icon_button_with_tooltip("document-save-symbolic", "Edit remote");
+    let edit_button = flat_icon_button_with_tooltip("edit-symbolic", "Edit remote");
     row.add_suffix(&edit_button);
 
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove remote");

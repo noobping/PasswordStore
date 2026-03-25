@@ -1,6 +1,10 @@
-use adw::gtk::{Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, Spinner};
+use adw::glib::object::IsA;
+use adw::gtk::{
+    Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, PolicyType,
+    ScrolledWindow, Spinner,
+};
 use adw::prelude::*;
-use adw::{ActionRow, NavigationPage, NavigationView};
+use adw::{ActionRow, Clamp, HeaderBar, NavigationPage, NavigationView, WindowTitle};
 use std::rc::Rc;
 
 pub fn clear_list_box(list: &ListBox) {
@@ -37,6 +41,41 @@ pub fn append_spinner_row(list: &ListBox) {
     row.set_selectable(false);
     row.set_child(Some(&container));
     list.append(&row);
+}
+
+pub fn wrapped_dialog_body(child: &impl IsA<adw::gtk::Widget>) -> ScrolledWindow {
+    let clamp = Clamp::new();
+    clamp.set_maximum_size(800);
+    clamp.set_tightening_threshold(500);
+    clamp.set_size_request(360, -1);
+    clamp.set_child(Some(child));
+
+    ScrolledWindow::builder()
+        .hscrollbar_policy(PolicyType::Never)
+        .vscrollbar_policy(PolicyType::Automatic)
+        .propagate_natural_width(true)
+        .propagate_natural_height(true)
+        .child(&clamp)
+        .build()
+}
+
+pub fn dialog_content_shell(
+    title: &str,
+    subtitle: Option<&str>,
+    child: &impl IsA<adw::gtk::Widget>,
+) -> GtkBox {
+    let window_title = WindowTitle::builder().title(title).build();
+    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
+        window_title.set_subtitle(subtitle);
+    }
+
+    let header = HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+
+    let shell = GtkBox::new(Orientation::Vertical, 0);
+    shell.append(&header);
+    shell.append(&wrapped_dialog_body(child));
+    shell
 }
 
 pub fn flat_icon_button(icon_name: &str) -> Button {

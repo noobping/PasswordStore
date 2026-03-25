@@ -1,26 +1,7 @@
-use adw::glib::object::IsA;
-use adw::gtk::{Box as GtkBox, Orientation, Spinner};
+use crate::support::ui::dialog_content_shell;
+use adw::gtk::Spinner;
 use adw::prelude::*;
-use adw::{ApplicationWindow, Dialog, HeaderBar, StatusPage, WindowTitle};
-
-pub(super) fn dialog_content_shell(
-    title: &str,
-    subtitle: Option<&str>,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
-    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
-        window_title.set_subtitle(subtitle);
-    }
-
-    let header = HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-
-    let shell = GtkBox::new(Orientation::Vertical, 0);
-    shell.append(&header);
-    shell.append(child);
-    shell
-}
+use adw::{ApplicationWindow, Dialog, StatusPage};
 
 pub(super) fn build_progress_dialog(
     window: &ApplicationWindow,

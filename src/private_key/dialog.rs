@@ -1,30 +1,12 @@
+use crate::support::ui::dialog_content_shell;
 use adw::gtk::{Align, Box as GtkBox, Label, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{
-    ApplicationWindow, Dialog, HeaderBar, PasswordEntryRow, PreferencesGroup, PreferencesPage,
-    StatusPage, ToastOverlay, WindowTitle,
+    ApplicationWindow, Dialog, PasswordEntryRow, PreferencesGroup, PreferencesPage, StatusPage,
+    ToastOverlay,
 };
 use std::cell::Cell;
 use std::rc::Rc;
-
-fn dialog_content_shell(
-    title: &str,
-    subtitle: Option<&str>,
-    child: &impl IsA<adw::gtk::Widget>,
-) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
-    if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
-        window_title.set_subtitle(subtitle);
-    }
-
-    let header = HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-
-    let shell = GtkBox::new(Orientation::Vertical, 0);
-    shell.append(&header);
-    shell.append(child);
-    shell
-}
 
 #[derive(Clone)]
 pub struct PrivateKeyDialogHandle {

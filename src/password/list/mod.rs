@@ -9,13 +9,16 @@ use self::row::append_password_row;
 use self::search::{search_controller_for_list, SearchFilterController};
 use crate::backend::password_entry_is_readable;
 use crate::logging::{log_error, log_info};
-use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
+use crate::password::model::{
+    collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
+};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
+use crate::support::object_data::{cloned_data, set_cloned_data};
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::clear_list_box;
-use adw::glib::Propagation;
+use adw::glib::{self, Propagation};
 use adw::gtk::{
     gdk, Button, EventControllerKey, ListBox, ListBoxRow, PropagationPhase, SearchEntry,
 };
@@ -97,6 +100,9 @@ impl PasswordListActions {
     }
 }
 
+const PASSWORD_LIST_RENDER_GENERATION_KEY: &str = "password-list-render-generation";
+const PASSWORD_ROW_RENDER_BATCH_SIZE: usize = 100;
+
 const fn list_action_visibility(context: ListActionContext) -> ListActionVisibility {
     if matches!(context.actions, ListActionsMode::Hidden) {
         return ListActionVisibility {
@@ -153,6 +159,7 @@ pub fn load_passwords_async(
     show_duplicates: bool,
 ) {
     clear_list_box(list);
+    let render_generation = start_password_list_render_cycle(list);
 
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
@@ -191,6 +198,10 @@ pub fn load_passwords_async(
             .collect::<Vec<_>>()
         },
         move |items| {
+            if !password_list_render_cycle_is_current(&list_clone, render_generation) {
+                return;
+            }
+
             let context = ListActionContext {
                 actions: if show_list_actions {
                     ListActionsMode::Visible
@@ -213,24 +224,36 @@ pub fn load_passwords_async(
                     GitAvailability::Unavailable
                 },
             };
-            for (item, readable) in items {
-                append_password_row(&list_clone, item, readable, &overlay_clone);
-            }
-
-            if show_list_actions {
-                update_list_actions(&actions_clone, context);
-            }
-            if let Some(controller) = search_controller_for_list(&list_clone) {
-                controller.finish_reload(&list_clone);
-            } else {
-                show_resolved_placeholder(
-                    &list_clone,
-                    matches!(context.contents, ListContents::Empty),
-                    has_store_dirs,
-                );
-            }
+            render_password_rows_in_batches(
+                &list_clone,
+                &overlay_clone,
+                items,
+                render_generation,
+                {
+                    let list = list_clone.clone();
+                    let actions = actions_clone.clone();
+                    move || {
+                        if show_list_actions {
+                            update_list_actions(&actions, context);
+                        }
+                        if let Some(controller) = search_controller_for_list(&list) {
+                            controller.finish_reload(&list);
+                        } else {
+                            show_resolved_placeholder(
+                                &list,
+                                matches!(context.contents, ListContents::Empty),
+                                has_store_dirs,
+                            );
+                        }
+                    }
+                },
+            );
         },
         move || {
+            if !password_list_render_cycle_is_current(&list_for_disconnect, render_generation) {
+                return;
+            }
+
             let context = ListActionContext {
                 actions: if show_list_actions {
                     ListActionsMode::Visible
@@ -259,6 +282,42 @@ pub fn load_passwords_async(
             }
         },
     );
+}
+
+fn render_password_rows_in_batches(
+    list: &ListBox,
+    overlay: &ToastOverlay,
+    items: Vec<(PassEntry, bool)>,
+    generation: u64,
+    on_complete: impl FnOnce() + 'static,
+) {
+    if items.is_empty() {
+        on_complete();
+        return;
+    }
+
+    let list = list.clone();
+    let overlay = overlay.clone();
+    let mut items = items.into_iter();
+    let mut on_complete = Some(on_complete);
+    glib::idle_add_local(move || {
+        if !password_list_render_cycle_is_current(&list, generation) {
+            return glib::ControlFlow::Break;
+        }
+
+        for _ in 0..PASSWORD_ROW_RENDER_BATCH_SIZE {
+            let Some((item, readable)) = items.next() else {
+                if let Some(on_complete) = on_complete.take() {
+                    on_complete();
+                }
+                return glib::ControlFlow::Break;
+            };
+
+            append_password_row(&list, item, readable, &overlay);
+        }
+
+        glib::ControlFlow::Continue
+    });
 }
 
 const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
@@ -423,12 +482,30 @@ fn store_git_state_summary_changed(summary: &str) -> bool {
     true
 }
 
+fn start_password_list_render_cycle(list: &ListBox) -> u64 {
+    let generation = next_password_list_render_generation(cloned_data(
+        list,
+        PASSWORD_LIST_RENDER_GENERATION_KEY,
+    ));
+    set_cloned_data(list, PASSWORD_LIST_RENDER_GENERATION_KEY, generation);
+    generation
+}
+
+fn password_list_render_cycle_is_current(list: &ListBox, generation: u64) -> bool {
+    cloned_data(list, PASSWORD_LIST_RENDER_GENERATION_KEY) == Some(generation)
+}
+
+fn next_password_list_render_generation(current: Option<u64>) -> u64 {
+    current.unwrap_or(0_u64).wrapping_add(1).max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         collect_items_options, list_action_visibility, should_show_root_git_button,
-        should_show_root_store_button, GitAvailability, ListActionContext, ListActionVisibility,
-        ListActionsMode, ListContents, StoreSetup, Visibility,
+        next_password_list_render_generation, should_show_root_store_button, GitAvailability,
+        ListActionContext, ListActionVisibility, ListActionsMode, ListContents, StoreSetup,
+        Visibility,
     };
     use crate::password::model::CollectItemsOptions;
 
@@ -600,5 +677,11 @@ mod tests {
                 show_duplicates: false,
             }
         );
+    }
+
+    #[test]
+    fn password_list_render_cycles_increment_from_one() {
+        assert_eq!(next_password_list_render_generation(None), 1);
+        assert_eq!(next_password_list_render_generation(Some(1)), 2);
     }
 }

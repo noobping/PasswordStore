@@ -5,6 +5,8 @@ use adw::StatusPage;
 
 const APP_ID: &str = env!("APP_ID");
 const PLACEHOLDER_STATE_KEY: &str = "password-list-placeholder-state";
+const LOADING_TITLE: &str = "Loading";
+const LOADING_DESCRIPTION: &str = "Building the pass file list from your stores.";
 
 #[derive(Clone)]
 pub(super) struct PasswordListPlaceholderState {
@@ -20,8 +22,8 @@ impl PasswordListPlaceholderState {
             list,
             PlaceholderPresentation {
                 icon_name: APP_ID,
-                title: "",
-                description: None,
+                title: LOADING_TITLE,
+                description: Some(LOADING_DESCRIPTION),
                 spinner: true,
             },
         );

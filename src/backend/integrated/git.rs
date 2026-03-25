@@ -1,7 +1,8 @@
 use super::crypto::IntegratedCryptoContext;
 use super::keys::{
-    cached_unlocked_ripasso_private_key, list_ripasso_private_keys,
-    ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
+    cached_unlocked_hardware_private_key, cached_unlocked_ripasso_private_key,
+    list_ripasso_private_keys, ripasso_private_key_requires_session_unlock,
+    sign_with_hardware_session, ManagedRipassoPrivateKey,
 };
 use super::recipients::recipient_contents;
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
@@ -352,6 +353,12 @@ fn unlocked_signing_cert(fingerprint: &str) -> Result<Option<Arc<Cert>>, String>
     cached_unlocked_ripasso_private_key(fingerprint)
 }
 
+fn unlocked_hardware_signing_session(
+    fingerprint: &str,
+) -> Result<Option<super::keys::HardwareSessionPolicy>, String> {
+    cached_unlocked_hardware_private_key(fingerprint)
+}
+
 fn sign_commit_buffer(commit_buffer: &str, cert: &Cert) -> Result<String, String> {
     let policy = StandardPolicy::new();
     let signing_key = cert
@@ -502,10 +509,23 @@ fn signature_for_commit(
     };
 
     let Some(cert) = unlocked_signing_cert(fingerprint)? else {
+        let Some(session) = unlocked_hardware_signing_session(fingerprint)? else {
+            log_info(format!(
+                "Password store Git commit for {store_root} is unsigned because private key {fingerprint} is not unlocked in this session."
+            ));
+            return Ok(None);
+        };
+
         log_info(format!(
-            "Password store Git commit for {store_root} is unsigned because private key {fingerprint} is not unlocked in this session."
+            "Signing password store Git commit for {store_root} with {name} <{email}> ({fingerprint}).",
+            name = resolution.identity.name,
+            email = resolution.identity.email,
         ));
-        return Ok(None);
+        let signature = sign_with_hardware_session(&session, unsigned_commit)?;
+        log_info(format!(
+            "Signed password store Git commit for {store_root} with private key {fingerprint}."
+        ));
+        return Ok(Some(signature));
     };
 
     log_info(format!(
@@ -617,7 +637,7 @@ mod tests {
         preferred_commit_private_key_from_values, CommitIdentity, CommitIdentityResolution,
         CommitIdentitySource,
     };
-    use crate::backend::ManagedRipassoPrivateKey;
+    use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
 
     #[test]
     fn private_key_user_ids_map_to_git_identity() {
@@ -665,6 +685,8 @@ mod tests {
         let key_a = ManagedRipassoPrivateKey {
             fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             user_ids: vec!["Key A <a@example.com>".to_string()],
+            protection: ManagedRipassoPrivateKeyProtection::Password,
+            hardware: None,
         };
         let explicit = key_a.fingerprint.clone();
         let selected =
@@ -686,10 +708,14 @@ mod tests {
         let key_a = ManagedRipassoPrivateKey {
             fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             user_ids: vec!["Key A <a@example.com>".to_string()],
+            protection: ManagedRipassoPrivateKeyProtection::Password,
+            hardware: None,
         };
         let key_b = ManagedRipassoPrivateKey {
             fingerprint: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),
             user_ids: vec!["Key B <b@example.com>".to_string()],
+            protection: ManagedRipassoPrivateKeyProtection::Password,
+            hardware: None,
         };
         assert_eq!(
             preferred_commit_private_key_from_values(

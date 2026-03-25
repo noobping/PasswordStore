@@ -31,9 +31,10 @@ jobs:
       - name: Update MSYS2
         run: C:\tools\msys64\usr\bin\bash -lc "pacman -Syu --noconfirm"
 
-      - name: Install Libadwaita
+      - name: Install build dependencies
         run: |
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-toolchain"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-capnproto"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gtk4"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-libadwaita"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gpgme"

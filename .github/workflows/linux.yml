@@ -70,6 +70,7 @@ jobs:
             libgtk-4-dev \
             libgpgme-dev \
             libcapnp-dev \
+            libpcsclite-dev \
             libpango1.0-dev \
             librust-gtk4-dev \
             librust-libadwaita-dev \

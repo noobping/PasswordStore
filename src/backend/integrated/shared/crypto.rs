@@ -1,5 +1,6 @@
 use super::keys::{
-    build_ripasso_crypto_from_key_ring, load_ripasso_key_ring, load_stored_ripasso_key_ring,
+    build_ripasso_crypto_from_key_ring, cached_unlocked_hardware_private_key,
+    decrypt_with_hardware_session, load_ripasso_key_ring, load_stored_ripasso_key_ring,
 };
 use super::paths::recipients_file_for_label;
 use super::recipients::{
@@ -86,7 +87,7 @@ impl IntegratedCryptoContext {
         let ciphertext = read_entry_ciphertext(entry_path)?;
         match self.private_key_requirement {
             StoreRecipientsPrivateKeyRequirement::AnyManagedKey => {
-                decrypt_ciphertext_with_crypto(&self.crypto, &ciphertext)
+                decrypt_ciphertext_for_fingerprint(&self.fingerprint, &self.crypto, &ciphertext)
             }
             StoreRecipientsPrivateKeyRequirement::AllManagedKeys => {
                 decrypt_password_entry_requiring_all_private_keys(
@@ -126,6 +127,18 @@ fn decrypt_ciphertext_with_crypto(crypto: &Sequoia, ciphertext: &[u8]) -> Result
         .map_err(|err| err.to_string())
 }
 
+fn decrypt_ciphertext_for_fingerprint(
+    fingerprint: &str,
+    crypto: &Sequoia,
+    ciphertext: &[u8],
+) -> Result<String, String> {
+    if let Some(session) = cached_unlocked_hardware_private_key(fingerprint)? {
+        return decrypt_with_hardware_session(&session, ciphertext);
+    }
+
+    decrypt_ciphertext_with_crypto(crypto, ciphertext)
+}
+
 fn decrypt_password_entry_requiring_all_private_keys(
     ciphertext: &[u8],
     required_private_key_fingerprints: &[String],
@@ -134,7 +147,7 @@ fn decrypt_password_entry_requiring_all_private_keys(
 
     for (index, fingerprint) in required_private_key_fingerprints.iter().enumerate() {
         let context = IntegratedCryptoContext::load_for_fingerprint(fingerprint)?;
-        let decrypted = decrypt_ciphertext_with_crypto(&context.crypto, &current)?;
+        let decrypted = decrypt_ciphertext_for_fingerprint(fingerprint, &context.crypto, &current)?;
         let is_final_layer = index + 1 == required_private_key_fingerprints.len();
         if is_final_layer {
             return Ok(decrypted);

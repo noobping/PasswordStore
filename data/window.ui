@@ -1119,6 +1119,19 @@
                                     </style>
                                     <child>
                                       <object class="AdwActionRow"
+                                        id="store_recipients_add_hardware_key_row">
+                                        <property name="title" translatable="yes">Add hardware key</property>
+                                        <property name="subtitle" translatable="yes">Use a connected OpenPGP smartcard or YubiKey.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow"
                                         id="store_recipients_generate_key_row">
                                         <property name="title" translatable="yes">Generate private key</property>
                                         <property name="subtitle" translatable="yes">Create a new password-protected key.</property>
@@ -1127,6 +1140,19 @@
                                           <object class="GtkImage"
                                             id="store_recipients_generate_key_icon">
                                             <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow"
+                                        id="store_recipients_import_hardware_key_row">
+                                        <property name="title" translatable="yes">Import hardware public key</property>
+                                        <property name="subtitle" translatable="yes">Bind a public key file to the connected hardware key.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">document-open-symbolic</property>
                                           </object>
                                         </child>
                                       </object>

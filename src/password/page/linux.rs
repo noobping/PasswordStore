@@ -41,7 +41,7 @@ pub(super) fn handle_open_password_entry_error(
     }
 
     if open_password_error_action(error) == OpenPasswordErrorAction::PromptUnlock {
-        show_password_status_message(state, "Unlock key", "Enter your key password to continue.");
+        show_password_status_message(state, "Unlock key", "Unlock your key to continue.");
         match preferred_ripasso_private_key_fingerprint_for_entry(
             pass_file.store_path(),
             &pass_file.label(),

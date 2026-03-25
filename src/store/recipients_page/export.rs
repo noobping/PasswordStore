@@ -1,28 +1,35 @@
 use super::StoreRecipientsPageState;
-use crate::backend::armored_ripasso_private_key;
+use crate::backend::{
+    armored_ripasso_private_key, armored_ripasso_public_key, ManagedRipassoPrivateKey,
+};
 use crate::clipboard::set_clipboard_text;
 use crate::logging::log_error;
 use adw::gtk::Button;
 use adw::{Toast, ToastOverlay};
 
-fn copy_private_key_to_clipboard(
+fn copy_key_material_to_clipboard(
     overlay: &ToastOverlay,
-    fingerprint: &str,
+    key: &ManagedRipassoPrivateKey,
     button: Option<&Button>,
 ) -> Result<(), String> {
-    let armored = armored_ripasso_private_key(fingerprint)?;
+    let armored = if key.uses_hardware() {
+        armored_ripasso_public_key(&key.fingerprint)?
+    } else {
+        armored_ripasso_private_key(&key.fingerprint)?
+    };
     set_clipboard_text(&armored, overlay, button);
     Ok(())
 }
 
-pub(super) fn copy_armored_private_key(
+pub(super) fn copy_managed_key_material(
     state: &StoreRecipientsPageState,
-    fingerprint: &str,
+    key: &ManagedRipassoPrivateKey,
     button: Option<&Button>,
 ) {
-    if let Err(err) = copy_private_key_to_clipboard(&state.platform.overlay, fingerprint, button) {
+    if let Err(err) = copy_key_material_to_clipboard(&state.platform.overlay, key, button) {
         log_error(format!(
-            "Failed to copy armored private key '{fingerprint}': {err}"
+            "Failed to copy key material '{}': {err}",
+            key.fingerprint
         ));
         state
             .platform

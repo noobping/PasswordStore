@@ -1,11 +1,12 @@
 use crate::backend::{
     git_commit_private_key_requiring_unlock_for_entry,
-    git_commit_private_key_requiring_unlock_for_store_recipients, ripasso_private_key_title,
-    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey, PrivateKeyError,
+    git_commit_private_key_requiring_unlock_for_store_recipients, list_ripasso_private_keys,
+    ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
+    ManagedRipassoPrivateKeyProtection, PrivateKeyError, PrivateKeyUnlockRequest,
     StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::{log_error, log_info};
-use crate::private_key::dialog::present_private_key_password_dialog_with_close_handler;
+use crate::private_key::dialog::present_private_key_unlock_dialog_with_close_handler;
 use crate::support::background::spawn_result_task;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
@@ -22,10 +23,26 @@ fn continue_without_git_signature(overlay: &ToastOverlay, reason: &str, action: 
     action();
 }
 
+fn private_key_unlock_protection(fingerprint: &str) -> ManagedRipassoPrivateKeyProtection {
+    match list_ripasso_private_keys() {
+        Ok(keys) => keys
+            .into_iter()
+            .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+            .map(|key| key.protection)
+            .unwrap_or(ManagedRipassoPrivateKeyProtection::Password),
+        Err(err) => {
+            log_error(format!(
+                "Failed to read private key protection for '{fingerprint}': {err}"
+            ));
+            ManagedRipassoPrivateKeyProtection::Password
+        }
+    }
+}
+
 fn start_private_key_unlock_for_git_commit(
     overlay: &ToastOverlay,
     fingerprint: String,
-    passphrase: String,
+    request: PrivateKeyUnlockRequest,
     after_unlock_attempt: &Rc<dyn Fn()>,
 ) {
     let overlay = overlay.clone();
@@ -35,7 +52,7 @@ fn start_private_key_unlock_for_git_commit(
     let after_unlock_attempt_for_result = after_unlock_attempt.clone();
     let after_unlock_attempt_for_disconnect = after_unlock_attempt.clone();
     spawn_result_task(
-        move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, &passphrase),
+        move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request.clone()),
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
                 after_unlock_attempt_for_result();
@@ -96,21 +113,23 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
                 }
             };
             let overlay_for_submit = overlay.clone();
+            let protection = private_key_unlock_protection(&fingerprint);
             let fingerprint_for_submit = fingerprint;
             let after_unlock_attempt_for_submit = after_unlock_attempt.clone();
             let overlay_for_close = overlay.clone();
             let after_unlock_attempt_for_close = after_unlock_attempt.clone();
             let context_for_close = context;
-            present_private_key_password_dialog_with_close_handler(
+            present_private_key_unlock_dialog_with_close_handler(
                 &window,
                 overlay,
                 "Unlock key",
                 key_title.as_deref(),
-                move |passphrase| {
+                protection,
+                move |request| {
                     start_private_key_unlock_for_git_commit(
                         &overlay_for_submit,
                         fingerprint_for_submit.clone(),
-                        passphrase,
+                        request,
                         &after_unlock_attempt_for_submit,
                     );
                 },

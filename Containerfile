@@ -2,6 +2,7 @@ FROM registry.fedoraproject.org/fedora:43
 
 RUN dnf -y update && dnf -y install \
     bash \
+    capnproto \
     cairo-devel \
     cargo \
     clang \

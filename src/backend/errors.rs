@@ -266,6 +266,18 @@ pub enum PrivateKeyError {
     #[error("{0}")]
     Incompatible(String),
     #[error("{0}")]
+    HardwareTokenNotPresent(String),
+    #[error("{0}")]
+    HardwareTokenMismatch(String),
+    #[error("{0}")]
+    HardwarePinRequired(String),
+    #[error("{0}")]
+    IncorrectHardwarePin(String),
+    #[error("{0}")]
+    UnsupportedHardwareKey(String),
+    #[error("{0}")]
+    HardwareTokenRemoved(String),
+    #[error("{0}")]
     Other(String),
 }
 
@@ -294,6 +306,30 @@ impl PrivateKeyError {
         Self::Incompatible(message.into())
     }
 
+    pub fn hardware_token_not_present(message: impl Into<String>) -> Self {
+        Self::HardwareTokenNotPresent(message.into())
+    }
+
+    pub fn hardware_token_mismatch(message: impl Into<String>) -> Self {
+        Self::HardwareTokenMismatch(message.into())
+    }
+
+    pub fn hardware_pin_required(message: impl Into<String>) -> Self {
+        Self::HardwarePinRequired(message.into())
+    }
+
+    pub fn incorrect_hardware_pin(message: impl Into<String>) -> Self {
+        Self::IncorrectHardwarePin(message.into())
+    }
+
+    pub fn unsupported_hardware_key(message: impl Into<String>) -> Self {
+        Self::UnsupportedHardwareKey(message.into())
+    }
+
+    pub fn hardware_token_removed(message: impl Into<String>) -> Self {
+        Self::HardwareTokenRemoved(message.into())
+    }
+
     pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
     }
@@ -301,6 +337,13 @@ impl PrivateKeyError {
     pub const fn unlock_message(&self) -> &'static str {
         match self {
             Self::Incompatible(_) => "This key can't open your items.",
+            Self::HardwareTokenNotPresent(_) => "Connect the hardware key and try again.",
+            Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
+            Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
+                "Couldn't unlock the hardware key."
+            }
+            Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
+            Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             _ => "Couldn't unlock the key.",
         }
     }
@@ -310,6 +353,13 @@ impl PrivateKeyError {
             Self::MissingPrivateKeyMaterial(_) => "That file does not contain a private key.",
             Self::RequiresPasswordProtection(_) => "Add a password to that key first.",
             Self::Incompatible(_) => "This key can't open your items.",
+            Self::HardwareTokenNotPresent(_) => "Connect the hardware key first.",
+            Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
+            Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
+                "Couldn't unlock the hardware key."
+            }
+            Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
+            Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             Self::PassphraseRequired(_) | Self::IncorrectPassphrase(_) => {
                 "Couldn't unlock the key."
             }

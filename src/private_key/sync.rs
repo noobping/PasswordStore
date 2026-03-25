@@ -1,6 +1,7 @@
 use crate::backend::{
     armored_ripasso_private_key, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, store_ripasso_private_key_bytes,
+    ManagedRipassoPrivateKeyProtection,
 };
 
 #[cfg(target_os = "linux")]
@@ -108,6 +109,9 @@ fn sync_host_private_keys_to_app() -> Result<(), String> {
         }
 
         for key in app_keys {
+            if !matches!(key.protection, ManagedRipassoPrivateKeyProtection::Password) {
+                continue;
+            }
             if !host_fingerprints.contains(&normalized_fingerprint(&key.fingerprint)) {
                 remove_ripasso_private_key(&key.fingerprint)?;
             }
@@ -138,6 +142,7 @@ fn sync_app_private_keys_to_host() -> Result<(), String> {
 
         let app_exports = app_keys
             .into_iter()
+            .filter(|key| matches!(key.protection, ManagedRipassoPrivateKeyProtection::Password))
             .filter(|key| !host_fingerprints.contains(&normalized_fingerprint(&key.fingerprint)))
             .map(|key| {
                 armored_ripasso_private_key(&key.fingerprint)

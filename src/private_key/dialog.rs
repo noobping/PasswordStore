@@ -1,5 +1,6 @@
+use crate::backend::{ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest};
 use crate::support::ui::dialog_content_shell;
-use adw::gtk::{Align, Box as GtkBox, Label, Orientation, Spinner};
+use adw::gtk::{Align, Box as GtkBox, Button, Label, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{
     ApplicationWindow, Dialog, PasswordEntryRow, PreferencesGroup, PreferencesPage, StatusPage,
@@ -50,6 +51,31 @@ fn private_key_password_dialog_error_message(passphrase: &str) -> Option<&'stati
         .trim()
         .is_empty()
         .then_some("Enter the key password.")
+}
+
+const HARDWARE_EXTERNAL_BUTTON_LABEL: &str = "Or use a hardware key.";
+
+fn private_key_unlock_row_title(protection: ManagedRipassoPrivateKeyProtection) -> &'static str {
+    match protection {
+        ManagedRipassoPrivateKeyProtection::Password => "Key password",
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Hardware key PIN",
+    }
+}
+
+fn private_key_unlock_dialog_error_message(
+    protection: ManagedRipassoPrivateKeyProtection,
+    input: &str,
+) -> Option<&'static str> {
+    if !input.trim().is_empty() {
+        return None;
+    }
+
+    match protection {
+        ManagedRipassoPrivateKeyProtection::Password => Some("Enter the key password."),
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
+            Some("Enter the hardware key PIN.")
+        }
+    }
 }
 
 pub fn present_private_key_password_dialog<F>(
@@ -150,9 +176,133 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     dialog.present(Some(window));
 }
 
+pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
+    window: &ApplicationWindow,
+    _overlay: &ToastOverlay,
+    title: &str,
+    subtitle: Option<&str>,
+    protection: ManagedRipassoPrivateKeyProtection,
+    on_submit: F,
+    on_close: G,
+) where
+    F: Fn(PrivateKeyUnlockRequest) + 'static,
+    G: Fn() + 'static,
+{
+    let on_submit = Rc::new(on_submit);
+    let password_row = PasswordEntryRow::new();
+    password_row.set_title(private_key_unlock_row_title(protection));
+    password_row.set_show_apply_button(true);
+
+    let password_group = PreferencesGroup::builder().build();
+    password_group.add(&password_row);
+
+    let page = PreferencesPage::new();
+    page.add(&password_group);
+
+    let hardware_button = if matches!(
+        protection,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+    ) {
+        let button = Button::with_label(HARDWARE_EXTERNAL_BUTTON_LABEL);
+        button.add_css_class("flat");
+        button.add_css_class("caption");
+        button.set_halign(Align::Start);
+        button.set_margin_top(6);
+        button.set_margin_start(18);
+        button.set_margin_end(18);
+        Some(button)
+    } else {
+        None
+    };
+
+    let error_label = Label::new(None);
+    error_label.set_halign(Align::Start);
+    error_label.set_wrap(true);
+    error_label.add_css_class("error");
+    error_label.add_css_class("caption");
+    error_label.set_margin_top(6);
+    error_label.set_margin_start(18);
+    error_label.set_margin_end(18);
+    error_label.set_margin_bottom(18);
+    error_label.set_visible(false);
+
+    let content = GtkBox::new(Orientation::Vertical, 0);
+    content.append(&page);
+    if let Some(button) = hardware_button.as_ref() {
+        content.append(button);
+    }
+    content.append(&error_label);
+
+    let dialog = Dialog::builder()
+        .title(title)
+        .content_height(280)
+        .content_width(800)
+        .follows_content_size(true)
+        .child(&dialog_content_shell(title, subtitle, &content))
+        .build();
+    let submitted = Rc::new(Cell::new(false));
+    let dialog_handle = PrivateKeyDialogHandle::new(&dialog);
+
+    let submitted_for_apply = submitted.clone();
+    let dialog_handle_for_apply = dialog_handle.clone();
+    let error_label_for_apply = error_label.clone();
+    let on_submit_for_apply = on_submit.clone();
+    password_row.connect_apply(move |row| {
+        let input = row.text().to_string();
+        if let Some(message) = private_key_unlock_dialog_error_message(protection, &input) {
+            error_label_for_apply.set_label(message);
+            error_label_for_apply.set_visible(true);
+            return;
+        }
+        error_label_for_apply.set_visible(false);
+
+        submitted_for_apply.set(true);
+        dialog_handle_for_apply.force_close();
+        let request = match protection {
+            ManagedRipassoPrivateKeyProtection::Password => {
+                PrivateKeyUnlockRequest::Password(input)
+            }
+            ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
+                PrivateKeyUnlockRequest::HardwarePin(input)
+            }
+        };
+        on_submit_for_apply(request);
+    });
+
+    {
+        let error_label = error_label.clone();
+        password_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
+
+    if let Some(button) = hardware_button {
+        let submitted_for_button = submitted.clone();
+        let dialog_handle_for_button = dialog_handle.clone();
+        let on_submit_for_button = on_submit.clone();
+        button.connect_clicked(move |_| {
+            submitted_for_button.set(true);
+            dialog_handle_for_button.force_close();
+            on_submit_for_button(PrivateKeyUnlockRequest::HardwareExternal);
+        });
+    }
+
+    dialog.connect_closed(move |_| {
+        if !submitted.get() {
+            on_close();
+        }
+    });
+
+    dialog.present(Some(window));
+}
+
 #[cfg(test)]
 mod tests {
-    use super::private_key_password_dialog_error_message;
+    use super::{
+        private_key_password_dialog_error_message, private_key_unlock_dialog_error_message,
+        private_key_unlock_row_title, HARDWARE_EXTERNAL_BUTTON_LABEL,
+    };
+    use crate::backend::ManagedRipassoPrivateKeyProtection;
 
     #[test]
     fn private_key_password_dialog_requires_a_non_empty_passphrase() {
@@ -165,5 +315,43 @@ mod tests {
             Some("Enter the key password.")
         );
         assert_eq!(private_key_password_dialog_error_message("secret"), None);
+    }
+
+    #[test]
+    fn private_key_unlock_dialog_matches_the_protection_mode() {
+        assert_eq!(
+            private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::Password),
+            "Key password"
+        );
+        assert_eq!(
+            private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,),
+            "Hardware key PIN"
+        );
+        assert_eq!(HARDWARE_EXTERNAL_BUTTON_LABEL, "Or use a hardware key.");
+    }
+
+    #[test]
+    fn private_key_unlock_dialog_requires_the_expected_secret_input() {
+        assert_eq!(
+            private_key_unlock_dialog_error_message(
+                ManagedRipassoPrivateKeyProtection::Password,
+                "   ",
+            ),
+            Some("Enter the key password.")
+        );
+        assert_eq!(
+            private_key_unlock_dialog_error_message(
+                ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
+                "",
+            ),
+            Some("Enter the hardware key PIN.")
+        );
+        assert_eq!(
+            private_key_unlock_dialog_error_message(
+                ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
+                "123456",
+            ),
+            None
+        );
     }
 }

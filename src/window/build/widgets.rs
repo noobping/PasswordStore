@@ -52,6 +52,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_create_group: PreferencesGroup,
     pub(in crate::window) store_recipients_git_group: PreferencesGroup,
     pub(in crate::window) store_recipients_git_list: ListBox,
+    pub(in crate::window) store_recipients_add_hardware_key_row: ActionRow,
+    pub(in crate::window) store_recipients_import_hardware_key_row: ActionRow,
     pub(in crate::window) store_recipients_import_clipboard_row: ActionRow,
     pub(in crate::window) store_recipients_import_file_row: ActionRow,
     pub(in crate::window) store_recipients_generate_key_row: ActionRow,
@@ -198,6 +200,14 @@ impl WindowWidgets {
             ),
             store_recipients_git_group: required_object(builder, "store_recipients_git_group"),
             store_recipients_git_list: required_object(builder, "store_recipients_git_list"),
+            store_recipients_add_hardware_key_row: required_object(
+                builder,
+                "store_recipients_add_hardware_key_row",
+            ),
+            store_recipients_import_hardware_key_row: required_object(
+                builder,
+                "store_recipients_import_hardware_key_row",
+            ),
             store_recipients_import_clipboard_row: required_object(
                 builder,
                 "store_recipients_import_clipboard_row",

@@ -3,10 +3,33 @@ use sequoia_openpgp::{
     cert::amalgamation::key::PrimaryKey, crypto::Password, parse::Parse, Cert, Fingerprint, Packet,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManagedRipassoPrivateKeyProtection {
+    Password,
+    HardwareOpenPgpCard,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedRipassoHardwareKey {
+    pub ident: String,
+    pub signing_fingerprint: Option<String>,
+    pub decryption_fingerprint: Option<String>,
+    pub reader_hint: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManagedRipassoPrivateKey {
     pub fingerprint: String,
     pub user_ids: Vec<String>,
+    pub protection: ManagedRipassoPrivateKeyProtection,
+    pub hardware: Option<ManagedRipassoHardwareKey>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PrivateKeyUnlockRequest {
+    Password(String),
+    HardwarePin(String),
+    HardwareExternal,
 }
 
 impl ManagedRipassoPrivateKey {
@@ -16,6 +39,30 @@ impl ManagedRipassoPrivateKey {
             .cloned()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "Unnamed private key".to_string())
+    }
+
+    pub fn uses_hardware(&self) -> bool {
+        matches!(
+            self.protection,
+            ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+        )
+    }
+}
+
+fn managed_private_key_from_cert(
+    cert: &Cert,
+    protection: ManagedRipassoPrivateKeyProtection,
+    hardware: Option<ManagedRipassoHardwareKey>,
+) -> ManagedRipassoPrivateKey {
+    ManagedRipassoPrivateKey {
+        fingerprint: cert.fingerprint().to_hex(),
+        user_ids: cert
+            .userids()
+            .map(|user_id| user_id.userid().to_string())
+            .filter(|value| !value.trim().is_empty())
+            .collect(),
+        protection,
+        hardware,
     }
 }
 
@@ -54,15 +101,22 @@ pub(in crate::backend::integrated) fn parse_managed_private_key_bytes(
         ));
     }
 
-    let key = ManagedRipassoPrivateKey {
-        fingerprint: cert.fingerprint().to_hex(),
-        user_ids: cert
-            .userids()
-            .map(|user_id| user_id.userid().to_string())
-            .filter(|value| !value.trim().is_empty())
-            .collect(),
-    };
+    let key =
+        managed_private_key_from_cert(&cert, ManagedRipassoPrivateKeyProtection::Password, None);
+    Ok((cert, key))
+}
 
+pub(in crate::backend::integrated) fn parse_hardware_public_key_bytes(
+    bytes: &[u8],
+    hardware: ManagedRipassoHardwareKey,
+) -> Result<(Cert, ManagedRipassoPrivateKey), PrivateKeyError> {
+    let cert = Cert::from_bytes(bytes).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let cert = cert.strip_secret_key_material();
+    let key = managed_private_key_from_cert(
+        &cert,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
+        Some(hardware),
+    );
     Ok((cert, key))
 }
 
@@ -72,7 +126,7 @@ pub(in crate::backend::integrated) fn cert_requires_passphrase(cert: &Cert) -> b
         .any(|key_amalgamation| !key_amalgamation.key().has_unencrypted_secret())
 }
 
-pub(in crate::backend::integrated) fn cert_can_decrypt_password_entries(cert: &Cert) -> bool {
+pub(in crate::backend::integrated) fn cert_has_transport_encryption_key(cert: &Cert) -> bool {
     let policy = sequoia_openpgp::policy::StandardPolicy::new();
     cert.keys()
         .with_policy(&policy, None)
@@ -80,9 +134,22 @@ pub(in crate::backend::integrated) fn cert_can_decrypt_password_entries(cert: &C
         .alive()
         .revoked(false)
         .for_transport_encryption()
-        .unencrypted_secret()
         .next()
         .is_some()
+}
+
+pub(in crate::backend::integrated) fn cert_can_decrypt_password_entries(cert: &Cert) -> bool {
+    cert_has_transport_encryption_key(cert)
+        && cert
+            .keys()
+            .with_policy(&sequoia_openpgp::policy::StandardPolicy::new(), None)
+            .supported()
+            .alive()
+            .revoked(false)
+            .for_transport_encryption()
+            .unencrypted_secret()
+            .next()
+            .is_some()
 }
 
 fn unlock_managed_private_key_cert(cert: &Cert, passphrase: &str) -> Result<Cert, PrivateKeyError> {

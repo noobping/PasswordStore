@@ -70,7 +70,7 @@ pub fn read_password_entry(store_root: &str, label: &str) -> Result<String, Pass
 
     if saw_locked_key {
         return Err(PasswordEntryError::locked_private_key(
-            "A private key for this item is locked. Unlock it in Preferences and enter its password.",
+            "A private key for this item is locked. Unlock it in Preferences.",
         ));
     }
     if saw_incompatible_key {

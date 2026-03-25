@@ -14,11 +14,16 @@ use super::git::{
 };
 use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
-    ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
+    discover_ripasso_hardware_keys, ensure_ripasso_private_key_is_ready,
+    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
-    resolved_ripasso_own_fingerprint, ripasso_keys_dir, ripasso_private_key_requires_passphrase,
-    unlock_ripasso_private_key_for_session,
+    reset_hardware_transport_for_tests, resolved_ripasso_own_fingerprint, ripasso_keys_dir,
+    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
+    set_hardware_transport_for_tests, store_ripasso_hardware_key_bytes,
+    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, HardwareSessionPolicy,
+    HardwareTransport, ManagedRipassoHardwareKey, ManagedRipassoPrivateKeyProtection,
+    PrivateKeyUnlockRequest,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::{save_store_recipients, store_recipients_private_key_requiring_unlock};
@@ -31,6 +36,7 @@ use crate::support::git::has_git_repository;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, parse::Parse, serialize::Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 fn cert_bytes(email: &str) -> Vec<u8> {
     let (cert, _) = CertBuilder::general_purpose(Some(email))
@@ -58,6 +64,92 @@ fn protected_cert(email: &str) -> (sequoia_openpgp::Cert, Vec<u8>) {
 
 fn protected_cert_bytes(email: &str) -> Vec<u8> {
     protected_cert(email).1
+}
+
+fn public_cert_bytes(email: &str) -> Vec<u8> {
+    let (cert, _) = CertBuilder::general_purpose(Some(email))
+        .generate()
+        .expect("failed to generate public test certificate");
+    let public_only = cert.strip_secret_key_material();
+    let mut bytes = Vec::new();
+    public_only
+        .serialize(&mut bytes)
+        .expect("failed to serialize public test certificate");
+    bytes
+}
+
+#[derive(Default)]
+struct MockHardwareTransport {
+    tokens: Mutex<Vec<DiscoveredHardwareToken>>,
+    decrypt_response: Mutex<Option<String>>,
+    sign_response: Mutex<Option<String>>,
+}
+
+impl MockHardwareTransport {
+    fn with_tokens(tokens: Vec<DiscoveredHardwareToken>) -> Self {
+        Self {
+            tokens: Mutex::new(tokens),
+            decrypt_response: Mutex::new(None),
+            sign_response: Mutex::new(None),
+        }
+    }
+
+    fn with_decrypt_response(mut self, plaintext: &str) -> Self {
+        self.decrypt_response
+            .get_mut()
+            .expect("decrypt mutex poisoned")
+            .replace(plaintext.to_string());
+        self
+    }
+}
+
+impl HardwareTransport for MockHardwareTransport {
+    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String> {
+        Ok(self.tokens.lock().expect("tokens mutex poisoned").clone())
+    }
+
+    fn verify_session(&self, _session: &HardwareSessionPolicy) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn decrypt_ciphertext(
+        &self,
+        _session: &HardwareSessionPolicy,
+        _ciphertext: &[u8],
+    ) -> Result<String, String> {
+        self.decrypt_response
+            .lock()
+            .expect("decrypt mutex poisoned")
+            .clone()
+            .ok_or_else(|| "No mock decrypt response configured.".to_string())
+    }
+
+    fn sign_cleartext(
+        &self,
+        _session: &HardwareSessionPolicy,
+        _data: &str,
+    ) -> Result<String, String> {
+        self.sign_response
+            .lock()
+            .expect("sign mutex poisoned")
+            .clone()
+            .ok_or_else(|| "No mock sign response configured.".to_string())
+    }
+}
+
+struct HardwareTransportGuard;
+
+impl HardwareTransportGuard {
+    fn install(transport: Arc<dyn HardwareTransport>) -> Self {
+        set_hardware_transport_for_tests(transport);
+        Self
+    }
+}
+
+impl Drop for HardwareTransportGuard {
+    fn drop(&mut self) {
+        reset_hardware_transport_for_tests();
+    }
 }
 
 #[test]
@@ -125,6 +217,103 @@ fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
     assert!(unlocked
         .keys()
         .all(|key| key.key().has_unencrypted_secret()));
+}
+
+#[test]
+fn hardware_public_keys_can_be_stored_and_unlocked_for_a_session() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("hardware-key-store");
+    let public_bytes = public_cert_bytes("Hardware User <hardware@example.com>");
+    let _guard =
+        HardwareTransportGuard::install(Arc::new(MockHardwareTransport::with_tokens(vec![
+            DiscoveredHardwareToken {
+                ident: "mock-token".to_string(),
+                reader_hint: Some("Mock Reader".to_string()),
+                cardholder_certificate: Some(public_bytes.clone()),
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+            },
+        ])));
+
+    let discovered = discover_ripasso_hardware_keys().expect("discover hardware keys");
+    assert_eq!(discovered.len(), 1);
+
+    let imported = store_ripasso_hardware_key_bytes(
+        &public_bytes,
+        ManagedRipassoHardwareKey {
+            ident: "mock-token".to_string(),
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+            reader_hint: Some("Mock Reader".to_string()),
+        },
+    )
+    .expect("store hardware key");
+
+    assert_eq!(
+        imported.protection,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+    );
+    assert!(ripasso_private_key_requires_session_unlock(&imported.fingerprint).unwrap());
+
+    unlock_ripasso_private_key_for_session(
+        &imported.fingerprint,
+        PrivateKeyUnlockRequest::HardwareExternal,
+    )
+    .expect("unlock hardware key");
+    assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
+}
+
+#[test]
+fn hardware_keys_can_decrypt_password_entries_after_unlock() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("hardware-key-decrypt");
+    let public_bytes = public_cert_bytes("Hardware Read <hardware-read@example.com>");
+    let _guard = HardwareTransportGuard::install(Arc::new(
+        MockHardwareTransport::with_tokens(vec![DiscoveredHardwareToken {
+            ident: "mock-token".to_string(),
+            reader_hint: Some("Mock Reader".to_string()),
+            cardholder_certificate: None,
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+        }])
+        .with_decrypt_response("supersecret\nusername: alice"),
+    ));
+
+    let imported = import_ripasso_hardware_key_bytes(
+        &public_bytes,
+        ManagedRipassoHardwareKey {
+            ident: "mock-token".to_string(),
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+            reader_hint: Some("Mock Reader".to_string()),
+        },
+    )
+    .expect("import hardware public key");
+
+    let store = env.root_dir().join("hardware-store");
+    fs::create_dir_all(&store).expect("create hardware store");
+    fs::write(store.join(".gpg-id"), format!("{}\n", imported.fingerprint))
+        .expect("write recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry for hardware key");
+
+    unlock_ripasso_private_key_for_session(
+        &imported.fingerprint,
+        PrivateKeyUnlockRequest::HardwareExternal,
+    )
+    .expect("unlock hardware key");
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read hardware-backed entry"),
+        "supersecret\nusername: alice"
+    );
 }
 
 #[test]
@@ -230,8 +419,11 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
         PasswordEntryError::LockedPrivateKey(_)
     ));
 
-    unlock_ripasso_private_key_for_session(&imported.fingerprint, "hunter2")
-        .expect("unlock private key for session");
+    unlock_ripasso_private_key_for_session(
+        &imported.fingerprint,
+        PrivateKeyUnlockRequest::Password("hunter2".to_string()),
+    )
+    .expect("unlock private key for session");
     assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
     assert!(ensure_ripasso_private_key_is_ready(&imported.fingerprint).is_ok());
 }

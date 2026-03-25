@@ -31,8 +31,8 @@ Keycord reads and writes standard `pass` stores. It can work in two ways:
 Package names differ by distribution. This project was tested with Fedora packages:
 
 ```sh
-sudo dnf install gpgme-devel clang pkg-config nettle-devel libgpg-error-devel openssl-devel gtk4-devel gcc pkgconf-pkg-config glib2-devel cairo-devel pango-devel libadwaita-devel cargo mold clippy rustfmt \
-    git pass pass-otp pinentry pinentry-gnome3 python-pass-import
+sudo dnf install gpgme-devel clang pkg-config nettle-devel libgpg-error-devel openssl-devel gtk4-devel gcc pkgconf-pkg-config glib2-devel cairo-devel capnproto pcsc-lite-devel pango-devel libadwaita-devel cargo mold clippy rustfmt \
+    pcsc-lite pcsc-lite-ccid git pass pass-otp pinentry pinentry-gnome3 python-pass-import
 ```
 
 ### Running and Building

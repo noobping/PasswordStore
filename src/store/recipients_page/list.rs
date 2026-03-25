@@ -1,10 +1,10 @@
-use super::export::copy_armored_private_key;
+use super::export::copy_managed_key_material;
 use super::sync::{sync_private_keys_from_host_if_enabled, sync_private_keys_to_host_if_enabled};
 use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::backend::{
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
-    StoreRecipientsPrivateKeyRequirement,
+    ManagedRipassoPrivateKeyProtection, StoreRecipientsPrivateKeyRequirement,
 };
 #[cfg(target_os = "linux")]
 use crate::backend::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
@@ -522,14 +522,14 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
 fn append_private_key_row_shell(
     title: &str,
-    fingerprint: &str,
+    subtitle: &str,
     active: bool,
     toggle_blocked_message: Option<&str>,
 ) -> (ActionRow, adw::gtk::CheckButton) {
     let title = adw::glib::markup_escape_text(title);
     let row = ActionRow::builder()
         .title(title.as_str())
-        .subtitle(fingerprint)
+        .subtitle(subtitle)
         .build();
     row.set_activatable(false);
     row.add_prefix(&dim_label_icon("dialog-password-symbolic"));
@@ -571,16 +571,25 @@ fn append_managed_private_key_row(
         require_all_selected_keys,
         selected_available_keys,
     );
-    let (row, toggle) = append_private_key_row_shell(
-        &key.title(),
-        &key.fingerprint,
-        active,
-        toggle_blocked_message,
-    );
+    let subtitle = match key.protection {
+        ManagedRipassoPrivateKeyProtection::Password => {
+            format!("{} - Password protected", key.fingerprint)
+        }
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
+            format!("{} - Hardware key", key.fingerprint)
+        }
+    };
+    let (row, toggle) =
+        append_private_key_row_shell(&key.title(), &subtitle, active, toggle_blocked_message);
     append_private_key_status_suffixes(state, key, &row, unlocked, requires_unlock);
 
-    let copy_button =
-        flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy armored private key");
+    let copy_button = flat_icon_button_with_tooltip(
+        "edit-copy-symbolic",
+        match key.protection {
+            ManagedRipassoPrivateKeyProtection::Password => "Copy armored private key",
+            ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Copy armored public key",
+        },
+    );
     row.add_suffix(&copy_button);
 
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove key");
@@ -717,14 +726,10 @@ fn connect_managed_private_key_row_actions(
     });
 
     let state_for_copy = state.clone();
-    let fingerprint_for_copy = key.fingerprint.clone();
+    let key_for_copy = key.clone();
     let copy_button_for_click = copy_button.clone();
     copy_button.connect_clicked(move |_| {
-        copy_armored_private_key(
-            &state_for_copy,
-            &fingerprint_for_copy,
-            Some(&copy_button_for_click),
-        );
+        copy_managed_key_material(&state_for_copy, &key_for_copy, Some(&copy_button_for_click));
     });
 
     let state_for_delete = state.clone();
@@ -760,13 +765,15 @@ mod tests {
         selected_available_private_key_count, unresolved_private_key_recipients,
         AvailablePrivateKey, HostGpgPrivateKeySummary, PrivateKeyVerificationWarning,
     };
-    use crate::backend::ManagedRipassoPrivateKey;
+    use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
 
     #[test]
     fn merged_private_keys_prefer_managed_duplicates() {
         let managed = ManagedRipassoPrivateKey {
             fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
             user_ids: vec!["Managed User <managed@example.com>".to_string()],
+            protection: ManagedRipassoPrivateKeyProtection::Password,
+            hardware: None,
         };
         let merged = merge_available_private_keys(
             vec![managed.clone()],
@@ -830,6 +837,8 @@ mod tests {
             AvailablePrivateKey::Managed(ManagedRipassoPrivateKey {
                 fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 user_ids: vec!["Alice <alice@example.com>".to_string()],
+                protection: ManagedRipassoPrivateKeyProtection::Password,
+                hardware: None,
             }),
             AvailablePrivateKey::HostOnly(HostGpgPrivateKeySummary {
                 fingerprint: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string(),

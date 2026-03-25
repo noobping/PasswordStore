@@ -354,7 +354,12 @@ impl<'a> StructuredSearchParser<'a> {
         };
         self.skip_whitespace();
         let operand = self.parse_operand(comparison)?;
-        SearchClause::from_operand(field, comparison, operand)
+        match operand {
+            SearchOperand::Literal(value) => SearchClause::new(field, comparison, value),
+            SearchOperand::FieldReference(referenced_field) => {
+                SearchClause::field_reference(field, comparison, referenced_field)
+            }
+        }
     }
 
     fn parse_symbolic_comparison(&mut self) -> Option<SearchComparison> {

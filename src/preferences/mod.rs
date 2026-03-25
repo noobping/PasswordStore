@@ -163,6 +163,13 @@ impl Preferences {
         )
     }
 
+    pub fn clear_empty_fields_before_save(&self) -> bool {
+        self.read_preference(
+            |settings| settings.boolean("clear-empty-fields-before-save"),
+            |cfg| cfg.clear_empty_fields_before_save.unwrap_or(false),
+        )
+    }
+
     pub fn password_generation_settings(&self) -> PasswordGenerationSettings {
         self.read_preference(
             |settings| {
@@ -226,6 +233,13 @@ impl Preferences {
         self.write_preference(
             |settings| settings.set_string("new-pass-file-template", template),
             |cfg| cfg.new_pass_file_template = Some(template.to_string()),
+        )
+    }
+
+    pub fn set_clear_empty_fields_before_save(&self, enabled: bool) -> Result<(), BoolError> {
+        self.write_preference(
+            |settings| settings.set_boolean("clear-empty-fields-before-save", enabled),
+            |cfg| cfg.clear_empty_fields_before_save = Some(enabled),
         )
     }
 
@@ -406,5 +420,10 @@ mod tests {
     #[test]
     fn private_key_sync_defaults_to_disabled() {
         assert!(!Preferences::new().sync_private_keys_with_host());
+    }
+
+    #[test]
+    fn clear_empty_fields_before_save_defaults_to_disabled() {
+        assert!(!Preferences::new().clear_empty_fields_before_save());
     }
 }

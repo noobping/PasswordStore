@@ -29,11 +29,8 @@ pub fn rebuild_dynamic_fields_from_lines(
     for (line, value) in structured_lines.iter().cloned() {
         match line {
             StructuredPassLine::Field(template) => {
-                let row = build_dynamic_field_row(
-                    &template,
-                    value.as_deref().unwrap_or_default(),
-                    overlay,
-                );
+                let row =
+                    dynamic_field_row(&template, value.as_deref().unwrap_or_default(), overlay);
                 box_widget.append(&row.widget());
                 rows.push(row);
                 templates.push(StructuredPassLine::Field(template));
@@ -55,7 +52,7 @@ pub fn rebuild_dynamic_fields_from_lines(
     *rows_state.borrow_mut() = rows;
 }
 
-fn build_dynamic_field_row(
+pub fn dynamic_field_row(
     template: &DynamicFieldTemplate,
     value: &str,
     overlay: &ToastOverlay,

@@ -1,4 +1,6 @@
-use super::parse::structured_username_value;
+use super::parse::{
+    canonical_search_field_key, parse_structured_pass_lines, structured_username_value,
+};
 use super::types::{DynamicFieldRow, StructuredPassLine};
 use crate::password::model::OpenPassFile;
 use adw::prelude::*;
@@ -55,6 +57,59 @@ pub fn structured_pass_contents_from_values(
     output
 }
 
+pub fn clean_pass_file_contents(contents: &str) -> String {
+    let (password, structured_lines) = parse_structured_pass_lines(contents);
+    let mut output = String::new();
+    output.push_str(&password);
+
+    for (line, value) in structured_lines {
+        let Some(line) = cleaned_line(line, value) else {
+            continue;
+        };
+        output.push('\n');
+        output.push_str(&line);
+    }
+
+    output
+}
+
+pub fn apply_pass_file_template_contents(contents: &str, template: &str) -> String {
+    let template_contents = new_pass_file_contents_from_template(template);
+    if template_contents.is_empty() {
+        return contents.to_string();
+    }
+
+    let (password, mut current_lines) = parse_structured_pass_lines(contents);
+    let (_, template_lines) = parse_structured_pass_lines(&template_contents);
+    let mut insert_at = current_lines
+        .iter()
+        .position(|(line, _)| matches!(line, StructuredPassLine::Preserved(_)))
+        .unwrap_or(current_lines.len());
+    let original_len = current_lines.len();
+
+    for (line, value) in template_lines {
+        if matches!(line, StructuredPassLine::Preserved(_))
+            || has_matching_template_line(&current_lines, &line)
+        {
+            continue;
+        }
+
+        current_lines.insert(insert_at, (line, value));
+        insert_at += 1;
+    }
+
+    if current_lines.len() == original_len {
+        return contents.to_string();
+    }
+
+    structured_pass_contents_from_lines(&password, &current_lines)
+}
+
+pub fn pass_file_has_missing_template_fields(contents: &str, template: &str) -> bool {
+    !new_pass_file_contents_from_template(template).is_empty()
+        && apply_pass_file_template_contents(contents, template) != contents
+}
+
 pub fn new_pass_file_contents_from_template(template: &str) -> String {
     let template = template.trim_matches('\n');
     if template.is_empty() {
@@ -62,6 +117,122 @@ pub fn new_pass_file_contents_from_template(template: &str) -> String {
     } else {
         format!("\n{template}")
     }
+}
+
+fn cleaned_line(line: StructuredPassLine, value: Option<String>) -> Option<String> {
+    match line {
+        StructuredPassLine::Field(template) => {
+            value.filter(|value| !value.is_empty()).map(|value| {
+                format!(
+                    "{}:{}{}",
+                    template.raw_key, template.separator_spacing, value
+                )
+            })
+        }
+        StructuredPassLine::Username(template) => {
+            value.filter(|value| !value.is_empty()).map(|value| {
+                format!(
+                    "{}:{}{}",
+                    template.raw_key, template.separator_spacing, value
+                )
+            })
+        }
+        StructuredPassLine::Otp(template) => value
+            .filter(|url| should_keep_otp_url(url))
+            .map(|url| template.line(&url)),
+        StructuredPassLine::Preserved(line) => Some(line),
+    }
+}
+
+fn structured_pass_contents_from_lines(
+    password: &str,
+    lines: &[(StructuredPassLine, Option<String>)],
+) -> String {
+    let mut output = String::new();
+    output.push_str(password);
+
+    for (line, value) in lines {
+        output.push('\n');
+        output.push_str(&line_contents(line, value.as_deref()));
+    }
+
+    output
+}
+
+fn line_contents(line: &StructuredPassLine, value: Option<&str>) -> String {
+    match line {
+        StructuredPassLine::Field(template) => {
+            format!(
+                "{}:{}{}",
+                template.raw_key,
+                template.separator_spacing,
+                value.unwrap_or_default()
+            )
+        }
+        StructuredPassLine::Username(template) => {
+            format!(
+                "{}:{}{}",
+                template.raw_key,
+                template.separator_spacing,
+                value.unwrap_or_default()
+            )
+        }
+        StructuredPassLine::Otp(template) => template.line(value.unwrap_or_default()),
+        StructuredPassLine::Preserved(line) => line.clone(),
+    }
+}
+
+fn has_matching_template_line(
+    lines: &[(StructuredPassLine, Option<String>)],
+    candidate: &StructuredPassLine,
+) -> bool {
+    let Some(candidate_identity) = template_line_identity(candidate) else {
+        return false;
+    };
+
+    lines.iter().any(|(line, _)| {
+        template_line_identity(line)
+            .as_ref()
+            .is_some_and(|identity| identity == &candidate_identity)
+    })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TemplateLineIdentity {
+    Username,
+    Otp,
+    Field(String),
+}
+
+fn template_line_identity(line: &StructuredPassLine) -> Option<TemplateLineIdentity> {
+    match line {
+        StructuredPassLine::Username(_) => Some(TemplateLineIdentity::Username),
+        StructuredPassLine::Otp(_) => Some(TemplateLineIdentity::Otp),
+        StructuredPassLine::Field(template) => {
+            canonical_search_field_key(&template.title).map(TemplateLineIdentity::Field)
+        }
+        StructuredPassLine::Preserved(_) => None,
+    }
+}
+
+fn should_keep_otp_url(url: &str) -> bool {
+    !url.trim().is_empty()
+        && !otp_secret_from_url(url)
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+}
+
+fn otp_secret_from_url(url: &str) -> Option<String> {
+    let query = url.split_once('?')?.1.split('#').next().unwrap_or_default();
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        if key.eq_ignore_ascii_case("secret") {
+            Some(value.to_string())
+        } else {
+            None
+        }
+    })
 }
 
 fn username_row_state(pass_file: Option<&OpenPassFile>) -> (Option<String>, bool) {

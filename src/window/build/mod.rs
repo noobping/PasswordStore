@@ -2,7 +2,10 @@ mod actions;
 mod state;
 pub(super) mod widgets;
 
-use crate::password::list::{load_passwords_async, setup_search_filter, PasswordListActions};
+use crate::password::list::{
+    connect_selected_pass_file_shortcuts, load_passwords_async, setup_search_filter,
+    PasswordListActions,
+};
 use crate::password::new_item::register_open_new_password_action;
 use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
@@ -48,8 +51,9 @@ use super::preferences::{
     initialize_backend_row,
 };
 use super::preferences::{
-    connect_new_password_template_autosave, connect_password_generation_autosave,
-    connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
+    connect_clear_empty_fields_before_save_autosave, connect_new_password_template_autosave,
+    connect_password_generation_autosave, connect_username_fallback_autosave,
+    register_open_preferences_action, PreferencesActionState,
 };
 use super::tools::{register_open_tools_action, ToolsPageState};
 use crate::logging::{log_error, log_info};
@@ -187,6 +191,11 @@ fn connect_window_behaviors(
         &widgets.new_pass_file_template_view,
         &widgets.toast_overlay,
     );
+    connect_clear_empty_fields_before_save_autosave(
+        &preferences_action_state.clear_empty_fields_before_save_row,
+        &preferences_action_state.clear_empty_fields_before_save_check,
+        &widgets.toast_overlay,
+    );
     connect_username_fallback_autosave(
         &widgets.preferences_username_folder_check,
         &widgets.preferences_username_filename_check,
@@ -269,6 +278,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         &widgets.password_list_spinner,
         &widgets.password_list_scrolled,
     );
+    connect_selected_pass_file_shortcuts(&widgets.list, &widgets.toast_overlay);
     initialize_password_list(&widgets);
     let new_password_popover_state = new_password_popover_state(&widgets);
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);

@@ -52,6 +52,9 @@ pub(super) fn password_page_state(
         entry: widgets.password_entry.clone(),
         username: widgets.username_entry.clone(),
         otp: otp.clone(),
+        field_add_row: widgets.add_field_row.clone(),
+        template_button: widgets.apply_template_button.clone(),
+        clean_button: widgets.clean_pass_file_button.clone(),
         otp_add_button: widgets.add_otp_button.clone(),
         generator_settings_button: widgets.password_generator_settings_button.clone(),
         generator_settings_revealer: widgets.password_generator_settings_revealer.clone(),
@@ -222,6 +225,8 @@ pub(super) fn preferences_action_state(
     PreferencesActionState {
         page_state: window_page_state(widgets, &widgets.settings_page),
         template_view: widgets.new_pass_file_template_view.clone(),
+        clear_empty_fields_before_save_row: widgets.clear_empty_fields_before_save_row.clone(),
+        clear_empty_fields_before_save_check: widgets.clear_empty_fields_before_save_check.clone(),
         username_folder_check: widgets.preferences_username_folder_check.clone(),
         username_filename_check: widgets.preferences_username_filename_check.clone(),
         generator_controls: PasswordGenerationControls::new(

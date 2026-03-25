@@ -16,7 +16,9 @@ pub use self::git::clone_store_repository;
 #[cfg(test)]
 mod tests {
     use crate::password::file::{
-        new_pass_file_contents_from_template, parse_structured_pass_lines, structured_otp_line,
+        apply_pass_file_template_contents, clean_pass_file_contents,
+        new_pass_file_contents_from_template, parse_structured_pass_lines,
+        pass_file_has_missing_template_fields, structured_otp_line,
         structured_pass_contents_from_values, structured_username_value, uri_to_open,
         OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
     };
@@ -129,5 +131,71 @@ mod tests {
             ),
             "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
         );
+    }
+
+    #[test]
+    fn clean_pass_file_removes_empty_structured_fields() {
+        assert_eq!(
+            clean_pass_file_contents(
+                "secret\nusername:   \nemail:   hello@example.com\npin:\nurl:https://example.com"
+            ),
+            "secret\nemail:   hello@example.com\nurl:https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn clean_pass_file_removes_blank_otp_entries() {
+        assert_eq!(
+            clean_pass_file_contents(
+                "secret\notpauth://totp/Keycord?issuer=Keycord&secret=&digits=6&period=30\notpauth:   \nurl: https://example.com"
+            ),
+            "secret\nurl: https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn clean_pass_file_keeps_preserved_lines_and_blank_notes() {
+        assert_eq!(
+            clean_pass_file_contents(
+                "secret\nnotes without colon\n\n  \nurl: https://example.com\nusername:"
+            ),
+            "secret\nnotes without colon\n\n  \nurl: https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn applying_template_adds_missing_structured_fields_before_notes() {
+        assert_eq!(
+            apply_pass_file_template_contents(
+                "secret\nemail: alice@example.com\nnotes without colon",
+                "username:\nemail:\nurl: https://example.com"
+            ),
+            "secret\nemail: alice@example.com\nusername:\nurl: https://example.com\nnotes without colon"
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn applying_template_skips_existing_fields_and_template_notes() {
+        assert_eq!(
+            apply_pass_file_template_contents(
+                "secret\nUser: alice\notpauth://totp/Example?secret=ABC\nurl: https://example.com\nnotes",
+                "username:\ntemplate note\notpauth:\nURL:\napi key:"
+            ),
+            "secret\nUser: alice\notpauth://totp/Example?secret=ABC\nurl: https://example.com\napi key:\nnotes"
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn template_button_hides_when_template_is_empty_or_already_applied() {
+        assert!(!pass_file_has_missing_template_fields(
+            "secret\nusername:",
+            ""
+        ));
+        assert!(!pass_file_has_missing_template_fields(
+            "secret\nusername:\nurl: https://example.com",
+            "username:\nurl: https://example.com"
+        ));
     }
 }

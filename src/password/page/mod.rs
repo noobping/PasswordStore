@@ -3,7 +3,11 @@ mod linux;
 mod standard;
 mod state;
 
-use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
+use super::file::{
+    apply_pass_file_template_contents, clean_pass_file_contents,
+    new_pass_file_contents_from_template, pass_file_has_missing_template_fields,
+    structured_pass_contents,
+};
 use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
@@ -30,8 +34,8 @@ use adw::{Dialog, Toast};
 use std::string::ToString;
 
 use self::editor::{
-    add_empty_otp_secret as add_empty_otp_secret_to_editor, current_editor_contents,
-    structured_editor_contents, sync_editor_contents,
+    add_empty_dynamic_field, add_empty_otp_secret as add_empty_otp_secret_to_editor,
+    current_editor_contents, focus_field_add_row, structured_editor_contents, sync_editor_contents,
 };
 use self::linux as platform;
 use self::platform::handle_open_password_entry_error;
@@ -101,8 +105,20 @@ fn validate_password_save_contents(contents: &str) -> Result<(), String> {
     validate_pass_file_email_fields(contents).map_err(ToString::to_string)
 }
 
+fn prepared_password_save_contents(
+    contents: String,
+    clear_empty_fields_before_save: bool,
+) -> String {
+    if clear_empty_fields_before_save {
+        clean_pass_file_contents(&contents)
+    } else {
+        contents
+    }
+}
+
 fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSaveContext, String> {
     let pass_file = get_opened_pass_file().ok_or_else(|| "Open an item first.".to_string())?;
+    let preferences = Preferences::new();
     let editor_contents = current_editor_contents(state);
 
     let otp_url = state
@@ -120,6 +136,8 @@ fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSa
             &state.dynamic_rows.borrow(),
         )
     };
+    let contents =
+        prepared_password_save_contents(contents, preferences.clear_empty_fields_before_save());
     let target_label = pass_file
         .updated_label_from_username(&state.username.text())
         .map_err(|err| username_fallback_failure_message(err).to_string())?;
@@ -304,6 +322,87 @@ pub fn add_empty_otp_secret(state: &PasswordPageState) {
     add_empty_otp_secret_to_editor(state);
 }
 
+pub fn focus_add_pass_field_input(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.entry.is_visible() {
+        return;
+    }
+
+    focus_field_add_row(state);
+}
+
+pub fn add_pass_field_from_input(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.entry.is_visible() {
+        return;
+    }
+
+    match add_empty_dynamic_field(state, &state.field_add_row.text(), None) {
+        Ok(()) => state.field_add_row.set_text(""),
+        Err(message) => state.overlay.add_toast(Toast::new(message)),
+    }
+}
+
+pub fn refresh_apply_template_button(state: &PasswordPageState) {
+    sync_apply_template_button(state, &current_editor_contents(state));
+}
+
+pub fn apply_pass_file_template(state: &PasswordPageState) {
+    let editing_structured = visible_navigation_page_is(&state.nav, &state.page);
+    let editing_raw = visible_navigation_page_is(&state.nav, &state.raw_page);
+    if (!editing_structured || !state.entry.is_visible()) && !editing_raw {
+        return;
+    }
+
+    let contents = current_editor_contents(state);
+    let templated_contents =
+        apply_pass_file_template_contents(&contents, &Preferences::new().new_pass_file_template());
+    if templated_contents == contents {
+        return;
+    }
+
+    let pass_file = get_opened_pass_file();
+    let updated_pass_file = pass_file
+        .as_ref()
+        .and_then(|pass_file| {
+            refresh_opened_pass_file_from_contents(pass_file, &templated_contents)
+        })
+        .or(pass_file);
+    sync_editor_contents(state, &templated_contents, updated_pass_file.as_ref());
+    state
+        .overlay
+        .add_toast(Toast::new("Added missing template fields."));
+}
+
+fn sync_apply_template_button(state: &PasswordPageState, contents: &str) {
+    state
+        .template_button
+        .set_visible(pass_file_has_missing_template_fields(
+            contents,
+            &Preferences::new().new_pass_file_template(),
+        ));
+}
+
+pub fn clean_pass_file(state: &PasswordPageState) {
+    let editing_structured = visible_navigation_page_is(&state.nav, &state.page);
+    let editing_raw = visible_navigation_page_is(&state.nav, &state.raw_page);
+    if (!editing_structured || !state.entry.is_visible()) && !editing_raw {
+        return;
+    }
+
+    let contents = current_editor_contents(state);
+    let cleaned_contents = clean_pass_file_contents(&contents);
+    if cleaned_contents == contents {
+        return;
+    }
+
+    let pass_file = get_opened_pass_file();
+    let updated_pass_file = pass_file
+        .as_ref()
+        .and_then(|pass_file| refresh_opened_pass_file_from_contents(pass_file, &cleaned_contents))
+        .or(pass_file);
+    sync_editor_contents(state, &cleaned_contents, updated_pass_file.as_ref());
+    state.overlay.add_toast(Toast::new("Removed empty fields."));
+}
+
 pub fn password_page_has_unsaved_changes(state: &PasswordPageState) -> bool {
     current_editor_contents(state) != *state.saved_contents.borrow()
 }
@@ -428,7 +527,8 @@ pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
 mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
-        should_retry_open_password_entry, validate_password_save_contents, PasswordPageDisplay,
+        prepared_password_save_contents, should_retry_open_password_entry,
+        validate_password_save_contents, PasswordPageDisplay,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::{OpenPassFile, UsernameFallbackError};
@@ -559,6 +659,24 @@ mod tests {
         assert_eq!(
             validate_password_save_contents("secret\nemail: invalid"),
             Err("Email fields must use a valid email address.".to_string())
+        );
+    }
+
+    #[test]
+    fn prepared_password_save_contents_can_auto_clean_empty_fields() {
+        assert_eq!(
+            prepared_password_save_contents(
+                "secret\nusername:\nurl: https://example.com".to_string(),
+                true
+            ),
+            "secret\nurl: https://example.com".to_string()
+        );
+        assert_eq!(
+            prepared_password_save_contents(
+                "secret\nusername:\nurl: https://example.com".to_string(),
+                false
+            ),
+            "secret\nusername:\nurl: https://example.com".to_string()
         );
     }
 }

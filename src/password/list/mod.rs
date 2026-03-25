@@ -5,17 +5,22 @@ mod search;
 use self::placeholder::{
     register_placeholder_state, show_loading_placeholder, show_resolved_placeholder,
 };
-use self::row::append_password_row;
+use self::row::{
+    activate_selected_password_row_action, append_password_row, SelectedPasswordRowAction,
+};
 use self::search::{search_controller_for_list, SearchFilterController};
 use crate::backend::password_entry_is_readable;
 use crate::logging::{log_error, log_info};
-use crate::password::model::{collect_all_password_items_with_options, CollectItemsOptions};
+use crate::password::model::{
+    collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
+};
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
+use crate::support::object_data::{cloned_data, set_cloned_data};
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::clear_list_box;
-use adw::glib::Propagation;
+use adw::glib::{self, Propagation};
 use adw::gtk::{
     gdk, Button, EventControllerKey, ListBox, ListBoxRow, PropagationPhase, SearchEntry,
 };
@@ -97,6 +102,9 @@ impl PasswordListActions {
     }
 }
 
+const PASSWORD_LIST_RENDER_GENERATION_KEY: &str = "password-list-render-generation";
+const PASSWORD_ROW_RENDER_BATCH_SIZE: usize = 100;
+
 const fn list_action_visibility(context: ListActionContext) -> ListActionVisibility {
     if matches!(context.actions, ListActionsMode::Hidden) {
         return ListActionVisibility {
@@ -153,6 +161,7 @@ pub fn load_passwords_async(
     show_duplicates: bool,
 ) {
     clear_list_box(list);
+    let render_generation = start_password_list_render_cycle(list);
 
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
@@ -191,6 +200,10 @@ pub fn load_passwords_async(
             .collect::<Vec<_>>()
         },
         move |items| {
+            if !password_list_render_cycle_is_current(&list_clone, render_generation) {
+                return;
+            }
+
             let context = ListActionContext {
                 actions: if show_list_actions {
                     ListActionsMode::Visible
@@ -213,24 +226,36 @@ pub fn load_passwords_async(
                     GitAvailability::Unavailable
                 },
             };
-            for (item, readable) in items {
-                append_password_row(&list_clone, item, readable, &overlay_clone);
-            }
-
-            if show_list_actions {
-                update_list_actions(&actions_clone, context);
-            }
-            if let Some(controller) = search_controller_for_list(&list_clone) {
-                controller.finish_reload(&list_clone);
-            } else {
-                show_resolved_placeholder(
-                    &list_clone,
-                    matches!(context.contents, ListContents::Empty),
-                    has_store_dirs,
-                );
-            }
+            render_password_rows_in_batches(
+                &list_clone,
+                &overlay_clone,
+                items,
+                render_generation,
+                {
+                    let list = list_clone.clone();
+                    let actions = actions_clone.clone();
+                    move || {
+                        if show_list_actions {
+                            update_list_actions(&actions, context);
+                        }
+                        if let Some(controller) = search_controller_for_list(&list) {
+                            controller.finish_reload(&list);
+                        } else {
+                            show_resolved_placeholder(
+                                &list,
+                                matches!(context.contents, ListContents::Empty),
+                                has_store_dirs,
+                            );
+                        }
+                    }
+                },
+            );
         },
         move || {
+            if !password_list_render_cycle_is_current(&list_for_disconnect, render_generation) {
+                return;
+            }
+
             let context = ListActionContext {
                 actions: if show_list_actions {
                     ListActionsMode::Visible
@@ -259,6 +284,42 @@ pub fn load_passwords_async(
             }
         },
     );
+}
+
+fn render_password_rows_in_batches(
+    list: &ListBox,
+    overlay: &ToastOverlay,
+    items: Vec<(PassEntry, bool)>,
+    generation: u64,
+    on_complete: impl FnOnce() + 'static,
+) {
+    if items.is_empty() {
+        on_complete();
+        return;
+    }
+
+    let list = list.clone();
+    let overlay = overlay.clone();
+    let mut items = items.into_iter();
+    let mut on_complete = Some(on_complete);
+    glib::idle_add_local(move || {
+        if !password_list_render_cycle_is_current(&list, generation) {
+            return glib::ControlFlow::Break;
+        }
+
+        for _ in 0..PASSWORD_ROW_RENDER_BATCH_SIZE {
+            let Some((item, readable)) = items.next() else {
+                if let Some(on_complete) = on_complete.take() {
+                    on_complete();
+                }
+                return glib::ControlFlow::Break;
+            };
+
+            append_password_row(&list, item, readable, &overlay);
+        }
+
+        glib::ControlFlow::Continue
+    });
 }
 
 const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
@@ -301,6 +362,24 @@ pub fn setup_search_filter(
     connect_search_arrow_navigation(list, search_entry);
 }
 
+pub fn connect_selected_pass_file_shortcuts(list: &ListBox, overlay: &ToastOverlay) {
+    let controller = EventControllerKey::new();
+    controller.set_propagation_phase(PropagationPhase::Capture);
+    let list_for_handler = list.clone();
+    let overlay = overlay.clone();
+    controller.connect_key_pressed(move |_, key, _, modifiers| {
+        let Some(action) = selected_pass_file_shortcut_action(key, modifiers) else {
+            return Propagation::Proceed;
+        };
+        if activate_selected_password_row_action(&list_for_handler, &overlay, action) {
+            Propagation::Stop
+        } else {
+            Propagation::Proceed
+        }
+    });
+    list.add_controller(controller);
+}
+
 fn connect_search_arrow_navigation(list: &ListBox, search_entry: &SearchEntry) {
     let search_controller = EventControllerKey::new();
     search_controller.set_propagation_phase(PropagationPhase::Capture);
@@ -337,6 +416,45 @@ fn connect_search_arrow_navigation(list: &ListBox, search_entry: &SearchEntry) {
     list.add_controller(list_controller);
 }
 
+fn selected_pass_file_shortcut_action(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+) -> Option<SelectedPasswordRowAction> {
+    if has_primary_shortcut_modifier(modifiers) {
+        return match key {
+            gdk::Key::c | gdk::Key::C => Some(SelectedPasswordRowAction::Copy),
+            gdk::Key::m | gdk::Key::M => Some(SelectedPasswordRowAction::MoveWithinStore),
+            _ => None,
+        };
+    }
+
+    if has_plain_shortcut_modifiers(modifiers) {
+        return match key {
+            gdk::Key::F2 => Some(SelectedPasswordRowAction::RenameFile),
+            gdk::Key::Delete | gdk::Key::KP_Delete => Some(SelectedPasswordRowAction::Delete),
+            _ => None,
+        };
+    }
+
+    None
+}
+
+fn has_primary_shortcut_modifier(modifiers: gdk::ModifierType) -> bool {
+    modifiers.contains(gdk::ModifierType::CONTROL_MASK)
+        && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
+        && !modifiers.contains(gdk::ModifierType::ALT_MASK)
+        && !modifiers.contains(gdk::ModifierType::SUPER_MASK)
+        && !modifiers.contains(gdk::ModifierType::META_MASK)
+}
+
+fn has_plain_shortcut_modifiers(modifiers: gdk::ModifierType) -> bool {
+    !modifiers.contains(gdk::ModifierType::CONTROL_MASK)
+        && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
+        && !modifiers.contains(gdk::ModifierType::ALT_MASK)
+        && !modifiers.contains(gdk::ModifierType::SUPER_MASK)
+        && !modifiers.contains(gdk::ModifierType::META_MASK)
+}
+
 fn focus_first_visible_row(list: &ListBox) -> bool {
     let Some(row) = first_visible_row(list) else {
         return false;
@@ -363,7 +481,7 @@ fn first_visible_row(list: &ListBox) -> Option<ListBoxRow> {
     let mut index = 0;
     loop {
         let row = list.row_at_index(index)?;
-        if row.is_visible() {
+        if row.is_child_visible() {
             return Some(row);
         }
         index += 1;
@@ -423,14 +541,34 @@ fn store_git_state_summary_changed(summary: &str) -> bool {
     true
 }
 
+fn start_password_list_render_cycle(list: &ListBox) -> u64 {
+    let generation = next_password_list_render_generation(cloned_data(
+        list,
+        PASSWORD_LIST_RENDER_GENERATION_KEY,
+    ));
+    set_cloned_data(list, PASSWORD_LIST_RENDER_GENERATION_KEY, generation);
+    generation
+}
+
+fn password_list_render_cycle_is_current(list: &ListBox, generation: u64) -> bool {
+    cloned_data(list, PASSWORD_LIST_RENDER_GENERATION_KEY) == Some(generation)
+}
+
+fn next_password_list_render_generation(current: Option<u64>) -> u64 {
+    current.unwrap_or(0_u64).wrapping_add(1).max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_items_options, list_action_visibility, should_show_root_git_button,
+        collect_items_options, list_action_visibility, next_password_list_render_generation,
+        selected_pass_file_shortcut_action, should_show_root_git_button,
         should_show_root_store_button, GitAvailability, ListActionContext, ListActionVisibility,
         ListActionsMode, ListContents, StoreSetup, Visibility,
     };
+    use crate::password::list::row::SelectedPasswordRowAction;
     use crate::password::model::CollectItemsOptions;
+    use adw::gtk::gdk;
 
     fn expected_root_store_button_visibility() -> bool {
         true
@@ -599,6 +737,51 @@ mod tests {
                 show_hidden: true,
                 show_duplicates: false,
             }
+        );
+    }
+
+    #[test]
+    fn password_list_render_cycles_increment_from_one() {
+        assert_eq!(next_password_list_render_generation(None), 1);
+        assert_eq!(next_password_list_render_generation(Some(1)), 2);
+    }
+
+    #[test]
+    fn selected_pass_file_shortcuts_match_expected_keys() {
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::c, gdk::ModifierType::CONTROL_MASK),
+            Some(SelectedPasswordRowAction::Copy)
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::F2, gdk::ModifierType::empty()),
+            Some(SelectedPasswordRowAction::RenameFile)
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::m, gdk::ModifierType::CONTROL_MASK),
+            Some(SelectedPasswordRowAction::MoveWithinStore)
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::Delete, gdk::ModifierType::empty()),
+            Some(SelectedPasswordRowAction::Delete)
+        );
+    }
+
+    #[test]
+    fn selected_pass_file_shortcuts_ignore_conflicting_modifiers() {
+        assert_eq!(
+            selected_pass_file_shortcut_action(
+                gdk::Key::c,
+                gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK,
+            ),
+            None
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::Delete, gdk::ModifierType::ALT_MASK),
+            None
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::m, gdk::ModifierType::empty()),
+            None
         );
     }
 }

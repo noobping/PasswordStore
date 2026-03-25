@@ -1,10 +1,13 @@
 use crate::support::object_data::{cloned_data, set_cloned_data};
+use adw::glib;
 use adw::gtk::{ListBox, ScrolledWindow, Spinner, Stack};
 use adw::prelude::*;
 use adw::StatusPage;
 
 const APP_ID: &str = env!("APP_ID");
 const PLACEHOLDER_STATE_KEY: &str = "password-list-placeholder-state";
+const LOADING_TITLE: &str = "Loading";
+const LOADING_DESCRIPTION: &str = "Building the pass file list from your stores.";
 
 #[derive(Clone)]
 pub(super) struct PasswordListPlaceholderState {
@@ -15,16 +18,13 @@ pub(super) struct PasswordListPlaceholderState {
 }
 
 impl PasswordListPlaceholderState {
-    fn show_loading(&self, list: &ListBox) {
-        self.sync(
-            list,
-            PlaceholderPresentation {
-                icon_name: APP_ID,
-                title: "",
-                description: None,
-                spinner: true,
-            },
-        );
+    fn show_loading(&self) {
+        self.show_status(PlaceholderPresentation {
+            icon_name: APP_ID,
+            title: LOADING_TITLE,
+            description: Some(LOADING_DESCRIPTION),
+            spinner: true,
+        });
     }
 
     fn show_resolved(&self, list: &ListBox, empty: bool, has_store_dirs: bool) {
@@ -61,6 +61,10 @@ impl PasswordListPlaceholderState {
             return;
         }
 
+        self.show_status(presentation);
+    }
+
+    fn show_status(&self, presentation: PlaceholderPresentation) {
         self.status.set_icon_name(Some(presentation.icon_name));
         self.status.set_title(presentation.title);
         self.status.set_description(presentation.description);
@@ -99,7 +103,7 @@ pub(super) fn register_placeholder_state(
 
 pub(super) fn show_loading_placeholder(list: &ListBox) {
     if let Some(state) = placeholder_state_for_list(list) {
-        state.show_loading(list);
+        state.show_loading();
         return;
     }
 
@@ -108,7 +112,10 @@ pub(super) fn show_loading_placeholder(list: &ListBox) {
 
 pub(super) fn show_resolved_placeholder(list: &ListBox, empty: bool, has_store_dirs: bool) {
     if let Some(state) = placeholder_state_for_list(list) {
-        state.show_resolved(list, empty, has_store_dirs);
+        let list = list.clone();
+        glib::idle_add_local_once(move || {
+            state.show_resolved(&list, empty, has_store_dirs);
+        });
         return;
     }
 
@@ -122,7 +129,7 @@ fn placeholder_state_for_list(list: &ListBox) -> Option<PasswordListPlaceholderS
 fn has_visible_rows(list: &ListBox) -> bool {
     let mut index = 0;
     while let Some(row) = list.row_at_index(index) {
-        if row.is_visible() {
+        if row.is_child_visible() {
             return true;
         }
         index += 1;

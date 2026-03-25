@@ -29,6 +29,7 @@ pub struct PasswordPageState {
     pub username: EntryRow,
     pub otp: PasswordOtpState,
     pub field_add_row: EntryRow,
+    pub clean_button: Button,
     pub otp_add_button: Button,
     pub generator_settings_button: ToggleButton,
     pub generator_settings_revealer: Revealer,
@@ -52,6 +53,7 @@ fn hide_password_editor_fields(state: &PasswordPageState) {
     state.username.set_visible(false);
     state.otp.clear();
     state.field_add_row.set_visible(false);
+    state.clean_button.set_visible(false);
     state.otp_add_button.set_visible(false);
     hide_password_generator_settings(state);
     state.dynamic_box.set_visible(false);
@@ -80,6 +82,7 @@ pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
     state.entry.set_visible(true);
     state.raw.set_visible(true);
     state.field_add_row.set_visible(true);
+    state.clean_button.set_visible(true);
     state.otp_add_button.set_visible(false);
     hide_password_generator_settings(state);
 }
@@ -90,6 +93,7 @@ pub(super) fn reset_password_editor(state: &PasswordPageState) {
     state.otp.clear();
     state.field_add_row.set_text("");
     state.field_add_row.set_visible(false);
+    state.clean_button.set_visible(false);
     state.otp_add_button.set_visible(false);
     hide_password_generator_settings(state);
     clear_box_children(&state.dynamic_box);

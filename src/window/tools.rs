@@ -220,10 +220,14 @@ impl ToolsPageState {
     }
 
     fn browser_flow_is_visible(&self) -> bool {
-        visible_navigation_page_is(&self.navigation.nav, &self.page)
-            || visible_navigation_page_is(&self.navigation.nav, &self.field_values_page)
-            || visible_navigation_page_is(&self.navigation.nav, &self.value_values_page)
-            || visible_navigation_page_is(&self.navigation.nav, &self.weak_passwords_page)
+        tool_browser_flow_is_visible(
+            visible_navigation_page_is(&self.navigation.nav, &self.page),
+            visible_navigation_page_is(&self.navigation.nav, &self.field_values_page),
+            visible_navigation_page_is(&self.navigation.nav, &self.value_values_page),
+            visible_navigation_page_is(&self.navigation.nav, &self.weak_passwords_page),
+            visible_navigation_page_is(&self.navigation.nav, &self.password_page.page),
+            visible_navigation_page_is(&self.navigation.nav, &self.password_page.raw_page),
+        )
     }
 
     fn browser_has_state(&self) -> bool {
@@ -296,6 +300,22 @@ fn append_loading_rows(list: &ListBox, title: &str, subtitle: &str) {
 
 fn tool_rows_enabled(field_values_busy: bool, weak_passwords_busy: bool) -> bool {
     !(field_values_busy || weak_passwords_busy)
+}
+
+const fn tool_browser_flow_is_visible(
+    tools_page_visible: bool,
+    field_values_page_visible: bool,
+    value_values_page_visible: bool,
+    weak_passwords_page_visible: bool,
+    password_page_visible: bool,
+    raw_password_page_visible: bool,
+) -> bool {
+    tools_page_visible
+        || field_values_page_visible
+        || value_values_page_visible
+        || weak_passwords_page_visible
+        || password_page_visible
+        || raw_password_page_visible
 }
 
 fn set_tool_row_enabled(row: Option<&ActionRow>, enabled: bool) {

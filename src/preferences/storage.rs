@@ -11,6 +11,7 @@ pub(super) struct PreferenceFile {
     pub(super) pass_command: Option<String>,
     pub(super) password_store_dirs: Option<Vec<String>>,
     pub(super) new_pass_file_template: Option<String>,
+    pub(super) clear_empty_fields_before_save: Option<bool>,
     pub(super) password_generation: Option<PasswordGenerationSettings>,
     pub(super) username_fallback_mode: Option<UsernameFallbackMode>,
     pub(super) ripasso_own_fingerprint: Option<String>,

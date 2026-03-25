@@ -276,6 +276,10 @@ fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Pre
         &state.sync_private_keys_check,
         settings,
     );
+    sync_clear_empty_fields_before_save_check(
+        &state.clear_empty_fields_before_save_check,
+        settings.clear_empty_fields_before_save(),
+    );
 }
 
 pub(super) fn toast_preferences_save_error(
@@ -294,6 +298,8 @@ pub(super) fn toast_preferences_save_error(
 pub struct PreferencesActionState {
     pub page_state: WindowPageState,
     pub template_view: TextView,
+    pub clear_empty_fields_before_save_row: ActionRow,
+    pub clear_empty_fields_before_save_check: CheckButton,
     pub username_folder_check: CheckButton,
     pub username_filename_check: CheckButton,
     pub generator_controls: PasswordGenerationControls,
@@ -305,6 +311,51 @@ pub struct PreferencesActionState {
     pub backend_row: ComboRow,
     pub sync_private_keys_row: ActionRow,
     pub sync_private_keys_check: CheckButton,
+}
+
+fn sync_clear_empty_fields_before_save_check(check: &CheckButton, enabled: bool) {
+    if check.is_active() != enabled {
+        check.set_active(enabled);
+    }
+}
+
+pub fn connect_clear_empty_fields_before_save_autosave(
+    row: &ActionRow,
+    check: &CheckButton,
+    overlay: &ToastOverlay,
+) {
+    let check_for_row = check.clone();
+    row.connect_activated(move |_| {
+        if !check_for_row.is_sensitive() {
+            return;
+        }
+        check_for_row.set_active(!check_for_row.is_active());
+    });
+
+    let overlay = overlay.clone();
+    let preferences = Preferences::new();
+    sync_clear_empty_fields_before_save_check(check, preferences.clear_empty_fields_before_save());
+
+    let syncing = Rc::new(Cell::new(false));
+    let syncing_for_toggle = syncing.clone();
+    check.connect_toggled(move |button| {
+        if syncing_for_toggle.get() {
+            return;
+        }
+
+        let desired = button.is_active();
+        let stored = preferences.clear_empty_fields_before_save();
+        if desired == stored {
+            return;
+        }
+
+        syncing_for_toggle.set(true);
+        if let Err(err) = preferences.set_clear_empty_fields_before_save(desired) {
+            toast_preferences_save_error(&overlay, "clear empty fields before save", &err);
+            button.set_active(stored);
+        }
+        syncing_for_toggle.set(false);
+    });
 }
 
 pub fn connect_new_password_template_autosave(template_view: &TextView, overlay: &ToastOverlay) {

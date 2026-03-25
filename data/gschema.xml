@@ -33,6 +33,14 @@
       </description>
     </key>
 
+    <key name="clear-empty-fields-before-save" type="b">
+      <default>false</default>
+      <summary>Clear empty fields before save</summary>
+      <description>
+        Automatically remove blank structured fields from pass files before validation and save.
+      </description>
+    </key>
+
     <key name="username-fallback-mode" type="s">
       <default>'folder'</default>
       <summary>Username fallback mode</summary>

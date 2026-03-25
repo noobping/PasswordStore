@@ -71,6 +71,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) private_key_generation_confirm_row: PasswordEntryRow,
     pub(in crate::window) log_page: NavigationPage,
     pub(in crate::window) new_pass_file_template_view: TextView,
+    pub(in crate::window) clear_empty_fields_before_save_row: ActionRow,
+    pub(in crate::window) clear_empty_fields_before_save_check: CheckButton,
     pub(in crate::window) preferences_username_folder_check: CheckButton,
     pub(in crate::window) preferences_username_filename_check: CheckButton,
     pub(in crate::window) password_stores: ListBox,
@@ -242,6 +244,14 @@ impl WindowWidgets {
             ),
             log_page: required_object(builder, "log_page"),
             new_pass_file_template_view: required_object(builder, "new_pass_file_template_view"),
+            clear_empty_fields_before_save_row: required_object(
+                builder,
+                "clear_empty_fields_before_save_row",
+            ),
+            clear_empty_fields_before_save_check: required_object(
+                builder,
+                "clear_empty_fields_before_save_check",
+            ),
             preferences_username_folder_check: required_object(
                 builder,
                 "preferences_username_folder_check",

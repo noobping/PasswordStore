@@ -103,8 +103,20 @@ fn validate_password_save_contents(contents: &str) -> Result<(), String> {
     validate_pass_file_email_fields(contents).map_err(ToString::to_string)
 }
 
+fn prepared_password_save_contents(
+    contents: String,
+    clear_empty_fields_before_save: bool,
+) -> String {
+    if clear_empty_fields_before_save {
+        clean_pass_file_contents(&contents)
+    } else {
+        contents
+    }
+}
+
 fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSaveContext, String> {
     let pass_file = get_opened_pass_file().ok_or_else(|| "Open an item first.".to_string())?;
+    let preferences = Preferences::new();
     let editor_contents = current_editor_contents(state);
 
     let otp_url = state
@@ -122,6 +134,8 @@ fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSa
             &state.dynamic_rows.borrow(),
         )
     };
+    let contents =
+        prepared_password_save_contents(contents, preferences.clear_empty_fields_before_save());
     let target_label = pass_file
         .updated_label_from_username(&state.username.text())
         .map_err(|err| username_fallback_failure_message(err).to_string())?;
@@ -452,7 +466,8 @@ pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
 mod tests {
     use super::{
         password_open_failure_message, password_save_failure_message,
-        should_retry_open_password_entry, validate_password_save_contents, PasswordPageDisplay,
+        prepared_password_save_contents, should_retry_open_password_entry,
+        validate_password_save_contents, PasswordPageDisplay,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::{OpenPassFile, UsernameFallbackError};
@@ -583,6 +598,24 @@ mod tests {
         assert_eq!(
             validate_password_save_contents("secret\nemail: invalid"),
             Err("Email fields must use a valid email address.".to_string())
+        );
+    }
+
+    #[test]
+    fn prepared_password_save_contents_can_auto_clean_empty_fields() {
+        assert_eq!(
+            prepared_password_save_contents(
+                "secret\nusername:\nurl: https://example.com".to_string(),
+                true
+            ),
+            "secret\nurl: https://example.com".to_string()
+        );
+        assert_eq!(
+            prepared_password_save_contents(
+                "secret\nusername:\nurl: https://example.com".to_string(),
+                false
+            ),
+            "secret\nusername:\nurl: https://example.com".to_string()
         );
     }
 }

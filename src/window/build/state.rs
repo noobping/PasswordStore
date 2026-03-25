@@ -222,6 +222,8 @@ pub(super) fn preferences_action_state(
     PreferencesActionState {
         page_state: window_page_state(widgets, &widgets.settings_page),
         template_view: widgets.new_pass_file_template_view.clone(),
+        clear_empty_fields_before_save_row: widgets.clear_empty_fields_before_save_row.clone(),
+        clear_empty_fields_before_save_check: widgets.clear_empty_fields_before_save_check.clone(),
         username_folder_check: widgets.preferences_username_folder_check.clone(),
         username_filename_check: widgets.preferences_username_filename_check.clone(),
         generator_controls: PasswordGenerationControls::new(

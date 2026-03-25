@@ -1,4 +1,5 @@
 use crate::support::object_data::{cloned_data, set_cloned_data};
+use adw::glib;
 use adw::gtk::{ListBox, ScrolledWindow, Spinner, Stack};
 use adw::prelude::*;
 use adw::StatusPage;
@@ -111,7 +112,10 @@ pub(super) fn show_loading_placeholder(list: &ListBox) {
 
 pub(super) fn show_resolved_placeholder(list: &ListBox, empty: bool, has_store_dirs: bool) {
     if let Some(state) = placeholder_state_for_list(list) {
-        state.show_resolved(list, empty, has_store_dirs);
+        let list = list.clone();
+        glib::idle_add_local_once(move || {
+            state.show_resolved(&list, empty, has_store_dirs);
+        });
         return;
     }
 

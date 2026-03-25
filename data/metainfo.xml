@@ -34,7 +34,7 @@
       <li>Search across multiple stores</li>
       <li>Identify outdated accounts and weak passwords</li>
       <li>Support both structured fields and raw pass file text</li>
-      <li>Optional multi-layered encryption</li>
+      <li>Optional layered encryption</li>
       <li>Optional Git and GPG synchronization</li>
       <li>Manage recipients and private keys</li>
       <li>Sign commits and manage Git remotes</li>

@@ -33,7 +33,7 @@ impl StoreRecipientsMode {
     pub const fn page_title(self) -> &'static str {
         match self {
             Self::Create => "New Store",
-            Self::Edit => "Recipients",
+            Self::Edit => "Store keys",
         }
     }
 
@@ -48,7 +48,7 @@ impl StoreRecipientsMode {
     pub const fn save_failure_message(self) -> &'static str {
         match self {
             Self::Create => "Couldn't create the store.",
-            Self::Edit => "Couldn't save recipients.",
+            Self::Edit => "Couldn't save store keys.",
         }
     }
 
@@ -173,7 +173,7 @@ pub fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
     let Some(request) = state.current_request() else {
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
-        state.win.set_title("Recipients");
+        state.win.set_title("Store keys");
         state.win.set_subtitle(APP_WINDOW_TITLE);
         return;
     };
@@ -243,8 +243,9 @@ mod tests {
     use super::StoreRecipientsMode;
 
     #[test]
-    fn create_mode_has_create_title() {
+    fn mode_titles_match_their_behavior() {
         assert_eq!(StoreRecipientsMode::Create.page_title(), "New Store");
+        assert_eq!(StoreRecipientsMode::Edit.page_title(), "Store keys");
     }
 
     #[test]
@@ -255,7 +256,7 @@ mod tests {
         );
         assert_eq!(
             StoreRecipientsMode::Edit.save_failure_message(),
-            "Couldn't save recipients."
+            "Couldn't save store keys."
         );
     }
 }

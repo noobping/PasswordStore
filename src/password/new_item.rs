@@ -1,12 +1,10 @@
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
+use crate::support::ui::dialog_content_shell;
 use adw::gtk::{Align, Box as GtkBox, Label, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
-use adw::{
-    ApplicationWindow, ComboRow, Dialog, EntryRow, HeaderBar, PreferencesGroup, PreferencesPage,
-    WindowTitle,
-};
+use adw::{ApplicationWindow, ComboRow, Dialog, EntryRow, PreferencesGroup, PreferencesPage};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -17,21 +15,6 @@ pub struct NewPasswordPopoverState {
     pub store_dropdown: ComboRow,
     pub error_label: Label,
     pub store_roots: Rc<RefCell<Vec<String>>>,
-}
-
-fn dialog_content_shell(title: &str, subtitle: &str, child: &impl IsA<adw::gtk::Widget>) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
-    if !subtitle.trim().is_empty() {
-        window_title.set_subtitle(subtitle);
-    }
-
-    let header = HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-
-    let shell = GtkBox::new(adw::gtk::Orientation::Vertical, 0);
-    shell.append(&header);
-    shell.append(child);
-    shell
 }
 
 pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow, Label) {
@@ -72,7 +55,7 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow, Label)
         .follows_content_size(true)
         .child(&dialog_content_shell(
             "New item",
-            "Create a new pass file.",
+            Some("Create a new pass file."),
             &content,
         ))
         .build();

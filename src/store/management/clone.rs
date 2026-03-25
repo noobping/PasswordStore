@@ -1,12 +1,11 @@
 use super::{
-    dialogs::{build_progress_dialog, dialog_content_shell},
-    open_store_folder_picker, rebuild_stores_list, updated_stores_after_add,
-    StoreRecipientsPageState,
+    dialogs::build_progress_dialog, open_store_folder_picker, rebuild_stores_list,
+    updated_stores_after_add, StoreRecipientsPageState,
 };
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
-use crate::support::ui::{append_action_row_with_button, dim_label_icon};
+use crate::support::ui::{append_action_row_with_button, dialog_content_shell, dim_label_icon};
 use crate::window::clone_store_repository;
 use adw::gtk::{Align, Box as GtkBox, Label, ListBox, Orientation};
 use adw::prelude::*;

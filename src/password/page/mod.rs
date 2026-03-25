@@ -3,7 +3,9 @@ mod linux;
 mod standard;
 mod state;
 
-use super::file::{new_pass_file_contents_from_template, structured_pass_contents};
+use super::file::{
+    clean_pass_file_contents, new_pass_file_contents_from_template, structured_pass_contents,
+};
 use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
@@ -302,6 +304,28 @@ pub fn add_empty_otp_secret(state: &PasswordPageState) {
     }
 
     add_empty_otp_secret_to_editor(state);
+}
+
+pub fn clean_pass_file(state: &PasswordPageState) {
+    let editing_structured = visible_navigation_page_is(&state.nav, &state.page);
+    let editing_raw = visible_navigation_page_is(&state.nav, &state.raw_page);
+    if (!editing_structured || !state.entry.is_visible()) && !editing_raw {
+        return;
+    }
+
+    let contents = current_editor_contents(state);
+    let cleaned_contents = clean_pass_file_contents(&contents);
+    if cleaned_contents == contents {
+        return;
+    }
+
+    let pass_file = get_opened_pass_file();
+    let updated_pass_file = pass_file
+        .as_ref()
+        .and_then(|pass_file| refresh_opened_pass_file_from_contents(pass_file, &cleaned_contents))
+        .or(pass_file);
+    sync_editor_contents(state, &cleaned_contents, updated_pass_file.as_ref());
+    state.overlay.add_toast(Toast::new("Removed empty fields."));
 }
 
 pub fn password_page_has_unsaved_changes(state: &PasswordPageState) -> bool {

@@ -38,6 +38,12 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Clean pass file</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;k</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Generate password</property>
                 <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;g</property>
               </object>

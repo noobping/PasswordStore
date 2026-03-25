@@ -5,7 +5,7 @@ use crate::password::new_item::{
     NewPasswordPopoverState,
 };
 use crate::password::page::{
-    add_empty_otp_secret, begin_new_password_entry, generate_password_entry,
+    add_empty_otp_secret, begin_new_password_entry, clean_pass_file, generate_password_entry,
     open_password_entry_page, save_current_password_entry, show_raw_pass_file_page,
     PasswordPageState,
 };
@@ -114,6 +114,13 @@ pub(super) fn register_password_page_actions(
         let page_state = page_state.clone();
         register_window_action(window, "add-otp-secret", move || {
             add_empty_otp_secret(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
+        register_window_action(window, "clean-pass-file", move || {
+            clean_pass_file(&page_state);
         });
     }
 

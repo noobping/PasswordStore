@@ -1,4 +1,4 @@
-use super::parse::structured_username_value;
+use super::parse::{parse_structured_pass_lines, structured_username_value};
 use super::types::{DynamicFieldRow, StructuredPassLine};
 use crate::password::model::OpenPassFile;
 use adw::prelude::*;
@@ -55,6 +55,22 @@ pub fn structured_pass_contents_from_values(
     output
 }
 
+pub fn clean_pass_file_contents(contents: &str) -> String {
+    let (password, structured_lines) = parse_structured_pass_lines(contents);
+    let mut output = String::new();
+    output.push_str(&password);
+
+    for (line, value) in structured_lines {
+        let Some(line) = cleaned_line(line, value) else {
+            continue;
+        };
+        output.push('\n');
+        output.push_str(&line);
+    }
+
+    output
+}
+
 pub fn new_pass_file_contents_from_template(template: &str) -> String {
     let template = template.trim_matches('\n');
     if template.is_empty() {
@@ -62,6 +78,51 @@ pub fn new_pass_file_contents_from_template(template: &str) -> String {
     } else {
         format!("\n{template}")
     }
+}
+
+fn cleaned_line(line: StructuredPassLine, value: Option<String>) -> Option<String> {
+    match line {
+        StructuredPassLine::Field(template) => {
+            value.filter(|value| !value.is_empty()).map(|value| {
+                format!(
+                    "{}:{}{}",
+                    template.raw_key, template.separator_spacing, value
+                )
+            })
+        }
+        StructuredPassLine::Username(template) => {
+            value.filter(|value| !value.is_empty()).map(|value| {
+                format!(
+                    "{}:{}{}",
+                    template.raw_key, template.separator_spacing, value
+                )
+            })
+        }
+        StructuredPassLine::Otp(template) => value
+            .filter(|url| should_keep_otp_url(url))
+            .map(|url| template.line(&url)),
+        StructuredPassLine::Preserved(line) => Some(line),
+    }
+}
+
+fn should_keep_otp_url(url: &str) -> bool {
+    !url.trim().is_empty()
+        && !otp_secret_from_url(url)
+            .unwrap_or_default()
+            .trim()
+            .is_empty()
+}
+
+fn otp_secret_from_url(url: &str) -> Option<String> {
+    let query = url.split_once('?')?.1.split('#').next().unwrap_or_default();
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        if key.eq_ignore_ascii_case("secret") {
+            Some(value.to_string())
+        } else {
+            None
+        }
+    })
 }
 
 fn username_row_state(pass_file: Option<&OpenPassFile>) -> (Option<String>, bool) {

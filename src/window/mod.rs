@@ -16,9 +16,10 @@ pub use self::git::clone_store_repository;
 #[cfg(test)]
 mod tests {
     use crate::password::file::{
-        new_pass_file_contents_from_template, parse_structured_pass_lines, structured_otp_line,
-        structured_pass_contents_from_values, structured_username_value, uri_to_open,
-        OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
+        clean_pass_file_contents, new_pass_file_contents_from_template,
+        parse_structured_pass_lines, structured_otp_line, structured_pass_contents_from_values,
+        structured_username_value, uri_to_open, OtpFieldTemplate, StructuredPassLine,
+        UsernameFieldTemplate,
     };
 
     #[test]
@@ -128,6 +129,36 @@ mod tests {
                 &values,
             ),
             "secret\nusername:alice@example.com\nurl: https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn clean_pass_file_removes_empty_structured_fields() {
+        assert_eq!(
+            clean_pass_file_contents(
+                "secret\nusername:   \nemail:   hello@example.com\npin:\nurl:https://example.com"
+            ),
+            "secret\nemail:   hello@example.com\nurl:https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn clean_pass_file_removes_blank_otp_entries() {
+        assert_eq!(
+            clean_pass_file_contents(
+                "secret\notpauth://totp/Keycord?issuer=Keycord&secret=&digits=6&period=30\notpauth:   \nurl: https://example.com"
+            ),
+            "secret\nurl: https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn clean_pass_file_keeps_preserved_lines_and_blank_notes() {
+        assert_eq!(
+            clean_pass_file_contents(
+                "secret\nnotes without colon\n\n  \nurl: https://example.com\nusername:"
+            ),
+            "secret\nnotes without colon\n\n  \nurl: https://example.com".to_string()
         );
     }
 }

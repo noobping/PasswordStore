@@ -2,7 +2,10 @@ mod actions;
 mod state;
 pub(super) mod widgets;
 
-use crate::password::list::{load_passwords_async, setup_search_filter, PasswordListActions};
+use crate::password::list::{
+    connect_selected_pass_file_shortcuts, load_passwords_async, setup_search_filter,
+    PasswordListActions,
+};
 use crate::password::new_item::register_open_new_password_action;
 use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
@@ -275,6 +278,7 @@ pub fn create_main_window(app: &Application, startup_query: Option<String>) -> A
         &widgets.password_list_spinner,
         &widgets.password_list_scrolled,
     );
+    connect_selected_pass_file_shortcuts(&widgets.list, &widgets.toast_overlay);
     initialize_password_list(&widgets);
     let new_password_popover_state = new_password_popover_state(&widgets);
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);

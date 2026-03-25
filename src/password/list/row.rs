@@ -1,4 +1,4 @@
-use super::search::{SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
+use super::search::{search_controller_for_list, SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
 use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::logging::log_error;
@@ -11,7 +11,7 @@ use crate::password::undo::{
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
-use crate::support::object_data::{set_cloned_data, set_string_data};
+use crate::support::object_data::{cloned_data, set_cloned_data, set_string_data};
 use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{
@@ -30,8 +30,17 @@ enum TextEditMode {
     MoveWithinStore,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SelectedPasswordRowAction {
+    Copy,
+    RenameFile,
+    MoveWithinStore,
+    Delete,
+}
+
 const UNREADABLE_PASSWORD_ROW_TOOLTIP: &str =
     "This item can't be opened with the private keys currently available in the app. File actions are still available, but copy and move-to-store are disabled until a compatible private key is available.";
+const PASSWORD_ROW_STATE_KEY: &str = "password-row-state";
 
 #[derive(Clone)]
 struct PasswordRowState {
@@ -110,12 +119,13 @@ pub(super) fn append_password_row(
         store_roots: Rc::new(RefCell::new(Vec::new())),
         text_edit_mode: Rc::new(RefCell::new(TextEditMode::RenameFile)),
     };
+    set_cloned_data(&row, PASSWORD_ROW_STATE_KEY, state.clone());
     sync_password_row_display(&state);
     set_cloned_data(&row, SEARCH_FIELDS_KEY, SearchRowFieldIndexState::Unindexed);
 
     configure_password_row_menu(&menu_button, &state, readable, list, overlay);
     connect_copy_action(&state, &copy_button, overlay);
-    connect_text_edit_actions(&state, &text_cancel_button, overlay);
+    connect_text_edit_actions(&state, list, &text_cancel_button, overlay);
     connect_store_move_actions(
         &state,
         list,
@@ -223,10 +233,12 @@ fn enter_text_edit_mode(state: &PasswordRowState, mode: TextEditMode, value: &st
     });
     state.text_edit_row.set_text(value);
     state.stack.set_visible_child_name("text-edit");
+    state.text_edit_row.grab_focus();
 }
 
 fn connect_text_edit_actions(
     state: &PasswordRowState,
+    list: &ListBox,
     cancel_button: &Button,
     overlay: &ToastOverlay,
 ) {
@@ -236,6 +248,7 @@ fn connect_text_edit_actions(
     });
 
     let state = state.clone();
+    let list = list.clone();
     let overlay = overlay.clone();
     let text_edit_row = state.text_edit_row.clone();
     text_edit_row.connect_apply(move |row| {
@@ -264,6 +277,7 @@ fn connect_text_edit_actions(
                 push_row_undo_action(state.readable, rename_entry_action(&entry, &new_label));
                 sync_password_row_display(&state);
                 show_password_row_display(&state);
+                refresh_password_list_search(&list);
             }
             Err(err) => {
                 log_error(format!("Failed to move or rename password entry: {err}"));
@@ -297,6 +311,7 @@ fn enter_store_edit_mode(state: &PasswordRowState, overlay: &ToastOverlay) {
         .store_edit_row
         .set_subtitle(&state.item.borrow().label());
     state.stack.set_visible_child_name("store-edit");
+    state.store_dropdown.grab_focus();
 }
 
 fn connect_store_move_actions(
@@ -344,7 +359,7 @@ fn connect_store_move_actions(
                     *state_for_result.item.borrow_mut() = updated_entry;
                     sync_password_row_display(&state_for_result);
                     show_password_row_display(&state_for_result);
-                    list_for_result.invalidate_filter();
+                    refresh_password_list_search(&list_for_result);
                     overlay_for_result.add_toast(Toast::new("Moved."));
                 }
                 Err(err) => {
@@ -376,6 +391,7 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
                     push_undo_action(undo_action);
                 }
                 list.remove(&row);
+                refresh_password_list_search(&list);
             }
             Err(err) => {
                 log_undo_error("delete password entry", &err);
@@ -386,6 +402,44 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
             overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the item."));
         },
     );
+}
+
+pub(super) fn activate_selected_password_row_action(
+    list: &ListBox,
+    overlay: &ToastOverlay,
+    action: SelectedPasswordRowAction,
+) -> bool {
+    let Some(state) = focused_password_row_state(list) else {
+        return false;
+    };
+    if state.stack.visible_child_name().as_deref() != Some("display") {
+        return false;
+    }
+
+    match action {
+        SelectedPasswordRowAction::Copy if state.readable => {
+            copy_password_entry_to_clipboard(state.item.borrow().clone(), overlay.clone(), None);
+            true
+        }
+        SelectedPasswordRowAction::Copy => false,
+        SelectedPasswordRowAction::RenameFile => {
+            let entry = state.item.borrow().clone();
+            enter_text_edit_mode(&state, TextEditMode::RenameFile, &entry.basename);
+            true
+        }
+        SelectedPasswordRowAction::MoveWithinStore => {
+            let current_dir = {
+                let entry = state.item.borrow();
+                entry.relative_path.trim_end_matches('/').to_string()
+            };
+            enter_text_edit_mode(&state, TextEditMode::MoveWithinStore, &current_dir);
+            true
+        }
+        SelectedPasswordRowAction::Delete => {
+            delete_current_entry(&state, list, overlay);
+            true
+        }
+    }
 }
 
 fn renamed_file_label(entry: &PassEntry, new_name: &str) -> Result<Option<String>, &'static str> {
@@ -418,6 +472,21 @@ fn moved_file_label(entry: &PassEntry, new_location: &str) -> Option<String> {
 
 fn show_password_row_display(state: &PasswordRowState) {
     state.stack.set_visible_child_name("display");
+}
+
+fn focused_password_row_state(list: &ListBox) -> Option<PasswordRowState> {
+    let row = focused_password_row(list)?;
+    cloned_data(&row, PASSWORD_ROW_STATE_KEY)
+}
+
+fn focused_password_row(list: &ListBox) -> Option<ListBoxRow> {
+    let mut widget = list.focus_child()?;
+    loop {
+        if let Ok(row) = widget.clone().downcast::<ListBoxRow>() {
+            return Some(row);
+        }
+        widget = widget.parent()?;
+    }
 }
 
 fn sync_password_row_display(state: &PasswordRowState) {
@@ -499,6 +568,13 @@ fn log_undo_error(action: &str, error: &UndoError) {
                 "Failed to {action}: rollback failed.\nAction error: {action_error}\nRollback error: {rollback_error}"
             ));
         }
+    }
+}
+
+fn refresh_password_list_search(list: &ListBox) {
+    list.invalidate_filter();
+    if let Some(controller) = search_controller_for_list(list) {
+        controller.update_placeholder(list);
     }
 }
 

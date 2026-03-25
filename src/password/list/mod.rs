@@ -5,7 +5,9 @@ mod search;
 use self::placeholder::{
     register_placeholder_state, show_loading_placeholder, show_resolved_placeholder,
 };
-use self::row::append_password_row;
+use self::row::{
+    activate_selected_password_row_action, append_password_row, SelectedPasswordRowAction,
+};
 use self::search::{search_controller_for_list, SearchFilterController};
 use crate::backend::password_entry_is_readable;
 use crate::logging::{log_error, log_info};
@@ -360,6 +362,24 @@ pub fn setup_search_filter(
     connect_search_arrow_navigation(list, search_entry);
 }
 
+pub fn connect_selected_pass_file_shortcuts(list: &ListBox, overlay: &ToastOverlay) {
+    let controller = EventControllerKey::new();
+    controller.set_propagation_phase(PropagationPhase::Capture);
+    let list_for_handler = list.clone();
+    let overlay = overlay.clone();
+    controller.connect_key_pressed(move |_, key, _, modifiers| {
+        let Some(action) = selected_pass_file_shortcut_action(key, modifiers) else {
+            return Propagation::Proceed;
+        };
+        if activate_selected_password_row_action(&list_for_handler, &overlay, action) {
+            Propagation::Stop
+        } else {
+            Propagation::Proceed
+        }
+    });
+    list.add_controller(controller);
+}
+
 fn connect_search_arrow_navigation(list: &ListBox, search_entry: &SearchEntry) {
     let search_controller = EventControllerKey::new();
     search_controller.set_propagation_phase(PropagationPhase::Capture);
@@ -394,6 +414,45 @@ fn connect_search_arrow_navigation(list: &ListBox, search_entry: &SearchEntry) {
         Propagation::Proceed
     });
     list.add_controller(list_controller);
+}
+
+fn selected_pass_file_shortcut_action(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+) -> Option<SelectedPasswordRowAction> {
+    if has_primary_shortcut_modifier(modifiers) {
+        return match key {
+            gdk::Key::c | gdk::Key::C => Some(SelectedPasswordRowAction::Copy),
+            gdk::Key::m | gdk::Key::M => Some(SelectedPasswordRowAction::MoveWithinStore),
+            _ => None,
+        };
+    }
+
+    if has_plain_shortcut_modifiers(modifiers) {
+        return match key {
+            gdk::Key::F2 => Some(SelectedPasswordRowAction::RenameFile),
+            gdk::Key::Delete | gdk::Key::KP_Delete => Some(SelectedPasswordRowAction::Delete),
+            _ => None,
+        };
+    }
+
+    None
+}
+
+fn has_primary_shortcut_modifier(modifiers: gdk::ModifierType) -> bool {
+    modifiers.contains(gdk::ModifierType::CONTROL_MASK)
+        && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
+        && !modifiers.contains(gdk::ModifierType::ALT_MASK)
+        && !modifiers.contains(gdk::ModifierType::SUPER_MASK)
+        && !modifiers.contains(gdk::ModifierType::META_MASK)
+}
+
+fn has_plain_shortcut_modifiers(modifiers: gdk::ModifierType) -> bool {
+    !modifiers.contains(gdk::ModifierType::CONTROL_MASK)
+        && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
+        && !modifiers.contains(gdk::ModifierType::ALT_MASK)
+        && !modifiers.contains(gdk::ModifierType::SUPER_MASK)
+        && !modifiers.contains(gdk::ModifierType::META_MASK)
 }
 
 fn focus_first_visible_row(list: &ListBox) -> bool {
@@ -503,11 +562,13 @@ fn next_password_list_render_generation(current: Option<u64>) -> u64 {
 mod tests {
     use super::{
         collect_items_options, list_action_visibility, next_password_list_render_generation,
-        should_show_root_git_button, should_show_root_store_button, GitAvailability,
-        ListActionContext, ListActionVisibility, ListActionsMode, ListContents, StoreSetup,
-        Visibility,
+        selected_pass_file_shortcut_action, should_show_root_git_button,
+        should_show_root_store_button, GitAvailability, ListActionContext, ListActionVisibility,
+        ListActionsMode, ListContents, StoreSetup, Visibility,
     };
+    use crate::password::list::row::SelectedPasswordRowAction;
     use crate::password::model::CollectItemsOptions;
+    use adw::gtk::gdk;
 
     fn expected_root_store_button_visibility() -> bool {
         true
@@ -683,5 +744,44 @@ mod tests {
     fn password_list_render_cycles_increment_from_one() {
         assert_eq!(next_password_list_render_generation(None), 1);
         assert_eq!(next_password_list_render_generation(Some(1)), 2);
+    }
+
+    #[test]
+    fn selected_pass_file_shortcuts_match_expected_keys() {
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::c, gdk::ModifierType::CONTROL_MASK),
+            Some(SelectedPasswordRowAction::Copy)
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::F2, gdk::ModifierType::empty()),
+            Some(SelectedPasswordRowAction::RenameFile)
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::m, gdk::ModifierType::CONTROL_MASK),
+            Some(SelectedPasswordRowAction::MoveWithinStore)
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::Delete, gdk::ModifierType::empty()),
+            Some(SelectedPasswordRowAction::Delete)
+        );
+    }
+
+    #[test]
+    fn selected_pass_file_shortcuts_ignore_conflicting_modifiers() {
+        assert_eq!(
+            selected_pass_file_shortcut_action(
+                gdk::Key::c,
+                gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK,
+            ),
+            None
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::Delete, gdk::ModifierType::ALT_MASK),
+            None
+        );
+        assert_eq!(
+            selected_pass_file_shortcut_action(gdk::Key::m, gdk::ModifierType::empty()),
+            None
+        );
     }
 }

@@ -16,10 +16,10 @@ pub use self::git::clone_store_repository;
 #[cfg(test)]
 mod tests {
     use crate::password::file::{
-        clean_pass_file_contents, new_pass_file_contents_from_template,
-        parse_structured_pass_lines, structured_otp_line, structured_pass_contents_from_values,
-        structured_username_value, uri_to_open, OtpFieldTemplate, StructuredPassLine,
-        UsernameFieldTemplate,
+        apply_pass_file_template_contents, clean_pass_file_contents,
+        new_pass_file_contents_from_template, parse_structured_pass_lines, structured_otp_line,
+        structured_pass_contents_from_values, structured_username_value, uri_to_open,
+        OtpFieldTemplate, StructuredPassLine, UsernameFieldTemplate,
     };
 
     #[test]
@@ -159,6 +159,30 @@ mod tests {
                 "secret\nnotes without colon\n\n  \nurl: https://example.com\nusername:"
             ),
             "secret\nnotes without colon\n\n  \nurl: https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn applying_template_adds_missing_structured_fields_before_notes() {
+        assert_eq!(
+            apply_pass_file_template_contents(
+                "secret\nemail: alice@example.com\nnotes without colon",
+                "username:\nemail:\nurl: https://example.com"
+            ),
+            "secret\nemail: alice@example.com\nusername:\nurl: https://example.com\nnotes without colon"
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn applying_template_skips_existing_fields_and_template_notes() {
+        assert_eq!(
+            apply_pass_file_template_contents(
+                "secret\nUser: alice\notpauth://totp/Example?secret=ABC\nurl: https://example.com\nnotes",
+                "username:\ntemplate note\notpauth:\nURL:\napi key:"
+            ),
+            "secret\nUser: alice\notpauth://totp/Example?secret=ABC\nurl: https://example.com\napi key:\nnotes"
+                .to_string()
         );
     }
 }

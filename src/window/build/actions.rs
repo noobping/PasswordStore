@@ -5,9 +5,10 @@ use crate::password::new_item::{
     NewPasswordPopoverState,
 };
 use crate::password::page::{
-    add_empty_otp_secret, add_pass_field_from_input, begin_new_password_entry, clean_pass_file,
-    focus_add_pass_field_input, generate_password_entry, open_password_entry_page,
-    save_current_password_entry, show_raw_pass_file_page, PasswordPageState,
+    add_empty_otp_secret, add_pass_field_from_input, apply_pass_file_template,
+    begin_new_password_entry, clean_pass_file, focus_add_pass_field_input, generate_password_entry,
+    open_password_entry_page, save_current_password_entry, show_raw_pass_file_page,
+    PasswordPageState,
 };
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
@@ -136,6 +137,13 @@ pub(super) fn register_password_page_actions(
         let page_state = page_state.clone();
         register_window_action(window, "clean-pass-file", move || {
             clean_pass_file(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
+        register_window_action(window, "apply-pass-template", move || {
+            apply_pass_file_template(&page_state);
         });
     }
 

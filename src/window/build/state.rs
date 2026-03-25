@@ -53,6 +53,7 @@ pub(super) fn password_page_state(
         username: widgets.username_entry.clone(),
         otp: otp.clone(),
         field_add_row: widgets.add_field_row.clone(),
+        template_button: widgets.apply_template_button.clone(),
         clean_button: widgets.clean_pass_file_button.clone(),
         otp_add_button: widgets.add_otp_button.clone(),
         generator_settings_button: widgets.password_generator_settings_button.clone(),

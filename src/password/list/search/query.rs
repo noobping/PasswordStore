@@ -35,8 +35,14 @@ pub(super) enum StructuredSearchQuery {
 pub(super) struct SearchClause {
     field: String,
     comparison: SearchComparison,
-    value: String,
+    operand: SearchOperand,
     compiled_regex: Option<Regex>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum SearchOperand {
+    Literal(String),
+    FieldReference(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,31 +65,71 @@ impl SearchComparison {
     const fn is_regex(self) -> bool {
         matches!(self, Self::RegexMatch | Self::RegexNotMatch)
     }
+
+    const fn supports_field_reference(self) -> bool {
+        matches!(self, Self::Exact | Self::ExactNot)
+    }
 }
 
 impl SearchClause {
     pub(super) fn new(field: String, comparison: SearchComparison, value: String) -> Option<Self> {
-        if value.is_empty() {
-            return None;
-        }
+        Self::from_operand(field, comparison, SearchOperand::Literal(value))
+    }
 
-        let compiled_regex = if comparison.is_regex() {
-            Some(Regex::new(&value).ok()?)
-        } else {
-            None
-        };
-        let value = if comparison.is_regex() {
-            value
-        } else {
-            value.to_lowercase()
-        };
-
-        Some(Self {
+    pub(super) fn field_reference(
+        field: String,
+        comparison: SearchComparison,
+        referenced_field: String,
+    ) -> Option<Self> {
+        Self::from_operand(
             field,
             comparison,
-            value,
-            compiled_regex,
-        })
+            SearchOperand::FieldReference(referenced_field),
+        )
+    }
+
+    fn from_operand(
+        field: String,
+        comparison: SearchComparison,
+        operand: SearchOperand,
+    ) -> Option<Self> {
+        match operand {
+            SearchOperand::Literal(value) => {
+                if value.is_empty() {
+                    return None;
+                }
+
+                let compiled_regex = if comparison.is_regex() {
+                    Some(Regex::new(&value).ok()?)
+                } else {
+                    None
+                };
+                let operand = if comparison.is_regex() {
+                    SearchOperand::Literal(value)
+                } else {
+                    SearchOperand::Literal(value.to_lowercase())
+                };
+
+                Some(Self {
+                    field,
+                    comparison,
+                    operand,
+                    compiled_regex,
+                })
+            }
+            SearchOperand::FieldReference(referenced_field) => {
+                if referenced_field.is_empty() || !comparison.supports_field_reference() {
+                    return None;
+                }
+
+                Some(Self {
+                    field,
+                    comparison,
+                    operand: SearchOperand::FieldReference(referenced_field),
+                    compiled_regex: None,
+                })
+            }
+        }
     }
 }
 
@@ -113,7 +159,7 @@ impl PartialEq for SearchClause {
     fn eq(&self, other: &Self) -> bool {
         self.field == other.field
             && self.comparison == other.comparison
-            && self.value == other.value
+            && self.operand == other.operand
     }
 }
 
@@ -307,8 +353,8 @@ impl<'a> StructuredSearchParser<'a> {
             }
         };
         self.skip_whitespace();
-        let value = self.parse_value()?;
-        SearchClause::new(field, comparison, value)
+        let operand = self.parse_operand(comparison)?;
+        SearchClause::from_operand(field, comparison, operand)
     }
 
     fn parse_symbolic_comparison(&mut self) -> Option<SearchComparison> {
@@ -408,6 +454,47 @@ impl<'a> StructuredSearchParser<'a> {
         } else {
             self.parse_unquoted_value()
         }
+    }
+
+    fn parse_operand(&mut self, comparison: SearchComparison) -> Option<SearchOperand> {
+        if self.peek_char() == Some('$') {
+            if !comparison.supports_field_reference() {
+                return None;
+            }
+
+            return self
+                .parse_field_reference()
+                .map(SearchOperand::FieldReference);
+        }
+
+        self.parse_value().map(SearchOperand::Literal)
+    }
+
+    fn parse_field_reference(&mut self) -> Option<String> {
+        if !self.consume_char('$') {
+            return None;
+        }
+
+        let raw_field = if matches!(self.peek_char(), Some('"') | Some('\'')) {
+            self.parse_quoted_value()?
+        } else {
+            self.parse_unquoted_field_reference()?
+        };
+
+        canonical_search_field_key(&raw_field)
+    }
+
+    fn parse_unquoted_field_reference(&mut self) -> Option<String> {
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch.is_ascii_whitespace() || matches!(ch, '(' | ')' | '=' | '!' | '~') {
+                break;
+            }
+            self.advance_char();
+        }
+
+        let field = self.input.get(start..self.pos)?.trim();
+        (!field.is_empty()).then(|| field.to_string())
     }
 
     fn parse_quoted_value(&mut self) -> Option<String> {
@@ -610,37 +697,69 @@ fn regex_search_corpus(label: &str, fields: &[SearchablePassField]) -> String {
 }
 
 fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool {
-    let matches_positive = |predicate: fn(&SearchablePassField, &SearchClause) -> bool| {
-        fields
-            .iter()
-            .filter(|field| field.key == clause.field)
-            .any(|field| predicate(field, clause))
-    };
-
-    match clause.comparison {
-        SearchComparison::Contains => {
-            matches_positive(|field, clause| field.normalized_value.contains(&clause.value))
+    match &clause.operand {
+        SearchOperand::Literal(value) => match clause.comparison {
+            SearchComparison::Contains => matches_field(fields, &clause.field, |field| {
+                field.normalized_value.contains(value)
+            }),
+            SearchComparison::ContainsNot => !matches_field(fields, &clause.field, |field| {
+                field.normalized_value.contains(value)
+            }),
+            SearchComparison::Exact => matches_field(fields, &clause.field, |field| {
+                field.normalized_value == *value
+            }),
+            SearchComparison::ExactNot => !matches_field(fields, &clause.field, |field| {
+                field.normalized_value == *value
+            }),
+            SearchComparison::RegexMatch => matches_field(fields, &clause.field, |field| {
+                clause
+                    .compiled_regex
+                    .as_ref()
+                    .is_some_and(|regex| regex.is_match(&field.value))
+            }),
+            SearchComparison::RegexNotMatch => !matches_field(fields, &clause.field, |field| {
+                clause
+                    .compiled_regex
+                    .as_ref()
+                    .is_some_and(|regex| regex.is_match(&field.value))
+            }),
+        },
+        SearchOperand::FieldReference(referenced_field) => {
+            let matches_positive = field_reference_matches(fields, &clause.field, referenced_field);
+            match clause.comparison {
+                SearchComparison::Exact => matches_positive,
+                SearchComparison::ExactNot => !matches_positive,
+                SearchComparison::Contains
+                | SearchComparison::ContainsNot
+                | SearchComparison::RegexMatch
+                | SearchComparison::RegexNotMatch => false,
+            }
         }
-        SearchComparison::ContainsNot => {
-            !matches_positive(|field, clause| field.normalized_value.contains(&clause.value))
-        }
-        SearchComparison::Exact => {
-            matches_positive(|field, clause| field.normalized_value == clause.value)
-        }
-        SearchComparison::ExactNot => {
-            !matches_positive(|field, clause| field.normalized_value == clause.value)
-        }
-        SearchComparison::RegexMatch => matches_positive(|field, clause| {
-            clause
-                .compiled_regex
-                .as_ref()
-                .is_some_and(|regex| regex.is_match(&field.value))
-        }),
-        SearchComparison::RegexNotMatch => !matches_positive(|field, clause| {
-            clause
-                .compiled_regex
-                .as_ref()
-                .is_some_and(|regex| regex.is_match(&field.value))
-        }),
     }
+}
+
+fn matches_field(
+    fields: &[SearchablePassField],
+    field_key: &str,
+    mut predicate: impl FnMut(&SearchablePassField) -> bool,
+) -> bool {
+    fields_for_key(fields, field_key).any(|field| predicate(field))
+}
+
+fn field_reference_matches(
+    fields: &[SearchablePassField],
+    field_key: &str,
+    referenced_field: &str,
+) -> bool {
+    fields_for_key(fields, field_key).any(|field| {
+        fields_for_key(fields, referenced_field)
+            .any(|other| field.normalized_value == other.normalized_value)
+    })
+}
+
+fn fields_for_key<'a>(
+    fields: &'a [SearchablePassField],
+    field_key: &'a str,
+) -> impl Iterator<Item = &'a SearchablePassField> + 'a {
+    fields.iter().filter(move |field| field.key == field_key)
 }

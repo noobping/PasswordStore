@@ -12,6 +12,17 @@ fn clause(field: &str, comparison: SearchComparison, value: &str) -> StructuredS
     )
 }
 
+fn field_ref_clause(
+    field: &str,
+    comparison: SearchComparison,
+    referenced_field: &str,
+) -> StructuredSearchQuery {
+    StructuredSearchQuery::Clause(
+        SearchClause::field_reference(field.to_string(), comparison, referenced_field.to_string())
+            .unwrap(),
+    )
+}
+
 fn and(left: StructuredSearchQuery, right: StructuredSearchQuery) -> StructuredSearchQuery {
     StructuredSearchQuery::And(Box::new(left), Box::new(right))
 }
@@ -106,6 +117,34 @@ fn exact_match_queries_use_double_equals() {
     assert_eq!(
         parse_search_query("find:username==NoobPing"),
         SearchQuery::Structured(clause("username", SearchComparison::Exact, "noobping"))
+    );
+}
+
+#[test]
+fn exact_field_reference_queries_parse_and_canonicalize_aliases() {
+    assert_eq!(
+        parse_search_query("find email is $username"),
+        SearchQuery::Structured(field_ref_clause(
+            "email",
+            SearchComparison::Exact,
+            "username",
+        ))
+    );
+    assert_eq!(
+        parse_search_query("find email is not $user"),
+        SearchQuery::Structured(field_ref_clause(
+            "email",
+            SearchComparison::ExactNot,
+            "username",
+        ))
+    );
+    assert_eq!(
+        parse_search_query(r#"find "backup email" == $"security question""#),
+        SearchQuery::Structured(field_ref_clause(
+            "backup email",
+            SearchComparison::Exact,
+            "security question",
+        ))
     );
 }
 
@@ -415,7 +454,23 @@ fn malformed_boolean_queries_do_not_fall_back_to_plain_search() {
         SearchQuery::InvalidStructured
     );
     assert_eq!(
+        parse_search_query("find email contains $username"),
+        SearchQuery::InvalidStructured
+    );
+    assert_eq!(
+        parse_search_query("find:email~=$username"),
+        SearchQuery::InvalidStructured
+    );
+    assert_eq!(
+        parse_search_query("find user regex $email"),
+        SearchQuery::InvalidStructured
+    );
+    assert_eq!(
         parse_search_query(r#"find "otpauth" is "otpauth://totp/example""#),
+        SearchQuery::InvalidStructured
+    );
+    assert_eq!(
+        parse_search_query("find email is $otpauth"),
         SearchQuery::InvalidStructured
     );
 }
@@ -627,11 +682,54 @@ fn exact_match_uses_full_case_insensitive_equality() {
 }
 
 #[test]
+fn exact_field_reference_queries_match_case_insensitively() {
+    let query = SearchQuery::Structured(field_ref_clause(
+        "email",
+        SearchComparison::Exact,
+        "username",
+    ));
+    assert!(row_matches_query(
+        "work/alice/github",
+        &indexed_fields(&[("email", "ALICE"), ("username", "alice")]),
+        &query,
+    ));
+    assert!(!row_matches_query(
+        "work/alice/github",
+        &indexed_fields(&[("email", "alice@example.com"), ("username", "alice")]),
+        &query,
+    ));
+}
+
+#[test]
+fn exact_field_reference_queries_match_any_repeated_value_pair() {
+    let query = SearchQuery::Structured(field_ref_clause(
+        "email",
+        SearchComparison::Exact,
+        "username",
+    ));
+    assert!(row_matches_query(
+        "work/shared/example",
+        &indexed_fields(&[
+            ("email", "alice@example.com"),
+            ("email", "shared-user"),
+            ("username", "owner"),
+            ("username", "SHARED-USER"),
+        ]),
+        &query,
+    ));
+}
+
+#[test]
 fn negative_clause_operators_match_as_expected() {
     let exact_not =
         SearchQuery::Structured(clause("username", SearchComparison::ExactNot, "alice"));
     let contains_not =
         SearchQuery::Structured(clause("url", SearchComparison::ContainsNot, "gitlab"));
+    let field_exact_not = SearchQuery::Structured(field_ref_clause(
+        "email",
+        SearchComparison::ExactNot,
+        "username",
+    ));
 
     assert!(row_matches_query(
         "work/noobping/github",
@@ -658,6 +756,21 @@ fn negative_clause_operators_match_as_expected() {
         &indexed_fields(&[("username", "noobping"), ("url", "https://gitlab.com")]),
         &contains_not,
     ));
+    assert!(!row_matches_query(
+        "work/shared/example",
+        &indexed_fields(&[("email", "shared"), ("username", "SHARED")]),
+        &field_exact_not,
+    ));
+    assert!(row_matches_query(
+        "work/missing/example",
+        &indexed_fields(&[("email", "shared")]),
+        &field_exact_not,
+    ));
+    assert!(row_matches_query(
+        "work/different/example",
+        &indexed_fields(&[("email", "shared"), ("username", "owner")]),
+        &field_exact_not,
+    ));
 }
 
 #[test]
@@ -665,6 +778,7 @@ fn negated_clauses_and_groups_match_as_expected() {
     let negated_clause =
         SearchQuery::Structured(not(clause("username", SearchComparison::Exact, "alice")));
     let negated_group = parse_search_query("find:!(username~=alice OR email=='a@b.com')");
+    let negated_field_ref = parse_search_query("find not email is $username");
 
     assert!(row_matches_query(
         "work/noobping/github",
@@ -685,6 +799,16 @@ fn negated_clauses_and_groups_match_as_expected() {
         "work/alice/github",
         &indexed_fields(&[("username", "alice"), ("email", "c@d.com")]),
         &negated_group,
+    ));
+    assert!(row_matches_query(
+        "work/different/github",
+        &indexed_fields(&[("username", "alice"), ("email", "alice@example.com")]),
+        &negated_field_ref,
+    ));
+    assert!(!row_matches_query(
+        "work/same/github",
+        &indexed_fields(&[("username", "shared"), ("email", "SHARED")]),
+        &negated_field_ref,
     ));
 }
 
@@ -714,6 +838,25 @@ fn boolean_queries_evaluate_mixed_contains_and_exact_matches() {
     assert!(!row_matches_query(
         "work/bob/github",
         &indexed_fields(&[("username", "bob"), ("email", "alice@example.com")]),
+        &query,
+    ));
+}
+
+#[test]
+fn exact_field_reference_queries_do_not_match_when_either_side_is_missing() {
+    let query = SearchQuery::Structured(field_ref_clause(
+        "email",
+        SearchComparison::Exact,
+        "username",
+    ));
+    assert!(!row_matches_query(
+        "work/missing-right/github",
+        &indexed_fields(&[("email", "alice@example.com")]),
+        &query,
+    ));
+    assert!(!row_matches_query(
+        "work/missing-left/github",
+        &indexed_fields(&[("username", "alice@example.com")]),
         &query,
     ));
 }

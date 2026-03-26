@@ -1,8 +1,13 @@
 use super::cert::ManagedRipassoHardwareKey;
+#[cfg(target_os = "linux")]
 use super::hardware_crypto::{decrypt_with_card_transaction, sign_with_card_transaction};
+#[cfg(target_os = "linux")]
 use card_backend_pcsc::PcscBackend;
+#[cfg(target_os = "linux")]
 use openpgp_card::ocard::KeyType;
+#[cfg(target_os = "linux")]
 use openpgp_card::{state, Card};
+#[cfg(target_os = "linux")]
 use secrecy::SecretString;
 use sequoia_openpgp::Cert;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -120,21 +125,19 @@ pub(in crate::backend::integrated) fn sign_with_hardware_session(
     with_hardware_transport_read(|transport| transport.sign_cleartext(session, data))
 }
 
+#[cfg(target_os = "linux")]
 fn pin_string(pin: &Zeroizing<Vec<u8>>) -> Result<String, String> {
     String::from_utf8(pin.as_slice().to_vec()).map_err(|err| err.to_string())
 }
 
+#[cfg(target_os = "linux")]
 fn fingerprint_matches(actual: Option<&str>, expected: &str) -> bool {
     actual.is_some_and(|actual| actual.eq_ignore_ascii_case(expected))
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
 struct RealHardwareTransport;
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
-struct RealHardwareTransport;
-
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 impl RealHardwareTransport {
     fn matching_fingerprint(
         tx: &mut Card<state::Transaction<'_>>,
@@ -211,7 +214,7 @@ impl RealHardwareTransport {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 impl HardwareTransport for RealHardwareTransport {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String> {
         let backends = PcscBackend::cards(None).map_err(card_error)?;
@@ -296,7 +299,7 @@ impl HardwareTransport for RealHardwareTransport {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(not(target_os = "linux"))]
 impl HardwareTransport for RealHardwareTransport {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String> {
         Err("Hardware OpenPGP keys are not supported on this platform.".to_string())
@@ -323,6 +326,7 @@ impl HardwareTransport for RealHardwareTransport {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn card_error(err: impl std::fmt::Display) -> String {
     err.to_string()
 }

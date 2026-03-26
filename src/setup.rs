@@ -5,7 +5,10 @@ use std::path::Path;
 use std::{env, fs};
 
 const APP_ID: &str = env!("APP_ID");
+const GETTEXT_DOMAIN: &str = env!("GETTEXT_DOMAIN");
+const LOCALEDIR: &str = env!("LOCALEDIR");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
+const AVAILABLE_LOCALES: &str = env!("AVAILABLE_LOCALES");
 
 pub fn local_menu_action_label(installed: bool) -> &'static str {
     if installed {
@@ -63,6 +66,7 @@ pub fn install_locally() -> std::io::Result<()> {
         .join("hicolor")
         .join("scalable")
         .join("apps");
+    let locale_root = data.join("locale");
     let dest = bin.join(project);
 
     std::fs::create_dir_all(&bin)?;
@@ -76,6 +80,7 @@ pub fn install_locally() -> std::io::Result<()> {
 
     write_desktop_file(&apps, &dest)?;
     extract_icon(&icons)?;
+    install_locales(&locale_root)?;
 
     Ok(())
 }
@@ -109,6 +114,7 @@ pub fn uninstall_locally() -> std::io::Result<()> {
     if icon.exists() {
         fs::remove_file(icon)?;
     }
+    remove_installed_locales(&data.join("locale"))?;
     Ok(())
 }
 
@@ -166,4 +172,47 @@ fn extract_icon(apps_dir: &Path) -> std::io::Result<()> {
     let out_path = apps_dir.join(format!("{}.svg", APP_ID));
     std::fs::write(&out_path, bytes.as_ref())?;
     Ok(())
+}
+
+fn install_locales(locale_root: &Path) -> std::io::Result<()> {
+    for locale in available_locales() {
+        let source = Path::new(LOCALEDIR)
+            .join(locale)
+            .join("LC_MESSAGES")
+            .join(format!("{GETTEXT_DOMAIN}.mo"));
+        if !source.exists() {
+            continue;
+        }
+
+        let destination = locale_root
+            .join(locale)
+            .join("LC_MESSAGES")
+            .join(format!("{GETTEXT_DOMAIN}.mo"));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(source, destination)?;
+    }
+
+    Ok(())
+}
+
+fn remove_installed_locales(locale_root: &Path) -> std::io::Result<()> {
+    for locale in available_locales() {
+        let destination = locale_root
+            .join(locale)
+            .join("LC_MESSAGES")
+            .join(format!("{GETTEXT_DOMAIN}.mo"));
+        if destination.exists() {
+            fs::remove_file(destination)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn available_locales() -> impl Iterator<Item = &'static str> {
+    AVAILABLE_LOCALES
+        .split(':')
+        .filter(|locale| !locale.is_empty())
 }

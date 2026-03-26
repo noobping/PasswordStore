@@ -1,5 +1,6 @@
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
+use crate::support::runtime::require_host_command_features;
 use std::process::{Command, Output};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +89,7 @@ pub fn normalize_optional_text(text: &str) -> Option<String> {
 }
 
 pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
+    require_host_command_features()?;
     let output = run_pass_command("Read pass import sources", |cmd| {
         cmd.arg("import").arg("--list");
     })?;
@@ -104,6 +106,7 @@ pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
 }
 
 pub fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
+    require_host_command_features()?;
     let output = run_store_pass_command(
         &request.store_root,
         "Import passwords with pass import",

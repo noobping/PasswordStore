@@ -11,6 +11,7 @@ use crate::logging::{
 };
 use crate::preferences::Preferences;
 use crate::support::git::has_git_repository;
+use crate::support::runtime::{require_host_command_features, supports_host_command_features};
 use sequoia_openpgp::policy::StandardPolicy;
 use sequoia_openpgp::serialize::stream::{Armorer, Message, Signer};
 use sequoia_openpgp::{self as openpgp, Cert};
@@ -57,6 +58,7 @@ fn run_store_git_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::git_command();
     cmd.arg("--git-dir").arg(Path::new(store_root).join(".git"));
     configure(&mut cmd);
@@ -70,6 +72,7 @@ fn run_store_git_work_tree_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::git_command();
     cmd.arg("--git-dir").arg(Path::new(store_root).join(".git"));
     cmd.arg("--work-tree").arg(store_root);
@@ -84,6 +87,7 @@ fn run_store_git_command_with_input(
     input: &str,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::git_command();
     cmd.arg("--git-dir").arg(Path::new(store_root).join(".git"));
     configure(&mut cmd);
@@ -226,6 +230,9 @@ fn commit_signing_key_requiring_unlock(
     store_root: &str,
     fingerprint: String,
 ) -> Result<Option<String>, String> {
+    if !supports_host_command_features() {
+        return Ok(None);
+    }
     if !has_git_repository(store_root) {
         return Ok(None);
     }
@@ -241,6 +248,9 @@ pub fn git_commit_private_key_requiring_unlock_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<Option<String>, String> {
+    if !supports_host_command_features() {
+        return Ok(None);
+    }
     let fingerprint = IntegratedCryptoContext::fingerprint_for_label(store_root, label)?;
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
@@ -250,6 +260,9 @@ pub fn git_commit_private_key_requiring_unlock_for_store_recipients(
     recipients: &[String],
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<Option<String>, String> {
+    if !supports_host_command_features() {
+        return Ok(None);
+    }
     let recipients_contents = recipient_contents(recipients, private_key_requirement);
     let fingerprint =
         match IntegratedCryptoContext::fingerprint_for_recipient_contents(&recipients_contents) {
@@ -546,6 +559,12 @@ fn commit_git_paths(
     paths: &[String],
     explicit_fingerprint: Option<&str>,
 ) -> Result<(), String> {
+    if !supports_host_command_features() {
+        log_info(format!(
+            "Skip password store Git commit for {store_root}: Git commands are only available on Linux."
+        ));
+        return Ok(());
+    }
     if paths.is_empty() {
         log_info(format!(
             "Skip password store Git commit for {store_root}: no paths were provided."

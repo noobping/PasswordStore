@@ -1,6 +1,8 @@
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
-use crate::support::runtime::has_host_permission;
+use crate::support::runtime::{
+    has_host_permission, require_host_command_features, supports_host_command_features,
+};
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -75,6 +77,7 @@ fn run_store_git_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::git_command();
     configure_store_git_repo_command(&mut cmd, root);
     configure(&mut cmd);
@@ -92,6 +95,7 @@ fn run_store_remote_git_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::remote_git_command();
     configure_store_git_repo_command(&mut cmd, root);
     configure(&mut cmd);
@@ -105,6 +109,7 @@ fn run_store_remote_git_work_tree_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::remote_git_command();
     configure_store_git_work_tree_command(&mut cmd, root);
     configure(&mut cmd);
@@ -118,6 +123,7 @@ fn run_store_git_work_tree_command(
     configure: impl FnOnce(&mut Command),
     options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = Preferences::git_command();
     configure_store_git_work_tree_command(&mut cmd, root);
     configure(&mut cmd);
@@ -132,6 +138,9 @@ fn configure_store_git_work_tree_command(cmd: &mut Command, root: &str) {
 
 pub fn ensure_store_git_repository(root: &str) -> Result<(), String> {
     if has_git_repository(root) {
+        return Ok(());
+    }
+    if !supports_host_command_features() {
         return Ok(());
     }
 
@@ -155,6 +164,11 @@ pub fn password_store_git_state_summary(root: &str) -> String {
     if !has_git_repository(root) {
         return format!(
             "Password store Git state: {root} -> no Git repository detected, local commits disabled, network operations disabled."
+        );
+    }
+    if !supports_host_command_features() {
+        return format!(
+            "Password store Git state: {root} -> Git repository detected, but Git commands are disabled in this build."
         );
     }
 
@@ -337,6 +351,9 @@ pub fn list_store_git_remotes(root: &str) -> Result<Vec<GitRemote>, String> {
     if !has_git_repository(root) {
         return Ok(Vec::new());
     }
+    if !supports_host_command_features() {
+        return Ok(Vec::new());
+    }
 
     let output = run_store_git_command(
         root,
@@ -378,6 +395,16 @@ pub fn store_git_repository_status(root: &str) -> Result<StoreGitRepositoryStatu
     if !has_git_repository(root) {
         return Ok(StoreGitRepositoryStatus {
             has_repository: false,
+            head: StoreGitHead::Detached,
+            dirty: false,
+            has_outgoing_commits: false,
+            has_incoming_commits: false,
+            remotes: Vec::new(),
+        });
+    }
+    if !supports_host_command_features() {
+        return Ok(StoreGitRepositoryStatus {
+            has_repository: true,
             head: StoreGitHead::Detached,
             dirty: false,
             has_outgoing_commits: false,
@@ -464,6 +491,7 @@ fn ref_has_unique_commits(root: &str, from: &str, to: &str) -> Result<bool, Stri
 }
 
 pub fn add_store_git_remote(root: &str, name: &str, url: &str) -> Result<(), String> {
+    require_host_command_features()?;
     ensure_store_git_repository(root)?;
     let output = run_store_git_command(
         root,
@@ -485,6 +513,7 @@ pub fn rename_store_git_remote(
     current_name: &str,
     new_name: &str,
 ) -> Result<(), String> {
+    require_host_command_features()?;
     let output = run_store_git_command(
         root,
         "Rename password store Git remote",
@@ -501,6 +530,7 @@ pub fn rename_store_git_remote(
 }
 
 pub fn set_store_git_remote_url(root: &str, name: &str, url: &str) -> Result<(), String> {
+    require_host_command_features()?;
     let output = run_store_git_command(
         root,
         "Update password store Git remote URL",
@@ -517,6 +547,7 @@ pub fn set_store_git_remote_url(root: &str, name: &str, url: &str) -> Result<(),
 }
 
 pub fn remove_store_git_remote(root: &str, name: &str) -> Result<(), String> {
+    require_host_command_features()?;
     let output = run_store_git_command(
         root,
         "Remove password store Git remote",
@@ -641,6 +672,7 @@ fn push_store_git_remote_branch(root: &str, remote: &str, branch: &str) -> Resul
 }
 
 pub fn sync_store_repository(root: &str) -> Result<(), String> {
+    require_host_command_features()?;
     let status = store_git_repository_status(root)?;
     if !status.has_repository || status.remotes.is_empty() {
         return Ok(());

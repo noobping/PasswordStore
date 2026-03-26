@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use adw::glib::object::IsA;
 use adw::gtk::{
     Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, PolicyType,
@@ -19,7 +20,12 @@ pub fn connect_row_action(row: &ActionRow, action: impl Fn() + 'static) {
 }
 
 pub fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
-    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    let title = gettext(title);
+    let subtitle = gettext(subtitle);
+    let row = ActionRow::builder()
+        .title(&title)
+        .subtitle(&subtitle)
+        .build();
     row.set_activatable(false);
     list.append(&row);
 }
@@ -64,7 +70,8 @@ pub fn dialog_content_shell(
     subtitle: Option<&str>,
     child: &impl IsA<adw::gtk::Widget>,
 ) -> GtkBox {
-    let window_title = WindowTitle::builder().title(title).build();
+    let translated_title = gettext(title);
+    let window_title = WindowTitle::builder().title(&translated_title).build();
     if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
         window_title.set_subtitle(subtitle);
     }
@@ -86,7 +93,8 @@ pub fn flat_icon_button(icon_name: &str) -> Button {
 
 pub fn flat_icon_button_with_tooltip(icon_name: &str, tooltip: &str) -> Button {
     let button = flat_icon_button(icon_name);
-    button.set_tooltip_text(Some(tooltip));
+    let tooltip = gettext(tooltip);
+    button.set_tooltip_text(Some(&tooltip));
     button
 }
 
@@ -103,7 +111,12 @@ pub fn append_action_row_with_button(
     icon_name: &str,
     action: impl Fn() + 'static,
 ) -> ActionRow {
-    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    let title = gettext(title);
+    let subtitle = gettext(subtitle);
+    let row = ActionRow::builder()
+        .title(&title)
+        .subtitle(&subtitle)
+        .build();
     row.set_activatable(true);
 
     let icon = Image::from_icon_name(icon_name);

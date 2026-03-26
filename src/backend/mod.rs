@@ -1,7 +1,5 @@
-#[cfg(target_os = "linux")]
 mod command;
 mod errors;
-#[cfg(target_os = "linux")]
 mod host;
 mod integrated;
 #[cfg(test)]
@@ -18,7 +16,6 @@ pub enum StoreRecipientsPrivateKeyRequirement {
     AllManagedKeys,
 }
 
-#[cfg(target_os = "linux")]
 pub use self::host::{
     armored_host_gpg_private_key, delete_host_gpg_private_key, import_host_gpg_private_key_bytes,
     list_host_gpg_private_keys, HostGpgPrivateKeySummary,

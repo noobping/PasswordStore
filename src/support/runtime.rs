@@ -22,11 +22,34 @@ pub fn log_runtime_capabilities_once() {
     });
 }
 
+pub const HOST_COMMAND_FEATURES_UNSUPPORTED: &str =
+    "Host command features are only available on Linux.";
+
 const fn feature_status(enabled: bool) -> &'static str {
     if enabled {
         "enabled"
     } else {
         "disabled"
+    }
+}
+
+pub const fn supports_host_command_features() -> bool {
+    cfg!(target_os = "linux")
+}
+
+pub const fn supports_logging_features() -> bool {
+    cfg!(target_os = "linux")
+}
+
+pub const fn supports_smartcard_features() -> bool {
+    cfg!(target_os = "linux")
+}
+
+pub fn require_host_command_features() -> Result<(), String> {
+    if supports_host_command_features() {
+        Ok(())
+    } else {
+        Err(HOST_COMMAND_FEATURES_UNSUPPORTED.to_string())
     }
 }
 
@@ -39,7 +62,7 @@ pub fn has_host_permission() -> bool {
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
 pub fn has_host_permission() -> bool {
-    true
+    supports_host_command_features()
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
@@ -51,7 +74,7 @@ pub fn has_smartcard_permission() -> bool {
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
 pub fn has_smartcard_permission() -> bool {
-    true
+    supports_smartcard_features()
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]

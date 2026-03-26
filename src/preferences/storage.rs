@@ -10,6 +10,8 @@ pub(super) struct PreferenceFile {
     pub(super) backend: Option<String>,
     pub(super) pass_command: Option<String>,
     pub(super) password_store_dirs: Option<Vec<String>>,
+    pub(super) window_width: Option<i32>,
+    pub(super) window_height: Option<i32>,
     pub(super) new_pass_file_template: Option<String>,
     pub(super) clear_empty_fields_before_save: Option<bool>,
     pub(super) password_generation: Option<PasswordGenerationSettings>,

@@ -5,14 +5,20 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 mod command_backend;
+#[cfg(target_os = "linux")]
 mod linux;
+#[cfg(not(target_os = "linux"))]
+mod non_linux;
 mod restricted;
 mod storage;
 
 use self::restricted::default_store_dirs;
 use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
+use crate::support::runtime::supports_host_command_features;
 
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nemail:url:";
+const DEFAULT_WINDOW_WIDTH: i32 = 850;
+const DEFAULT_WINDOW_HEIGHT: i32 = 600;
 const APP_ID: &str = env!("APP_ID");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,20 +54,6 @@ impl BackendKind {
         match self {
             Self::Integrated => "Integrated",
             Self::HostCommand => "Host",
-        }
-    }
-
-    pub const fn combo_position(self) -> u32 {
-        match self {
-            Self::Integrated => 0,
-            Self::HostCommand => 1,
-        }
-    }
-
-    pub const fn from_combo_position(position: u32) -> Self {
-        match position {
-            1 => Self::HostCommand,
-            _ => Self::Integrated,
         }
     }
 
@@ -141,11 +133,38 @@ impl Preferences {
         shellexpand::full(s).map_or_else(|_| s.to_string(), std::borrow::Cow::into_owned)
     }
 
+    fn stored_window_dimension(value: Option<i32>, default: i32) -> i32 {
+        value.filter(|value| *value > 0).unwrap_or(default)
+    }
+
     pub fn store_roots(&self) -> Vec<String> {
         self.stores()
             .into_iter()
             .map(|store| Self::expand_path(&store))
             .collect()
+    }
+
+    pub fn window_size(&self) -> (i32, i32) {
+        self.read_preference(
+            |settings| {
+                (
+                    Self::stored_window_dimension(
+                        Some(settings.int("window-width")),
+                        DEFAULT_WINDOW_WIDTH,
+                    ),
+                    Self::stored_window_dimension(
+                        Some(settings.int("window-height")),
+                        DEFAULT_WINDOW_HEIGHT,
+                    ),
+                )
+            },
+            |cfg| {
+                (
+                    Self::stored_window_dimension(cfg.window_width, DEFAULT_WINDOW_WIDTH),
+                    Self::stored_window_dimension(cfg.window_height, DEFAULT_WINDOW_HEIGHT),
+                )
+            },
+        )
     }
 
     pub fn store(&self) -> String {
@@ -229,6 +248,22 @@ impl Preferences {
         )
     }
 
+    pub fn set_window_size(&self, width: i32, height: i32) -> Result<(), BoolError> {
+        let width = Self::stored_window_dimension(Some(width), DEFAULT_WINDOW_WIDTH);
+        let height = Self::stored_window_dimension(Some(height), DEFAULT_WINDOW_HEIGHT);
+        self.write_preference(
+            |settings| {
+                settings.set_int("window-width", width)?;
+                settings.set_int("window-height", height)?;
+                Ok(())
+            },
+            |cfg| {
+                cfg.window_width = Some(width);
+                cfg.window_height = Some(height);
+            },
+        )
+    }
+
     pub fn set_new_pass_file_template(&self, template: &str) -> Result<(), BoolError> {
         self.write_preference(
             |settings| settings.set_string("new-pass-file-template", template),
@@ -293,10 +328,11 @@ impl Preferences {
     }
 
     pub fn sync_private_keys_with_host(&self) -> bool {
-        self.read_preference(
-            |settings| settings.boolean("sync-private-keys-with-host"),
-            |cfg| cfg.sync_private_keys_with_host.unwrap_or(false),
-        )
+        supports_host_command_features()
+            && self.read_preference(
+                |settings| settings.boolean("sync-private-keys-with-host"),
+                |cfg| cfg.sync_private_keys_with_host.unwrap_or(false),
+            )
     }
 
     pub fn set_sync_private_keys_with_host(&self, enabled: bool) -> Result<(), BoolError> {
@@ -311,6 +347,7 @@ impl Preferences {
 mod tests {
     use super::{
         default_backend_kind, default_store_dirs, BackendKind, Preferences, UsernameFallbackMode,
+        DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH,
     };
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -425,5 +462,29 @@ mod tests {
     #[test]
     fn clear_empty_fields_before_save_defaults_to_disabled() {
         assert!(!Preferences::new().clear_empty_fields_before_save());
+    }
+
+    #[test]
+    fn invalid_window_dimensions_fall_back_to_the_default_size() {
+        assert_eq!(
+            Preferences::stored_window_dimension(Some(0), DEFAULT_WINDOW_WIDTH),
+            DEFAULT_WINDOW_WIDTH
+        );
+        assert_eq!(
+            Preferences::stored_window_dimension(Some(-1), DEFAULT_WINDOW_HEIGHT),
+            DEFAULT_WINDOW_HEIGHT
+        );
+        assert_eq!(
+            Preferences::stored_window_dimension(Some(900), DEFAULT_WINDOW_WIDTH),
+            900
+        );
+    }
+
+    #[test]
+    fn window_size_defaults_match_the_ui_defaults() {
+        assert_eq!(
+            Preferences::new().window_size(),
+            (DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
+        );
     }
 }

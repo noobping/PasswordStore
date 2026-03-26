@@ -1,6 +1,7 @@
 mod cache;
 mod cert;
 mod hardware;
+#[cfg(target_os = "linux")]
 mod hardware_crypto;
 mod store;
 

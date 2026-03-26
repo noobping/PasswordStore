@@ -1,5 +1,6 @@
 use crate::logging::{run_command_output, run_command_with_input, CommandLogOptions};
 use crate::preferences::Preferences;
+use crate::support::runtime::require_host_command_features;
 use std::process::{Command, Output};
 
 fn command_error(output: &Output, prefix: &str) -> String {
@@ -25,6 +26,7 @@ pub(super) fn run_store_command_output(
     log_options: CommandLogOptions,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = store_command(store_root);
     configure(&mut cmd);
     run_command_output(&mut cmd, action, log_options)
@@ -38,6 +40,7 @@ pub(super) fn run_store_command_with_input(
     log_options: CommandLogOptions,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = store_command(store_root);
     configure(&mut cmd);
     run_command_with_input(&mut cmd, action, input, log_options)
@@ -49,6 +52,7 @@ pub(super) fn run_host_program_output(
     action: &str,
     log_options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = host_program_command(program, args);
     run_command_output(&mut cmd, action, log_options)
         .map_err(|err| format!("Failed to run host program '{program}': {err}"))
@@ -61,6 +65,7 @@ pub(super) fn run_host_program_with_input(
     action: &str,
     log_options: CommandLogOptions,
 ) -> Result<Output, String> {
+    require_host_command_features()?;
     let mut cmd = host_program_command(program, args);
     run_command_with_input(&mut cmd, action, input, log_options)
         .map_err(|err| format!("Failed to run host program '{program}': {err}"))

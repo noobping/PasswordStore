@@ -1,7 +1,6 @@
 #[path = "shared/crypto.rs"]
 mod crypto;
 mod entries;
-#[cfg(target_os = "linux")]
 mod git;
 mod keys;
 #[path = "shared/paths.rs"]

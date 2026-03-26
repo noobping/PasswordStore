@@ -28,6 +28,7 @@ use adw::prelude::*;
 use adw::ToastOverlay;
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(target_os = "linux")]
 pub(crate) use self::search::search_password_entries;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

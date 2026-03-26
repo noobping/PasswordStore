@@ -16,6 +16,7 @@ fn store_command(store_root: &str) -> Command {
     Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)])
 }
 
+#[cfg(target_os = "linux")]
 fn host_program_command(program: &str, args: &[&str]) -> Command {
     Preferences::new().host_program_command(program, args)
 }
@@ -46,6 +47,7 @@ pub(super) fn run_store_command_with_input(
     run_command_with_input(&mut cmd, action, input, log_options)
 }
 
+#[cfg(target_os = "linux")]
 pub(super) fn run_host_program_output(
     program: &str,
     args: &[&str],
@@ -58,6 +60,7 @@ pub(super) fn run_host_program_output(
         .map_err(|err| format!("Failed to run host program '{program}': {err}"))
 }
 
+#[cfg(target_os = "linux")]
 pub(super) fn run_host_program_with_input(
     program: &str,
     args: &[&str],

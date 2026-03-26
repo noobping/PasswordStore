@@ -23,11 +23,6 @@ impl Preferences {
     pub fn command_with_envs(&self, _envs: &[(&str, &str)]) -> Command {
         unsupported_command()
     }
-
-    pub fn host_program_command(&self, _program: &str, _args: &[&str]) -> Command {
-        unsupported_command()
-    }
-
     pub fn backend_kind(&self) -> BackendKind {
         stored_backend_kind(self)
     }

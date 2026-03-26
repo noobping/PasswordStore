@@ -5,40 +5,23 @@ use crate::window::build::widgets::WindowWidgets;
 use crate::window::controls::ListVisibilityState;
 use crate::window::navigation::WindowNavigationState;
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::ListBox;
-use adw::{ApplicationWindow, NavigationPage, StatusPage, ToastOverlay};
+use adw::ApplicationWindow;
 
 #[derive(Clone)]
 pub struct GitActionState {
     pub window: ApplicationWindow,
-    pub overlay: ToastOverlay,
-    pub list: ListBox,
-    pub navigation: WindowNavigationState,
-    pub recipients_page: StoreRecipientsPageState,
-    pub store_git_page: StoreGitPageState,
-    pub busy_page: NavigationPage,
-    pub busy_status: StatusPage,
-    pub visibility: ListVisibilityState,
 }
 
 impl GitActionState {
     pub fn new(
         widgets: &WindowWidgets,
-        navigation: &WindowNavigationState,
-        recipients_page: &StoreRecipientsPageState,
-        store_git_page: &StoreGitPageState,
-        visibility: &ListVisibilityState,
+        _navigation: &WindowNavigationState,
+        _recipients_page: &StoreRecipientsPageState,
+        _store_git_page: &StoreGitPageState,
+        _visibility: &ListVisibilityState,
     ) -> Self {
         Self {
             window: widgets.window.clone(),
-            overlay: widgets.toast_overlay.clone(),
-            list: widgets.list.clone(),
-            navigation: navigation.clone(),
-            recipients_page: recipients_page.clone(),
-            store_git_page: store_git_page.clone(),
-            busy_page: widgets.git_busy_page.clone(),
-            busy_status: widgets.git_busy_status.clone(),
-            visibility: visibility.clone(),
         }
     }
 }

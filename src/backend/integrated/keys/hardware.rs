@@ -23,12 +23,14 @@ pub struct DiscoveredHardwareToken {
 }
 
 #[derive(Clone)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub enum HardwareUnlockMode {
     Pin(Arc<Zeroizing<Vec<u8>>>),
     External,
 }
 
 #[derive(Clone)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub struct HardwareSessionPolicy {
     pub ident: String,
     pub cert: Cert,

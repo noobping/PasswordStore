@@ -9,8 +9,10 @@ use self::index::{
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
+#[cfg(target_os = "linux")]
 use crate::backend::{password_entry_is_readable, read_password_entry};
 use crate::password::file::SearchablePassField;
+#[cfg(target_os = "linux")]
 use crate::password::model::{
     collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
 };
@@ -175,6 +177,7 @@ pub(super) fn search_controller_for_list(list: &ListBox) -> Option<SearchFilterC
     cloned_data(list, SEARCH_CONTROLLER_KEY)
 }
 
+#[cfg(target_os = "linux")]
 pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<PassEntry> {
     let query = parse_search_query(query);
     if matches!(

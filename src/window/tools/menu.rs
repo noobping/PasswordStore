@@ -23,7 +23,7 @@ pub(super) fn append_optional_doc_row(state: &ToolsPageState) {
     let window = state.window.clone();
     append_action_row_with_button(
         &state.logs_list,
-        "Docs",
+        "Documentation",
         "Open guides and reference.",
         "go-next-symbolic",
         move || activate_widget_action(&window, "win.open-docs"),

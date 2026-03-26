@@ -19,8 +19,8 @@ enum RestoredPageKind {
     Raw,
     Settings,
     Tools,
-    Docs,
-    DocsDetail,
+    Documentation,
+    DocumentationDetail,
     ToolFieldValues,
     ToolValueValues,
     ToolWeakPasswords,
@@ -107,9 +107,9 @@ pub fn restore_window_for_current_page(
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
     } else if page_kind == RestoredPageKind::Tools {
         show_secondary_page_chrome(&chrome, "Tools", "Utilities and maintenance", false);
-    } else if page_kind == RestoredPageKind::Docs {
+    } else if page_kind == RestoredPageKind::Documentation {
         show_secondary_page_chrome(&chrome, DOCS_PAGE_TITLE, DOCS_PAGE_SUBTITLE, false);
-    } else if page_kind == RestoredPageKind::DocsDetail {
+    } else if page_kind == RestoredPageKind::DocumentationDetail {
         show_secondary_page_chrome(
             &chrome,
             &state.docs_detail_page.title(),
@@ -167,10 +167,10 @@ fn visible_secondary_page_kind(
         return Some(RestoredPageKind::Tools);
     }
     if visible_navigation_page_is(&state.nav, &state.docs_page) {
-        return Some(RestoredPageKind::Docs);
+        return Some(RestoredPageKind::Documentation);
     }
     if visible_navigation_page_is(&state.nav, &state.docs_detail_page) {
-        return Some(RestoredPageKind::DocsDetail);
+        return Some(RestoredPageKind::DocumentationDetail);
     }
     if visible_navigation_page_is(&state.nav, &state.tools_field_values_page) {
         return Some(RestoredPageKind::ToolFieldValues);
@@ -269,16 +269,16 @@ mod tests {
         assert_eq!(
             restored_page_kind(RestoredPageState {
                 at_root: false,
-                current_page: Some(RestoredPageKind::Docs),
+                current_page: Some(RestoredPageKind::Documentation),
             }),
-            RestoredPageKind::Docs
+            RestoredPageKind::Documentation
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {
                 at_root: false,
-                current_page: Some(RestoredPageKind::DocsDetail),
+                current_page: Some(RestoredPageKind::DocumentationDetail),
             }),
-            RestoredPageKind::DocsDetail
+            RestoredPageKind::DocumentationDetail
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {

@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-pub const DOCS_PAGE_TITLE: &str = "Docs";
+pub const DOCS_PAGE_TITLE: &str = "Documentation";
 pub const DOCS_PAGE_SUBTITLE: &str = "Guides and reference";
 
 const DOCS_EMPTY_TITLE: &str = "No matching docs";
@@ -42,7 +42,7 @@ const DOC_SOURCES: [(&str, &str); 7] = [
 ];
 
 #[derive(Clone)]
-pub struct DocsPageState {
+pub struct DocumentationPageState {
     navigation: crate::window::navigation::WindowNavigationState,
     page: NavigationPage,
     search_entry: SearchEntry,
@@ -50,32 +50,32 @@ pub struct DocsPageState {
     detail_page: NavigationPage,
     detail_scrolled: ScrolledWindow,
     detail_box: GtkBox,
-    documents: Rc<Vec<DocsDocument>>,
+    documents: Rc<Vec<DocumentationDocument>>,
     current_doc_index: Rc<RefCell<Option<usize>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct DocsDocument {
+struct DocumentationDocument {
     path: String,
     title: String,
     subtitle: String,
-    blocks: Vec<DocsBlock>,
+    blocks: Vec<DocumentationBlock>,
     anchors: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct DocsBlock {
-    kind: DocsBlockKind,
+struct DocumentationBlock {
+    kind: DocumentationBlockKind,
     text: String,
     markup: String,
     search_text: String,
-    links: Vec<DocsInlineLink>,
+    links: Vec<DocumentationInlineLink>,
     anchor: Option<String>,
     list_marker: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DocsBlockKind {
+enum DocumentationBlockKind {
     Heading(u32),
     Paragraph,
     ListItem,
@@ -84,13 +84,13 @@ enum DocsBlockKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct DocsInlineLink {
+struct DocumentationInlineLink {
     label: String,
-    target: DocsLinkTarget,
+    target: DocumentationLinkTarget,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum DocsLinkTarget {
+enum DocumentationLinkTarget {
     Internal {
         path: String,
         anchor: Option<String>,
@@ -99,7 +99,7 @@ enum DocsLinkTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct DocsSearchResult {
+struct DocumentationSearchResult {
     doc_index: usize,
     block_index: Option<usize>,
     title: String,
@@ -110,7 +110,7 @@ struct DocsSearchResult {
 struct InlineParseState {
     text: String,
     markup: String,
-    links: Vec<DocsInlineLink>,
+    links: Vec<DocumentationInlineLink>,
 }
 
 struct ParsedListItem<'a> {
@@ -118,7 +118,7 @@ struct ParsedListItem<'a> {
     text: &'a str,
 }
 
-impl DocsPageState {
+impl DocumentationPageState {
     pub fn new(
         navigation: &crate::window::navigation::WindowNavigationState,
         page: &NavigationPage,
@@ -190,7 +190,7 @@ impl DocsPageState {
         }
     }
 
-    fn open_result(&self, result: &DocsSearchResult) {
+    fn open_result(&self, result: &DocumentationSearchResult) {
         self.open_document(result.doc_index, result.block_index);
     }
 
@@ -207,7 +207,7 @@ impl DocsPageState {
         let mut target_widget = None::<Widget>;
         let mut index = 0usize;
         while index < document.blocks.len() {
-            if matches!(document.blocks[index].kind, DocsBlockKind::TableRow) {
+            if matches!(document.blocks[index].kind, DocumentationBlockKind::TableRow) {
                 let table_end = table_run_end(&document.blocks, index);
                 let widget = self.render_table(&document.blocks[index..table_end]);
                 if block_index.is_some_and(|target| target >= index && target < table_end) {
@@ -237,12 +237,12 @@ impl DocsPageState {
         }
     }
 
-    fn render_block(&self, doc_index: usize, block: &DocsBlock) -> GtkBox {
-        if matches!(block.kind, DocsBlockKind::CodeBlock) {
+    fn render_block(&self, doc_index: usize, block: &DocumentationBlock) -> GtkBox {
+        if matches!(block.kind, DocumentationBlockKind::CodeBlock) {
             return self.render_code_block(block);
         }
 
-        if matches!(block.kind, DocsBlockKind::ListItem) {
+        if matches!(block.kind, DocumentationBlockKind::ListItem) {
             return self.render_list_item(doc_index, block);
         }
 
@@ -256,16 +256,16 @@ impl DocsPageState {
         let label = self.build_block_label(doc_index, block);
 
         match block.kind {
-            DocsBlockKind::Heading(level) => apply_heading_style(&label, level),
-            DocsBlockKind::Paragraph | DocsBlockKind::ListItem | DocsBlockKind::TableRow => {}
-            DocsBlockKind::CodeBlock => {}
+            DocumentationBlockKind::Heading(level) => apply_heading_style(&label, level),
+            DocumentationBlockKind::Paragraph | DocumentationBlockKind::ListItem | DocumentationBlockKind::TableRow => {}
+            DocumentationBlockKind::CodeBlock => {}
         }
         container.append(&label);
 
         container
     }
 
-    fn render_list_item(&self, doc_index: usize, block: &DocsBlock) -> GtkBox {
+    fn render_list_item(&self, doc_index: usize, block: &DocumentationBlock) -> GtkBox {
         let container = GtkBox::builder()
             .orientation(Orientation::Vertical)
             .spacing(0)
@@ -296,7 +296,7 @@ impl DocsPageState {
         container
     }
 
-    fn build_block_label(&self, doc_index: usize, block: &DocsBlock) -> Label {
+    fn build_block_label(&self, doc_index: usize, block: &DocumentationBlock) -> Label {
         let label = Label::new(None);
         label.set_xalign(0.0);
         label.set_wrap(true);
@@ -319,7 +319,7 @@ impl DocsPageState {
         label
     }
 
-    fn render_code_block(&self, block: &DocsBlock) -> GtkBox {
+    fn render_code_block(&self, block: &DocumentationBlock) -> GtkBox {
         let container = GtkBox::builder()
             .orientation(Orientation::Vertical)
             .spacing(0)
@@ -350,7 +350,7 @@ impl DocsPageState {
         container
     }
 
-    fn render_table(&self, rows: &[DocsBlock]) -> GtkBox {
+    fn render_table(&self, rows: &[DocumentationBlock]) -> GtkBox {
         let container = GtkBox::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
@@ -389,9 +389,9 @@ impl DocsPageState {
         container
     }
 
-    fn open_link(&self, current_doc_index: usize, target: &DocsLinkTarget) {
+    fn open_link(&self, current_doc_index: usize, target: &DocumentationLinkTarget) {
         match target {
-            DocsLinkTarget::Internal { path, anchor } => {
+            DocumentationLinkTarget::Internal { path, anchor } => {
                 let target_doc_index = self.resolve_doc_index(current_doc_index, path);
                 let block_index = target_doc_index
                     .and_then(|index| self.documents.get(index))
@@ -405,7 +405,7 @@ impl DocsPageState {
                     self.open_document(target_doc_index, block_index);
                 }
             }
-            DocsLinkTarget::External(uri) => open_external_link(uri),
+            DocumentationLinkTarget::External(uri) => open_external_link(uri),
         }
     }
 
@@ -426,12 +426,12 @@ impl DocsPageState {
     }
 }
 
-pub fn register_open_docs_action(window: &ApplicationWindow, state: &DocsPageState) {
+pub fn register_open_docs_action(window: &ApplicationWindow, state: &DocumentationPageState) {
     let state = state.clone();
     register_window_action(window, "open-docs", move || state.open());
 }
 
-fn load_documents() -> Vec<DocsDocument> {
+fn load_documents() -> Vec<DocumentationDocument> {
     DOC_SOURCES
         .iter()
         .map(|(path, source)| {
@@ -441,7 +441,7 @@ fn load_documents() -> Vec<DocsDocument> {
         .collect()
 }
 
-fn parse_document(path: &str, source: &str) -> DocsDocument {
+fn parse_document(path: &str, source: &str) -> DocumentationDocument {
     let mut blocks = Vec::new();
     let mut lines = source.lines().peekable();
 
@@ -462,8 +462,8 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
             }
             let text = contents.join("\n");
             if !text.is_empty() {
-                blocks.push(DocsBlock {
-                    kind: DocsBlockKind::CodeBlock,
+                blocks.push(DocumentationBlock {
+                    kind: DocumentationBlockKind::CodeBlock,
                     search_text: text.to_lowercase(),
                     text,
                     markup: String::new(),
@@ -482,8 +482,8 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
         if let Some((level, text)) = parse_heading(trimmed) {
             let inline = parse_inline_markdown(path, text);
             let anchor = slugify_heading(&inline.text);
-            blocks.push(DocsBlock {
-                kind: DocsBlockKind::Heading(level),
+            blocks.push(DocumentationBlock {
+                kind: DocumentationBlockKind::Heading(level),
                 search_text: inline.text.to_lowercase(),
                 text: inline.text,
                 markup: inline.markup,
@@ -514,8 +514,8 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
                     .map(str::trim)
                     .collect::<Vec<_>>();
                 let inline = parse_inline_markdown(path, &cells.join(" | "));
-                blocks.push(DocsBlock {
-                    kind: DocsBlockKind::TableRow,
+                blocks.push(DocumentationBlock {
+                    kind: DocumentationBlockKind::TableRow,
                     search_text: inline.text.to_lowercase(),
                     text: inline.text,
                     markup: inline.markup,
@@ -529,8 +529,8 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
 
         if let Some(item) = parse_list_item(trimmed) {
             let inline = parse_inline_markdown(path, item.text);
-            blocks.push(DocsBlock {
-                kind: DocsBlockKind::ListItem,
+            blocks.push(DocumentationBlock {
+                kind: DocumentationBlockKind::ListItem,
                 search_text: inline.text.to_lowercase(),
                 text: inline.text,
                 markup: inline.markup,
@@ -557,8 +557,8 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
         }
 
         let inline = parse_inline_markdown(path, &paragraph_lines.join(" "));
-        blocks.push(DocsBlock {
-            kind: DocsBlockKind::Paragraph,
+        blocks.push(DocumentationBlock {
+            kind: DocumentationBlockKind::Paragraph,
             search_text: inline.text.to_lowercase(),
             text: inline.text,
             markup: inline.markup,
@@ -571,14 +571,14 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
     let title = blocks
         .iter()
         .find_map(|block| match block.kind {
-            DocsBlockKind::Heading(_) => Some(block.text.clone()),
+            DocumentationBlockKind::Heading(_) => Some(block.text.clone()),
             _ => None,
         })
         .unwrap_or_else(|| path.trim_end_matches(".md").replace('-', " "));
     let subtitle = blocks
         .iter()
         .find_map(|block| match block.kind {
-            DocsBlockKind::Paragraph => Some(block.text.clone()),
+            DocumentationBlockKind::Paragraph => Some(block.text.clone()),
             _ => None,
         })
         .unwrap_or_else(|| title.clone());
@@ -588,7 +588,7 @@ fn parse_document(path: &str, source: &str) -> DocsDocument {
         .filter_map(|(index, block)| block.anchor.as_ref().map(|anchor| (anchor.clone(), index)))
         .collect();
 
-    DocsDocument {
+    DocumentationDocument {
         path: path.to_string(),
         title,
         subtitle,
@@ -668,7 +668,7 @@ fn parse_inline_markdown(path: &str, source: &str) -> InlineParseState {
             if let Some((next_index, label, destination)) = parse_markdown_link(&chars, index) {
                 state.text.push_str(&label);
                 if let Some(target) = resolve_link_target(path, &destination) {
-                    let link = DocsInlineLink { label, target };
+                    let link = DocumentationInlineLink { label, target };
                     state.markup.push_str(&link_markup(&link));
                     state.links.push(link);
                 } else {
@@ -717,14 +717,14 @@ fn parse_inline_markdown(path: &str, source: &str) -> InlineParseState {
     state
 }
 
-fn resolve_link_target(current_path: &str, destination: &str) -> Option<DocsLinkTarget> {
+fn resolve_link_target(current_path: &str, destination: &str) -> Option<DocumentationLinkTarget> {
     let trimmed = destination.trim();
     if trimmed.is_empty() {
         return None;
     }
 
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return Some(DocsLinkTarget::External(trimmed.to_string()));
+        return Some(DocumentationLinkTarget::External(trimmed.to_string()));
     }
 
     let (path, anchor) = trimmed
@@ -734,7 +734,7 @@ fn resolve_link_target(current_path: &str, destination: &str) -> Option<DocsLink
         });
 
     if path.ends_with(".md") || path.is_empty() || path.starts_with('#') {
-        return Some(DocsLinkTarget::Internal {
+        return Some(DocumentationLinkTarget::Internal {
             path: normalize_doc_path(current_path, path),
             anchor,
         });
@@ -795,13 +795,13 @@ fn parse_strong_span(chars: &[char], start: usize) -> Option<(usize, String)> {
     None
 }
 
-fn search_documents(documents: &[DocsDocument], query: &str) -> Vec<DocsSearchResult> {
+fn search_documents(documents: &[DocumentationDocument], query: &str) -> Vec<DocumentationSearchResult> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return documents
             .iter()
             .enumerate()
-            .map(|(doc_index, document)| DocsSearchResult {
+            .map(|(doc_index, document)| DocumentationSearchResult {
                 doc_index,
                 block_index: None,
                 title: document.title.clone(),
@@ -820,7 +820,7 @@ fn search_documents(documents: &[DocsDocument], query: &str) -> Vec<DocsSearchRe
                 .iter()
                 .enumerate()
                 .filter(|(_, block)| block.search_text.contains(&query))
-                .map(move |(block_index, block)| DocsSearchResult {
+                .map(move |(block_index, block)| DocumentationSearchResult {
                     doc_index,
                     block_index: Some(block_index),
                     title: document.title.clone(),
@@ -830,13 +830,13 @@ fn search_documents(documents: &[DocsDocument], query: &str) -> Vec<DocsSearchRe
         .collect()
 }
 
-fn block_markup(block: &DocsBlock) -> String {
+fn block_markup(block: &DocumentationBlock) -> String {
     match block.kind {
-        DocsBlockKind::ListItem => block.markup.clone(),
-        DocsBlockKind::Paragraph | DocsBlockKind::Heading(_) | DocsBlockKind::CodeBlock => {
+        DocumentationBlockKind::ListItem => block.markup.clone(),
+        DocumentationBlockKind::Paragraph | DocumentationBlockKind::Heading(_) | DocumentationBlockKind::CodeBlock => {
             block.markup.clone()
         }
-        DocsBlockKind::TableRow => block.markup.clone(),
+        DocumentationBlockKind::TableRow => block.markup.clone(),
     }
 }
 
@@ -914,19 +914,19 @@ fn open_external_link(uri: &str) {
     let _ = launch_result;
 }
 
-fn encode_link_target(target: &DocsLinkTarget) -> String {
+fn encode_link_target(target: &DocumentationLinkTarget) -> String {
     match target {
-        DocsLinkTarget::Internal { path, anchor } => match anchor {
+        DocumentationLinkTarget::Internal { path, anchor } => match anchor {
             Some(anchor) => format!("{INTERNAL_DOC_URI_SCHEME}{path}#{anchor}"),
             None => format!("{INTERNAL_DOC_URI_SCHEME}{path}"),
         },
-        DocsLinkTarget::External(uri) => uri.clone(),
+        DocumentationLinkTarget::External(uri) => uri.clone(),
     }
 }
 
-fn decode_link_target(uri: &str) -> Option<DocsLinkTarget> {
+fn decode_link_target(uri: &str) -> Option<DocumentationLinkTarget> {
     if uri.starts_with("http://") || uri.starts_with("https://") {
-        return Some(DocsLinkTarget::External(uri.to_string()));
+        return Some(DocumentationLinkTarget::External(uri.to_string()));
     }
 
     let payload = uri.strip_prefix(INTERNAL_DOC_URI_SCHEME)?;
@@ -936,13 +936,13 @@ fn decode_link_target(uri: &str) -> Option<DocsLinkTarget> {
             (path, Some(anchor.to_string()))
         });
 
-    Some(DocsLinkTarget::Internal {
+    Some(DocumentationLinkTarget::Internal {
         path: path.to_string(),
         anchor,
     })
 }
 
-fn link_markup(link: &DocsInlineLink) -> String {
+fn link_markup(link: &DocumentationInlineLink) -> String {
     let href = encode_link_target(&link.target);
     format!(
         "<a href=\"{}\">{}</a>",
@@ -1001,9 +1001,9 @@ fn inline_markup(text: &str) -> String {
     output
 }
 
-fn table_run_end(blocks: &[DocsBlock], start: usize) -> usize {
+fn table_run_end(blocks: &[DocumentationBlock], start: usize) -> usize {
     let mut index = start;
-    while index < blocks.len() && matches!(blocks[index].kind, DocsBlockKind::TableRow) {
+    while index < blocks.len() && matches!(blocks[index].kind, DocumentationBlockKind::TableRow) {
         index += 1;
     }
     index
@@ -1017,12 +1017,12 @@ fn table_cells(row: &str) -> Vec<String> {
 mod tests {
     use super::{
         inline_markup, parse_document, parse_inline_markdown, search_documents, table_cells,
-        table_run_end, DocsBlockKind, DocsDocument, DocsInlineLink, DocsLinkTarget,
+        table_run_end, DocumentationBlockKind, DocumentationDocument, DocumentationInlineLink, DocumentationLinkTarget,
     };
     use std::collections::BTreeMap;
 
-    fn fake_document(title: &str, subtitle: &str, blocks: Vec<super::DocsBlock>) -> DocsDocument {
-        DocsDocument {
+    fn fake_document(title: &str, subtitle: &str, blocks: Vec<super::DocumentationBlock>) -> DocumentationDocument {
+        DocumentationDocument {
             path: format!("{title}.md"),
             title: title.to_string(),
             subtitle: subtitle.to_string(),
@@ -1046,12 +1046,12 @@ mod tests {
                 .map(|block| block.kind)
                 .collect::<Vec<_>>(),
             vec![
-                DocsBlockKind::Heading(1),
-                DocsBlockKind::Paragraph,
-                DocsBlockKind::ListItem,
-                DocsBlockKind::TableRow,
-                DocsBlockKind::TableRow,
-                DocsBlockKind::CodeBlock,
+                DocumentationBlockKind::Heading(1),
+                DocumentationBlockKind::Paragraph,
+                DocumentationBlockKind::ListItem,
+                DocumentationBlockKind::TableRow,
+                DocumentationBlockKind::TableRow,
+                DocumentationBlockKind::CodeBlock,
             ]
         );
         assert_eq!(document.blocks[1].links.len(), 1);
@@ -1062,9 +1062,9 @@ mod tests {
         assert_eq!(document.blocks[2].list_marker.as_deref(), Some("•"));
         assert_eq!(
             document.blocks[1].links[0],
-            DocsInlineLink {
+            DocumentationInlineLink {
                 label: "link".to_string(),
-                target: DocsLinkTarget::Internal {
+                target: DocumentationLinkTarget::Internal {
                     path: "README.md".to_string(),
                     anchor: None,
                 },
@@ -1076,19 +1076,19 @@ mod tests {
     fn parse_inline_markdown_preserves_code_and_links() {
         let inline = parse_inline_markdown(
             "search.md",
-            "Use [Search Guide](search.md#Quick Reference), **Docs**, and `find otp`.",
+            "Use [Search Guide](search.md#Quick Reference), **Documentation**, and `find otp`.",
         );
 
-        assert_eq!(inline.text, "Use Search Guide, Docs, and `find otp`.");
+        assert_eq!(inline.text, "Use Search Guide, Documentation, and `find otp`.");
         assert_eq!(
             inline.markup,
-            "Use <a href=\"keycord-doc:search.md#quick-reference\">Search Guide</a>, <b>Docs</b>, and <tt>find otp</tt>."
+            "Use <a href=\"keycord-doc:search.md#quick-reference\">Search Guide</a>, <b>Documentation</b>, and <tt>find otp</tt>."
         );
         assert_eq!(
             inline.links,
-            vec![DocsInlineLink {
+            vec![DocumentationInlineLink {
                 label: "Search Guide".to_string(),
-                target: DocsLinkTarget::Internal {
+                target: DocumentationLinkTarget::Internal {
                     path: "search.md".to_string(),
                     anchor: Some("quick-reference".to_string()),
                 },
@@ -1102,8 +1102,8 @@ mod tests {
             fake_document(
                 "Getting Started",
                 "Start here.",
-                vec![super::DocsBlock {
-                    kind: DocsBlockKind::Paragraph,
+                vec![super::DocumentationBlock {
+                    kind: DocumentationBlockKind::Paragraph,
                     text: "Start here.".to_string(),
                     markup: "Start here.".to_string(),
                     search_text: "start here.".to_string(),
@@ -1116,8 +1116,8 @@ mod tests {
                 "Search Guide",
                 "Learn search.",
                 vec![
-                    super::DocsBlock {
-                        kind: DocsBlockKind::Heading(2),
+                    super::DocumentationBlock {
+                        kind: DocumentationBlockKind::Heading(2),
                         text: "OTP".to_string(),
                         markup: "OTP".to_string(),
                         search_text: "otp".to_string(),
@@ -1125,8 +1125,8 @@ mod tests {
                         anchor: Some("otp".to_string()),
                         list_marker: None,
                     },
-                    super::DocsBlock {
-                        kind: DocsBlockKind::Paragraph,
+                    super::DocumentationBlock {
+                        kind: DocumentationBlockKind::Paragraph,
                         text: "Use find otp.".to_string(),
                         markup: "Use find otp.".to_string(),
                         search_text: "use find otp.".to_string(),
@@ -1153,8 +1153,8 @@ mod tests {
     #[test]
     fn table_helpers_group_runs_and_split_cells() {
         let blocks = vec![
-            super::DocsBlock {
-                kind: DocsBlockKind::Paragraph,
+            super::DocumentationBlock {
+                kind: DocumentationBlockKind::Paragraph,
                 text: "before".to_string(),
                 markup: "before".to_string(),
                 search_text: "before".to_string(),
@@ -1162,8 +1162,8 @@ mod tests {
                 anchor: None,
                 list_marker: None,
             },
-            super::DocsBlock {
-                kind: DocsBlockKind::TableRow,
+            super::DocumentationBlock {
+                kind: DocumentationBlockKind::TableRow,
                 text: "A | B".to_string(),
                 markup: "A | B".to_string(),
                 search_text: "a | b".to_string(),
@@ -1171,8 +1171,8 @@ mod tests {
                 anchor: None,
                 list_marker: None,
             },
-            super::DocsBlock {
-                kind: DocsBlockKind::TableRow,
+            super::DocumentationBlock {
+                kind: DocumentationBlockKind::TableRow,
                 text: "1 | 2".to_string(),
                 markup: "1 | 2".to_string(),
                 search_text: "1 | 2".to_string(),
@@ -1180,8 +1180,8 @@ mod tests {
                 anchor: None,
                 list_marker: None,
             },
-            super::DocsBlock {
-                kind: DocsBlockKind::Paragraph,
+            super::DocumentationBlock {
+                kind: DocumentationBlockKind::Paragraph,
                 text: "after".to_string(),
                 markup: "after".to_string(),
                 search_text: "after".to_string(),
@@ -1202,8 +1202,8 @@ mod tests {
             "Use <tt>pass</tt> and <tt>gpg</tt>."
         );
         assert_eq!(
-            inline_markup("Open **Docs** from the menu."),
-            "Open <b>Docs</b> from the menu."
+            inline_markup("Open **Documentation** from the menu."),
+            "Open <b>Documentation</b> from the menu."
         );
         assert_eq!(
             inline_markup("Keep **`pass`** visible."),

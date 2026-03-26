@@ -98,7 +98,7 @@ pub(super) fn is_stale_index_batch(current_generation: u64, batch_generation: u6
     batch_generation != current_generation
 }
 
-fn indexed_fields_for_contents(contents: &str) -> Vec<SearchablePassField> {
+pub(super) fn indexed_fields_for_contents(contents: &str) -> Vec<SearchablePassField> {
     let mut fields = searchable_pass_fields(contents);
     if pass_file_has_otp(contents) {
         fields.push(SearchablePassField {

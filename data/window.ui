@@ -836,7 +836,7 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="docs_page">
-                    <property name="title" translatable="yes">Docs</property>
+                    <property name="title" translatable="yes">Documentation</property>
                     <child>
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
@@ -876,7 +876,7 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="docs_detail_page">
-                    <property name="title" translatable="yes">Docs</property>
+                    <property name="title" translatable="yes">Documentation</property>
                     <child>
                       <object class="GtkScrolledWindow" id="docs_detail_scrolled">
                         <property name="vscrollbar-policy">automatic</property>
@@ -1544,7 +1544,7 @@
         <attribute name="action">win.open-tools</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_Docs</attribute>
+        <attribute name="label" translatable="yes">_Documentation</attribute>
         <attribute name="action">win.open-docs</attribute>
       </item>
       <item>

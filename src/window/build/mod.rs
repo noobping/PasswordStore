@@ -41,7 +41,7 @@ use super::controls::{
     register_context_undo_action, register_go_home_action, register_list_visibility_action,
     register_reload_password_list_action, register_toggle_find_action, ListVisibilityState,
 };
-use super::docs::{register_open_docs_action, DocsPageState};
+use super::docs::{register_open_docs_action, DocumentationPageState};
 use super::git::GitActionState;
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
@@ -124,7 +124,7 @@ fn initialize_platform_log_features(widgets: &WindowWidgets) {
         .set_visible(logging_supported);
 }
 
-fn register_docs_actions(widgets: &WindowWidgets, docs_page_state: &DocsPageState) {
+fn register_docs_actions(widgets: &WindowWidgets, docs_page_state: &DocumentationPageState) {
     register_open_docs_action(&widgets.window, docs_page_state);
 }
 
@@ -374,7 +374,7 @@ pub fn create_main_window(
         build_store_recipients_page_state(&widgets, &store_git_page_state);
     initialize_store_recipients_permissions(&widgets);
     let window_navigation_state = window_navigation_state(&widgets);
-    let docs_page_state = DocsPageState::new(
+    let docs_page_state = DocumentationPageState::new(
         &window_navigation_state,
         &widgets.docs_page,
         &widgets.docs_search_entry,

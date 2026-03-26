@@ -1,6 +1,8 @@
 *.AppImage
 *.desktop
 *.lock
+keycord-search-provider.ini
+keycord-search-provider.service
 *builder/
 *cache/
 *og.txt

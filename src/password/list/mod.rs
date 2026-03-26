@@ -28,6 +28,8 @@ use adw::prelude::*;
 use adw::ToastOverlay;
 use std::sync::{Mutex, OnceLock};
 
+pub(crate) use self::search::search_password_entries;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Visibility {
     Hidden,

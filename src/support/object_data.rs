@@ -17,3 +17,11 @@ pub fn set_string_data<O: ObjectExt>(obj: &O, key: &str, value: String) {
 pub fn non_null_to_string_option<O: ObjectExt>(obj: &O, key: &str) -> Option<String> {
     cloned_data(obj, key)
 }
+
+pub fn take_data<O: ObjectExt, T: 'static>(obj: &O, key: &str) -> Option<T> {
+    unsafe { obj.steal_data(key) }
+}
+
+pub fn take_string_data<O: ObjectExt>(obj: &O, key: &str) -> Option<String> {
+    take_data(obj, key)
+}

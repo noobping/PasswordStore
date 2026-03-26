@@ -17,14 +17,17 @@ mod logging;
 mod password;
 mod preferences;
 mod private_key;
+#[cfg(target_os = "linux")]
+mod search_provider;
 mod store;
 mod support;
 mod window;
 
 use crate::i18n::gettext;
 use crate::logging::{run_command_output, CommandLogOptions};
+use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
-use crate::support::object_data::{non_null_to_string_option, set_string_data};
+use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
 
 use adw::gio::SimpleAction;
 use adw::gtk::{
@@ -45,6 +48,14 @@ const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts.ui");
 
 fn main() -> ExitCode {
+    #[cfg(target_os = "linux")]
+    {
+        let args = std::env::args_os().collect::<Vec<_>>();
+        if search_provider::is_search_provider_command(&args) {
+            return search_provider::run();
+        }
+    }
+
     i18n::init();
     resources_register_include!("compiled.gresource").expect("Failed to register resources");
 
@@ -86,13 +97,10 @@ fn main() -> ExitCode {
     {
         app.connect_command_line(|app, cmd| {
             let args = cmd.arguments();
-            if args.len() > 1 {
-                // Everything after the program name becomes the query
-                let query = args[1..].join(&OsString::from(" ")).into_string();
-                if let Ok(query) = query {
-                    // Stash it on the Application so we can read it in activate
-                    set_string_data(app, "query", query);
-                }
+            if let Some(pass_file) = command_line_pass_file(&args) {
+                set_cloned_data(app, "open-pass-file", pass_file);
+            } else if let Some(query) = command_line_query(&args) {
+                set_string_data(app, "query", query);
             }
             app.activate(); // continue normal startup path
 
@@ -102,12 +110,39 @@ fn main() -> ExitCode {
 
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
-        let query = non_null_to_string_option(app, "query");
-        let win = window::create_main_window(app, query, None);
+        let query = take_string_data(app, "query");
+        let pass_file = take_data(app, "open-pass-file");
+        let win = window::create_main_window(app, query, pass_file);
         win.present();
     });
 
     app.run()
+}
+
+fn command_line_pass_file(args: &[OsString]) -> Option<OpenPassFile> {
+    if !args.get(1).is_some_and(|arg| arg == "--open-entry") {
+        return None;
+    }
+
+    let store_root = args.get(2)?.to_string_lossy().into_owned();
+    let label = args.get(3)?.to_string_lossy().into_owned();
+    if store_root.is_empty() || label.is_empty() {
+        return None;
+    }
+
+    Some(OpenPassFile::from_label(store_root, label))
+}
+
+fn command_line_query(args: &[OsString]) -> Option<String> {
+    if args.len() <= 1 || args.get(1).is_some_and(|arg| arg == "--open-entry") {
+        return None;
+    }
+
+    args[1..]
+        .join(&OsString::from(" "))
+        .into_string()
+        .ok()
+        .filter(|query| !query.is_empty())
 }
 
 fn register_app_actions(app: &Application) {
@@ -203,5 +238,44 @@ fn get_pass_version(settings: &Preferences) -> Option<String> {
         None
     } else {
         Some(lines.join("\n"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{command_line_pass_file, command_line_query};
+    use std::ffi::OsString;
+
+    #[test]
+    fn open_entry_command_line_is_parsed() {
+        let args = vec![
+            OsString::from("keycord"),
+            OsString::from("--open-entry"),
+            OsString::from("/tmp/store"),
+            OsString::from("work/alice/github"),
+        ];
+
+        let pass_file = command_line_pass_file(&args).expect("expected pass file");
+        assert_eq!(pass_file.store_path(), "/tmp/store");
+        assert_eq!(pass_file.label(), "work/alice/github".to_string());
+        assert_eq!(command_line_query(&args), None);
+    }
+
+    #[test]
+    fn free_form_arguments_become_a_query() {
+        let args = vec![
+            OsString::from("keycord"),
+            OsString::from("find"),
+            OsString::from("otp"),
+            OsString::from("and"),
+            OsString::from("user"),
+            OsString::from("alice"),
+        ];
+
+        assert_eq!(
+            command_line_query(&args),
+            Some("find otp and user alice".to_string())
+        );
+        assert!(command_line_pass_file(&args).is_none());
     }
 }

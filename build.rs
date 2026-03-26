@@ -40,6 +40,14 @@ fn main() {
     println!("cargo:rustc-env=APP_ID={}", app_id());
     println!("cargo:rustc-env=RESOURCE_ID={}", resource_id());
     println!("cargo:rustc-env=GETTEXT_DOMAIN={}", gettext_domain());
+    println!(
+        "cargo:rustc-env=SEARCH_PROVIDER_BUS_NAME={}",
+        search_provider_bus_name()
+    );
+    println!(
+        "cargo:rustc-env=SEARCH_PROVIDER_OBJECT_PATH={}",
+        search_provider_object_path()
+    );
 
     export_dependency_versions();
     write_window_ui();
@@ -52,6 +60,11 @@ fn main() {
 
     fs::create_dir_all(data_dir).expect("Failed to create data directory");
     fs::create_dir_all(po_dir).expect("Failed to create po directory");
+
+    let mut icons = Vec::new();
+    collect_svg_icons(data_dir, data_dir, &mut icons);
+    icons.sort();
+    write_resources_xml(data_dir, &icons);
 
     glib_build_tools::compile_resources(
         &[data_dir],
@@ -81,15 +94,11 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_SETUP");
 
-    let mut icons = Vec::new();
-    collect_svg_icons(data_dir, data_dir, &mut icons);
-    icons.sort();
-
-    write_resources_xml(data_dir, &icons);
-    glib_build_tools::compile_resources(&["data"], "data/resources.xml", "compiled.gresource");
-
     #[cfg(all(target_os = "linux", not(feature = "setup")))]
-    desktop_file();
+    {
+        desktop_file();
+        search_provider_files();
+    }
 }
 
 fn write_translation_catalogs(po_dir: &Path, docs_dir: &Path) {
@@ -847,31 +856,27 @@ fn parse_po_quoted(value: &str) -> String {
 }
 
 fn unescape_po_string(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut index = 0usize;
     let mut output = String::new();
+    let mut chars = value.chars();
 
-    while index < bytes.len() {
-        if bytes[index] != b'\\' {
-            output.push(bytes[index] as char);
-            index += 1;
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            output.push(ch);
             continue;
         }
 
-        index += 1;
-        if index >= bytes.len() {
+        let Some(escaped) = chars.next() else {
             break;
-        }
+        };
 
-        match bytes[index] {
-            b'\\' => output.push('\\'),
-            b'"' => output.push('"'),
-            b'n' => output.push('\n'),
-            b'r' => output.push('\r'),
-            b't' => output.push('\t'),
-            other => output.push(other as char),
+        match escaped {
+            '\\' => output.push('\\'),
+            '"' => output.push('"'),
+            'n' => output.push('\n'),
+            'r' => output.push('\r'),
+            't' => output.push('\t'),
+            other => output.push(other),
         }
-        index += 1;
     }
 
     output
@@ -923,7 +928,8 @@ fn write_resources_xml(data_dir: &Path, icons: &[String]) {
         writeln!(xml, "\t\t<file>{icon}</file>").expect("Failed to format resource entry");
     }
     xml.push_str("\t</gresource>\n</gresources>\n");
-    fs::write(data_dir.join("resources.xml"), xml).expect("Failed to write data/resources.xml");
+    let path = data_dir.join("resources.xml");
+    write_if_changed(&path, xml);
 }
 
 fn write_window_ui() {
@@ -1087,6 +1093,40 @@ StartupNotify=true
         .expect("Can not build desktop file");
 }
 
+#[cfg(all(target_os = "linux", not(feature = "setup")))]
+fn search_provider_files() {
+    let project = env!("CARGO_PKG_NAME");
+    let dir = Path::new(".");
+    let desktop_id = format!("{}.desktop", app_id());
+    let bus_name = search_provider_bus_name();
+    let object_path = search_provider_object_path();
+    let search_provider_contents = format!(
+        "[Shell Search Provider]
+DesktopId={desktop_id}
+BusName={bus_name}
+ObjectPath={object_path}
+Version=2
+"
+    );
+    fs::write(
+        dir.join(format!("{project}-search-provider.ini")),
+        search_provider_contents,
+    )
+    .expect("Can not build search provider file");
+
+    let service_contents = format!(
+        "[D-BUS Service]
+Name={bus_name}
+Exec={project} --search-provider
+"
+    );
+    fs::write(
+        dir.join(format!("{project}-search-provider.service")),
+        service_contents,
+    )
+    .expect("Can not build search provider D-Bus service file");
+}
+
 // Flatpak builds must use the manifest ID so GtkApplication can own the
 // matching D-Bus name inside the sandbox.
 #[cfg(all(debug_assertions, not(feature = "flatpak")))]
@@ -1105,4 +1145,12 @@ const fn resource_id() -> &'static str {
 
 const fn gettext_domain() -> &'static str {
     env!("CARGO_PKG_NAME")
+}
+
+fn search_provider_bus_name() -> String {
+    format!("{}.SearchProvider", app_id().replace('-', "_"))
+}
+
+fn search_provider_object_path() -> String {
+    format!("/{}", search_provider_bus_name().replace('.', "/"))
 }

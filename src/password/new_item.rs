@@ -128,7 +128,7 @@ pub fn register_open_new_password_action(
 }
 
 pub fn show_new_password_dialog_error(state: &NewPasswordPopoverState, message: &str) {
-    state.error_label.set_label(message);
+    state.error_label.set_label(&gettext(message));
     state.error_label.set_visible(true);
 }
 

@@ -4,7 +4,9 @@ project(
   meson_version: '>=1.1.0',
 )
 
-cargo_wrapper = find_program('scripts/meson-cargo-build.sh')
+cargo = find_program('cargo', required: false)
+flatpak_spawn = find_program('flatpak-spawn', required: false)
+shell = find_program('sh')
 gnome = import('gnome')
 
 cargo_variant = get_option('cargo_variant')
@@ -21,22 +23,79 @@ if cargo_features != ''
   message('Configured Meson wrapper features "@0@"'.format(cargo_features))
 endif
 
-cargo_wrapper_args = [
-  cargo_wrapper,
-  '--source-root', meson.project_source_root(),
-  '--build-root', meson.project_build_root(),
-]
-
-if cargo_features != ''
-  cargo_wrapper_args += ['--features', cargo_features]
+native_cargo = ''
+flatpak_spawn_path = ''
+if cargo.found()
+  native_cargo = cargo.full_path()
+  message('Configured Meson wrapper cargo source "native cargo" -> @0@'.format(native_cargo))
+elif flatpak_spawn.found()
+  flatpak_spawn_path = flatpak_spawn.full_path()
+  message('Configured Meson wrapper cargo source "flatpak-spawn --host toolbox run cargo"')
+else
+  error('Neither cargo nor flatpak-spawn was found. Install cargo in the build environment or provide flatpak-spawn access to host toolbox.')
 endif
+
+if flatpak_spawn.found()
+  flatpak_spawn_path = flatpak_spawn.full_path()
+endif
+
+# Prefer native cargo inside flatpak-builder. Fall back to host toolbox for Flatpak-hosted Builder sessions.
+cargo_wrapper_script = '''
+set -eu
+
+native_cargo=$1
+flatpak_spawn=$2
+source_root=$3
+build_root=$4
+variant=$5
+features=$6
+output=$7
+
+profile_dir=debug
+
+if [ "$variant" = "release" ] || [ "$variant" = "translation" ]; then
+  profile_dir=release
+fi
+
+if [ -n "$native_cargo" ]; then
+  set -- "$native_cargo" build "--manifest-path" "$source_root/Cargo.toml" "--target-dir" "$build_root/cargo-target"
+else
+  set -- "$flatpak_spawn" --host toolbox run cargo build "--manifest-path" "$source_root/Cargo.toml" "--target-dir" "$build_root/cargo-target"
+fi
+
+if [ "$profile_dir" = "release" ]; then
+  set -- "$@" --release
+fi
+
+if [ -n "$features" ]; then
+  set -- "$@" --features "$features"
+fi
+
+"$@"
+
+mkdir -p "$(dirname "$output")"
+cp "$build_root/cargo-target/$profile_dir/keycord" "$output"
+chmod +x "$output"
+'''
+
+cargo_wrapper_args = [
+  shell,
+  '-c',
+  cargo_wrapper_script,
+  'meson-cargo-toolbox',
+  native_cargo,
+  flatpak_spawn_path,
+  meson.project_source_root(),
+  meson.project_build_root(),
+]
 
 custom_target(
   'keycord-default-build',
   output: project_binary,
   command: cargo_wrapper_args + [
-    '--variant', cargo_variant,
-    '--output', '@OUTPUT@',
+    cargo_variant,
+    cargo_features,
+    '@OUTPUT@',
   ],
   build_always_stale: true,
   build_by_default: true,
@@ -49,8 +108,9 @@ foreach variant : ['developer', 'release', 'translation']
   run_target(
     variant + '-build',
     command: cargo_wrapper_args + [
-      '--variant', variant,
-      '--output', join_paths(meson.project_build_root(), 'artifacts', variant, project_binary),
+      variant,
+      cargo_features,
+      join_paths(meson.project_build_root(), 'artifacts', variant, project_binary),
     ],
   )
 endforeach
@@ -64,6 +124,18 @@ install_data(
   'keycord.desktop',
   rename: 'io.github.noobping.keycord.desktop',
   install_dir: join_paths(get_option('datadir'), 'applications'),
+)
+
+install_data(
+  'keycord-search-provider.ini',
+  rename: 'io.github.noobping.keycord.search-provider.ini',
+  install_dir: join_paths(get_option('datadir'), 'gnome-shell', 'search-providers'),
+)
+
+install_data(
+  'keycord-search-provider.service',
+  rename: 'io.github.noobping.keycord.SearchProvider.service',
+  install_dir: join_paths(get_option('datadir'), 'dbus-1', 'services'),
 )
 
 install_data(

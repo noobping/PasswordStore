@@ -104,6 +104,10 @@ const SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE: &str =
 const SYNC_PRIVATE_KEYS_AVAILABLE_SUBTITLE: &str =
     "Private-key sync with the host is only available on Linux.";
 
+#[cfg(not(target_os = "linux"))]
+const SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE: &str =
+    "Private-key sync with the host is only available on Linux.";
+
 fn host_private_key_sync_is_available() -> bool {
     #[cfg(all(target_os = "linux", feature = "flatpak"))]
     {

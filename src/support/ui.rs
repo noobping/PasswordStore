@@ -73,7 +73,7 @@ pub fn dialog_content_shell(
     let translated_title = gettext(title);
     let window_title = WindowTitle::builder().title(&translated_title).build();
     if let Some(subtitle) = subtitle.filter(|subtitle| !subtitle.trim().is_empty()) {
-        window_title.set_subtitle(subtitle);
+        window_title.set_subtitle(&gettext(subtitle));
     }
 
     let header = HeaderBar::new();

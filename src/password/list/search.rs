@@ -4,12 +4,16 @@ mod query;
 mod tests;
 
 use self::index::{
-    build_search_index_batch, collect_unindexed_requests, find_row, is_stale_index_batch,
-    list_is_empty, row_field_index_state, SearchIndexBatch,
+    build_search_index_batch, collect_unindexed_requests, find_row, indexed_fields_for_contents,
+    is_stale_index_batch, list_is_empty, row_field_index_state, SearchIndexBatch,
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
+use crate::backend::{password_entry_is_readable, read_password_entry};
 use crate::password::file::SearchablePassField;
+use crate::password::model::{
+    collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
+};
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use adw::gtk::{ListBox, ListBoxRow};
@@ -169,4 +173,43 @@ impl SearchFilterController {
 
 pub(super) fn search_controller_for_list(list: &ListBox) -> Option<SearchFilterController> {
     cloned_data(list, SEARCH_CONTROLLER_KEY)
+}
+
+pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<PassEntry> {
+    let query = parse_search_query(query);
+    if matches!(
+        query,
+        SearchQuery::InvalidRegex | SearchQuery::InvalidStructured
+    ) {
+        return Vec::new();
+    }
+
+    let requires_index = query.requires_index();
+    let mut matches = Vec::new();
+    for item in collect_all_password_items_with_options(CollectItemsOptions::default()) {
+        let label = item.label();
+        let fields = if requires_index {
+            match read_password_entry(&item.store_path, &label) {
+                Ok(contents) => {
+                    SearchRowFieldIndexState::Indexed(indexed_fields_for_contents(&contents))
+                }
+                Err(_) => SearchRowFieldIndexState::Unavailable,
+            }
+        } else if password_entry_is_readable(&item.store_path, &label) {
+            SearchRowFieldIndexState::Unindexed
+        } else {
+            SearchRowFieldIndexState::Unavailable
+        };
+
+        if !row_matches_query(&label, &fields, &query) {
+            continue;
+        }
+
+        matches.push(item);
+        if limit.is_some_and(|limit| matches.len() >= limit) {
+            break;
+        }
+    }
+
+    matches
 }

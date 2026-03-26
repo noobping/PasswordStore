@@ -150,7 +150,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     password_row.connect_apply(move |row| {
         let passphrase = row.text().to_string();
         if let Some(message) = private_key_password_dialog_error_message(&passphrase) {
-            error_label_for_apply.set_label(message);
+            error_label_for_apply.set_label(&gettext(message));
             error_label_for_apply.set_visible(true);
             return;
         }
@@ -191,7 +191,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
 {
     let on_submit = Rc::new(on_submit);
     let password_row = PasswordEntryRow::new();
-    password_row.set_title(private_key_unlock_row_title(protection));
+    password_row.set_title(&gettext(private_key_unlock_row_title(protection)));
     password_row.set_show_apply_button(true);
 
     let password_group = PreferencesGroup::builder().build();
@@ -251,7 +251,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     password_row.connect_apply(move |row| {
         let input = row.text().to_string();
         if let Some(message) = private_key_unlock_dialog_error_message(protection, &input) {
-            error_label_for_apply.set_label(message);
+            error_label_for_apply.set_label(&gettext(message));
             error_label_for_apply.set_visible(true);
             return;
         }

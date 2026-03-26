@@ -2,7 +2,7 @@
 name = "keycord"
 description = "Browse and edit password stores"
 authors = ["noobping"]
-version = "0.9.2"
+version = "0.9.3"
 edition = "2021"
 license = "GPL-3.0-only"
 homepage = "https://github.com/noobping/keycord"
@@ -38,3 +38,6 @@ secrecy = "0.10.3"
 
 [build-dependencies]
 glib-build-tools = "0.22.0"
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1.31"

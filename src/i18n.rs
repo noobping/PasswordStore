@@ -46,14 +46,14 @@ fn runtime_locale_dir_candidates() -> Vec<PathBuf> {
         candidates.push(PathBuf::from(locale_dir));
     }
 
-    if let Some(data_dir) = dirs_next::data_dir() {
-        candidates.push(data_dir.join("locale"));
-    }
-
     candidates.push(PathBuf::from("/app/share/locale"));
     candidates.push(PathBuf::from("/usr/local/share/locale"));
     candidates.push(PathBuf::from("/usr/share/locale"));
     candidates.push(default_locale_dir());
+
+    if let Some(data_dir) = dirs_next::data_dir() {
+        candidates.push(data_dir.join("locale"));
+    }
 
     candidates
 }

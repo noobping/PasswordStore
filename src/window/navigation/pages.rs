@@ -23,7 +23,7 @@ pub fn show_log_page(state: &WindowNavigationState) {
 
 pub fn show_docs_page(state: &WindowNavigationState) {
     let chrome = state.window_chrome();
-    show_secondary_page_chrome(&chrome, "Docs", "Guides and reference", false);
+    show_secondary_page_chrome(&chrome, "Documentation", "Guides and reference", false);
 
     push_navigation_page_if_needed(&state.nav, &state.docs_page);
 }

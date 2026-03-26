@@ -1,4 +1,5 @@
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use std::fs;
 #[cfg(test)]
@@ -40,9 +41,9 @@ pub fn read_store_private_key_requirement(
 pub fn store_gpg_recipients_subtitle(store_root: &str) -> String {
     let recipients = read_store_gpg_recipients(store_root);
     match recipients.len() {
-        0 => "No recipients set".to_string(),
-        1 => "1 recipient".to_string(),
-        count => format!("{count} recipients"),
+        0 => gettext("No recipients set"),
+        1 => gettext("1 recipient"),
+        count => gettext("{count} recipients").replace("{count}", &count.to_string()),
     }
 }
 

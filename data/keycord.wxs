@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?include Product.wxi?>
+<?define ProductName="Keycord"?>
+<?define ExecutableName="keycord"?>
+<?define Manufacturer="noobping"?>
+<?define UpgradeCode="4d553fb2-5fc0-4613-b929-a8d83c8fb5e1"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product
         Id="*"
@@ -25,7 +28,7 @@
                         Id="ApplicationStartMenuShortcut"
                         Name="$(var.ProductName)"
                         Description="Launch $(var.ProductName)"
-                        Target="[INSTALLDIR]$(var.ProductName).exe"
+                        Target="[INSTALLDIR]$(var.ExecutableName).exe"
                         WorkingDirectory="INSTALLDIR" />
                     <RemoveFolder Id="CleanUpStartMenu" Directory="ApplicationProgramsFolder" On="uninstall" />
                     <RegistryValue

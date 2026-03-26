@@ -73,6 +73,7 @@ jobs:
           }
           Write-Host "Copying exe: $exe"
           Copy-Item $exe $bundleDir -Force
+          $mingwPrefix = 'C:\tools\msys64\mingw64'
           $mingwBin = 'C:\tools\msys64\mingw64\bin'
           if (-not (Test-Path $mingwBin)) {
            Write-Error "MinGW bin dir not found: $mingwBin"
@@ -80,8 +81,38 @@ jobs:
           Write-Host "Copying DLLs from: $mingwBin"
           Get-ChildItem -Path $mingwBin -Filter '*.dll' |
           Copy-Item -Destination $bundleDir -Force
+          $runtimePaths = @(
+            'etc\fonts',
+            'etc\gtk-4.0',
+            'lib\gdk-pixbuf-2.0',
+            'lib\gio',
+            'lib\gtk-4.0',
+            'lib\pango',
+            'share\fontconfig',
+            'share\glib-2.0\schemas',
+            'share\icons',
+            'share\libadwaita-1',
+            'share\themes'
+          )
+          foreach ($relativePath in $runtimePaths) {
+            $source = Join-Path $mingwPrefix $relativePath
+            if (-not (Test-Path $source)) {
+              Write-Host "Skipping missing runtime path: $source"
+              continue
+            }
+            $destination = Join-Path $bundleDir $relativePath
+            Write-Host "Copying runtime path: $relativePath"
+            New-Item -ItemType Directory -Force -Path (Split-Path $destination -Parent) | Out-Null
+            Copy-Item $source $destination -Recurse -Force
+          }
+          $schemas = Join-Path $bundleDir 'share\glib-2.0\schemas'
+          $schemaCompiler = Join-Path $mingwBin 'glib-compile-schemas.exe'
+          if ((Test-Path $schemas) -and (Test-Path $schemaCompiler)) {
+            Write-Host "Compiling bundled GSettings schemas"
+            & $schemaCompiler $schemas
+          }
           Write-Host "Bundle contents:"
-          Get-ChildItem $bundleDir
+          Get-ChildItem $bundleDir -Recurse | Select-Object FullName
           $zip = Join-Path $workspace 'keycord-windows.zip'
           if (Test-Path $zip) {
            Remove-Item $zip -Force
@@ -125,44 +156,6 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath bundle -Force
 
           Write-Host "Extracted files:"
-          Get-ChildItem bundle | Sort-Object Name | Format-Table Name, Length
-
-      - name: Install filter tool
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-ntldd-git
-
-      - name: Filter
-        shell: pwsh
-        run: |
-          $exe = Join-Path $env:GITHUB_WORKSPACE 'bundle\keycord.exe'
-          if (-not (Test-Path $exe)) { throw "EXE not found in bundle: $exe" }
-
-          $ntldd = 'C:\msys64\mingw64\bin\ntldd.exe'
-          if (-not (Test-Path $ntldd)) {
-            Write-Host "ntldd not present on this runner; skipping filtering."
-            exit 0
-          }
-
-          $raw = & $ntldd -R $exe 2>$null
-          $needed = $raw |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { $_ -match '^[A-Za-z]:\\' -and $_.ToLower().EndsWith('.dll') } |
-            ForEach-Object { Split-Path $_ -Leaf } |
-            Sort-Object -Unique
-
-          $bundleDlls = Get-ChildItem bundle -Filter '*.dll' | Select-Object -ExpandProperty Name
-          $remove = $bundleDlls | Where-Object { $needed -notcontains $_ }
-
-          # Keep it conservative: only remove if ntldd says it's not needed
-          foreach ($name in $remove) {
-            Remove-Item (Join-Path bundle $name) -Force
-          }
-
-          Write-Host "After filtering:"
           Get-ChildItem bundle | Sort-Object Name | Format-Table Name, Length
 
       - name: Install WiX Toolset

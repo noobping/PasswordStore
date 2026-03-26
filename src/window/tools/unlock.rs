@@ -3,6 +3,7 @@ use crate::backend::{
     preferred_ripasso_private_key_fingerprint_for_entry, read_password_entry, read_password_line,
     PasswordEntryError,
 };
+use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::background::spawn_result_task;
@@ -50,7 +51,8 @@ impl ToolsPageState {
             },
             move || {
                 on_abort();
-                overlay_for_disconnect.add_toast(Toast::new("Couldn't prepare tool access."));
+                overlay_for_disconnect
+                    .add_toast(Toast::new(&gettext("Couldn't prepare tool access.")));
             },
         );
     }

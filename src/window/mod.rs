@@ -1,13 +1,12 @@
 mod build;
 mod controls;
-#[cfg(target_os = "linux")]
+mod docs;
 mod git;
 mod host_access;
-#[cfg(target_os = "linux")]
 mod logs;
 pub mod navigation;
 mod preferences;
-#[cfg(target_os = "linux")]
+pub(crate) mod session;
 mod tools;
 
 pub use self::build::create_main_window;

@@ -9,6 +9,22 @@
       <default>[]</default>
     </key>
 
+    <key name="window-width" type="i">
+      <default>850</default>
+      <summary>Main window width</summary>
+      <description>
+        Last saved main window width.
+      </description>
+    </key>
+
+    <key name="window-height" type="i">
+      <default>600</default>
+      <summary>Main window height</summary>
+      <description>
+        Last saved main window height.
+      </description>
+    </key>
+
     <key name="pass-command" type="s">
       <default>'pass'</default>
       <summary>Host</summary>

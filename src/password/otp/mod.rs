@@ -4,6 +4,7 @@ mod url;
 use self::countdown::OtpCountdownCircle;
 use self::url::{otp_display, otp_secret_from_url, replace_otp_secret};
 use super::file::{structured_otp_line, OtpFieldTemplate, StructuredPassLine};
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use adw::glib::{self, ControlFlow};
 use adw::gtk::GestureClick;
@@ -57,7 +58,7 @@ impl PasswordOtpState {
         self.template.borrow_mut().take();
         self.url.borrow_mut().take();
         self.mode.set(OtpMode::Live);
-        self.row.set_title("OTP");
+        self.row.set_title(&gettext("OTP"));
         self.row.set_text("");
         self.row.set_editable(false);
         self.row.set_show_apply_button(false);
@@ -141,7 +142,7 @@ impl PasswordOtpState {
             let Some(url) = state.url_for_current_secret() else {
                 state
                     .overlay
-                    .add_toast(Toast::new("Couldn't update the code."));
+                    .add_toast(Toast::new(&gettext("Couldn't update the code.")));
                 return;
             };
 
@@ -150,7 +151,9 @@ impl PasswordOtpState {
                 .trim()
                 .is_empty()
             {
-                state.overlay.add_toast(Toast::new("Enter an OTP secret."));
+                state
+                    .overlay
+                    .add_toast(Toast::new(&gettext("Enter an OTP secret.")));
                 return;
             }
 
@@ -214,7 +217,7 @@ impl PasswordOtpState {
             .as_deref()
             .and_then(otp_secret_from_url)
             .unwrap_or_default();
-        self.row.set_title("OTP secret");
+        self.row.set_title(&gettext("OTP secret"));
         self.row.set_editable(true);
         self.row.set_show_apply_button(true);
         self.row.set_text(&secret);
@@ -238,7 +241,7 @@ impl PasswordOtpState {
             return;
         };
 
-        self.row.set_title("OTP code");
+        self.row.set_title(&gettext("OTP code"));
         self.row.set_editable(false);
         self.row.set_show_apply_button(false);
         self.countdown.set_visible(true);
@@ -253,7 +256,7 @@ impl PasswordOtpState {
                 self.clear_live_code();
                 if show_errors {
                     self.overlay
-                        .add_toast(Toast::new("Couldn't load the code."));
+                        .add_toast(Toast::new(&gettext("Couldn't load the code.")));
                 }
             }
         }
@@ -294,8 +297,9 @@ impl PasswordOtpState {
         self.row.set_text(code);
         self.countdown
             .set_fraction(f64::from(remaining) / f64::from(period));
-        self.countdown
-            .set_tooltip_text(Some(&format!("{remaining}s remaining")));
+        self.countdown.set_tooltip_text(Some(
+            &gettext("{remaining}s remaining").replace("{remaining}", &remaining.to_string()),
+        ));
     }
 
     fn clear_live_code(&self) {

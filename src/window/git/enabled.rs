@@ -2,6 +2,7 @@
 mod operations;
 
 use self::operations::{run_sync_operation, GitOperationResult};
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::password::list::{load_passwords_async, PasswordListActions};
 use crate::preferences::Preferences;
@@ -92,6 +93,7 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "synchronize",
         "open-preferences",
         "open-tools",
+        "open-docs",
         "toggle-hidden-and-duplicates",
     ] {
         set_window_action_enabled(window, action, enabled);
@@ -174,26 +176,28 @@ fn start_prompted_clone(state: &GitActionState, store: String, url: String) {
                     restore_after_git_operation_and_reload(&state_for_result);
                     state_for_result
                         .overlay
-                        .add_toast(Toast::new("Store restored."));
+                        .add_toast(Toast::new(&gettext("Store restored.")));
                 }
                 Err(err) => {
                     restore_after_git_operation(&state_for_result);
                     log_error(format!("Failed to save stores: {err}"));
                     state_for_result
                         .overlay
-                        .add_toast(Toast::new("Couldn't add that folder."));
+                        .add_toast(Toast::new(&gettext("Couldn't add that folder.")));
                 }
             },
             Err(message) => {
                 restore_after_git_operation(&state_for_result);
-                state_for_result.overlay.add_toast(Toast::new(&message));
+                state_for_result
+                    .overlay
+                    .add_toast(Toast::new(&gettext(&message)));
             }
         },
         move || {
             restore_after_git_operation(&state_for_disconnect);
             state_for_disconnect
                 .overlay
-                .add_toast(Toast::new("Restore stopped unexpectedly."));
+                .add_toast(Toast::new(&gettext("Restore stopped unexpectedly.")));
         },
     );
 }
@@ -234,7 +238,7 @@ pub fn register_synchronize_action(state: &GitActionState) {
                 }
                 GitOperationResult::Failed(message) => {
                     restore_after_git_operation_and_reload(&state);
-                    state.overlay.add_toast(Toast::new(&message));
+                    state.overlay.add_toast(Toast::new(&gettext(&message)));
                 }
             },
             move || {

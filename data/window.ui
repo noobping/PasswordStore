@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<interface>
+<interface domain="keycord">
   <object class="AdwApplicationWindow" id="main_window">
     <property name="title">Keycord</property>
     <property name="default-width">850</property>
@@ -803,6 +803,7 @@
                           <object class="AdwPreferencesPage">
                             <child>
                               <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Tools</property>
                                 <child>
                                   <object class="GtkListBox" id="tools_list">
                                     <property name="selection-mode">none</property>
@@ -811,6 +812,89 @@
                                     </style>
                                   </object>
                                 </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Information</property>
+                                <child>
+                                  <object class="GtkListBox" id="tools_logs_list">
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="docs_page">
+                    <property name="title" translatable="yes">Docs</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkSearchEntry" id="docs_search_entry">
+                            <property name="placeholder-text" translatable="yes">Search docs</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="vscrollbar-policy">automatic</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="AdwPreferencesPage">
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <child>
+                                      <object class="GtkListBox" id="docs_list">
+                                        <property name="selection-mode">none</property>
+                                        <style>
+                                          <class name="boxed-list" />
+                                        </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="docs_detail_page">
+                    <property name="title" translatable="yes">Docs</property>
+                    <child>
+                      <object class="GtkScrolledWindow" id="docs_detail_scrolled">
+                        <property name="vscrollbar-policy">automatic</property>
+                        <property name="hscrollbar-policy">never</property>
+                        <property name="propagate-natural-width">true</property>
+                        <property name="propagate-natural-height">true</property>
+                        <child>
+                          <object class="AdwClamp">
+                            <property name="maximum-size">900</property>
+                            <property name="tightening-threshold">600</property>
+                            <child>
+                              <object class="GtkBox" id="docs_detail_box">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">18</property>
+                                <property name="margin-top">18</property>
+                                <property name="margin-bottom">18</property>
+                                <property name="margin-start">18</property>
+                                <property name="margin-end">18</property>
                               </object>
                             </child>
                           </object>
@@ -1426,7 +1510,7 @@
                               </object>
                             </child>
                             <child>
-                              <object class="GtkButton">
+                              <object class="GtkButton" id="git_busy_show_logs_button">
                                 <property name="label" translatable="yes">Show Logs</property>
                                 <property name="action-name">win.open-log</property>
                               </object>
@@ -1458,6 +1542,10 @@
       <item>
         <attribute name="label" translatable="yes">_Tools</attribute>
         <attribute name="action">win.open-tools</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Docs</attribute>
+        <attribute name="action">win.open-docs</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

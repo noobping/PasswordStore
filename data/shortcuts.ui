@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<interface>
+<interface domain="keycord">
   <object class="GtkShortcutsWindow" id="shortcuts_window">
     <property name="modal">True</property>
     <property name="destroy-with-parent">True</property>
@@ -145,6 +145,12 @@
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Open tools</property>
                 <property name="accelerator">&lt;Primary&gt;t</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open docs</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;d</property>
               </object>
             </child>
             <child>

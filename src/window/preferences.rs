@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
 use crate::preferences::{BackendKind, Preferences, UsernameFallbackMode};
@@ -9,6 +10,7 @@ use crate::support::actions::activate_widget_action;
 use crate::support::actions::register_window_action;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
+use crate::support::runtime::supports_host_command_features;
 use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowPageState, APP_WINDOW_TITLE,
@@ -28,18 +30,54 @@ fn sync_backend_preferences_rows(
     preferences: &Preferences,
 ) {
     let backend = preferences.backend_kind();
-    if backend_row.selected() != backend.combo_position() {
-        backend_row.set_selected(backend.combo_position());
+    let position = combo_position_for_backend_kind(backend);
+    if backend_row.selected() != position {
+        backend_row.set_selected(position);
     }
-    pass_row.set_visible(preferences.uses_host_command_backend());
+    backend_row.set_visible(backend_row_is_visible());
+    pass_row.set_visible(host_command_preferences_visible(preferences));
     sync_private_key_sync_row(sync_row, sync_check, preferences);
 }
 
+#[cfg(target_os = "linux")]
+const AVAILABLE_BACKENDS: &[BackendKind] = &[BackendKind::Integrated, BackendKind::HostCommand];
+
+#[cfg(not(target_os = "linux"))]
+const AVAILABLE_BACKENDS: &[BackendKind] = &[BackendKind::Integrated];
+
+const fn available_backend_kinds() -> &'static [BackendKind] {
+    AVAILABLE_BACKENDS
+}
+
+const fn backend_row_is_visible() -> bool {
+    available_backend_kinds().len() > 1
+}
+
+fn combo_position_for_backend_kind(backend: BackendKind) -> u32 {
+    available_backend_kinds()
+        .iter()
+        .position(|candidate| *candidate == backend)
+        .unwrap_or(0) as u32
+}
+
+fn backend_kind_for_combo_position(position: u32) -> BackendKind {
+    available_backend_kinds()
+        .get(position as usize)
+        .copied()
+        .unwrap_or(BackendKind::Integrated)
+}
+
+fn host_command_preferences_visible(preferences: &Preferences) -> bool {
+    supports_host_command_features() && preferences.uses_host_command_backend()
+}
+
 fn backend_row_model() -> adw::gtk::StringList {
-    adw::gtk::StringList::new(&[
-        BackendKind::Integrated.label(),
-        BackendKind::HostCommand.label(),
-    ])
+    let labels = available_backend_kinds()
+        .iter()
+        .map(|backend| gettext(backend.label()))
+        .collect::<Vec<_>>();
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    adw::gtk::StringList::new(&label_refs)
 }
 
 pub fn initialize_backend_row(
@@ -51,7 +89,6 @@ pub fn initialize_backend_row(
 ) {
     let model = backend_row_model();
     backend_row.set_model(Some(&model));
-    backend_row.set_visible(true);
     sync_backend_preferences_rows(backend_row, pass_row, sync_row, sync_check, preferences);
 }
 
@@ -95,11 +132,12 @@ fn sync_private_key_sync_row(row: &ActionRow, check: &CheckButton, preferences: 
     let enabled = preferences.sync_private_keys_with_host();
     row.set_sensitive(available);
     check.set_sensitive(available);
-    row.set_subtitle(if available {
-        SYNC_PRIVATE_KEYS_AVAILABLE_SUBTITLE
+    let subtitle = if available {
+        gettext(SYNC_PRIVATE_KEYS_AVAILABLE_SUBTITLE)
     } else {
-        SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE
-    });
+        gettext(SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE)
+    };
+    row.set_subtitle(&subtitle);
 
     if check.is_active() != enabled {
         check.set_active(enabled);
@@ -111,10 +149,12 @@ fn present_private_key_sync_confirmation(
     on_response: impl FnOnce(bool) + 'static,
 ) {
     let dialog = AlertDialog::builder()
-        .heading("Turn on private-key sync?")
-        .body("Keycord will first make its private-key list match the GPG private keys on your computer. After that, creating, importing, or deleting a private key in Keycord will update the host too. Keys that only exist in Keycord may be removed during the first sync.")
+        .heading(&gettext("Turn on private-key sync?"))
+        .body(&gettext("Keycord will first make its private-key list match the GPG private keys on your computer. After that, creating, importing, or deleting a private key in Keycord will update the host too. Keys that only exist in Keycord may be removed during the first sync."))
         .build();
-    dialog.add_responses(&[("cancel", "Cancel"), ("sync", "Turn On")]);
+    let cancel = gettext("Cancel");
+    let turn_on = gettext("Turn On");
+    dialog.add_responses(&[("cancel", cancel.as_str()), ("sync", turn_on.as_str())]);
     dialog.set_close_response("cancel");
     dialog.set_default_response(Some("sync"));
     let on_response = Rc::new(RefCell::new(Some(on_response)));
@@ -137,7 +177,7 @@ pub fn connect_pass_command_row(
         let text = row.text().to_string();
         let text = text.trim();
         if text.is_empty() {
-            overlay.add_toast(Toast::new("Enter a command."));
+            overlay.add_toast(Toast::new(&gettext("Enter a command.")));
             return;
         }
         if let Err(err) = preferences.set_command(text) {
@@ -158,21 +198,21 @@ pub fn connect_backend_row(
     let pass_row = pass_row.clone();
     let on_changed = Rc::new(on_changed);
     backend_row.connect_selected_notify(move |row| {
-        let selected_backend = BackendKind::from_combo_position(row.selected());
+        let selected_backend = backend_kind_for_combo_position(row.selected());
         let current_backend = preferences.backend_kind();
         if selected_backend == current_backend {
-            pass_row.set_visible(preferences.uses_host_command_backend());
+            pass_row.set_visible(host_command_preferences_visible(&preferences));
             return;
         }
 
         if let Err(err) = preferences.set_backend_kind(selected_backend) {
-            pass_row.set_visible(preferences.uses_host_command_backend());
-            row.set_selected(current_backend.combo_position());
+            pass_row.set_visible(host_command_preferences_visible(&preferences));
+            row.set_selected(combo_position_for_backend_kind(current_backend));
             toast_preferences_save_error(&overlay, "backend", &err);
             return;
         }
 
-        pass_row.set_visible(preferences.uses_host_command_backend());
+        pass_row.set_visible(host_command_preferences_visible(&preferences));
         on_changed();
     });
 }
@@ -208,7 +248,7 @@ pub fn connect_private_key_sync_row(state: &PreferencesActionState) {
                 syncing.set(true);
                 button.set_active(false);
                 syncing.set(false);
-                overlay.add_toast(Toast::new("Grant host access first."));
+                overlay.add_toast(Toast::new(&gettext("Grant host access first.")));
                 return;
             }
 
@@ -244,14 +284,15 @@ pub fn connect_private_key_sync_row(state: &PreferencesActionState) {
 
                         activate_widget_action(&confirm_window, "win.reload-store-recipients-list");
                         activate_widget_action(&confirm_window, "win.reload-password-list");
-                        confirm_overlay.add_toast(Toast::new("Private keys synced."));
+                        confirm_overlay.add_toast(Toast::new(&gettext("Private keys synced.")));
                     }
                     Err(err) => {
                         log_error(format!("Failed to enable private-key sync: {err}"));
                         confirm_syncing.set(true);
                         confirm_button.set_active(false);
                         confirm_syncing.set(false);
-                        confirm_overlay.add_toast(Toast::new("Couldn't sync private keys."));
+                        confirm_overlay
+                            .add_toast(Toast::new(&gettext("Couldn't sync private keys.")));
                     }
                 }
             });
@@ -291,7 +332,7 @@ pub(super) fn toast_preferences_save_error(
         "Failed to save preference ({context}): {}",
         err.message
     ));
-    overlay.add_toast(Toast::new("Couldn't save that setting."));
+    overlay.add_toast(Toast::new(&gettext("Couldn't save that setting.")));
 }
 
 #[derive(Clone)]
@@ -529,8 +570,11 @@ pub fn register_open_preferences_action(
 
 #[cfg(test)]
 mod tests {
-    use super::username_fallback_check_state;
-    use crate::preferences::UsernameFallbackMode;
+    use super::{
+        available_backend_kinds, backend_kind_for_combo_position, combo_position_for_backend_kind,
+        username_fallback_check_state,
+    };
+    use crate::preferences::{BackendKind, UsernameFallbackMode};
 
     #[test]
     fn username_fallback_sync_marks_only_the_selected_mode() {
@@ -542,5 +586,28 @@ mod tests {
             username_fallback_check_state(UsernameFallbackMode::Filename),
             (false, true)
         );
+    }
+
+    #[test]
+    fn backend_combo_round_trips_available_backends() {
+        for backend in available_backend_kinds() {
+            let position = combo_position_for_backend_kind(*backend);
+            assert_eq!(backend_kind_for_combo_position(position), *backend);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_builds_offer_the_host_backend() {
+        assert_eq!(
+            available_backend_kinds(),
+            &[BackendKind::Integrated, BackendKind::HostCommand]
+        );
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn non_linux_builds_hide_the_host_backend() {
+        assert_eq!(available_backend_kinds(), &[BackendKind::Integrated]);
     }
 }

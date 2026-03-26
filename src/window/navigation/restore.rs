@@ -9,6 +9,7 @@ use crate::preferences::Preferences;
 use crate::store::git_page::{sync_store_git_page_header, StoreGitPageState};
 use crate::store::management::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
+use crate::window::docs::{DOCS_PAGE_SUBTITLE, DOCS_PAGE_TITLE};
 use adw::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,6 +19,8 @@ enum RestoredPageKind {
     Raw,
     Settings,
     Tools,
+    Docs,
+    DocsDetail,
     ToolFieldValues,
     ToolValueValues,
     ToolWeakPasswords,
@@ -85,7 +88,7 @@ pub fn restore_window_for_current_page(
         RestoredPageKind::Text | RestoredPageKind::Raw
     ));
     if page_kind == RestoredPageKind::Text {
-        if let Some(pass_file) = get_opened_pass_file() {
+        if let Some(pass_file) = get_opened_pass_file(&state.nav) {
             let label = pass_file.label();
             show_secondary_page_chrome(&chrome, pass_file.title(), &label, true);
             state.raw.set_visible(true);
@@ -95,7 +98,7 @@ pub fn restore_window_for_current_page(
             sync_username_row(&state.username, None);
         }
     } else if page_kind == RestoredPageKind::Raw {
-        let subtitle = get_opened_pass_file().map_or_else(
+        let subtitle = get_opened_pass_file(&state.nav).map_or_else(
             || APP_WINDOW_TITLE.to_string(),
             |pass_file| pass_file.label(),
         );
@@ -104,6 +107,15 @@ pub fn restore_window_for_current_page(
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
     } else if page_kind == RestoredPageKind::Tools {
         show_secondary_page_chrome(&chrome, "Tools", "Utilities and maintenance", false);
+    } else if page_kind == RestoredPageKind::Docs {
+        show_secondary_page_chrome(&chrome, DOCS_PAGE_TITLE, DOCS_PAGE_SUBTITLE, false);
+    } else if page_kind == RestoredPageKind::DocsDetail {
+        show_secondary_page_chrome(
+            &chrome,
+            &state.docs_detail_page.title(),
+            DOCS_PAGE_TITLE,
+            false,
+        );
     } else if page_kind == RestoredPageKind::ToolFieldValues {
         show_secondary_page_chrome(
             &chrome,
@@ -154,6 +166,12 @@ fn visible_secondary_page_kind(
     if visible_navigation_page_is(&state.nav, &state.tools_page) {
         return Some(RestoredPageKind::Tools);
     }
+    if visible_navigation_page_is(&state.nav, &state.docs_page) {
+        return Some(RestoredPageKind::Docs);
+    }
+    if visible_navigation_page_is(&state.nav, &state.docs_detail_page) {
+        return Some(RestoredPageKind::DocsDetail);
+    }
     if visible_navigation_page_is(&state.nav, &state.tools_field_values_page) {
         return Some(RestoredPageKind::ToolFieldValues);
     }
@@ -197,6 +215,15 @@ fn visible_private_key_generation_page(
 #[cfg(test)]
 mod tests {
     use super::{restored_page_kind, RestoredPageKind, RestoredPageState};
+    use crate::password::model::OpenPassFile;
+    use crate::window::session::WindowSessionState;
+
+    fn raw_page_subtitle(session: &WindowSessionState) -> String {
+        session.get_opened_pass_file().map_or_else(
+            || super::APP_WINDOW_TITLE.to_string(),
+            |pass_file| pass_file.label(),
+        )
+    }
 
     #[test]
     fn restored_page_kind_prefers_root_before_any_other_page() {
@@ -238,6 +265,20 @@ mod tests {
                 current_page: Some(RestoredPageKind::Tools),
             }),
             RestoredPageKind::Tools
+        );
+        assert_eq!(
+            restored_page_kind(RestoredPageState {
+                at_root: false,
+                current_page: Some(RestoredPageKind::Docs),
+            }),
+            RestoredPageKind::Docs
+        );
+        assert_eq!(
+            restored_page_kind(RestoredPageState {
+                at_root: false,
+                current_page: Some(RestoredPageKind::DocsDetail),
+            }),
+            RestoredPageKind::DocsDetail
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {
@@ -292,5 +333,16 @@ mod tests {
             }),
             RestoredPageKind::Other
         );
+    }
+
+    #[test]
+    fn raw_page_subtitle_uses_each_window_session_independently() {
+        let first_session = WindowSessionState::default();
+        let second_session = WindowSessionState::default();
+        first_session.set_opened_pass_file(OpenPassFile::from_label("/tmp/first", "work/alice"));
+        second_session.set_opened_pass_file(OpenPassFile::from_label("/tmp/second", "work/bob"));
+
+        assert_eq!(raw_page_subtitle(&first_session), "work/alice".to_string());
+        assert_eq!(raw_page_subtitle(&second_session), "work/bob".to_string());
     }
 }

@@ -3,6 +3,7 @@ use crate::backend::{
     armored_ripasso_private_key, armored_ripasso_public_key, ManagedRipassoPrivateKey,
 };
 use crate::clipboard::set_clipboard_text;
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use adw::gtk::Button;
 use adw::{Toast, ToastOverlay};
@@ -34,6 +35,6 @@ pub(super) fn copy_managed_key_material(
         state
             .platform
             .overlay
-            .add_toast(Toast::new("Couldn't copy that key."));
+            .add_toast(Toast::new(&gettext("Couldn't copy that key.")));
     }
 }

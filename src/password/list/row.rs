@@ -1,8 +1,9 @@
 use super::search::{search_controller_for_list, SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
 use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
+use crate::i18n::gettext;
 use crate::logging::log_error;
-use crate::password::model::PassEntry;
+use crate::password::model::{OpenPassFile, PassEntry};
 use crate::password::undo::{
     delete_entry_with_optional_undo, move_entry_between_stores_action, move_entry_to_store,
     push_undo_action, rename_entry_action, unavailable_undo_action, unavailable_undo_message,
@@ -13,6 +14,7 @@ use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, set_cloned_data, set_string_data};
 use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
+use crate::window::create_main_window;
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{
     gdk::Display, Button, DropDown, Image, ListBox, ListBoxRow, MenuButton, Stack, StringList,
@@ -41,6 +43,22 @@ pub(super) enum SelectedPasswordRowAction {
 const UNREADABLE_PASSWORD_ROW_TOOLTIP: &str =
     "This item can't be opened with the private keys currently available in the app. File actions are still available, but copy and move-to-store are disabled until a compatible private key is available.";
 const PASSWORD_ROW_STATE_KEY: &str = "password-row-state";
+const OPEN_IN_NEW_WINDOW_LABEL: &str = "Open in New Window";
+
+fn password_row_menu_entries(readable: bool) -> Vec<(&'static str, &'static str)> {
+    let mut entries = Vec::new();
+    if readable {
+        entries.push((OPEN_IN_NEW_WINDOW_LABEL, "entry.open-new-window"));
+    }
+    entries.push(("Rename pass file", "entry.rename-file"));
+    entries.push(("Move pass file", "entry.move"));
+    if readable {
+        entries.push(("Move to store", "entry.move-store"));
+    }
+    entries.push(("Open in File Manager", "entry.open-in-file-manager"));
+    entries.push(("Delete", "entry.delete"));
+    entries
+}
 
 #[derive(Clone)]
 struct PasswordRowState {
@@ -91,7 +109,7 @@ pub(super) fn append_password_row(
     let text_cancel_button = flat_icon_button_with_tooltip("window-close-symbolic", "Cancel");
     text_edit_row.add_suffix(&text_cancel_button);
 
-    let store_edit_row = ActionRow::builder().title("Move to store").build();
+    let store_edit_row = ActionRow::builder().title(gettext("Move to store")).build();
     store_edit_row.set_activatable(false);
     let store_dropdown = DropDown::from_strings(&[]);
     store_dropdown.set_valign(adw::gtk::Align::Center);
@@ -140,24 +158,25 @@ pub(super) fn append_password_row(
 fn configure_password_row_menu(
     menu_button: &MenuButton,
     state: &PasswordRowState,
-    allow_move_to_store: bool,
+    readable: bool,
     list: &ListBox,
     overlay: &ToastOverlay,
 ) {
     let menu = Menu::new();
-    menu.append(Some("Rename pass file"), Some("entry.rename-file"));
-    menu.append(Some("Move pass file"), Some("entry.move"));
-    if allow_move_to_store {
-        menu.append(Some("Move to store"), Some("entry.move-store"));
+    for (label, action) in password_row_menu_entries(readable) {
+        menu.append(Some(&gettext(label)), Some(action));
     }
-    menu.append(
-        Some("Open in File Manager"),
-        Some("entry.open-in-file-manager"),
-    );
-    menu.append(Some("Delete"), Some("entry.delete"));
     menu_button.set_menu_model(Some(&menu));
 
     let actions = SimpleActionGroup::new();
+
+    {
+        let state = state.clone();
+        let overlay = overlay.clone();
+        add_menu_action(&actions, "open-new-window", move || {
+            open_entry_in_new_window(&state, &overlay);
+        });
+    }
 
     {
         let state = state.clone();
@@ -227,10 +246,11 @@ fn connect_copy_action(state: &PasswordRowState, button: &Button, overlay: &Toas
 
 fn enter_text_edit_mode(state: &PasswordRowState, mode: TextEditMode, value: &str) {
     *state.text_edit_mode.borrow_mut() = mode;
-    state.text_edit_row.set_title(match mode {
-        TextEditMode::RenameFile => "Rename pass file",
-        TextEditMode::MoveWithinStore => "Move pass file",
-    });
+    let title = match mode {
+        TextEditMode::RenameFile => gettext("Rename pass file"),
+        TextEditMode::MoveWithinStore => gettext("Move pass file"),
+    };
+    state.text_edit_row.set_title(&title);
     state.text_edit_row.set_text(value);
     state.stack.set_visible_child_name("text-edit");
     state.text_edit_row.grab_focus();
@@ -257,7 +277,7 @@ fn connect_text_edit_actions(
             TextEditMode::RenameFile => match renamed_file_label(&entry, row.text().as_str()) {
                 Ok(new_label) => new_label,
                 Err(message) => {
-                    overlay.add_toast(Toast::new(message));
+                    overlay.add_toast(Toast::new(&gettext(message)));
                     return;
                 }
             },
@@ -274,14 +294,18 @@ fn connect_text_edit_actions(
             Ok(()) => {
                 *state.item.borrow_mut() =
                     PassEntry::from_label(entry.store_path.clone(), &new_label);
-                push_row_undo_action(state.readable, rename_entry_action(&entry, &new_label));
+                push_row_undo_action(
+                    &state.row,
+                    state.readable,
+                    rename_entry_action(&entry, &new_label),
+                );
                 sync_password_row_display(&state);
                 show_password_row_display(&state);
                 refresh_password_list_search(&list);
             }
             Err(err) => {
                 log_error(format!("Failed to move or rename password entry: {err}"));
-                overlay.add_toast(Toast::new(err.rename_toast_message()));
+                overlay.add_toast(Toast::new(&gettext(err.rename_toast_message())));
             }
         }
     });
@@ -290,7 +314,7 @@ fn connect_text_edit_actions(
 fn enter_store_edit_mode(state: &PasswordRowState, overlay: &ToastOverlay) {
     let stores = Preferences::new().store_roots();
     if stores.len() < 2 {
-        overlay.add_toast(Toast::new("Add another store first."));
+        overlay.add_toast(Toast::new(&gettext("Add another store first.")));
         return;
     }
 
@@ -335,7 +359,7 @@ fn connect_store_move_actions(
             .get(state.store_dropdown.selected() as usize)
             .cloned()
         else {
-            overlay.add_toast(Toast::new("Choose a store."));
+            overlay.add_toast(Toast::new(&gettext("Choose a store.")));
             return;
         };
 
@@ -355,20 +379,23 @@ fn connect_store_move_actions(
             move || move_entry_to_store(&entry_for_task, &target_store_for_task),
             move |result| match result {
                 Ok(updated_entry) => {
-                    push_undo_action(move_entry_between_stores_action(&entry, &target_store));
+                    push_undo_action(
+                        &state_for_result.row,
+                        move_entry_between_stores_action(&entry, &target_store),
+                    );
                     *state_for_result.item.borrow_mut() = updated_entry;
                     sync_password_row_display(&state_for_result);
                     show_password_row_display(&state_for_result);
                     refresh_password_list_search(&list_for_result);
-                    overlay_for_result.add_toast(Toast::new("Moved."));
+                    overlay_for_result.add_toast(Toast::new(&gettext("Moved.")));
                 }
                 Err(err) => {
                     log_undo_error("move password entry to another store", &err);
-                    overlay_for_result.add_toast(Toast::new(err.toast_message()));
+                    overlay_for_result.add_toast(Toast::new(&gettext(err.toast_message())));
                 }
             },
             move || {
-                overlay_for_disconnect.add_toast(Toast::new("Couldn't move the item."));
+                overlay_for_disconnect.add_toast(Toast::new(&gettext("Couldn't move the item.")));
             },
         );
     });
@@ -386,20 +413,20 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
             Ok(undo_action) => {
                 if let Some(undo_action) = undo_action {
                     if let Some(message) = unavailable_undo_message(&undo_action) {
-                        overlay.add_toast(Toast::new(message));
+                        overlay.add_toast(Toast::new(&gettext(message)));
                     }
-                    push_undo_action(undo_action);
+                    push_undo_action(&row, undo_action);
                 }
                 list.remove(&row);
                 refresh_password_list_search(&list);
             }
             Err(err) => {
                 log_undo_error("delete password entry", &err);
-                overlay.add_toast(Toast::new(err.toast_message()));
+                overlay.add_toast(Toast::new(&gettext(err.toast_message())));
             }
         },
         move || {
-            overlay_for_disconnect.add_toast(Toast::new("Couldn't delete the item."));
+            overlay_for_disconnect.add_toast(Toast::new(&gettext("Couldn't delete the item.")));
         },
     );
 }
@@ -509,7 +536,7 @@ fn sync_password_row_display(state: &PasswordRowState) {
 
 fn build_unreadable_password_icon(visible: bool) -> Image {
     let icon = dim_label_icon("dialog-warning-symbolic");
-    icon.set_tooltip_text(Some(UNREADABLE_PASSWORD_ROW_TOOLTIP));
+    icon.set_tooltip_text(Some(&gettext(UNREADABLE_PASSWORD_ROW_TOOLTIP)));
     icon.set_visible(visible);
     icon
 }
@@ -533,8 +560,33 @@ fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {
         log_error(format!(
             "Failed to open entry folder in the file manager.\nfolder: {folder_uri}\nerror: {error}"
         ));
-        overlay.add_toast(Toast::new("Couldn't open the folder."));
+        overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
     }
+}
+
+fn open_entry_in_new_window(state: &PasswordRowState, overlay: &ToastOverlay) {
+    let Some(window) = state
+        .row
+        .root()
+        .and_then(|root| root.downcast::<adw::ApplicationWindow>().ok())
+    else {
+        log_error("Couldn't find the current window to open a new one.".to_string());
+        overlay.add_toast(Toast::new(&gettext("Couldn't open a new window.")));
+        return;
+    };
+
+    let Some(app) = window
+        .application()
+        .and_then(|app| app.downcast::<adw::Application>().ok())
+    else {
+        log_error("Couldn't find the application to open a new window.".to_string());
+        overlay.add_toast(Toast::new(&gettext("Couldn't open a new window.")));
+        return;
+    };
+
+    let pass_file = OpenPassFile::new(state.item.borrow().clone());
+    let new_window = create_main_window(&app, None, Some(pass_file));
+    new_window.present();
 }
 
 fn entry_parent_directory(entry: &PassEntry) -> PathBuf {
@@ -578,30 +630,28 @@ fn refresh_password_list_search(list: &ListBox) {
     }
 }
 
-fn push_row_undo_action(readable: bool, action: crate::password::undo::UndoAction) {
+fn push_row_undo_action(
+    widget: &impl IsA<adw::gtk::Widget>,
+    readable: bool,
+    action: crate::password::undo::UndoAction,
+) {
     if readable {
-        push_undo_action(action);
+        push_undo_action(widget, action);
     } else {
-        push_undo_action(unavailable_undo_action());
+        push_undo_action(widget, unavailable_undo_action());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{entry_parent_directory, moved_file_label, renamed_file_label};
+    use super::{
+        entry_parent_directory, moved_file_label, password_row_menu_entries, renamed_file_label,
+        OPEN_IN_NEW_WINDOW_LABEL,
+    };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::PassEntry;
     use crate::password::undo::UndoError;
-    use adw::prelude::*;
     use std::path::PathBuf;
-    use std::sync::OnceLock;
-
-    fn initialize_widget_tests() {
-        static INIT: OnceLock<()> = OnceLock::new();
-        INIT.get_or_init(|| {
-            adw::init().expect("initialize libadwaita for widget tests");
-        });
-    }
 
     #[test]
     fn rename_pass_file_changes_only_the_file_name() {
@@ -656,8 +706,16 @@ mod tests {
     }
 
     #[test]
-    fn unreadable_rows_keep_only_file_management_actions() {
-        initialize_widget_tests();
-        assert!(super::build_unreadable_password_icon(true).is_visible());
+    fn readable_rows_offer_open_in_new_window() {
+        assert!(password_row_menu_entries(true)
+            .iter()
+            .any(|(label, _)| *label == OPEN_IN_NEW_WINDOW_LABEL));
+    }
+
+    #[test]
+    fn unreadable_rows_hide_open_in_new_window() {
+        assert!(!password_row_menu_entries(false)
+            .iter()
+            .any(|(label, _)| *label == OPEN_IN_NEW_WINDOW_LABEL));
     }
 }

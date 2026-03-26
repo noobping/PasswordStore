@@ -1,5 +1,6 @@
 use super::recipients::{read_store_gpg_recipients, read_store_private_key_requirement};
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
 use crate::support::actions::register_window_action;
 use crate::support::ui::reveal_navigation_page;
@@ -173,14 +174,14 @@ pub fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
     let Some(request) = state.current_request() else {
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
-        state.win.set_title("Store keys");
+        state.win.set_title(&gettext("Store keys"));
         state.win.set_subtitle(APP_WINDOW_TITLE);
         return;
     };
 
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, request.mode.page_title(), &request.store, false);
-    state.page.set_title(request.mode.page_title());
+    state.page.set_title(&gettext(request.mode.page_title()));
 }
 
 fn show_store_recipients_page(

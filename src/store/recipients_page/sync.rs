@@ -1,4 +1,5 @@
 use super::StoreRecipientsPageState;
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::sync::{sync_private_keys_with_host, PrivateKeySyncDirection};
@@ -13,9 +14,9 @@ fn handle_private_key_sync_failure(state: &StoreRecipientsPageState, err: &str) 
             save_err.message
         ));
     }
-    state.platform.overlay.add_toast(Toast::new(
+    state.platform.overlay.add_toast(Toast::new(&gettext(
         "Couldn't keep private keys synced. Sync was turned off.",
-    ));
+    )));
 }
 
 fn sync_private_keys_if_enabled(

@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::password::list::{load_passwords_async, PasswordListActions};
 use crate::password::model::OpenPassFile;
 use crate::password::page::{
@@ -13,7 +14,7 @@ use crate::store::git_page::StoreGitPageState;
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-use crate::support::runtime::has_host_permission;
+use crate::support::runtime::{has_host_permission, supports_logging_features};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::git::{handle_git_busy_back, GitActionState};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
@@ -178,7 +179,9 @@ fn context_reload_target(
 }
 
 fn configure_platform_shortcuts(app: &Application) {
-    app.set_accels_for_action("win.open-log", &["F12"]);
+    if supports_logging_features() {
+        app.set_accels_for_action("win.open-log", &["F12"]);
+    }
 }
 
 pub fn register_context_save_action(
@@ -270,14 +273,14 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
             return;
         }
 
-        let Some(action) = pop_undo_action() else {
+        let Some(action) = pop_undo_action(&state.navigation.nav) else {
             return;
         };
         if let Some(message) = unavailable_undo_message(&action) {
             state
                 .password_page
                 .overlay
-                .add_toast(adw::Toast::new(message));
+                .add_toast(adw::Toast::new(&gettext(message)));
             return;
         }
 
@@ -318,19 +321,19 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
                             &state_for_result.store_git_page,
                         );
                     }
-                    overlay.add_toast(adw::Toast::new("Undone."));
+                    overlay.add_toast(adw::Toast::new(&gettext("Undone.")));
                 }
                 Err(err) => {
-                    push_undo_action(action_for_result);
-                    overlay.add_toast(adw::Toast::new(err.toast_message()));
+                    push_undo_action(&state_for_result.navigation.nav, action_for_result);
+                    overlay.add_toast(adw::Toast::new(&gettext(err.toast_message())));
                 }
             },
             move || {
-                push_undo_action(action_for_disconnect);
+                push_undo_action(&state_for_disconnect.navigation.nav, action_for_disconnect);
                 state_for_disconnect
                     .password_page
                     .overlay
-                    .add_toast(adw::Toast::new("Couldn't undo the last change."));
+                    .add_toast(adw::Toast::new(&gettext("Couldn't undo the last change.")));
             },
         );
     });
@@ -443,6 +446,7 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-git", &["<primary>g"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>comma"]);
     app.set_accels_for_action("win.open-tools", &["<primary>t"]);
+    app.set_accels_for_action("win.open-docs", &["<primary><shift>d"]);
     app.set_accels_for_action("app.shortcuts", &["<primary>question"]);
     configure_platform_shortcuts(app);
 }

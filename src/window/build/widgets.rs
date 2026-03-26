@@ -23,6 +23,13 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) settings_page: NavigationPage,
     pub(in crate::window) tools_page: NavigationPage,
     pub(in crate::window) tools_list: ListBox,
+    pub(in crate::window) tools_logs_list: ListBox,
+    pub(in crate::window) docs_page: NavigationPage,
+    pub(in crate::window) docs_search_entry: SearchEntry,
+    pub(in crate::window) docs_list: ListBox,
+    pub(in crate::window) docs_detail_page: NavigationPage,
+    pub(in crate::window) docs_detail_scrolled: ScrolledWindow,
+    pub(in crate::window) docs_detail_box: GtkBox,
     pub(in crate::window) tools_field_values_page: NavigationPage,
     pub(in crate::window) tools_field_values_search_entry: SearchEntry,
     pub(in crate::window) tools_field_values_list: ListBox,
@@ -124,6 +131,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) sync_private_keys_with_host_check: CheckButton,
     pub(in crate::window) git_busy_page: NavigationPage,
     pub(in crate::window) git_busy_status: StatusPage,
+    pub(in crate::window) git_busy_show_logs_button: Button,
     pub(in crate::window) log_view: TextView,
 }
 
@@ -146,6 +154,13 @@ impl WindowWidgets {
             settings_page: required_object(builder, "settings_page"),
             tools_page: required_object(builder, "tools_page"),
             tools_list: required_object(builder, "tools_list"),
+            tools_logs_list: required_object(builder, "tools_logs_list"),
+            docs_page: required_object(builder, "docs_page"),
+            docs_search_entry: required_object(builder, "docs_search_entry"),
+            docs_list: required_object(builder, "docs_list"),
+            docs_detail_page: required_object(builder, "docs_detail_page"),
+            docs_detail_scrolled: required_object(builder, "docs_detail_scrolled"),
+            docs_detail_box: required_object(builder, "docs_detail_box"),
             tools_field_values_page: required_object(builder, "tools_field_values_page"),
             tools_field_values_search_entry: required_object(
                 builder,
@@ -370,6 +385,7 @@ impl WindowWidgets {
             ),
             git_busy_page: required_object(builder, "git_busy_page"),
             git_busy_status: required_object(builder, "git_busy_status"),
+            git_busy_show_logs_button: required_object(builder, "git_busy_show_logs_button"),
             log_view: required_object(builder, "log_view"),
         }
     }

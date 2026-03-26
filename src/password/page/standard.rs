@@ -1,5 +1,6 @@
 use super::{open_password_entry_page, PasswordPageState};
 use crate::backend::PasswordEntryError;
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
 use crate::preferences::{BackendKind, Preferences};
@@ -32,7 +33,7 @@ pub(super) fn handle_open_password_entry_error(
 
     state
         .overlay
-        .add_toast(Toast::new("Using Integrated instead."));
+        .add_toast(Toast::new(&gettext("Using Integrated instead.")));
     open_password_entry_page(state, pass_file.clone(), false);
     true
 }

@@ -1,4 +1,5 @@
 use crate::clipboard::connect_copy_button;
+use crate::i18n::gettext;
 use crate::password::model::OpenPassFile;
 use crate::password::new_item::{
     clear_new_password_dialog_error, selected_new_password_store, show_new_password_dialog_error,
@@ -35,11 +36,11 @@ pub(super) fn connect_password_list_activation(
         let root = non_null_to_string_option(row, "root");
 
         let Some(label) = label else {
-            overlay.add_toast(Toast::new("Couldn't open that item."));
+            overlay.add_toast(Toast::new(&gettext("Couldn't open that item.")));
             return;
         };
         let Some(root) = root else {
-            overlay.add_toast(Toast::new("That item is missing its store."));
+            overlay.add_toast(Toast::new(&gettext("That item is missing its store.")));
             return;
         };
         let opened_pass_file = OpenPassFile::from_label(root, &label);

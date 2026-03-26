@@ -1,4 +1,5 @@
 use crate::backend::{ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest};
+use crate::i18n::gettext;
 use crate::support::ui::dialog_content_shell;
 use adw::gtk::{Align, Box as GtkBox, Button, Label, Orientation, Spinner};
 use adw::prelude::*;
@@ -37,7 +38,7 @@ pub fn build_private_key_progress_dialog(
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
     let dialog = Dialog::builder()
-        .title(title)
+        .title(&gettext(title))
         .content_width(460)
         .child(&dialog_content_shell(title, subtitle, &status))
         .build();
@@ -109,7 +110,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     G: Fn() + 'static,
 {
     let password_row = PasswordEntryRow::new();
-    password_row.set_title("Key password");
+    password_row.set_title(&gettext("Key password"));
     password_row.set_show_apply_button(true);
 
     let password_group = PreferencesGroup::builder().build();
@@ -134,7 +135,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title(title)
+        .title(&gettext(title))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
@@ -203,7 +204,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
         protection,
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
     ) {
-        let button = Button::with_label(HARDWARE_EXTERNAL_BUTTON_LABEL);
+        let button = Button::with_label(&gettext(HARDWARE_EXTERNAL_BUTTON_LABEL));
         button.add_css_class("flat");
         button.add_css_class("caption");
         button.set_halign(Align::Start);
@@ -234,7 +235,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title(title)
+        .title(&gettext(title))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)

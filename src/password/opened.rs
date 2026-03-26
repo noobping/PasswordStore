@@ -1,107 +1,43 @@
 use super::model::OpenPassFile;
-use std::sync::{OnceLock, RwLock};
+use crate::window::session::window_session_for_widget;
+#[cfg(test)]
+use crate::window::session::WindowSessionState;
+use adw::gtk::Widget;
+use adw::prelude::*;
 
-fn opened_pass_file_state() -> &'static RwLock<Option<OpenPassFile>> {
-    static OPENED_PASS_FILE: OnceLock<RwLock<Option<OpenPassFile>>> = OnceLock::new();
-    OPENED_PASS_FILE.get_or_init(|| RwLock::new(None))
+pub fn set_opened_pass_file(widget: &impl IsA<Widget>, pass_file: OpenPassFile) {
+    window_session_for_widget(widget).set_opened_pass_file(pass_file);
 }
 
-fn with_opened_pass_file_read<T>(f: impl FnOnce(Option<&OpenPassFile>) -> T) -> T {
-    match opened_pass_file_state().read() {
-        Ok(current) => f(current.as_ref()),
-        Err(poisoned) => {
-            let current = poisoned.into_inner();
-            f(current.as_ref())
-        }
-    }
+pub fn get_opened_pass_file(widget: &impl IsA<Widget>) -> Option<OpenPassFile> {
+    window_session_for_widget(widget).get_opened_pass_file()
 }
 
-fn with_opened_pass_file_write<T>(f: impl FnOnce(&mut Option<OpenPassFile>) -> T) -> T {
-    match opened_pass_file_state().write() {
-        Ok(mut current) => f(&mut current),
-        Err(poisoned) => {
-            let mut current = poisoned.into_inner();
-            f(&mut current)
-        }
-    }
+pub fn clear_opened_pass_file(widget: &impl IsA<Widget>) {
+    window_session_for_widget(widget).clear_opened_pass_file();
 }
 
-fn cloned_opened_pass_file(current: Option<&OpenPassFile>) -> Option<OpenPassFile> {
-    current.cloned()
-}
-
-pub fn set_opened_pass_file(pass_file: OpenPassFile) {
-    with_opened_pass_file_write(|current| {
-        *current = Some(pass_file);
-    });
-}
-
-pub fn get_opened_pass_file() -> Option<OpenPassFile> {
-    with_opened_pass_file_read(cloned_opened_pass_file)
-}
-
-pub fn clear_opened_pass_file() {
-    with_opened_pass_file_write(|current| {
-        *current = None;
-    });
-}
-
-pub fn is_opened_pass_file(pass_file: &OpenPassFile) -> bool {
-    with_opened_pass_file_read(|current| current == Some(pass_file))
+pub fn is_opened_pass_file(widget: &impl IsA<Widget>, pass_file: &OpenPassFile) -> bool {
+    window_session_for_widget(widget).is_opened_pass_file(pass_file)
 }
 
 pub fn refresh_opened_pass_file_from_contents(
+    widget: &impl IsA<Widget>,
     pass_file: &OpenPassFile,
     contents: &str,
 ) -> Option<OpenPassFile> {
-    with_opened_pass_file_write(|current| {
-        let selected = current.as_mut()?;
-        if selected != pass_file {
-            return None;
-        }
-
-        selected.refresh_from_contents(contents);
-        Some(selected.clone())
-    })
+    window_session_for_widget(widget).refresh_opened_pass_file_from_contents(pass_file, contents)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
-        refresh_opened_pass_file_from_contents, set_opened_pass_file,
-    };
+    use super::WindowSessionState;
     use crate::password::model::OpenPassFile;
     use crate::preferences::UsernameFallbackMode;
-    use std::sync::{Mutex, OnceLock};
-
-    fn test_lock() -> &'static Mutex<()> {
-        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     #[test]
-    fn opened_pass_file_state_round_trips() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
-        clear_opened_pass_file();
-
-        let pass_file = OpenPassFile::from_label_with_mode(
-            "/tmp/store",
-            "work/alice/github",
-            UsernameFallbackMode::Folder,
-        );
-        set_opened_pass_file(pass_file.clone());
-
-        assert_eq!(get_opened_pass_file(), Some(pass_file.clone()));
-        assert!(is_opened_pass_file(&pass_file));
-
-        clear_opened_pass_file();
-    }
-
-    #[test]
-    fn late_updates_do_not_override_a_newer_selection() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
-        clear_opened_pass_file();
+    fn late_updates_do_not_override_a_newer_selection_in_the_same_window() {
+        let session = WindowSessionState::default();
 
         let first = OpenPassFile::from_label_with_mode(
             "/tmp/store",
@@ -113,13 +49,48 @@ mod tests {
             "work/bob/gitlab",
             UsernameFallbackMode::Folder,
         );
-        set_opened_pass_file(second.clone());
+
+        session.set_opened_pass_file(second.clone());
 
         let refreshed =
-            refresh_opened_pass_file_from_contents(&first, "secret\nusername: stale-user");
+            session.refresh_opened_pass_file_from_contents(&first, "secret\nusername: stale-user");
         assert_eq!(refreshed, None);
-        assert_eq!(get_opened_pass_file(), Some(second));
+        assert_eq!(session.get_opened_pass_file(), Some(second));
+    }
 
-        clear_opened_pass_file();
+    #[test]
+    fn late_updates_only_change_the_window_that_started_the_open() {
+        let first_session = WindowSessionState::default();
+        let second_session = WindowSessionState::default();
+
+        let first = OpenPassFile::from_label_with_mode(
+            "/tmp/first",
+            "work/alice/github",
+            UsernameFallbackMode::Folder,
+        );
+        let second = OpenPassFile::from_label_with_mode(
+            "/tmp/second",
+            "work/bob/gitlab",
+            UsernameFallbackMode::Folder,
+        );
+
+        first_session.set_opened_pass_file(first.clone());
+        second_session.set_opened_pass_file(second.clone());
+
+        let refreshed = first_session
+            .refresh_opened_pass_file_from_contents(&first, "secret\nusername: alice@example.com");
+
+        assert_eq!(
+            refreshed.as_ref().and_then(OpenPassFile::username),
+            Some("alice@example.com")
+        );
+        assert_eq!(
+            first_session
+                .get_opened_pass_file()
+                .as_ref()
+                .and_then(OpenPassFile::username),
+            Some("alice@example.com")
+        );
+        assert_eq!(second_session.get_opened_pass_file(), Some(second));
     }
 }

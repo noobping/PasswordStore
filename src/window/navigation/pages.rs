@@ -1,18 +1,31 @@
 use super::chrome::show_secondary_page_chrome;
 use super::restore::restore_window_for_current_page;
 use super::state::{HasWindowChrome, WindowNavigationState};
+use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
 use crate::store::management::StoreRecipientsPageState;
+use crate::support::runtime::supports_logging_features;
 use crate::support::ui::{
     navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
 pub fn show_log_page(state: &WindowNavigationState) {
+    if !supports_logging_features() {
+        return;
+    }
+
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Logs", "Details", false);
 
     push_navigation_page_if_needed(&state.nav, &state.log_page);
+}
+
+pub fn show_docs_page(state: &WindowNavigationState) {
+    let chrome = state.window_chrome();
+    show_secondary_page_chrome(&chrome, "Docs", "Guides and reference", false);
+
+    push_navigation_page_if_needed(&state.nav, &state.docs_page);
 }
 
 pub fn show_git_busy_page(
@@ -23,7 +36,7 @@ pub fn show_git_busy_page(
 ) {
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Working", title, false);
-    status.set_title(title);
+    status.set_title(&gettext(title));
 
     push_navigation_page_if_needed(&state.nav, page);
 }

@@ -7,6 +7,7 @@ use super::{
     VALUE_VALUES_EMPTY_TITLE, VALUE_VALUES_FILTER_EMPTY_SUBTITLE, VALUE_VALUES_FILTER_EMPTY_TITLE,
 };
 use crate::backend::read_password_entry;
+use crate::i18n::gettext;
 use crate::password::file::{searchable_pass_fields, SearchablePassField};
 use crate::password::opened::clear_opened_pass_file;
 use crate::preferences::Preferences;
@@ -290,7 +291,7 @@ impl ToolsPageState {
     fn apply_root_search(&self, query: &str) {
         self.reset_browser_state();
         pop_navigation_to_root(&self.navigation.nav);
-        clear_opened_pass_file();
+        clear_opened_pass_file(&self.navigation.nav);
 
         let has_store_dirs = !Preferences::new().stores().is_empty();
         let chrome = self.navigation.window_chrome();
@@ -424,17 +425,19 @@ fn escape_quoted_search_component(value: &str) -> String {
 }
 
 pub(super) fn unique_values_subtitle(count: usize) -> String {
-    if count == 1 {
-        "1 unique value".to_string()
+    let template = if count == 1 {
+        gettext("{count} unique value")
     } else {
-        format!("{count} unique values")
-    }
+        gettext("{count} unique values")
+    };
+    template.replace("{count}", &count.to_string())
 }
 
 pub(super) fn matching_items_subtitle(count: usize) -> String {
-    if count == 1 {
-        "1 matching item".to_string()
+    let template = if count == 1 {
+        gettext("{count} matching item")
     } else {
-        format!("{count} matching items")
-    }
+        gettext("{count} matching items")
+    };
+    template.replace("{count}", &count.to_string())
 }

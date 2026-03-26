@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
@@ -19,11 +20,11 @@ pub struct NewPasswordPopoverState {
 
 pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow, Label) {
     let store_dropdown = ComboRow::new();
-    store_dropdown.set_title("Store");
+    store_dropdown.set_title(&gettext("Store"));
     store_dropdown.set_visible(false);
 
     let path_entry = EntryRow::new();
-    path_entry.set_title("Path or name");
+    path_entry.set_title(&gettext("Path or name"));
     path_entry.set_show_apply_button(true);
 
     let group = PreferencesGroup::new();
@@ -48,16 +49,14 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow, Label)
     content.append(&page);
     content.append(&error_label);
 
+    let title = gettext("New item");
+    let subtitle = gettext("Create a new pass file.");
     let dialog = Dialog::builder()
-        .title("New item")
+        .title(&title)
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
-        .child(&dialog_content_shell(
-            "New item",
-            Some("Create a new pass file."),
-            &content,
-        ))
+        .child(&dialog_content_shell(&title, Some(&subtitle), &content))
         .build();
 
     {

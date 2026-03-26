@@ -11,6 +11,8 @@ pub struct WindowNavigationState {
     pub raw_text_page: NavigationPage,
     pub settings_page: NavigationPage,
     pub tools_page: NavigationPage,
+    pub docs_page: NavigationPage,
+    pub docs_detail_page: NavigationPage,
     pub tools_field_values_page: NavigationPage,
     pub tools_value_values_page: NavigationPage,
     pub tools_weak_passwords_page: NavigationPage,

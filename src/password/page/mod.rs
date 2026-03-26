@@ -14,6 +14,7 @@ use crate::backend::{
     read_password_entry, rename_password_entry, save_password_entry, PasswordEntryError,
     PasswordEntryWriteError,
 };
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::password::model::{OpenPassFile, UsernameFallbackError};
 use crate::password::opened::{
@@ -80,7 +81,7 @@ fn show_password_open_failure(state: &PasswordPageState, error: Option<&Password
     activate_widget_action(&state.nav, "win.go-home");
     state
         .overlay
-        .add_toast(Toast::new(password_open_failure_message(error)));
+        .add_toast(Toast::new(&gettext(password_open_failure_message(error))));
 }
 
 const fn should_retry_open_password_entry(
@@ -117,7 +118,8 @@ fn prepared_password_save_contents(
 }
 
 fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSaveContext, String> {
-    let pass_file = get_opened_pass_file().ok_or_else(|| "Open an item first.".to_string())?;
+    let pass_file =
+        get_opened_pass_file(&state.nav).ok_or_else(|| "Open an item first.".to_string())?;
     let preferences = Preferences::new();
     let editor_contents = current_editor_contents(state);
 
@@ -155,6 +157,7 @@ fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSa
 }
 
 fn renamed_pass_file_after_save(
+    state: &PasswordPageState,
     save_context: &PasswordSaveContext,
     label: &str,
 ) -> Result<OpenPassFile, PasswordEntryWriteError> {
@@ -172,7 +175,7 @@ fn renamed_pass_file_after_save(
         target_label,
         save_context.pass_file.username_fallback_mode(),
     );
-    set_opened_pass_file(renamed_pass_file.clone());
+    set_opened_pass_file(&state.nav, renamed_pass_file.clone());
     Ok(renamed_pass_file)
 }
 
@@ -181,9 +184,12 @@ fn finish_password_save(
     save_context: &PasswordSaveContext,
     active_pass_file: &OpenPassFile,
 ) {
-    let updated_pass_file =
-        refresh_opened_pass_file_from_contents(active_pass_file, &save_context.contents)
-            .or_else(|| Some(active_pass_file.clone()));
+    let updated_pass_file = refresh_opened_pass_file_from_contents(
+        &state.nav,
+        active_pass_file,
+        &save_context.contents,
+    )
+    .or_else(|| Some(active_pass_file.clone()));
     show_password_editor_fields(state);
     sync_editor_contents(state, &save_context.contents, updated_pass_file.as_ref());
     sync_saved_password_state(state, &save_context.contents, true);
@@ -194,17 +200,20 @@ fn finish_password_save(
         || save_context.previous_contents != save_context.contents
         || save_context.previous_label != current_label
     {
-        push_undo_action(restore_saved_entry_action(
-            &save_context.previous_store,
-            &save_context.previous_label,
-            save_context
-                .previous_entry_exists
-                .then_some(save_context.previous_contents.as_str()),
-            save_context.pass_file.store_path(),
-            &current_label,
-        ));
+        push_undo_action(
+            &state.nav,
+            restore_saved_entry_action(
+                &save_context.previous_store,
+                &save_context.previous_label,
+                save_context
+                    .previous_entry_exists
+                    .then_some(save_context.previous_contents.as_str()),
+                save_context.pass_file.store_path(),
+                &current_label,
+            ),
+        );
     }
-    state.overlay.add_toast(Toast::new("Saved."));
+    state.overlay.add_toast(Toast::new(&gettext("Saved.")));
 }
 
 pub fn open_password_entry_page(
@@ -214,7 +223,7 @@ pub fn open_password_entry_page(
 ) {
     let pass_label = opened_pass_file.label();
     let store_for_thread = opened_pass_file.store_path().to_string();
-    set_opened_pass_file(opened_pass_file.clone());
+    set_opened_pass_file(&state.nav, opened_pass_file.clone());
 
     show_password_loading_state(state, opened_pass_file.title(), &pass_label);
     if push_page {
@@ -229,13 +238,14 @@ pub fn open_password_entry_page(
     spawn_result_task(
         move || read_password_entry(&store_for_thread, &label_for_thread),
         move |result| {
-            if !is_opened_pass_file(&opened_pass_file_for_result) {
+            if !is_opened_pass_file(&state_for_result.nav, &opened_pass_file_for_result) {
                 return;
             }
 
             match result {
                 Ok(output) => {
                     let updated_pass_file = refresh_opened_pass_file_from_contents(
+                        &state_for_result.nav,
                         &opened_pass_file_for_result,
                         &output,
                     );
@@ -258,7 +268,7 @@ pub fn open_password_entry_page(
             }
         },
         move || {
-            if !is_opened_pass_file(&opened_pass_file_for_disconnect) {
+            if !is_opened_pass_file(&state_for_disconnect.nav, &opened_pass_file_for_disconnect) {
                 return;
             }
             show_password_open_failure(&state_for_disconnect, None);
@@ -285,10 +295,10 @@ pub fn begin_new_password_entry(
     let template_contents =
         new_pass_file_contents_from_template(&settings.new_pass_file_template());
     let opened_pass_file = OpenPassFile::from_label(store_root, path);
-    set_opened_pass_file(opened_pass_file.clone());
+    set_opened_pass_file(&state.nav, opened_pass_file.clone());
     let template_pass_file =
-        refresh_opened_pass_file_from_contents(&opened_pass_file, &template_contents)
-            .or_else(get_opened_pass_file);
+        refresh_opened_pass_file_from_contents(&state.nav, &opened_pass_file, &template_contents)
+            .or_else(|| get_opened_pass_file(&state.nav));
 
     show_password_editor_chrome(state, "New item", path);
     show_password_editor_fields(state);
@@ -305,7 +315,7 @@ pub fn show_raw_pass_file_page(state: &PasswordPageState) {
     let contents = structured_editor_contents(state);
     state.text.buffer().set_text(&contents);
 
-    let subtitle = get_opened_pass_file().map_or_else(
+    let subtitle = get_opened_pass_file(&state.nav).map_or_else(
         || APP_WINDOW_TITLE.to_string(),
         |pass_file| pass_file.label(),
     );
@@ -337,7 +347,7 @@ pub fn add_pass_field_from_input(state: &PasswordPageState) {
 
     match add_empty_dynamic_field(state, &state.field_add_row.text(), None) {
         Ok(()) => state.field_add_row.set_text(""),
-        Err(message) => state.overlay.add_toast(Toast::new(message)),
+        Err(message) => state.overlay.add_toast(Toast::new(&gettext(message))),
     }
 }
 
@@ -359,17 +369,17 @@ pub fn apply_pass_file_template(state: &PasswordPageState) {
         return;
     }
 
-    let pass_file = get_opened_pass_file();
+    let pass_file = get_opened_pass_file(&state.nav);
     let updated_pass_file = pass_file
         .as_ref()
         .and_then(|pass_file| {
-            refresh_opened_pass_file_from_contents(pass_file, &templated_contents)
+            refresh_opened_pass_file_from_contents(&state.nav, pass_file, &templated_contents)
         })
         .or(pass_file);
     sync_editor_contents(state, &templated_contents, updated_pass_file.as_ref());
     state
         .overlay
-        .add_toast(Toast::new("Added missing template fields."));
+        .add_toast(Toast::new(&gettext("Added missing template fields.")));
 }
 
 fn sync_apply_template_button(state: &PasswordPageState, contents: &str) {
@@ -394,13 +404,17 @@ pub fn clean_pass_file(state: &PasswordPageState) {
         return;
     }
 
-    let pass_file = get_opened_pass_file();
+    let pass_file = get_opened_pass_file(&state.nav);
     let updated_pass_file = pass_file
         .as_ref()
-        .and_then(|pass_file| refresh_opened_pass_file_from_contents(pass_file, &cleaned_contents))
+        .and_then(|pass_file| {
+            refresh_opened_pass_file_from_contents(&state.nav, pass_file, &cleaned_contents)
+        })
         .or(pass_file);
     sync_editor_contents(state, &cleaned_contents, updated_pass_file.as_ref());
-    state.overlay.add_toast(Toast::new("Removed empty fields."));
+    state
+        .overlay
+        .add_toast(Toast::new(&gettext("Removed empty fields.")));
 }
 
 pub fn password_page_has_unsaved_changes(state: &PasswordPageState) -> bool {
@@ -413,9 +427,9 @@ pub fn revert_unsaved_password_changes(state: &PasswordPageState) -> bool {
     }
 
     let saved_contents = state.saved_contents.borrow().clone();
-    let pass_file = get_opened_pass_file();
+    let pass_file = get_opened_pass_file(&state.nav);
     sync_editor_contents(state, &saved_contents, pass_file.as_ref());
-    state.overlay.add_toast(Toast::new("Reverted."));
+    state.overlay.add_toast(Toast::new(&gettext("Reverted.")));
     true
 }
 
@@ -438,7 +452,7 @@ fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_
     let save_context = match prepare_password_save_context(state) {
         Ok(save_context) => save_context,
         Err(message) => {
-            state.overlay.add_toast(Toast::new(&message));
+            state.overlay.add_toast(Toast::new(&gettext(&message)));
             return;
         }
     };
@@ -455,20 +469,20 @@ fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_
         &save_context.contents,
         true,
     ) {
-        Ok(()) => match renamed_pass_file_after_save(&save_context, &label) {
+        Ok(()) => match renamed_pass_file_after_save(state, &save_context, &label) {
             Ok(active_pass_file) => finish_password_save(state, &save_context, &active_pass_file),
             Err(err) => {
                 log_error(format!("Failed to move password entry after save: {err}"));
                 state
                     .overlay
-                    .add_toast(Toast::new(err.rename_toast_message()));
+                    .add_toast(Toast::new(&gettext(err.rename_toast_message())));
             }
         },
         Err(err) => {
             log_error(format!("Failed to save password entry: {err}"));
             state
                 .overlay
-                .add_toast(Toast::new(password_save_failure_message(&err)));
+                .add_toast(Toast::new(&gettext(password_save_failure_message(&err))));
         }
     }
 }
@@ -488,7 +502,7 @@ pub fn show_password_list_page(
 ) {
     pop_navigation_to_root(&state.nav);
 
-    clear_opened_pass_file();
+    clear_opened_pass_file(&state.nav);
     let chrome = state.window_chrome();
     show_primary_page_chrome(&chrome, !Preferences::new().stores().is_empty());
 
@@ -512,13 +526,13 @@ pub fn show_password_list_page(
 }
 
 pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
-    let has_opened_pass_file = get_opened_pass_file().is_some();
+    let has_opened_pass_file = get_opened_pass_file(&state.nav).is_some();
     if !should_retry_open_password_entry(password_page_display(state), has_opened_pass_file) {
         return false;
     }
 
-    let pass_file =
-        get_opened_pass_file().expect("opened pass file should exist when retry is needed");
+    let pass_file = get_opened_pass_file(&state.nav)
+        .expect("opened pass file should exist when retry is needed");
     open_password_entry_page(state, pass_file, false);
     true
 }

@@ -8,7 +8,11 @@ mod setup;
 
 mod backend;
 mod clipboard;
+mod i18n;
 #[cfg(target_os = "linux")]
+mod logging;
+#[cfg(not(target_os = "linux"))]
+#[path = "logging/non_linux.rs"]
 mod logging;
 mod password;
 mod preferences;
@@ -17,6 +21,7 @@ mod store;
 mod support;
 mod window;
 
+use crate::i18n::gettext;
 use crate::logging::{run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
 use crate::support::object_data::{non_null_to_string_option, set_string_data};
@@ -40,6 +45,7 @@ const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts.ui");
 
 fn main() -> ExitCode {
+    i18n::init();
     resources_register_include!("compiled.gresource").expect("Failed to register resources");
 
     // Initialize libadwaita
@@ -97,7 +103,7 @@ fn main() -> ExitCode {
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
         let query = non_null_to_string_option(app, "query");
-        let win = window::create_main_window(app, query);
+        let win = window::create_main_window(app, query, None);
         win.present();
     });
 
@@ -143,24 +149,29 @@ fn build_about_dialog() -> adw::AboutDialog {
         .developer_name(authors.first().copied().unwrap_or(project))
         .developers(&authors[..])
         .comments(about_comments(project))
+        .translator_credits(gettext("Translated by AI; reviewed by Nick."))
         .license_type(License::Gpl30Only)
         .website(env!("CARGO_PKG_HOMEPAGE"))
         .issue_url(ISSUE_URL)
         .support_url(ISSUE_URL)
         .build();
-    about.add_link("Repository", env!("CARGO_PKG_REPOSITORY"));
+    about.add_link(&gettext("Repository"), env!("CARGO_PKG_REPOSITORY"));
     about
 }
 
 fn about_comments(project: &str) -> String {
-    let comments = option_env!("CARGO_PKG_DESCRIPTION").unwrap_or("");
+    let comments = gettext(option_env!("CARGO_PKG_DESCRIPTION").unwrap_or(""));
     let settings = Preferences::new();
     let backend_details = if settings.uses_integrated_backend() {
-        format!("backend: ripasso {RIPASSO_VERSION}\nsequoia-openpgp {SEQUOIA_OPENPGP_VERSION}")
+        format!(
+            "{} {RIPASSO_VERSION}\n{} {SEQUOIA_OPENPGP_VERSION}",
+            gettext("backend: ripasso"),
+            gettext("sequoia-openpgp")
+        )
     } else {
         get_pass_version(&settings).map_or_else(
-            || "backend: host".to_string(),
-            |version| format!("backend: host\n{version}"),
+            || gettext("backend: host"),
+            |version| format!("{}\n{version}", gettext("backend: host")),
         )
     };
 

@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::support::object_data::{cloned_data, set_cloned_data};
 use adw::glib;
 use adw::gtk::{ListBox, ScrolledWindow, Spinner, Stack};
@@ -66,8 +67,9 @@ impl PasswordListPlaceholderState {
 
     fn show_status(&self, presentation: PlaceholderPresentation) {
         self.status.set_icon_name(Some(presentation.icon_name));
-        self.status.set_title(presentation.title);
-        self.status.set_description(presentation.description);
+        self.status.set_title(&gettext(presentation.title));
+        let description = presentation.description.map(gettext);
+        self.status.set_description(description.as_deref());
         self.spinner.set_visible(presentation.spinner);
         self.spinner.set_spinning(presentation.spinner);
         self.stack.set_visible_child(&self.status);
@@ -154,8 +156,8 @@ fn resolved_placeholder(empty: bool, has_store_dirs: bool) -> StatusPage {
     } else {
         StatusPage::builder()
             .icon_name("edit-find-symbolic")
-            .title("No matches")
-            .description("Try another query.")
+            .title(&gettext("No matches"))
+            .description(&gettext("Try another query."))
             .build()
     }
 }
@@ -164,13 +166,13 @@ fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -
     let builder = StatusPage::builder().icon_name(symbolic);
     if has_store_dirs {
         builder
-            .title("No items yet")
-            .description("Create a new item to get started.")
+            .title(&gettext("No items yet"))
+            .description(&gettext("Create a new item to get started."))
             .build()
     } else {
         builder
-            .title("No folders added")
-            .description("Open Preferences to add a password store folder.")
+            .title(&gettext("No folders added"))
+            .description(&gettext("Open Preferences to add a password store folder."))
             .build()
     }
 }

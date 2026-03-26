@@ -3,9 +3,12 @@ use crate::backend::{
     PasswordEntryError, PasswordEntryWriteError,
 };
 use crate::password::model::PassEntry;
-use std::sync::{OnceLock, RwLock};
+use crate::window::session::window_session_for_widget;
+#[cfg(test)]
+use crate::window::session::WindowSessionState;
+use adw::gtk::Widget;
+use adw::prelude::*;
 
-const MAX_UNDO_ACTIONS: usize = 32;
 const UNAVAILABLE_UNDO_MESSAGE: &str = "Undo unavailable for that change.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,46 +105,22 @@ pub fn unavailable_undo_message(action: &UndoAction) -> Option<&str> {
     }
 }
 
-fn undo_stack() -> &'static RwLock<Vec<UndoAction>> {
-    static UNDO_STACK: OnceLock<RwLock<Vec<UndoAction>>> = OnceLock::new();
-    UNDO_STACK.get_or_init(|| RwLock::new(Vec::new()))
+pub fn push_undo_action(widget: &impl IsA<Widget>, action: UndoAction) {
+    window_session_for_widget(widget).push_undo_action(action);
 }
 
-fn with_undo_stack_write<T>(f: impl FnOnce(&mut Vec<UndoAction>) -> T) -> T {
-    match undo_stack().write() {
-        Ok(mut stack) => f(&mut stack),
-        Err(poisoned) => {
-            let mut stack = poisoned.into_inner();
-            f(&mut stack)
-        }
-    }
-}
-
-pub fn push_undo_action(action: UndoAction) {
-    with_undo_stack_write(|stack| {
-        stack.push(action);
-        if stack.len() > MAX_UNDO_ACTIONS {
-            let drain_len = stack.len() - MAX_UNDO_ACTIONS;
-            stack.drain(0..drain_len);
-        }
-    });
-}
-
-pub fn pop_undo_action() -> Option<UndoAction> {
-    with_undo_stack_write(Vec::pop)
+pub fn pop_undo_action(widget: &impl IsA<Widget>) -> Option<UndoAction> {
+    window_session_for_widget(widget).pop_undo_action()
 }
 
 #[cfg(test)]
-pub fn has_undo_actions() -> bool {
-    match undo_stack().read() {
-        Ok(stack) => !stack.is_empty(),
-        Err(poisoned) => !poisoned.into_inner().is_empty(),
-    }
+pub fn has_undo_actions(session: &WindowSessionState) -> bool {
+    session.has_undo_actions()
 }
 
 #[cfg(test)]
-pub fn clear_undo_actions() {
-    with_undo_stack_write(Vec::clear);
+pub fn clear_undo_actions(session: &WindowSessionState) {
+    session.clear_undo_actions();
 }
 
 pub fn restore_deleted_entry_action(entry: &PassEntry, contents: String) -> UndoAction {
@@ -329,33 +308,28 @@ fn move_entry_between_stores(
 mod tests {
     use super::{
         can_delete_without_undo_after_read_error, clear_undo_actions, has_undo_actions,
-        move_entry_between_stores_action, pop_undo_action, push_undo_action, rename_entry_action,
-        restore_deleted_entry_action, restore_saved_entry_action, unavailable_undo_action,
-        unavailable_undo_message, undo_action_restored_entry, UndoAction,
+        move_entry_between_stores_action, rename_entry_action, restore_deleted_entry_action,
+        restore_saved_entry_action, unavailable_undo_action, unavailable_undo_message,
+        undo_action_restored_entry, UndoAction,
     };
     use crate::backend::PasswordEntryError;
     use crate::password::model::PassEntry;
-    use std::sync::{Mutex, OnceLock};
-
-    fn test_lock() -> &'static Mutex<()> {
-        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        TEST_LOCK.get_or_init(|| Mutex::new(()))
-    }
+    use crate::window::session::WindowSessionState;
 
     #[test]
     fn undo_stack_round_trips_the_most_recent_action() {
-        let _guard = test_lock().lock().expect("test lock poisoned");
-        clear_undo_actions();
-        push_undo_action(UndoAction::RenameEntry {
+        let session = WindowSessionState::default();
+        clear_undo_actions(&session);
+        session.push_undo_action(UndoAction::RenameEntry {
             store: "/tmp/store".to_string(),
             old_label: "a".to_string(),
             new_label: "b".to_string(),
         });
 
-        assert!(has_undo_actions());
-        let action = pop_undo_action();
+        assert!(has_undo_actions(&session));
+        let action = session.pop_undo_action();
         assert!(matches!(action, Some(UndoAction::RenameEntry { .. })));
-        clear_undo_actions();
+        clear_undo_actions(&session);
     }
 
     #[test]

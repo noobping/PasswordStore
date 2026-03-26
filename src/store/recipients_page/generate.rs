@@ -2,6 +2,7 @@ use super::list::rebuild_store_recipients_list;
 use super::sync::sync_private_keys_to_host_if_enabled;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::backend::{generate_ripasso_private_key, ManagedRipassoPrivateKey, PrivateKeyError};
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
@@ -97,14 +98,14 @@ fn finish_private_key_generation(
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new("Key generated."));
+                .add_toast(Toast::new(&gettext("Key generated.")));
         }
         Err(err) => {
             log_error(format!("Failed to generate private key: {err}"));
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't generate the key."));
+                .add_toast(Toast::new(&gettext("Couldn't generate the key.")));
         }
     }
 }
@@ -127,7 +128,7 @@ fn start_private_key_generation(
             state_for_disconnect
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't generate the key."));
+                .add_toast(Toast::new(&gettext("Couldn't generate the key.")));
         },
     );
 }
@@ -205,7 +206,7 @@ pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageS
         ) {
             Ok(request) => request,
             Err(message) => {
-                overlay_for_apply.add_toast(Toast::new(message));
+                overlay_for_apply.add_toast(Toast::new(&gettext(message)));
                 return;
             }
         };

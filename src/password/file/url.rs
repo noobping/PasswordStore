@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::support::ui::flat_icon_button_with_tooltip;
 use adw::prelude::*;
@@ -27,7 +28,7 @@ pub(super) fn add_open_url_suffix(
     let overlay = overlay.clone();
     button.connect_clicked(move |_| {
         let Some(uri) = uri_to_open(&text()) else {
-            overlay.add_toast(Toast::new("Enter a URL."));
+            overlay.add_toast(Toast::new(&gettext("Enter a URL.")));
             return;
         };
 
@@ -43,7 +44,7 @@ pub(super) fn add_open_url_suffix(
             log_error(format!(
                 "Failed to open URL in the default browser.\nURL: {uri}\nerror: {error}"
             ));
-            overlay.add_toast(Toast::new("Couldn't open the link."));
+            overlay.add_toast(Toast::new(&gettext("Couldn't open the link.")));
         }
     });
     row.add_suffix(&button);

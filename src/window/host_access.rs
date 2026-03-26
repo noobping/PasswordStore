@@ -1,6 +1,8 @@
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::clipboard::set_clipboard_text;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
+use crate::i18n::gettext;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::{has_host_permission, has_smartcard_permission};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::ui::flat_icon_button_with_tooltip;
@@ -27,7 +29,12 @@ fn build_optional_permission_row(
     subtitle: &str,
     command: &'static str,
 ) -> ActionRow {
-    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    let title = gettext(title);
+    let subtitle = gettext(subtitle);
+    let row = ActionRow::builder()
+        .title(&title)
+        .subtitle(&subtitle)
+        .build();
     row.set_activatable(false);
 
     let button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy permission command");
@@ -37,7 +44,7 @@ fn build_optional_permission_row(
     let feedback_button = button.clone();
     let copy_action = Rc::new(move || {
         if set_clipboard_text(command, &overlay, Some(&feedback_button)) {
-            overlay.add_toast(Toast::new("Copied."));
+            overlay.add_toast(Toast::new(&gettext("Copied.")));
         }
     });
 
@@ -75,9 +82,10 @@ pub fn append_optional_smartcard_access_row(
     hardware_rows: &[&ActionRow],
 ) {
     let granted = has_smartcard_permission();
+    let blocked_tooltip = gettext("Grant smartcard access first.");
     for row in hardware_rows {
         row.set_sensitive(granted);
-        row.set_tooltip_text((!granted).then_some("Grant smartcard access first."));
+        row.set_tooltip_text((!granted).then_some(blocked_tooltip.as_str()));
     }
 
     if granted {

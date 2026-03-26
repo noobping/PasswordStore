@@ -1,6 +1,7 @@
 use crate::logging::{log_error, log_info, run_command_output, CommandLogOptions};
 use crate::preferences::Preferences;
 use crate::support::git::{has_git_repository, sync_store_repository};
+use crate::support::runtime::require_host_command_features;
 
 pub(super) enum GitOperationResult {
     Success,
@@ -43,6 +44,10 @@ fn syncable_store_roots(stores: &[String]) -> Vec<&str> {
 }
 
 pub(super) fn run_clone_operation_at_root(url: &str, store_root: &str) -> GitOperationResult {
+    if let Err(message) = require_host_command_features() {
+        return git_operation_failed(&message);
+    }
+
     let mut cmd = Preferences::remote_git_command();
     cmd.arg("clone").arg(url).arg(store_root);
     match run_command_output(
@@ -60,6 +65,10 @@ pub(super) fn run_clone_operation_at_root(url: &str, store_root: &str) -> GitOpe
 }
 
 pub(super) fn run_sync_operation() -> GitOperationResult {
+    if let Err(message) = require_host_command_features() {
+        return git_operation_failed(&message);
+    }
+
     let settings = Preferences::new();
     let stores = settings.stores();
     let syncable_roots = syncable_store_roots(&stores);

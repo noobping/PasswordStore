@@ -5,6 +5,7 @@ use crate::backend::{
     save_store_recipients, store_recipients_private_key_requiring_unlock, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::git::prompt_private_key_unlock_for_store_git_commit_if_needed;
@@ -175,7 +176,8 @@ fn save_store_recipients_async(
                     let stores = stores_with_preferred_first(&settings.stores(), &request.store);
                     if let Err(err) = settings.set_stores(stores) {
                         log_error(format!("Failed to save stores: {err}"));
-                        overlay.add_toast(Toast::new("Store created, but it wasn't added."));
+                        overlay
+                            .add_toast(Toast::new(&gettext("Store created, but it wasn't added.")));
                         false
                     } else {
                         *state.request.borrow_mut() =
@@ -208,15 +210,16 @@ fn save_store_recipients_async(
                     request.store
                 ));
                 finish_store_recipients_save(&state, false);
-                overlay.add_toast(Toast::new(
+                overlay.add_toast(Toast::new(&gettext(
                     err.toast_message(request.mode.save_failure_message()),
-                ));
+                )));
             }
         },
         move || {
             finish_store_recipients_save(&state_for_disconnect, false);
-            overlay_for_disconnect
-                .add_toast(Toast::new(mode_for_disconnect.save_failure_message()));
+            overlay_for_disconnect.add_toast(Toast::new(&gettext(
+                mode_for_disconnect.save_failure_message(),
+            )));
         },
     );
 }

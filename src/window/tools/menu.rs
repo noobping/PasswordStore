@@ -1,9 +1,8 @@
 use super::ToolsPageState;
-#[cfg(not(debug_assertions))]
 use crate::clipboard::set_clipboard_text;
+use crate::i18n::gettext;
 #[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::logging::log_error;
-#[cfg(not(debug_assertions))]
 use crate::logging::log_snapshot;
 use crate::preferences::Preferences;
 #[cfg(all(target_os = "linux", feature = "setup"))]
@@ -12,51 +11,57 @@ use crate::setup::{
     uninstall_locally,
 };
 use crate::store::management::schedule_store_import_row;
-#[cfg(any(debug_assertions, feature = "setup"))]
-use crate::support::ui::append_action_row_with_button;
-#[cfg(not(debug_assertions))]
-use crate::support::ui::flat_icon_button_with_tooltip;
-#[cfg(debug_assertions)]
+use crate::support::actions::activate_widget_action;
+use crate::support::runtime::{supports_host_command_features, supports_logging_features};
+use crate::support::ui::{append_action_row_with_button, flat_icon_button_with_tooltip};
 use crate::window::navigation::show_log_page;
-#[cfg(not(debug_assertions))]
 use adw::prelude::*;
-#[cfg(any(not(debug_assertions), all(target_os = "linux", feature = "setup")))]
-use adw::ActionRow;
-#[cfg(any(not(debug_assertions), all(target_os = "linux", feature = "setup")))]
-use adw::Toast;
-#[cfg(not(debug_assertions))]
+use adw::{ActionRow, Toast};
 use std::rc::Rc;
 
-#[cfg(debug_assertions)]
-pub(super) fn append_optional_log_row(state: &ToolsPageState) {
+pub(super) fn append_optional_doc_row(state: &ToolsPageState) {
+    let window = state.window.clone();
+    append_action_row_with_button(
+        &state.logs_list,
+        "Docs",
+        "Open guides and reference.",
+        "go-next-symbolic",
+        move || activate_widget_action(&window, "win.open-docs"),
+    );
+}
+
+pub(super) fn append_optional_log_rows(state: &ToolsPageState) {
+    if !supports_logging_features() {
+        return;
+    }
+
     let navigation = state.navigation.clone();
     append_action_row_with_button(
-        &state.list,
+        &state.logs_list,
         "Open logs",
         "Inspect recent app and command output.",
         "go-next-symbolic",
         move || show_log_page(&navigation),
     );
-}
 
-#[cfg(not(debug_assertions))]
-pub(super) fn append_optional_log_row(state: &ToolsPageState) {
+    let title = gettext("Copy logs");
+    let subtitle = gettext("Copy recent app and command output to the clipboard.");
     let row = ActionRow::builder()
-        .title("Copy logs")
-        .subtitle("Copy recent app and command output to the clipboard.")
+        .title(&title)
+        .subtitle(&subtitle)
         .build();
     row.set_activatable(true);
 
     let button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy logs");
     row.add_suffix(&button);
-    state.list.append(&row);
+    state.logs_list.append(&row);
 
     let overlay = state.overlay.clone();
     let feedback_button = button.clone();
     let copy_action = Rc::new(move || {
         let (_, _, text) = log_snapshot();
         if set_clipboard_text(&text, &overlay, Some(&feedback_button)) {
-            overlay.add_toast(Toast::new("Copied."));
+            overlay.add_toast(Toast::new(&gettext("Copied.")));
         }
     });
 
@@ -93,7 +98,7 @@ pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
                 Ok(()) => refresh_state.rebuild(),
                 Err(err) => {
                     log_error(format!("Failed to update local app menu entry: {err}"));
-                    overlay.add_toast(Toast::new("Couldn't update the app menu."));
+                    overlay.add_toast(Toast::new(&gettext("Couldn't update the app menu.")));
                 }
             }
         },
@@ -104,6 +109,10 @@ pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
 pub(super) const fn append_optional_setup_row(_state: &ToolsPageState) {}
 
 pub(super) fn append_optional_pass_import_row(state: &ToolsPageState) {
+    if !supports_host_command_features() {
+        return;
+    }
+
     let settings = Preferences::new();
     schedule_store_import_row(&state.list, &settings, &state.window, &state.overlay);
 }

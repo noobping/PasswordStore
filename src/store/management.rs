@@ -16,6 +16,7 @@ pub use super::recipients_page::{
     show_store_recipients_edit_page, sync_store_recipients_page_header, StoreRecipientsPageState,
     StoreRecipientsPlatformState, StoreRecipientsRequest,
 };
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
@@ -66,7 +67,7 @@ fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> 
             "The selected folder is not available as a local path. Choose a local folder."
                 .to_string(),
         );
-        overlay.add_toast(Toast::new("Choose a local folder."));
+        overlay.add_toast(Toast::new(&gettext("Choose a local folder.")));
         None
     })?;
 
@@ -82,11 +83,11 @@ fn open_store_folder_picker(
     on_selected: impl Fn(String) + 'static,
 ) {
     let dialog = FileChooserNative::new(
-        Some(title),
+        Some(&gettext(title)),
         Some(window),
         FileChooserAction::SelectFolder,
-        Some(accept_label),
-        Some("Cancel"),
+        Some(&gettext(accept_label)),
+        Some(&gettext("Cancel")),
     );
     dialog.set_create_folders(create_folders);
 
@@ -305,7 +306,8 @@ pub fn prompt_add_or_create_store(
                 Ok(is_empty) => selected_store_folder_mode(is_empty),
                 Err(err) => {
                     log_error(format!("Failed to read password store folder: {err}"));
-                    overlay_for_selection.add_toast(Toast::new("Couldn't read that folder."));
+                    overlay_for_selection
+                        .add_toast(Toast::new(&gettext("Couldn't read that folder.")));
                     return;
                 }
             };
@@ -316,7 +318,7 @@ pub fn prompt_add_or_create_store(
                         if let Err(err) = settings.set_stores(stores) {
                             log_error(format!("Failed to save stores: {err}"));
                             overlay_for_selection
-                                .add_toast(Toast::new("Couldn't add that folder."));
+                                .add_toast(Toast::new(&gettext("Couldn't add that folder.")));
                             return;
                         }
                     }

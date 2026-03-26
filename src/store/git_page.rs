@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::store::recipients_page::{StoreRecipientsMode, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
@@ -7,7 +8,7 @@ use crate::support::git::{
     set_store_git_remote_url, store_git_repository_status, sync_store_repository, StoreGitHead,
     StoreGitRepositoryStatus,
 };
-use crate::support::runtime::has_host_permission;
+use crate::support::runtime::{has_host_permission, supports_host_command_features};
 use crate::support::ui::{
     append_action_row_with_button, append_info_row, clear_list_box, dialog_content_shell,
     dim_label_icon, flat_icon_button_with_tooltip, navigation_stack_contains_page,
@@ -15,7 +16,7 @@ use crate::support::ui::{
 };
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::{Align, Box as GtkBox, Button, Label, ListBox, Orientation};
+use adw::gtk::{Align, Box as GtkBox, Button, Image, Label, ListBox, Orientation};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
@@ -86,7 +87,7 @@ fn begin_git_operation(state: &StoreGitPageState, title: &str) {
     set_git_busy_actions_enabled(&state.window, false);
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Working", title, false);
-    state.busy_status.set_title(title);
+    state.busy_status.set_title(&gettext(title));
     push_navigation_page_if_needed(&state.nav, &state.busy_page);
 }
 
@@ -113,80 +114,118 @@ fn finish_git_operation(state: &StoreGitPageState) {
 }
 
 fn append_status_row(list: &ListBox, title: &str, subtitle: &str, icon_name: &str) {
-    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    let title = gettext(title);
+    let row = ActionRow::builder()
+        .title(&title)
+        .subtitle(subtitle)
+        .build();
     row.set_activatable(false);
     row.add_prefix(&dim_label_icon(icon_name));
     list.append(&row);
 }
 
+fn translated_branch_message(template: &str, branch: &str) -> String {
+    gettext(template).replace("{branch}", branch)
+}
+
+fn translated_count_message(template: &str, count: usize) -> String {
+    gettext(template).replace("{count}", &count.to_string())
+}
+
+fn append_translated_action_row_with_button(
+    list: &ListBox,
+    title: &str,
+    subtitle: &str,
+    icon_name: &str,
+    action: impl Fn() + 'static,
+) -> ActionRow {
+    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    row.set_activatable(true);
+
+    let icon = Image::from_icon_name(icon_name);
+    row.add_suffix(&icon);
+    list.append(&row);
+
+    let action = Rc::new(action);
+    let row_action = action.clone();
+    row.connect_activated(move |_| row_action());
+
+    row
+}
+
 fn repository_subtitle(status: &StoreGitRepositoryStatus) -> String {
     if !status.has_repository {
-        return "No Git repository yet. Add a remote to initialize one.".to_string();
+        return gettext("No Git repository yet. Add a remote to initialize one.");
     }
     if status.dirty && status.has_outgoing_commits && status.has_incoming_commits {
-        return "Repository found. Local changes must be committed or discarded before sync, and local and remote commits are waiting to sync."
-            .to_string();
+        return gettext(
+            "Repository found. Local changes must be committed or discarded before sync, and local and remote commits are waiting to sync.",
+        );
     }
     if status.dirty && status.has_outgoing_commits {
-        return "Repository found. Local changes must be committed or discarded before sync, and local commits are waiting to sync."
-            .to_string();
+        return gettext(
+            "Repository found. Local changes must be committed or discarded before sync, and local commits are waiting to sync.",
+        );
     }
     if status.dirty && status.has_incoming_commits {
-        return "Repository found. Local changes must be committed or discarded before sync, and remote commits are waiting to sync."
-            .to_string();
+        return gettext(
+            "Repository found. Local changes must be committed or discarded before sync, and remote commits are waiting to sync.",
+        );
     }
     if status.dirty {
-        return "Repository found. Local changes must be committed or discarded before sync."
-            .to_string();
+        return gettext(
+            "Repository found. Local changes must be committed or discarded before sync.",
+        );
     }
 
     match &status.head {
         StoreGitHead::Branch(_) if status.has_outgoing_commits && status.has_incoming_commits => {
-            "Repository found. Local and remote commits are waiting to sync.".to_string()
+            gettext("Repository found. Local and remote commits are waiting to sync.")
         }
         StoreGitHead::Branch(_) if status.has_outgoing_commits => {
-            "Repository found. Local commits are waiting to sync.".to_string()
+            gettext("Repository found. Local commits are waiting to sync.")
         }
         StoreGitHead::Branch(_) if status.has_incoming_commits => {
-            "Repository found. Remote commits are waiting to sync.".to_string()
+            gettext("Repository found. Remote commits are waiting to sync.")
         }
-        StoreGitHead::Branch(_) => "Repository found and ready for remote management.".to_string(),
-        StoreGitHead::UnbornBranch(branch) => {
-            format!("Repository found. Create the first commit on '{branch}' before syncing.")
-        }
-        StoreGitHead::Detached => {
-            "Repository found. Check out a branch before syncing.".to_string()
-        }
+        StoreGitHead::Branch(_) => gettext("Repository found and ready for remote management."),
+        StoreGitHead::UnbornBranch(branch) => translated_branch_message(
+            "Repository found. Create the first commit on '{branch}' before syncing.",
+            branch,
+        ),
+        StoreGitHead::Detached => gettext("Repository found. Check out a branch before syncing."),
     }
 }
 
 fn branch_subtitle(status: &StoreGitRepositoryStatus) -> String {
     if !status.has_repository {
-        return "No branch yet.".to_string();
+        return gettext("No branch yet.");
     }
 
     match &status.head {
         StoreGitHead::Branch(branch) => branch.clone(),
-        StoreGitHead::UnbornBranch(branch) => format!("{branch} (no commits yet)"),
-        StoreGitHead::Detached => "Detached HEAD".to_string(),
+        StoreGitHead::UnbornBranch(branch) => {
+            translated_branch_message("{branch} (no commits yet)", branch)
+        }
+        StoreGitHead::Detached => gettext("Detached HEAD"),
     }
 }
 
 fn remote_count_subtitle(status: &StoreGitRepositoryStatus) -> String {
     if status.has_outgoing_commits && status.has_incoming_commits {
-        return "Local and remote commits are waiting to sync.".to_string();
+        return gettext("Local and remote commits are waiting to sync.");
     }
     if status.has_outgoing_commits {
-        return "Local commits are waiting to sync.".to_string();
+        return gettext("Local commits are waiting to sync.");
     }
     if status.has_incoming_commits {
-        return "Remote commits are waiting to sync.".to_string();
+        return gettext("Remote commits are waiting to sync.");
     }
 
     match status.remotes.len() {
-        0 => "No remotes configured.".to_string(),
-        1 => "1 remote configured.".to_string(),
-        count => format!("{count} remotes configured."),
+        0 => gettext("No remotes configured."),
+        1 => gettext("1 remote configured."),
+        count => translated_count_message("{count} remotes configured.", count),
     }
 }
 
@@ -200,49 +239,57 @@ fn sync_allowed(status: &StoreGitRepositoryStatus) -> bool {
 
 fn sync_subtitle(status: &StoreGitRepositoryStatus) -> String {
     if !has_host_permission() {
-        return "Grant host access to fetch, merge, and push.".to_string();
+        return gettext("Grant host access to fetch, merge, and push.");
     }
     if !status.has_repository {
-        return "Add a remote to initialize a Git repository first.".to_string();
+        return gettext("Add a remote to initialize a Git repository first.");
     }
     if status.remotes.is_empty() {
-        return "Add at least one remote before syncing.".to_string();
+        return gettext("Add at least one remote before syncing.");
     }
     if status.dirty && status.has_outgoing_commits && status.has_incoming_commits {
-        return "Commit or discard local changes before syncing. Local and remote commits are also waiting to sync."
-            .to_string();
+        return gettext(
+            "Commit or discard local changes before syncing. Local and remote commits are also waiting to sync.",
+        );
     }
     if status.dirty && status.has_outgoing_commits {
-        return "Commit or discard local changes before syncing. Local commits are also waiting to sync."
-            .to_string();
+        return gettext(
+            "Commit or discard local changes before syncing. Local commits are also waiting to sync.",
+        );
     }
     if status.dirty && status.has_incoming_commits {
-        return "Commit or discard local changes before syncing. Remote commits are also waiting to sync."
-            .to_string();
+        return gettext(
+            "Commit or discard local changes before syncing. Remote commits are also waiting to sync.",
+        );
     }
     if status.dirty {
-        return "Commit or discard local changes before syncing.".to_string();
+        return gettext("Commit or discard local changes before syncing.");
     }
 
     match &status.head {
         StoreGitHead::Branch(branch)
             if status.has_outgoing_commits && status.has_incoming_commits =>
         {
-            format!("Local and remote commits are waiting to sync on '{branch}'.")
+            translated_branch_message(
+                "Local and remote commits are waiting to sync on '{branch}'.",
+                branch,
+            )
         }
         StoreGitHead::Branch(branch) if status.has_outgoing_commits => {
-            format!("Local commits are ready to push on '{branch}'.")
+            translated_branch_message("Local commits are ready to push on '{branch}'.", branch)
         }
         StoreGitHead::Branch(branch) if status.has_incoming_commits => {
-            format!("Remote commits are ready to merge into '{branch}'.")
+            translated_branch_message("Remote commits are ready to merge into '{branch}'.", branch)
         }
-        StoreGitHead::Branch(branch) => {
-            format!("Fetch, merge, and push the current '{branch}' branch across all remotes.")
-        }
-        StoreGitHead::UnbornBranch(branch) => {
-            format!("Make an initial commit on '{branch}' before syncing.")
-        }
-        StoreGitHead::Detached => "Check out a branch before syncing.".to_string(),
+        StoreGitHead::Branch(branch) => translated_branch_message(
+            "Fetch, merge, and push the current '{branch}' branch across all remotes.",
+            branch,
+        ),
+        StoreGitHead::UnbornBranch(branch) => translated_branch_message(
+            "Make an initial commit on '{branch}' before syncing.",
+            branch,
+        ),
+        StoreGitHead::Detached => gettext("Check out a branch before syncing."),
     }
 }
 
@@ -263,7 +310,7 @@ fn store_git_row_state(status: Result<StoreGitRepositoryStatus, String>) -> Stor
             enabled: true,
         },
         Err(_) => StoreGitRowState {
-            subtitle: "Couldn't inspect Git remotes.".to_string(),
+            subtitle: gettext("Couldn't inspect Git remotes."),
             enabled: false,
         },
     }
@@ -359,10 +406,10 @@ fn present_remote_dialog(
     let existing_names = Rc::new(existing_names);
     let existing_urls = Rc::new(existing_urls);
     let name_row = EntryRow::new();
-    name_row.set_title("Remote name");
+    name_row.set_title(&gettext("Remote name"));
     name_row.set_text(initial_name);
     let url_row = EntryRow::new();
-    url_row.set_title("Remote URL");
+    url_row.set_title(&gettext("Remote URL"));
     url_row.set_text(initial_url);
     url_row.set_show_apply_button(true);
 
@@ -419,7 +466,7 @@ fn present_remote_dialog(
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title(title)
+        .title(gettext(title))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
@@ -440,7 +487,7 @@ fn present_remote_dialog(
             existing_names_for_submit.as_slice(),
             existing_urls_for_submit.as_slice(),
         ) {
-            error_label_for_submit.set_label(message);
+            error_label_for_submit.set_label(&gettext(message));
             error_label_for_submit.set_visible(true);
             return;
         }
@@ -452,7 +499,7 @@ fn present_remote_dialog(
             }
             Err(err) => {
                 log_error(format!("Git remote dialog failed: {err}"));
-                error_label_for_submit.set_label("Couldn't save that remote.");
+                error_label_for_submit.set_label(&gettext("Couldn't save that remote."));
                 error_label_for_submit.set_visible(true);
             }
         }
@@ -559,7 +606,7 @@ fn append_remote_row(
                 sync_related_views(&state_for_submit);
                 state_for_submit
                     .overlay
-                    .add_toast(Toast::new("Remote updated."));
+                    .add_toast(Toast::new(&gettext("Remote updated.")));
                 Ok(())
             },
         );
@@ -573,7 +620,9 @@ fn append_remote_row(
             Ok(()) => {
                 rebuild_store_git_page(&state_for_delete);
                 sync_related_views(&state_for_delete);
-                state_for_delete.overlay.add_toast(Toast::new("Remote removed."));
+                state_for_delete
+                    .overlay
+                    .add_toast(Toast::new(&gettext("Remote removed.")));
             }
             Err(err) => {
                 log_error(format!(
@@ -581,7 +630,7 @@ fn append_remote_row(
                 ));
                 state_for_delete
                     .overlay
-                    .add_toast(Toast::new("Couldn't remove that remote."));
+                    .add_toast(Toast::new(&gettext("Couldn't remove that remote.")));
             }
         }
     });
@@ -669,7 +718,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                             sync_related_views(&state_for_submit);
                             state_for_submit
                                 .overlay
-                                .add_toast(Toast::new("Remote added."));
+                                .add_toast(Toast::new(&gettext("Remote added.")));
                             Ok(())
                         },
                     );
@@ -678,9 +727,9 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
 
             let sync_state = state.clone();
             let store_for_sync = store.clone();
-            let sync_row = append_action_row_with_button(
+            let sync_row = append_translated_action_row_with_button(
                 &state.status_list,
-                "Sync now",
+                &gettext("Sync now"),
                 &sync_subtitle(&status),
                 "view-refresh-symbolic",
                 move || {
@@ -692,7 +741,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                             ));
                             sync_state
                                 .overlay
-                                .add_toast(Toast::new("Couldn't inspect Git remotes."));
+                                .add_toast(Toast::new(&gettext("Couldn't inspect Git remotes.")));
                             rebuild_store_git_page(&sync_state);
                             return;
                         }
@@ -722,7 +771,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                                 Ok(()) => {
                                     state_for_result
                                         .overlay
-                                        .add_toast(Toast::new("Store synced."));
+                                        .add_toast(Toast::new(&gettext("Store synced.")));
                                 }
                                 Err(err) => {
                                     log_error(format!(
@@ -730,7 +779,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                                     ));
                                     state_for_result
                                         .overlay
-                                        .add_toast(Toast::new("Couldn't sync store."));
+                                        .add_toast(Toast::new(&gettext("Couldn't sync store.")));
                                 }
                             }
                         },
@@ -738,9 +787,9 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                             finish_git_operation(&state_for_disconnect);
                             rebuild_store_git_page(&state_for_disconnect);
                             sync_related_views(&state_for_disconnect);
-                            state_for_disconnect
-                                .overlay
-                                .add_toast(Toast::new("Store sync stopped unexpectedly."));
+                            state_for_disconnect.overlay.add_toast(Toast::new(&gettext(
+                                "Store sync stopped unexpectedly.",
+                            )));
                         },
                     );
                 },
@@ -768,7 +817,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
 
 pub fn sync_store_git_page_header(state: &StoreGitPageState) {
     let Some(store) = state.current_store() else {
-        state.page.set_title("Git remotes");
+        state.page.set_title(&gettext("Git remotes"));
         let chrome = state.window_chrome();
         show_secondary_page_chrome(&chrome, "Git remotes", APP_WINDOW_TITLE, false);
         return;
@@ -776,10 +825,14 @@ pub fn sync_store_git_page_header(state: &StoreGitPageState) {
 
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Git remotes", &store, false);
-    state.page.set_title("Git remotes");
+    state.page.set_title(&gettext("Git remotes"));
 }
 
 pub fn show_store_git_page(state: &StoreGitPageState, store: impl Into<String>) {
+    if !supports_host_command_features() {
+        return;
+    }
+
     *state.current_store.borrow_mut() = Some(store.into());
     rebuild_store_git_page(state);
     sync_store_git_page_header(state);
@@ -788,6 +841,10 @@ pub fn show_store_git_page(state: &StoreGitPageState, store: impl Into<String>) 
 
 pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
     clear_list_box(&state.platform.git_list);
+    if !supports_host_command_features() {
+        state.platform.git_group.set_visible(false);
+        return;
+    }
     let Some(request) = state.current_request() else {
         state.platform.git_group.set_visible(false);
         return;
@@ -802,9 +859,9 @@ pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
     let store = request.store.clone();
     let row_state = store_git_row_state_for_store(&store);
     let git_page = state.platform.store_git_page.clone();
-    let row = append_action_row_with_button(
+    let row = append_translated_action_row_with_button(
         &state.platform.git_list,
-        "Git remotes",
+        &gettext("Git remotes"),
         &row_state.subtitle,
         "go-next-symbolic",
         move || {

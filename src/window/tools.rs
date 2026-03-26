@@ -23,7 +23,8 @@ use std::rc::Rc;
 
 use self::field_values::FieldValueBrowserState;
 use self::menu::{
-    append_optional_log_row, append_optional_pass_import_row, append_optional_setup_row,
+    append_optional_doc_row, append_optional_log_rows, append_optional_pass_import_row,
+    append_optional_setup_row,
 };
 use self::weak_passwords::WeakPasswordToolState;
 
@@ -64,6 +65,7 @@ pub struct ToolsPageState {
     pub navigation: WindowNavigationState,
     pub page: NavigationPage,
     pub list: ListBox,
+    pub logs_list: ListBox,
     pub overlay: ToastOverlay,
     pub password_page: PasswordPageState,
     pub field_values_page: NavigationPage,
@@ -102,6 +104,7 @@ impl ToolsPageState {
         navigation: &WindowNavigationState,
         page: &NavigationPage,
         list: &ListBox,
+        logs_list: &ListBox,
         overlay: &ToastOverlay,
         password_page: &PasswordPageState,
         field_values_page: &NavigationPage,
@@ -121,6 +124,7 @@ impl ToolsPageState {
             navigation: navigation.clone(),
             page: page.clone(),
             list: list.clone(),
+            logs_list: logs_list.clone(),
             overlay: overlay.clone(),
             password_page: password_page.clone(),
             field_values_page: field_values_page.clone(),
@@ -145,6 +149,7 @@ impl ToolsPageState {
 
     pub fn rebuild(&self) {
         clear_list_box(&self.list);
+        clear_list_box(&self.logs_list);
         *self.field_values_tool_row.borrow_mut() = None;
         *self.weak_passwords_tool_row.borrow_mut() = None;
 
@@ -169,7 +174,8 @@ impl ToolsPageState {
         *self.weak_passwords_tool_row.borrow_mut() = Some(weak_passwords_row);
         self.sync_tool_rows();
 
-        append_optional_log_row(self);
+        append_optional_doc_row(self);
+        append_optional_log_rows(self);
         append_optional_setup_row(self);
         append_optional_pass_import_row(self);
     }

@@ -5,6 +5,7 @@ use crate::backend::{
     ManagedRipassoPrivateKeyProtection, PrivateKeyError, PrivateKeyUnlockRequest,
     StoreRecipientsPrivateKeyRequirement,
 };
+use crate::i18n::gettext;
 use crate::logging::{log_error, log_info};
 use crate::private_key::dialog::present_private_key_unlock_dialog_with_close_handler;
 use crate::support::background::spawn_result_task;
@@ -19,7 +20,7 @@ fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
 
 fn continue_without_git_signature(overlay: &ToastOverlay, reason: &str, action: &Rc<dyn Fn()>) {
     log_info(reason.to_string());
-    overlay.add_toast(Toast::new("Saving without a Git signature."));
+    overlay.add_toast(Toast::new(&gettext("Saving without a Git signature.")));
     action();
 }
 

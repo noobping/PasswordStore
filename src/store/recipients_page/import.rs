@@ -6,6 +6,7 @@ use crate::backend::{
     import_ripasso_private_key_bytes, ripasso_private_key_requires_passphrase,
     DiscoveredHardwareToken, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey, PrivateKeyError,
 };
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog, PrivateKeyDialogHandle,
@@ -31,14 +32,14 @@ fn finish_private_key_import(
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new("Key imported."));
+                .add_toast(Toast::new(&gettext("Key imported.")));
         }
         Err(err) => {
             log_error(format!("Failed to import private key: {err}"));
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new(err.import_message()));
+                .add_toast(Toast::new(&gettext(err.import_message())));
         }
     }
 }
@@ -55,14 +56,14 @@ fn finish_hardware_key_import(
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new("Hardware key added."));
+                .add_toast(Toast::new(&gettext("Hardware key added.")));
         }
         Err(err) => {
             log_error(format!("Failed to import hardware key: {err}"));
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new(err.import_message()));
+                .add_toast(Toast::new(&gettext(err.import_message())));
         }
     }
 }
@@ -93,7 +94,7 @@ fn start_private_key_import(
             state_for_disconnect
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't import the key."));
+                .add_toast(Toast::new(&gettext("Couldn't import the key.")));
         },
     );
 }
@@ -114,14 +115,14 @@ fn selected_hardware_token(state: &StoreRecipientsPageState) -> Option<Discovere
                 state
                     .platform
                     .overlay
-                    .add_toast(Toast::new("Connect a hardware key first."));
+                    .add_toast(Toast::new(&gettext("Connect a hardware key first.")));
                 None
             }
             1 => tokens.pop(),
             _ => {
-                state.platform.overlay.add_toast(Toast::new(
+                state.platform.overlay.add_toast(Toast::new(&gettext(
                     "Connect only one hardware key before adding it.",
-                ));
+                )));
                 None
             }
         },
@@ -130,7 +131,7 @@ fn selected_hardware_token(state: &StoreRecipientsPageState) -> Option<Discovere
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't inspect the hardware key."));
+                .add_toast(Toast::new(&gettext("Couldn't inspect the hardware key.")));
             None
         }
     }
@@ -162,7 +163,7 @@ fn start_hardware_key_import(
             state_for_disconnect
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't add the hardware key."));
+                .add_toast(Toast::new(&gettext("Couldn't add the hardware key.")));
         },
     );
 }
@@ -186,7 +187,7 @@ fn import_private_key_bytes(state: &StoreRecipientsPageState, bytes: Vec<u8>) {
             state
                 .platform
                 .overlay
-                .add_toast(Toast::new(err.inspection_message()));
+                .add_toast(Toast::new(&gettext(err.inspection_message())));
         }
     }
 }
@@ -205,11 +206,11 @@ fn open_hardware_public_key_picker(
     title: &str,
 ) {
     let dialog = FileChooserNative::new(
-        Some(title),
+        Some(&gettext(title)),
         Some(&state.window),
         FileChooserAction::Open,
-        Some("Import"),
-        Some("Cancel"),
+        Some(&gettext("Import")),
+        Some(&gettext("Cancel")),
     );
     let state_for_response = state.clone();
     dialog.connect_response(move |dialog, response| {
@@ -238,7 +239,7 @@ fn open_hardware_public_key_picker(
                 state_for_response
                     .platform
                     .overlay
-                    .add_toast(Toast::new("Couldn't read that file."));
+                    .add_toast(Toast::new(&gettext("Couldn't read that file.")));
             }
         }
 
@@ -258,9 +259,9 @@ fn add_connected_hardware_key(state: &StoreRecipientsPageState) {
         return;
     }
 
-    state.platform.overlay.add_toast(Toast::new(
+    state.platform.overlay.add_toast(Toast::new(&gettext(
         "Choose the matching hardware public key file to finish setup.",
-    ));
+    )));
     open_hardware_public_key_picker(state, hardware, "Import hardware public key");
 }
 
@@ -277,11 +278,11 @@ fn import_hardware_key_from_file(state: &StoreRecipientsPageState) {
 
 fn open_private_key_picker(state: &StoreRecipientsPageState) {
     let dialog = FileChooserNative::new(
-        Some("Import private key"),
+        Some(&gettext("Import private key")),
         Some(&state.window),
         FileChooserAction::Open,
-        Some("Import"),
-        Some("Cancel"),
+        Some(&gettext("Import")),
+        Some(&gettext("Cancel")),
     );
     let state_for_response = state.clone();
     dialog.connect_response(move |dialog, response| {
@@ -306,7 +307,7 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
                 state_for_response
                     .platform
                     .overlay
-                    .add_toast(Toast::new("Couldn't read that file."));
+                    .add_toast(Toast::new(&gettext("Couldn't read that file.")));
             }
         }
 
@@ -321,7 +322,7 @@ fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
         state
             .platform
             .overlay
-            .add_toast(Toast::new("Clipboard unavailable."));
+            .add_toast(Toast::new(&gettext("Clipboard unavailable.")));
         return;
     };
 
@@ -335,14 +336,14 @@ fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
             state_for_response
                 .platform
                 .overlay
-                .add_toast(Toast::new("Clipboard does not contain a key."));
+                .add_toast(Toast::new(&gettext("Clipboard does not contain a key.")));
         }
         Err(err) => {
             log_error(format!("Failed to read private key from clipboard: {err}"));
             state_for_response
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't read the clipboard."));
+                .add_toast(Toast::new(&gettext("Couldn't read the clipboard.")));
         }
     });
 }

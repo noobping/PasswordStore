@@ -3,6 +3,7 @@ use crate::backend::{
     ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyError,
     PrivateKeyUnlockRequest,
 };
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::private_key::dialog::present_private_key_unlock_dialog_with_close_handler;
 use crate::support::actions::activate_widget_action;
@@ -17,7 +18,7 @@ fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
 }
 
 fn show_unlock_failure_toast(overlay: &ToastOverlay) {
-    overlay.add_toast(Toast::new("Couldn't unlock the key."));
+    overlay.add_toast(Toast::new(&gettext("Couldn't unlock the key.")));
 }
 
 fn private_key_unlock_protection(fingerprint: &str) -> ManagedRipassoPrivateKeyProtection {
@@ -61,7 +62,7 @@ fn start_private_key_unlock_for_action(
             }
             Err(err) => {
                 log_error(format!("Failed to unlock ripasso private key: {err}"));
-                overlay.add_toast(Toast::new(err.unlock_message()));
+                overlay.add_toast(Toast::new(&gettext(err.unlock_message())));
                 on_finish_for_result(false);
             }
         },

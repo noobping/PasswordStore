@@ -1,5 +1,11 @@
+#[cfg(not(target_os = "linux"))]
+mod disabled;
+#[cfg(target_os = "linux")]
 mod enabled;
 
+#[cfg(not(target_os = "linux"))]
+use self::disabled as imp;
+#[cfg(target_os = "linux")]
 use self::enabled as imp;
 
 pub use self::imp::{

@@ -1,6 +1,7 @@
 use crate::backend::{
     preferred_ripasso_private_key_fingerprint_for_entry, read_password_line, PasswordEntryError,
 };
+use crate::i18n::gettext;
 use crate::logging::{log_error, run_command_status, CommandLogOptions};
 use crate::password::model::PassEntry;
 use crate::preferences::Preferences;
@@ -18,7 +19,7 @@ const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";
 const COPY_BUTTON_FEEDBACK_MS: u64 = 1200;
 
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
-    overlay.add_toast(Toast::new("Clipboard unavailable."));
+    overlay.add_toast(Toast::new(&gettext("Clipboard unavailable.")));
 }
 
 pub fn set_copy_button_loading(button: Option<&Button>, loading: bool) {
@@ -160,7 +161,7 @@ pub fn copy_password_entry_to_clipboard_via_read(
         move |result| match result {
             Ok(password) => {
                 if set_clipboard_text(&password, &overlay, button.as_ref()) {
-                    overlay.add_toast(Toast::new("Copied."));
+                    overlay.add_toast(Toast::new(&gettext("Copied.")));
                 }
                 set_copy_button_loading(button.as_ref(), false);
             }
@@ -170,12 +171,12 @@ pub fn copy_password_entry_to_clipboard_via_read(
                     return;
                 }
                 set_copy_button_loading(button.as_ref(), false);
-                overlay.add_toast(Toast::new("Couldn't copy the password."));
+                overlay.add_toast(Toast::new(&gettext("Couldn't copy the password.")));
             }
         },
         move || {
             set_copy_button_loading(button_for_disconnect.as_ref(), false);
-            overlay_for_disconnect.add_toast(Toast::new("Couldn't copy the password."));
+            overlay_for_disconnect.add_toast(Toast::new(&gettext("Couldn't copy the password.")));
         },
     );
 }

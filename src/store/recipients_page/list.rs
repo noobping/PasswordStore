@@ -9,6 +9,7 @@ use crate::backend::{
 #[cfg(target_os = "linux")]
 use crate::backend::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
 use crate::clipboard::set_clipboard_text;
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
@@ -36,7 +37,7 @@ impl HostGpgPrivateKeySummary {
             .first()
             .cloned()
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "Unnamed host private key".to_string())
+            .unwrap_or_else(|| gettext("Unnamed host private key"))
     }
 }
 
@@ -251,12 +252,14 @@ fn private_key_toggle_block_message(
 
 fn sync_private_key_delete_button(delete_button: &adw::gtk::Button, blocked_message: Option<&str>) {
     delete_button.set_sensitive(blocked_message.is_none());
-    delete_button.set_tooltip_text(Some(blocked_message.unwrap_or("Remove key file")));
+    let tooltip = gettext(blocked_message.unwrap_or("Remove key file"));
+    delete_button.set_tooltip_text(Some(&tooltip));
 }
 
 fn sync_private_key_toggle_button(toggle: &adw::gtk::CheckButton, blocked_message: Option<&str>) {
     toggle.set_sensitive(blocked_message.is_none());
-    toggle.set_tooltip_text(blocked_message);
+    let tooltip = blocked_message.map(gettext);
+    toggle.set_tooltip_text(tooltip.as_deref());
 }
 
 fn unresolved_private_key_recipients(
@@ -289,7 +292,7 @@ fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipien
     for recipient in recipients {
         let row = ActionRow::builder()
             .title(recipient)
-            .subtitle("This recipient is not available in the app.")
+            .subtitle(gettext("This recipient is not available in the app."))
             .build();
         row.set_activatable(false);
         row.add_prefix(&dim_label_icon("dialog-warning-symbolic"));
@@ -341,11 +344,11 @@ fn sync_private_key_verification_warning(
         state
             .platform
             .host_gpg_warning_row
-            .set_title(warning.title());
+            .set_title(&gettext(warning.title()));
         state
             .platform
             .host_gpg_warning_row
-            .set_subtitle(warning.subtitle());
+            .set_subtitle(&gettext(warning.subtitle()));
     }
     state
         .platform
@@ -574,10 +577,10 @@ fn append_managed_private_key_row(
     );
     let subtitle = match key.protection {
         ManagedRipassoPrivateKeyProtection::Password => {
-            format!("{} - Password protected", key.fingerprint)
+            gettext("{fingerprint} - Password protected").replace("{fingerprint}", &key.fingerprint)
         }
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            format!("{} - Hardware key", key.fingerprint)
+            gettext("{fingerprint} - Hardware key").replace("{fingerprint}", &key.fingerprint)
         }
     };
     let (row, toggle) =
@@ -744,7 +747,7 @@ fn connect_managed_private_key_row_actions(
             state_for_delete
                 .platform
                 .overlay
-                .add_toast(Toast::new("Couldn't remove that key."));
+                .add_toast(Toast::new(&gettext("Couldn't remove that key.")));
             return;
         }
 
@@ -754,7 +757,7 @@ fn connect_managed_private_key_row_actions(
         state_for_delete
             .platform
             .overlay
-            .add_toast(Toast::new("Key file removed."));
+            .add_toast(Toast::new(&gettext("Key file removed.")));
     });
 }
 

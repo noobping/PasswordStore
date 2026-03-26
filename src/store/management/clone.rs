@@ -2,9 +2,11 @@ use super::{
     dialogs::build_progress_dialog, open_store_folder_picker, rebuild_stores_list,
     updated_stores_after_add, StoreRecipientsPageState,
 };
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
+use crate::support::runtime::supports_host_command_features;
 use crate::support::ui::{append_action_row_with_button, dialog_content_shell, dim_label_icon};
 use crate::window::clone_store_repository;
 use adw::gtk::{Align, Box as GtkBox, Label, ListBox, Orientation};
@@ -33,7 +35,7 @@ where
     F: Fn(String) + 'static,
 {
     let url_row = EntryRow::new();
-    url_row.set_title("Repository URL");
+    url_row.set_title(&gettext("Repository URL"));
     url_row.set_show_apply_button(true);
 
     let group = PreferencesGroup::builder().build();
@@ -58,7 +60,7 @@ where
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title("Restore password store")
+        .title(gettext("Restore password store"))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
@@ -74,7 +76,7 @@ where
     url_row.connect_apply(move |row| {
         let url = row.text().trim().to_string();
         if let Some(message) = clone_url_dialog_error_message(&url) {
-            error_label_for_apply.set_label(message);
+            error_label_for_apply.set_label(&gettext(message));
             error_label_for_apply.set_visible(true);
             return;
         }
@@ -128,10 +130,16 @@ pub(super) fn append_store_clone_row(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
+    if !supports_host_command_features() {
+        return;
+    }
+
     if !settings.uses_host_command_backend() {
         let row = ActionRow::builder()
-            .title("Restore password store")
-            .subtitle("Switch Backend to Host to restore a store from a Git repository.")
+            .title(gettext("Restore password store"))
+            .subtitle(gettext(
+                "Switch Backend to Host to restore a store from a Git repository.",
+            ))
             .build();
         row.set_sensitive(false);
         row.set_activatable(false);
@@ -224,7 +232,7 @@ fn start_store_clone(
                 {
                     if let Err(err) = settings_for_result.set_stores(stores) {
                         log_error(format!("Failed to save stores: {err}"));
-                        overlay.add_toast(Toast::new("Couldn't add that folder."));
+                        overlay.add_toast(Toast::new(&gettext("Couldn't add that folder.")));
                         return;
                     }
                 }
@@ -233,11 +241,11 @@ fn start_store_clone(
                     &settings_for_result,
                     &recipients_page_for_result,
                 );
-                overlay.add_toast(Toast::new("Store restored."));
+                overlay.add_toast(Toast::new(&gettext("Store restored.")));
             }
             Err(message) => {
                 progress_dialog.force_close();
-                overlay.add_toast(Toast::new(&message));
+                overlay.add_toast(Toast::new(&gettext(&message)));
             }
         },
         move || {
@@ -245,7 +253,7 @@ fn start_store_clone(
             log_error(format!(
                 "Restore stopped unexpectedly for store '{store_for_disconnect}'."
             ));
-            overlay_for_disconnect.add_toast(Toast::new("Restore stopped unexpectedly."));
+            overlay_for_disconnect.add_toast(Toast::new(&gettext("Restore stopped unexpectedly.")));
         },
     );
 }

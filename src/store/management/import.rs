@@ -1,3 +1,4 @@
+use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
@@ -8,6 +9,7 @@ use crate::support::object_data::{
 use crate::support::pass_import::{
     available_pass_import_sources, normalize_optional_text, run_pass_import, PassImportRequest,
 };
+use crate::support::runtime::supports_host_command_features;
 use crate::support::ui::{
     connect_row_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
@@ -70,7 +72,9 @@ impl PassImportRowState {
         overlay: &ToastOverlay,
         stores: &[String],
     ) -> Self {
-        let row = ActionRow::builder().title("Import passwords").build();
+        let row = ActionRow::builder()
+            .title(gettext("Import passwords"))
+            .build();
         let icon = Image::from_icon_name("go-next-symbolic");
         row.add_suffix(&icon);
         list.append(&row);
@@ -130,7 +134,7 @@ fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Op
             "The selected file is not available as a local path. Choose a local file or folder."
                 .to_string(),
         );
-        overlay.add_toast(Toast::new("Choose a local file or folder."));
+        overlay.add_toast(Toast::new(&gettext("Choose a local file or folder.")));
         None
     })?;
 
@@ -274,7 +278,7 @@ fn reset_store_import_form(state: &StoreImportPageState) {
     *state.source_path.borrow_mut() = None;
     state
         .source_path_row
-        .set_subtitle(import_source_subtitle(None));
+        .set_subtitle(&gettext(import_source_subtitle(None)));
     state.target_path_row.set_text("");
 }
 
@@ -307,7 +311,7 @@ fn show_pass_import_page(
     let Some(state) = cloned_data::<_, StoreImportPageState>(window, STORE_IMPORT_PAGE_STATE_KEY)
     else {
         log_error("Store import page state was not initialized.".to_string());
-        overlay.add_toast(Toast::new("Couldn't open the import page."));
+        overlay.add_toast(Toast::new(&gettext("Couldn't open the import page.")));
         return;
     };
 
@@ -333,11 +337,11 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
         let state = state.clone();
         state.source_file_button.connect_clicked(move |_| {
             let dialog = FileChooserNative::new(
-                Some("Choose import source file"),
+                Some(&gettext("Choose import source file")),
                 Some(&state.window),
                 FileChooserAction::Open,
-                Some("Select"),
-                Some("Cancel"),
+                Some(&gettext("Select")),
+                Some(&gettext("Cancel")),
             );
             let overlay = state.overlay.clone();
             let source_path = state.source_path.clone();
@@ -359,11 +363,11 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
         let state = state.clone();
         state.source_folder_button.connect_clicked(move |_| {
             let dialog = FileChooserNative::new(
-                Some("Choose import source folder"),
+                Some(&gettext("Choose import source folder")),
                 Some(&state.window),
                 FileChooserAction::SelectFolder,
-                Some("Select"),
-                Some("Cancel"),
+                Some(&gettext("Select")),
+                Some(&gettext("Cancel")),
             );
             let overlay = state.overlay.clone();
             let source_path = state.source_path.clone();
@@ -386,7 +390,7 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
         let source_path_row = state.source_path_row.clone();
         state.source_clear_button.connect_clicked(move |_| {
             *source_path.borrow_mut() = None;
-            source_path_row.set_subtitle(import_source_subtitle(None));
+            source_path_row.set_subtitle(&gettext(import_source_subtitle(None)));
         });
     }
 
@@ -399,7 +403,9 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
                 .get(state.store_dropdown.selected() as usize)
                 .cloned()
             else {
-                state.overlay.add_toast(Toast::new("Choose a store."));
+                state
+                    .overlay
+                    .add_toast(Toast::new(&gettext("Choose a store.")));
                 return;
             };
 
@@ -408,7 +414,9 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
                 .get(state.source_dropdown.selected() as usize)
                 .cloned()
             else {
-                state.overlay.add_toast(Toast::new("Choose an importer."));
+                state
+                    .overlay
+                    .add_toast(Toast::new(&gettext("Choose an importer.")));
                 return;
             };
 
@@ -434,7 +442,9 @@ fn finish_pass_import(
         Ok(()) => {
             reset_store_import_form(state);
             pop_store_import_page_if_visible(state);
-            state.overlay.add_toast(Toast::new("Passwords imported."));
+            state
+                .overlay
+                .add_toast(Toast::new(&gettext("Passwords imported.")));
         }
         Err(err) => {
             log_error(format!(
@@ -443,7 +453,7 @@ fn finish_pass_import(
             ));
             state
                 .overlay
-                .add_toast(Toast::new("Couldn't import passwords."));
+                .add_toast(Toast::new(&gettext("Couldn't import passwords.")));
         }
     }
 }
@@ -467,7 +477,7 @@ fn start_pass_import(state: &StoreImportPageState, request: PassImportRequest) {
             ));
             state_for_disconnect
                 .overlay
-                .add_toast(Toast::new("Couldn't import passwords."));
+                .add_toast(Toast::new(&gettext("Couldn't import passwords.")));
         },
     );
 }
@@ -479,11 +489,11 @@ fn sync_pass_import_row(
     source_state: &PassImportSourceState,
 ) {
     let enabled = pass_import_row_enabled(uses_host_command_backend, stores, source_state);
-    row.set_subtitle(pass_import_row_subtitle(
+    row.set_subtitle(&gettext(pass_import_row_subtitle(
         uses_host_command_backend,
         stores,
         source_state,
-    ));
+    )));
     row.set_activatable(enabled);
     row.set_sensitive(enabled);
 }
@@ -494,6 +504,10 @@ pub fn schedule_store_import_row(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
 ) {
+    if !supports_host_command_features() {
+        return;
+    }
+
     let refresh_id = next_store_list_refresh_id();
     set_string_data(list, STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
 

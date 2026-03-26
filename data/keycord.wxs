@@ -16,6 +16,8 @@
 
         <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
         <MediaTemplate EmbedCab="yes" />
+        <Icon Id="AppIconIco" SourceFile="$(var.BundleDir)\keycord.ico" />
+        <Property Id="ARPPRODUCTICON" Value="AppIconIco" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFilesFolder">
@@ -29,6 +31,7 @@
                         Name="$(var.ProductName)"
                         Description="Launch $(var.ProductName)"
                         Target="[INSTALLDIR]$(var.ExecutableName).exe"
+                        Icon="AppIconIco"
                         WorkingDirectory="INSTALLDIR" />
                     <RemoveFolder Id="CleanUpStartMenu" Directory="ApplicationProgramsFolder" On="uninstall" />
                     <RegistryValue

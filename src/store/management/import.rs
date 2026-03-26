@@ -17,7 +17,7 @@ use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
 };
 use adw::gtk::{
-    Button, FileChooserAction, FileChooserNative, Image, ListBox, ResponseType, ScrolledWindow,
+    Button, FileChooserAction, FileChooserDialog, Image, ListBox, ResponseType, ScrolledWindow,
     Stack,
 };
 use adw::prelude::*;
@@ -127,7 +127,7 @@ impl PassImportRowState {
     }
 }
 
-fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
+fn selected_local_path(dialog: &FileChooserDialog, overlay: &ToastOverlay) -> Option<String> {
     let file = dialog.file()?;
     let path = file.path().or_else(|| {
         log_error(
@@ -336,13 +336,14 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
     {
         let state = state.clone();
         state.source_file_button.connect_clicked(move |_| {
-            let dialog = FileChooserNative::new(
+            let dialog = FileChooserDialog::new(
                 Some(&gettext("Choose import source file")),
                 Some(&state.window),
                 FileChooserAction::Open,
-                Some(&gettext("Select")),
-                Some(&gettext("Cancel")),
+                &[],
             );
+            dialog.add_button(&gettext("Cancel"), ResponseType::Cancel);
+            dialog.add_button(&gettext("Select"), ResponseType::Accept);
             let overlay = state.overlay.clone();
             let source_path = state.source_path.clone();
             let source_path_row = state.source_path_row.clone();
@@ -362,13 +363,14 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
     {
         let state = state.clone();
         state.source_folder_button.connect_clicked(move |_| {
-            let dialog = FileChooserNative::new(
+            let dialog = FileChooserDialog::new(
                 Some(&gettext("Choose import source folder")),
                 Some(&state.window),
                 FileChooserAction::SelectFolder,
-                Some(&gettext("Select")),
-                Some(&gettext("Cancel")),
+                &[],
             );
+            dialog.add_button(&gettext("Cancel"), ResponseType::Cancel);
+            dialog.add_button(&gettext("Select"), ResponseType::Accept);
             let overlay = state.overlay.clone();
             let source_path = state.source_path.clone();
             let source_path_row = state.source_path_row.clone();

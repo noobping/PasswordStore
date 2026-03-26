@@ -73,6 +73,8 @@ jobs:
           }
           Write-Host "Copying exe: $exe"
           Copy-Item $exe $bundleDir -Force
+          Copy-Item (Join-Path $workspace 'data\keycord.ico') $bundleDir -Force
+          Copy-Item (Join-Path $workspace 'data\256x256\apps\io.github.noobping.keycord.png') $bundleDir -Force
           $mingwBin = 'C:\tools\msys64\mingw64\bin'
           if (-not (Test-Path $mingwBin)) {
            Write-Error "MinGW bin dir not found: $mingwBin"

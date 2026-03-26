@@ -997,7 +997,10 @@ fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
 
         if path.is_dir() {
             collect_svg_icons(&path, data_dir, icons);
-        } else if path.extension().and_then(|value| value.to_str()) == Some("svg") {
+        } else if matches!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("svg" | "png")
+        ) {
             let rel = path
                 .strip_prefix(data_dir)
                 .expect("Resource path should stay within data/");

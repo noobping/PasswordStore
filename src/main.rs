@@ -48,6 +48,13 @@ const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts.ui");
 
 fn main() -> ExitCode {
+    #[cfg(target_os = "windows")]
+    {
+        // Force GTK to use the native Windows chooser instead of xdg-desktop-portal.
+        // Portal backends are Linux-specific and can crash under Windows environments.
+        std::env::set_var("GTK_USE_PORTAL", "0");
+    }
+
     #[cfg(target_os = "linux")]
     {
         let args = std::env::args_os().collect::<Vec<_>>();

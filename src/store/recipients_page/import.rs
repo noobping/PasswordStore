@@ -15,7 +15,7 @@ use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::connect_row_action;
 use adw::gio;
-use adw::gtk::{gdk::Display, FileChooserAction, FileChooserNative, ResponseType};
+use adw::gtk::{gdk::Display, FileChooserAction, FileChooserDialog, ResponseType};
 use adw::prelude::*;
 use adw::Toast;
 use std::rc::Rc;
@@ -205,13 +205,14 @@ fn open_hardware_public_key_picker(
     hardware: ManagedRipassoHardwareKey,
     title: &str,
 ) {
-    let dialog = FileChooserNative::new(
+    let dialog = FileChooserDialog::new(
         Some(&gettext(title)),
         Some(&state.window),
         FileChooserAction::Open,
-        Some(&gettext("Import")),
-        Some(&gettext("Cancel")),
+        &[],
     );
+    dialog.add_button(&gettext("Cancel"), ResponseType::Cancel);
+    dialog.add_button(&gettext("Import"), ResponseType::Accept);
     let state_for_response = state.clone();
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {
@@ -277,13 +278,14 @@ fn import_hardware_key_from_file(state: &StoreRecipientsPageState) {
 }
 
 fn open_private_key_picker(state: &StoreRecipientsPageState) {
-    let dialog = FileChooserNative::new(
+    let dialog = FileChooserDialog::new(
         Some(&gettext("Import private key")),
         Some(&state.window),
         FileChooserAction::Open,
-        Some(&gettext("Import")),
-        Some(&gettext("Cancel")),
+        &[],
     );
+    dialog.add_button(&gettext("Cancel"), ResponseType::Cancel);
+    dialog.add_button(&gettext("Import"), ResponseType::Accept);
     let state_for_response = state.clone();
     dialog.connect_response(move |dialog, response| {
         if response != ResponseType::Accept {

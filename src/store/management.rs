@@ -25,7 +25,7 @@ use crate::support::ui::{
     append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
     flat_icon_button,
 };
-use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
+use adw::gtk::{FileChooserAction, FileChooserDialog, ListBox, ResponseType};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use std::fs;
@@ -61,7 +61,7 @@ fn initial_recipients_for_store_creation(
     }
 }
 
-fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
+fn selected_local_folder(dialog: &FileChooserDialog, overlay: &ToastOverlay) -> Option<String> {
     let file = dialog.file()?;
     let path = file.path().or_else(|| {
         log_error(
@@ -83,13 +83,14 @@ fn open_store_folder_picker(
     overlay: &ToastOverlay,
     on_selected: impl Fn(String) + 'static,
 ) {
-    let dialog = FileChooserNative::new(
+    let dialog = FileChooserDialog::new(
         Some(&gettext(title)),
         Some(window),
         FileChooserAction::SelectFolder,
-        Some(&gettext(accept_label)),
-        Some(&gettext("Cancel")),
+        &[],
     );
+    dialog.add_button(&gettext("Cancel"), ResponseType::Cancel);
+    dialog.add_button(&gettext(accept_label), ResponseType::Accept);
     dialog.set_create_folders(create_folders);
 
     let overlay = overlay.clone();

@@ -1,0 +1,78 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [
+            "Windows"
+          ]
+        }
+      }
+    },
+    {
+      "name": "windows-developer",
+      "displayName": "Windows Developer",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CARGO_VARIANT": "developer"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CARGO_VARIANT": "release"
+      }
+    },
+    {
+      "name": "windows-translation",
+      "displayName": "Windows Translation",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CARGO_VARIANT": "translation"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-developer",
+      "configurePreset": "windows-developer",
+      "targets": [
+        "keycord"
+      ]
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "targets": [
+        "keycord"
+      ]
+    },
+    {
+      "name": "windows-translation",
+      "configurePreset": "windows-translation",
+      "targets": [
+        "keycord"
+      ]
+    }
+  ]
+}

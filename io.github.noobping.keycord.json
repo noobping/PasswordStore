@@ -1,0 +1,127 @@
+{
+  "id": "io.github.noobping.keycord",
+  "runtime": "org.gnome.Platform",
+  "runtime-version": "49",
+  "sdk": "org.gnome.Sdk",
+  "command": "keycord",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.rust-stable",
+    "org.freedesktop.Sdk.Extension.llvm20"
+  ],
+  "build-options": {
+    "prepend-path": "/app/bin:/usr/lib/sdk/llvm20/bin",
+    "prepend-ld-library-path": "/app/lib:/usr/lib/sdk/llvm20/lib",
+    "append-path": "/usr/lib/sdk/rust-stable/bin",
+    "append-ld-library-path": "/usr/lib/sdk/rust-stable/lib",
+    "build-args": [
+      "--share=network"
+    ],
+    "env": {
+      "CLANG_PATH": "/usr/lib/sdk/llvm20/bin/clang",
+      "CARGO_HOME": "/run/build/keycord/cargo",
+      "LIBCLANG_PATH": "/usr/lib/sdk/llvm20/lib",
+      "BINDGEN_EXTRA_CLANG_ARGS": "-resource-dir=/usr/lib/sdk/llvm20/lib/clang/20"
+    }
+  },
+  "finish-args": [
+    "--device=dri",
+    "--share=ipc",
+    "--socket=fallback-x11",
+    "--socket=wayland"
+  ],
+  "modules": [
+    {
+      "name": "capnproto",
+      "buildsystem": "autotools",
+      "subdir": "c++",
+      "no-autogen": true,
+      "config-opts": [
+        "--disable-static"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/capnproto/capnproto.git",
+          "tag": "v1.3.0",
+          "commit": "7dbb95989721016f8b590245ec7528c6ff03d1fe"
+        },
+        {
+          "type": "shell",
+          "commands": [
+            "cd c++ && autoreconf -fi"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pcsc-lite",
+      "buildsystem": "meson",
+      "config-opts": [
+        "-Dlibsystemd=false",
+        "-Dpolkit=false",
+        "-Dipcdir=/run/pcscd"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/LudovicRousseau/PCSC.git",
+          "tag": "2.3.3",
+          "commit": "3ef55e02979de6834015b380c1d21671eeb4e9f5"
+        }
+      ]
+    },
+    {
+      "name": "git",
+      "buildsystem": "autotools",
+      "no-autogen": true,
+      "config-opts": [
+        "--without-tcltk"
+      ],
+      "make-args": [
+        "prefix=/app",
+        "NO_GETTEXT=YesPlease",
+        "NO_INSTALL_HARDLINKS=YesPlease",
+        "NO_PERL=YesPlease",
+        "NO_PYTHON=YesPlease",
+        "SKIP_DASHED_BUILT_INS=YesPlease"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/git/git.git",
+          "tag": "v2.49.1",
+          "commit": "aadf8ae518afd80b73d49eff8aff475161aa5157"
+        },
+        {
+          "type": "shell",
+          "commands": [
+            "make configure"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "keycord",
+      "buildsystem": "meson",
+      "config-opts": [
+        "-Dcargo_variant=developer",
+        "-Dcargo_features=flatpak",
+        "--libdir=lib"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": ".",
+          "skip": [
+            ".git",
+            ".flatpak",
+            ".flatpak-builder",
+            "build-dir",
+            "builddir",
+            "target"
+          ]
+        }
+      ]
+    }
+  ]
+}

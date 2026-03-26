@@ -1,30 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.noobping.keycord</id>
+  <id translate="no">io.github.noobping.keycord</id>
 
   <name>Keycord</name>
   <summary>Browse and edit password stores</summary>
 
-  <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-only</project_license>
+  <metadata_license translate="no">CC0-1.0</metadata_license>
+  <project_license translate="no">GPL-3.0-only</project_license>
 
   <developer id="io.github.noobping">
-    <name>noobping</name>
+    <name translate="no">noobping</name>
   </developer>
 
   <branding>
-    <color type="primary" scheme_preference="light">#99C1F1</color>
-    <color type="primary" scheme_preference="dark">#613583</color>
+    <color type="primary" scheme_preference="light" translate="no">#99C1F1</color>
+    <color type="primary" scheme_preference="dark" translate="no">#613583</color>
   </branding>
 
   <recommends>
-    <display_length compare="ge">360</display_length>
+    <display_length compare="ge" translate="no">360</display_length>
   </recommends>
 
   <supports>
-    <control>keyboard</control>
-    <control>pointing</control>
-    <control>touch</control>
+    <control translate="no">keyboard</control>
+    <control translate="no">pointing</control>
+    <control translate="no">touch</control>
   </supports>
 
   <description>
@@ -43,32 +43,33 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">io.github.noobping.keycord.desktop</launchable>
-  <icon type="stock">io.github.noobping.keycord</icon>
+  <launchable type="desktop-id" translate="no">io.github.noobping.keycord.desktop</launchable>
+  <icon type="stock" translate="no">io.github.noobping.keycord</icon>
+  <translation type="gettext">keycord</translation>
 
   <provides>
-    <binary>keycord</binary>
+    <binary translate="no">keycord</binary>
   </provides>
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/noobping/keycord/39095f1d9b956c69b6ffc91c6e7a5bd5800c11fe/screenshots/list.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/39095f1d9b956c69b6ffc91c6e7a5bd5800c11fe/screenshots/list.png</image>
       <caption>Password list</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/142fea9f319398ec459f49dfbbcac9c0f14d2dd1/screenshots/unlock.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/142fea9f319398ec459f49dfbbcac9c0f14d2dd1/screenshots/unlock.png</image>
       <caption>Unlock a pass file</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/6dc210a8737c50cfe0796e23199f7af3bad35e2a/screenshots/file.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/6dc210a8737c50cfe0796e23199f7af3bad35e2a/screenshots/file.png</image>
       <caption>Edit a password entry</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/50d4e2443dc0fc0b14d7f715b9557fe24077947e/screenshots/preferences.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/50d4e2443dc0fc0b14d7f715b9557fe24077947e/screenshots/preferences.png</image>
       <caption>Manage stores</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/noobping/keycord/6dc210a8737c50cfe0796e23199f7af3bad35e2a/screenshots/recipients.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/6dc210a8737c50cfe0796e23199f7af3bad35e2a/screenshots/recipients.png</image>
       <caption>Manage private keys</caption>
     </screenshot>
   </screenshots>
@@ -115,15 +116,15 @@
     </release>
   </releases>
 
-  <url type="homepage">https://github.com/noobping/keycord</url>
-  <url type="bugtracker">https://github.com/noobping/keycord/issues</url>
-  <url type="vcs-browser">https://github.com/noobping/keycord</url>
+  <url type="homepage" translate="no">https://github.com/noobping/keycord</url>
+  <url type="bugtracker" translate="no">https://github.com/noobping/keycord/issues</url>
+  <url type="vcs-browser" translate="no">https://github.com/noobping/keycord</url>
 
   <content_rating type="oars-1.1"/>
 
   <categories>
-    <category>Utility</category>
-    <category>Security</category>
+    <category translate="no">Utility</category>
+    <category translate="no">Security</category>
   </categories>
 
   <keywords>

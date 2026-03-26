@@ -1,4 +1,8 @@
-use std::{env, fmt::Write as _, fs, path::Path};
+use std::collections::{BTreeMap, BTreeSet};
+use std::env;
+use std::fmt::Write as _;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[cfg(not(target_os = "linux"))]
 const NON_LINUX_WINDOW_UI_IDS: &[&str] = &[
@@ -9,36 +13,906 @@ const NON_LINUX_WINDOW_UI_IDS: &[&str] = &[
     "git_busy_page",
 ];
 
+type Catalog = BTreeMap<String, CatalogEntry>;
+
+#[derive(Default)]
+struct CatalogEntry {
+    references: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PoEntry {
+    msgid: String,
+    msgid_plural: Option<String>,
+    msgstr: String,
+    msgstr_plural: BTreeMap<usize, String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ActivePoField {
+    MsgId,
+    MsgIdPlural,
+    MsgStr,
+    MsgStrPlural(usize),
+}
+
 fn main() {
     println!("cargo:rustc-env=APP_ID={}", app_id());
     println!("cargo:rustc-env=RESOURCE_ID={}", resource_id());
+    println!("cargo:rustc-env=GETTEXT_DOMAIN={}", gettext_domain());
+
     export_dependency_versions();
     write_window_ui();
 
-    // Directories
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set for build script"));
+    let locale_dir = out_dir.join("locale");
     let data_dir = Path::new("data");
+    let docs_dir = Path::new("docs");
+    let po_dir = Path::new("po");
 
-    // Tell Cargo when to rerun the build script
+    fs::create_dir_all(data_dir).expect("Failed to create data directory");
+    fs::create_dir_all(po_dir).expect("Failed to create po directory");
+
+    glib_build_tools::compile_resources(
+        &[data_dir],
+        &format!("data/resources.xml"),
+        "compiled.gresource",
+    );
+
+    #[cfg(target_os = "windows")]
+    {
+        let ico_path = data_dir.join(format!("{}.ico", env!("CARGO_PKG_NAME")));
+        println!("cargo:rerun-if-changed={}", ico_path.display());
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon(ico_path.to_string_lossy().as_ref());
+        res.compile().expect("Failed to compile resources");
+    }
+
+    write_translation_catalogs(po_dir, docs_dir);
+    let locales = compile_translations(po_dir, &locale_dir);
+    println!("cargo:rustc-env=LOCALEDIR={}", locale_dir.display());
+    println!("cargo:rustc-env=AVAILABLE_LOCALES={}", locales.join(":"));
+
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-changed=data");
+    println!("cargo:rerun-if-changed=docs");
+    println!("cargo:rerun-if-changed=po");
+    println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_SETUP");
 
-    // Ensure data/ exists
-    fs::create_dir_all(data_dir).unwrap();
-
-    // Collect all .svg icon files in data/icons/
     let mut icons = Vec::new();
     collect_svg_icons(data_dir, data_dir, &mut icons);
     icons.sort();
 
     write_resources_xml(data_dir, &icons);
-
-    // Compile GResources from data/resources.xml into resources.gresource
     glib_build_tools::compile_resources(&["data"], "data/resources.xml", "compiled.gresource");
 
     #[cfg(all(target_os = "linux", not(feature = "setup")))]
     desktop_file();
+}
+
+fn write_translation_catalogs(po_dir: &Path, docs_dir: &Path) {
+    let mut catalog = Catalog::new();
+    collect_ui_strings(Path::new("data/window.ui"), &mut catalog);
+    collect_ui_strings(Path::new("data/shortcuts.ui"), &mut catalog);
+    collect_rust_strings(Path::new("src"), &mut catalog);
+    collect_docs_strings(docs_dir, &mut catalog);
+
+    let pot_path = po_dir.join(format!("{}.pot", gettext_domain()));
+    let en_path = po_dir.join("en.po");
+    write_if_changed(&pot_path, render_pot_catalog(&catalog));
+    write_if_changed(&en_path, render_po_catalog(&catalog, "en"));
+}
+
+fn collect_docs_strings(docs_dir: &Path, catalog: &mut Catalog) {
+    for rel_path in [
+        "README.md",
+        "getting-started.md",
+        "search.md",
+        "workflows.md",
+        "permissions-and-backends.md",
+        "teams-and-organizations.md",
+        "use-cases.md",
+    ] {
+        let path = docs_dir.join(rel_path);
+        let contents = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
+        if contents.trim().is_empty() {
+            continue;
+        }
+
+        add_catalog_message(catalog, &contents, format!("docs/{rel_path}"));
+    }
+}
+
+fn collect_ui_strings(path: &Path, catalog: &mut Catalog) {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
+    let mut search_start = 0usize;
+
+    while let Some(relative_index) = source[search_start..].find("translatable=\"yes\"") {
+        let attr_index = search_start + relative_index;
+        let text_start = source[attr_index..]
+            .find('>')
+            .map(|offset| attr_index + offset + 1);
+        let Some(text_start) = text_start else {
+            break;
+        };
+        let text_end = source[text_start..]
+            .find('<')
+            .map(|offset| text_start + offset);
+        let Some(text_end) = text_end else {
+            break;
+        };
+
+        let text = decode_xml_entities(source[text_start..text_end].trim());
+        if !text.is_empty() {
+            add_catalog_message(
+                catalog,
+                &text,
+                format!("{}:{}", path.display(), line_number(&source, attr_index)),
+            );
+        }
+
+        search_start = text_end;
+    }
+}
+
+fn collect_rust_strings(dir: &Path, catalog: &mut Catalog) {
+    for entry in
+        fs::read_dir(dir).unwrap_or_else(|err| panic!("Failed to read {}: {err}", dir.display()))
+    {
+        let entry = entry.expect("Failed to read source directory entry");
+        let path = entry.path();
+
+        if path.is_dir() {
+            collect_rust_strings(&path, catalog);
+            continue;
+        }
+
+        if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+            continue;
+        }
+
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if file_name.contains("test") {
+            continue;
+        }
+
+        collect_rust_strings_from_file(&path, catalog);
+    }
+}
+
+fn collect_rust_strings_from_file(path: &Path, catalog: &mut Catalog) {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
+    let bytes = source.as_bytes();
+    let mut index = 0usize;
+    let mut line = 1usize;
+
+    while index < bytes.len() {
+        if bytes[index] == b'\n' {
+            line += 1;
+            index += 1;
+            continue;
+        }
+
+        if skip_raw_string(bytes, &mut index, &mut line) {
+            continue;
+        }
+
+        if skip_cfg_test_item(bytes, &mut index, &mut line) {
+            continue;
+        }
+
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            index += 2;
+            while index < bytes.len() && bytes[index] != b'\n' {
+                index += 1;
+            }
+            continue;
+        }
+
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            index += 2;
+            while index + 1 < bytes.len() {
+                if bytes[index] == b'\n' {
+                    line += 1;
+                }
+                if bytes[index] == b'*' && bytes[index + 1] == b'/' {
+                    index += 2;
+                    break;
+                }
+                index += 1;
+            }
+            continue;
+        }
+
+        if bytes[index] == b'\'' && looks_like_char_literal(bytes, index) {
+            index += 1;
+            while index < bytes.len() {
+                match bytes[index] {
+                    b'\\' => index += 2,
+                    b'\'' => {
+                        index += 1;
+                        break;
+                    }
+                    b'\n' => {
+                        line += 1;
+                        index += 1;
+                    }
+                    _ => index += 1,
+                }
+            }
+            continue;
+        }
+
+        if bytes[index] != b'"' {
+            index += 1;
+            continue;
+        }
+
+        let literal_line = line;
+        index += 1;
+        let mut value = String::new();
+
+        while index < bytes.len() {
+            match bytes[index] {
+                b'\\' => {
+                    index += 1;
+                    if index >= bytes.len() {
+                        break;
+                    }
+                    push_unescaped_rust_char(bytes, &mut index, &mut value);
+                }
+                b'"' => {
+                    index += 1;
+                    break;
+                }
+                b'\n' => {
+                    line += 1;
+                    value.push('\n');
+                    index += 1;
+                }
+                byte => {
+                    value.push(byte as char);
+                    index += 1;
+                }
+            }
+        }
+
+        if looks_translatable_rust_string(&value) {
+            add_catalog_message(
+                catalog,
+                value.trim(),
+                format!("{}:{}", path.display(), literal_line),
+            );
+        }
+    }
+}
+
+fn push_unescaped_rust_char(bytes: &[u8], index: &mut usize, value: &mut String) {
+    match bytes[*index] {
+        b'\\' => {
+            value.push('\\');
+            *index += 1;
+        }
+        b'"' => {
+            value.push('"');
+            *index += 1;
+        }
+        b'n' => {
+            value.push('\n');
+            *index += 1;
+        }
+        b'r' => {
+            value.push('\r');
+            *index += 1;
+        }
+        b't' => {
+            value.push('\t');
+            *index += 1;
+        }
+        b'0' => {
+            value.push('\0');
+            *index += 1;
+        }
+        b'u' if bytes.get(*index + 1) == Some(&b'{') => {
+            *index += 2;
+            let start = *index;
+            while *index < bytes.len() && bytes[*index] != b'}' {
+                *index += 1;
+            }
+            let escape = std::str::from_utf8(&bytes[start..*index]).unwrap_or_default();
+            if let Ok(codepoint) = u32::from_str_radix(escape, 16) {
+                if let Some(ch) = char::from_u32(codepoint) {
+                    value.push(ch);
+                }
+            }
+            if *index < bytes.len() {
+                *index += 1;
+            }
+        }
+        other => {
+            value.push(other as char);
+            *index += 1;
+        }
+    }
+}
+
+fn looks_translatable_rust_string(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if trimmed.starts_with('#') || trimmed.chars().any(|ch| ch == '\u{1b}') {
+        return false;
+    }
+
+    if trimmed.starts_with('/') || trimmed.starts_with("./") {
+        return false;
+    }
+
+    if !trimmed.chars().any(char::is_whitespace)
+        && (trimmed.starts_with('.')
+            || trimmed.starts_with("../")
+            || trimmed.contains('/')
+            || trimmed.contains('@'))
+    {
+        return false;
+    }
+
+    if trimmed.contains("example.com") {
+        return false;
+    }
+
+    if trimmed.starts_with("io.github.")
+        || trimmed.starts_with("org.")
+        || trimmed.starts_with("app.")
+        || trimmed.starts_with("win.")
+        || trimmed.starts_with("edit-")
+        || trimmed.starts_with("document-")
+        || trimmed.starts_with("folder-")
+        || trimmed.starts_with("go-")
+        || trimmed.starts_with("list-")
+        || trimmed.starts_with("open-")
+        || trimmed.starts_with("view-")
+    {
+        return false;
+    }
+
+    if trimmed.contains("::") {
+        return false;
+    }
+
+    if !trimmed.chars().any(char::is_alphabetic) {
+        return false;
+    }
+
+    if trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || matches!(ch, '_' | '-' | '.'))
+    {
+        return false;
+    }
+
+    if trimmed.chars().any(char::is_whitespace) {
+        return true;
+    }
+
+    if trimmed
+        .chars()
+        .any(|ch| matches!(ch, '.' | '!' | '?' | ':'))
+    {
+        return true;
+    }
+
+    trimmed
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
+        && trimmed.chars().any(|ch| ch.is_ascii_lowercase())
+}
+
+fn looks_like_char_literal(bytes: &[u8], index: usize) -> bool {
+    let mut cursor = index + 1;
+    while cursor < bytes.len() && cursor <= index + 6 {
+        match bytes[cursor] {
+            b'\\' => cursor += 2,
+            b'\'' => return true,
+            b'\n' => return false,
+            _ => cursor += 1,
+        }
+    }
+
+    false
+}
+
+fn skip_raw_string(bytes: &[u8], index: &mut usize, line: &mut usize) -> bool {
+    if bytes[*index] != b'r' {
+        return false;
+    }
+
+    let mut cursor = *index + 1;
+    let mut hashes = 0usize;
+    while cursor < bytes.len() && bytes[cursor] == b'#' {
+        hashes += 1;
+        cursor += 1;
+    }
+
+    if cursor >= bytes.len() || bytes[cursor] != b'"' {
+        return false;
+    }
+
+    *index = cursor + 1;
+    while *index < bytes.len() {
+        if bytes[*index] == b'\n' {
+            *line += 1;
+            *index += 1;
+            continue;
+        }
+
+        if bytes[*index] == b'"'
+            && bytes
+                .get(*index + 1..*index + 1 + hashes)
+                .is_some_and(|suffix| suffix.iter().all(|byte| *byte == b'#'))
+        {
+            *index += 1 + hashes;
+            return true;
+        }
+
+        *index += 1;
+    }
+
+    true
+}
+
+fn skip_cfg_test_item(bytes: &[u8], index: &mut usize, line: &mut usize) -> bool {
+    const ATTR: &[u8] = b"#[cfg(test)]";
+    if !bytes[*index..].starts_with(ATTR) {
+        return false;
+    }
+
+    *index += ATTR.len();
+    while *index < bytes.len() {
+        match bytes[*index] {
+            b'\n' => {
+                *line += 1;
+                *index += 1;
+            }
+            b' ' | b'\t' | b'\r' => *index += 1,
+            _ => break,
+        }
+    }
+
+    while *index < bytes.len() && bytes[*index] != b'{' && bytes[*index] != b';' {
+        if bytes[*index] == b'\n' {
+            *line += 1;
+        }
+        *index += 1;
+    }
+
+    if *index >= bytes.len() {
+        return true;
+    }
+
+    if bytes[*index] == b';' {
+        *index += 1;
+        return true;
+    }
+
+    let mut depth = 0usize;
+    while *index < bytes.len() {
+        match bytes[*index] {
+            b'{' => {
+                depth += 1;
+                *index += 1;
+            }
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                *index += 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            b'\n' => {
+                *line += 1;
+                *index += 1;
+            }
+            _ => *index += 1,
+        }
+    }
+
+    true
+}
+
+fn decode_xml_entities(value: &str) -> String {
+    value
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+fn add_catalog_message(catalog: &mut Catalog, message: &str, reference: String) {
+    let entry = catalog.entry(message.to_string()).or_default();
+    entry.references.insert(reference);
+}
+
+fn render_pot_catalog(catalog: &Catalog) -> String {
+    render_catalog(catalog, None)
+}
+
+fn render_po_catalog(catalog: &Catalog, language: &str) -> String {
+    render_catalog(catalog, Some(language))
+}
+
+fn render_catalog(catalog: &Catalog, language: Option<&str>) -> String {
+    let mut output = String::new();
+    write_po_header(&mut output, language);
+
+    for (message, entry) in catalog {
+        for reference in &entry.references {
+            writeln!(output, "#: {reference}").expect("Failed to format po reference");
+        }
+        write_po_string_field(&mut output, "msgid", message);
+        if let Some(language) = language {
+            let _ = language;
+            write_po_string_field(&mut output, "msgstr", message);
+        } else {
+            write_po_string_field(&mut output, "msgstr", "");
+        }
+        output.push('\n');
+    }
+
+    output
+}
+
+fn write_po_header(output: &mut String, language: Option<&str>) {
+    let language = language.unwrap_or("");
+    output.push_str("msgid \"\"\n");
+    output.push_str("msgstr \"\"\n");
+    output.push_str(&po_wrapped_line(&format!(
+        "Project-Id-Version: {} {}\n",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION")
+    )));
+    output.push_str(&po_wrapped_line("MIME-Version: 1.0\n"));
+    output.push_str(&po_wrapped_line(
+        "Content-Type: text/plain; charset=UTF-8\n",
+    ));
+    output.push_str(&po_wrapped_line("Content-Transfer-Encoding: 8bit\n"));
+    output.push_str(&po_wrapped_line(&format!("Language: {language}\n")));
+    output.push_str(&po_wrapped_line(
+        "Plural-Forms: nplurals=2; plural=(n != 1);\n",
+    ));
+    output.push('\n');
+}
+
+fn write_po_string_field(output: &mut String, field: &str, value: &str) {
+    if value.is_empty() {
+        let _ = writeln!(output, "{field} \"\"");
+        return;
+    }
+
+    if value.contains('\n') {
+        let _ = writeln!(output, "{field} \"\"");
+        output.push_str(&po_wrapped_line(value));
+        return;
+    }
+
+    let _ = writeln!(output, "{field} \"{}\"", escape_po_string(value));
+}
+
+fn po_wrapped_line(value: &str) -> String {
+    format!("\"{}\"\n", escape_po_string(value))
+}
+
+fn escape_po_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn compile_translations(po_dir: &Path, locale_dir: &Path) -> Vec<String> {
+    let locales = discover_po_locales(po_dir);
+    for locale in &locales {
+        let po_path = po_dir.join(format!("{locale}.po"));
+        let mo_path = locale_dir
+            .join(locale)
+            .join("LC_MESSAGES")
+            .join(format!("{}.mo", gettext_domain()));
+        let bytes = compile_mo_file(&po_path);
+        if let Some(parent) = mo_path.parent() {
+            fs::create_dir_all(parent)
+                .unwrap_or_else(|err| panic!("Failed to create {}: {err}", parent.display()));
+        }
+        write_if_changed_binary(&mo_path, &bytes);
+    }
+    locales
+}
+
+fn discover_po_locales(po_dir: &Path) -> Vec<String> {
+    let mut locales = fs::read_dir(po_dir)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", po_dir.display()))
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("po"))
+        .filter_map(|path| {
+            path.file_stem()
+                .and_then(|value| value.to_str())
+                .map(str::to_string)
+        })
+        .collect::<Vec<_>>();
+    locales.sort();
+    locales
+}
+
+fn compile_mo_file(path: &Path) -> Vec<u8> {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
+    let mut entries = parse_po_entries(&source);
+    entries.sort_by(|left, right| {
+        let left_key = mo_original_key(left);
+        let right_key = mo_original_key(right);
+        left_key.cmp(&right_key)
+    });
+
+    let count = entries.len() as u32;
+    let originals_offset = 28u32;
+    let translations_offset = originals_offset + count * 8;
+    let originals_data_offset = translations_offset + count * 8;
+
+    let original_keys = entries
+        .iter()
+        .map(mo_original_key)
+        .collect::<Vec<Vec<u8>>>();
+    let translated_values = entries
+        .iter()
+        .map(mo_translation_value)
+        .collect::<Vec<Vec<u8>>>();
+
+    let mut original_table = Vec::with_capacity(entries.len());
+    let mut translation_table = Vec::with_capacity(entries.len());
+    let mut data = Vec::new();
+    let mut offset = originals_data_offset;
+
+    for key in &original_keys {
+        original_table.push((key.len() as u32, offset));
+        data.extend_from_slice(key);
+        data.push(0);
+        offset += key.len() as u32 + 1;
+    }
+
+    for value in &translated_values {
+        translation_table.push((value.len() as u32, offset));
+        data.extend_from_slice(value);
+        data.push(0);
+        offset += value.len() as u32 + 1;
+    }
+
+    let mut output = Vec::new();
+    push_u32_le(&mut output, 0x9504_12de);
+    push_u32_le(&mut output, 0);
+    push_u32_le(&mut output, count);
+    push_u32_le(&mut output, originals_offset);
+    push_u32_le(&mut output, translations_offset);
+    push_u32_le(&mut output, 0);
+    push_u32_le(&mut output, 0);
+
+    for (length, offset) in &original_table {
+        push_u32_le(&mut output, *length);
+        push_u32_le(&mut output, *offset);
+    }
+    for (length, offset) in &translation_table {
+        push_u32_le(&mut output, *length);
+        push_u32_le(&mut output, *offset);
+    }
+
+    output.extend_from_slice(&data);
+    output
+}
+
+fn mo_original_key(entry: &PoEntry) -> Vec<u8> {
+    match &entry.msgid_plural {
+        Some(msgid_plural) => {
+            let mut bytes = entry.msgid.as_bytes().to_vec();
+            bytes.push(0);
+            bytes.extend_from_slice(msgid_plural.as_bytes());
+            bytes
+        }
+        None => entry.msgid.as_bytes().to_vec(),
+    }
+}
+
+fn mo_translation_value(entry: &PoEntry) -> Vec<u8> {
+    if entry.msgstr_plural.is_empty() {
+        return entry.msgstr.as_bytes().to_vec();
+    }
+
+    let max_index = entry.msgstr_plural.keys().copied().max().unwrap_or(0);
+    let mut bytes = Vec::new();
+    for index in 0..=max_index {
+        if index > 0 {
+            bytes.push(0);
+        }
+        if let Some(value) = entry.msgstr_plural.get(&index) {
+            bytes.extend_from_slice(value.as_bytes());
+        }
+    }
+    bytes
+}
+
+fn parse_po_entries(source: &str) -> Vec<PoEntry> {
+    let mut entries = Vec::new();
+    let mut current = PoEntry::default();
+    let mut active_field = None;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            finalize_po_entry(&mut entries, &mut current);
+            active_field = None;
+            continue;
+        }
+
+        if trimmed.starts_with('#') {
+            continue;
+        }
+
+        if let Some(value) = trimmed.strip_prefix("msgid_plural ") {
+            current.msgid_plural = Some(parse_po_quoted(value));
+            active_field = Some(ActivePoField::MsgIdPlural);
+            continue;
+        }
+
+        if let Some(value) = trimmed.strip_prefix("msgid ") {
+            if !current.msgid.is_empty()
+                || !current.msgstr.is_empty()
+                || !current.msgstr_plural.is_empty()
+            {
+                finalize_po_entry(&mut entries, &mut current);
+            }
+            current.msgid = parse_po_quoted(value);
+            active_field = Some(ActivePoField::MsgId);
+            continue;
+        }
+
+        if let Some(value) = trimmed.strip_prefix("msgstr ") {
+            current.msgstr = parse_po_quoted(value);
+            active_field = Some(ActivePoField::MsgStr);
+            continue;
+        }
+
+        if let Some((index, value)) = parse_po_plural_msgstr(trimmed) {
+            current.msgstr_plural.insert(index, value);
+            active_field = Some(ActivePoField::MsgStrPlural(index));
+            continue;
+        }
+
+        if trimmed.starts_with('"') {
+            let value = parse_po_quoted(trimmed);
+            match active_field {
+                Some(ActivePoField::MsgId) => current.msgid.push_str(&value),
+                Some(ActivePoField::MsgIdPlural) => current
+                    .msgid_plural
+                    .get_or_insert_with(String::new)
+                    .push_str(&value),
+                Some(ActivePoField::MsgStr) => current.msgstr.push_str(&value),
+                Some(ActivePoField::MsgStrPlural(index)) => current
+                    .msgstr_plural
+                    .entry(index)
+                    .or_default()
+                    .push_str(&value),
+                None => {}
+            }
+        }
+    }
+
+    finalize_po_entry(&mut entries, &mut current);
+    entries
+}
+
+fn parse_po_plural_msgstr(line: &str) -> Option<(usize, String)> {
+    let remainder = line.strip_prefix("msgstr[")?;
+    let closing = remainder.find(']')?;
+    let index = remainder[..closing].parse().ok()?;
+    let value = remainder[closing + 1..].trim_start();
+    Some((index, parse_po_quoted(value)))
+}
+
+fn parse_po_quoted(value: &str) -> String {
+    let trimmed = value.trim();
+    let stripped = trimmed
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or("");
+    unescape_po_string(stripped)
+}
+
+fn unescape_po_string(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut index = 0usize;
+    let mut output = String::new();
+
+    while index < bytes.len() {
+        if bytes[index] != b'\\' {
+            output.push(bytes[index] as char);
+            index += 1;
+            continue;
+        }
+
+        index += 1;
+        if index >= bytes.len() {
+            break;
+        }
+
+        match bytes[index] {
+            b'\\' => output.push('\\'),
+            b'"' => output.push('"'),
+            b'n' => output.push('\n'),
+            b'r' => output.push('\r'),
+            b't' => output.push('\t'),
+            other => output.push(other as char),
+        }
+        index += 1;
+    }
+
+    output
+}
+
+fn finalize_po_entry(entries: &mut Vec<PoEntry>, current: &mut PoEntry) {
+    if current.msgid.is_empty() && current.msgstr.is_empty() && current.msgstr_plural.is_empty() {
+        return;
+    }
+
+    entries.push(std::mem::take(current));
+}
+
+fn push_u32_le(output: &mut Vec<u8>, value: u32) {
+    output.extend_from_slice(&value.to_le_bytes());
+}
+
+fn line_number(source: &str, index: usize) -> usize {
+    source[..index]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count()
+        + 1
+}
+
+fn write_if_changed(path: &Path, contents: String) {
+    if fs::read_to_string(path).ok().as_deref() == Some(contents.as_str()) {
+        return;
+    }
+
+    fs::write(path, contents)
+        .unwrap_or_else(|err| panic!("Failed to write {}: {err}", path.display()));
+}
+
+fn write_if_changed_binary(path: &Path, contents: &[u8]) {
+    if fs::read(path).ok().as_deref() == Some(contents) {
+        return;
+    }
+
+    fs::write(path, contents)
+        .unwrap_or_else(|err| panic!("Failed to write {}: {err}", path.display()));
 }
 
 fn write_resources_xml(data_dir: &Path, icons: &[String]) {
@@ -53,10 +927,22 @@ fn write_resources_xml(data_dir: &Path, icons: &[String]) {
 }
 
 fn write_window_ui() {
-    let rendered = rendered_window_ui();
+    let rendered = with_translation_domain(rendered_window_ui());
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set for build script");
     fs::write(Path::new(&out_dir).join("window.ui"), rendered)
         .expect("Failed to write generated window.ui");
+}
+
+fn with_translation_domain(source: String) -> String {
+    if source.contains("<interface domain=") {
+        return source;
+    }
+
+    source.replacen(
+        "<interface>",
+        &format!("<interface domain=\"{}\">", gettext_domain()),
+        1,
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -162,8 +1048,6 @@ fn find_locked_package_version(lockfile: &str, package: &str) -> Option<String> 
     None
 }
 
-/// Recursively collect all `.svg` files under `dir`,
-/// and push their path *relative to `data_dir`* into `icons`.
 fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
     for entry in fs::read_dir(dir).expect("Failed to read resource directory") {
         let entry = entry.expect("Failed to read resource directory entry");
@@ -171,8 +1055,7 @@ fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
 
         if path.is_dir() {
             collect_svg_icons(&path, data_dir, icons);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("svg") {
-            // Strip "data/" so we end up with e.g. "icons/foo/bar.svg"
+        } else if path.extension().and_then(|value| value.to_str()) == Some("svg") {
             let rel = path
                 .strip_prefix(data_dir)
                 .expect("Resource path should stay within data/");
@@ -204,16 +1087,22 @@ StartupNotify=true
         .expect("Can not build desktop file");
 }
 
-#[cfg(debug_assertions)]
+// Flatpak builds must use the manifest ID so GtkApplication can own the
+// matching D-Bus name inside the sandbox.
+#[cfg(all(debug_assertions, not(feature = "flatpak")))]
 const fn app_id() -> &'static str {
     concat!("io.github.noobping.", env!("CARGO_PKG_NAME"), "-beta")
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(any(not(debug_assertions), feature = "flatpak"))]
 const fn app_id() -> &'static str {
     concat!("io.github.noobping.", env!("CARGO_PKG_NAME"))
 }
 
 const fn resource_id() -> &'static str {
     concat!("/io/github/noobping/", env!("CARGO_PKG_NAME"))
+}
+
+const fn gettext_domain() -> &'static str {
+    env!("CARGO_PKG_NAME")
 }

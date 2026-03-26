@@ -1,0 +1,14 @@
+option(
+  'cargo_variant',
+  type: 'combo',
+  choices: ['developer', 'release', 'translation'],
+  value: 'developer',
+  description: 'Cargo-backed Meson wrapper profile. The translation profile intentionally reuses cargo build --release.',
+)
+
+option(
+  'cargo_features',
+  type: 'string',
+  value: '',
+  description: 'Space- or comma-separated Cargo features to pass through the Meson wrapper.',
+)

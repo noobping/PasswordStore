@@ -1,0 +1,10 @@
+DOMAIN = keycord
+COPYRIGHT_HOLDER = noobping
+MSGID_BUGS_ADDRESS = https://github.com/noobping/keycord/issues
+
+XGETTEXT_OPTIONS = \
+	--from-code=UTF-8 \
+	--add-comments=TRANSLATORS: \
+	--keyword=gettext \
+	--keyword=ngettext:1,2 \
+	--keyword=pgettext:1c,2

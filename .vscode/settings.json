@@ -13,7 +13,8 @@
         }
     },
     "rust-analyzer.files.exclude": [
-        ".flatpak"
+        ".flatpak",
+        "builddir"
     ],
     "rust-analyzer.server.extraEnv": {
         "PATH": "/var/home/${env:USER}/.cargo/bin:/app/bin:/usr/bin"

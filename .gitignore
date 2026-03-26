@@ -6,6 +6,11 @@
 *og.txt
 .cargo*
 .flatpak/*
+/build-dir/
+/builddir/
+/.vs/
+/out/
+/CMakeUserPresets.json
 AppDir/
 excludelist
 patches/
@@ -13,3 +18,6 @@ resources.xml
 squashfs*
 target/
 vendor/
+po/en.po
+po/keycord.pot
+po/POTFILES.in

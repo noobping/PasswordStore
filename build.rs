@@ -4,15 +4,6 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[cfg(not(target_os = "linux"))]
-const NON_LINUX_WINDOW_UI_IDS: &[&str] = &[
-    "backend_preferences",
-    "log_page",
-    "store_import_page",
-    "tools_page",
-    "git_busy_page",
-];
-
 type Catalog = BTreeMap<String, CatalogEntry>;
 
 #[derive(Default)]
@@ -951,63 +942,8 @@ fn with_translation_domain(source: String) -> String {
     )
 }
 
-#[cfg(target_os = "linux")]
 fn rendered_window_ui() -> String {
     fs::read_to_string("data/window.ui").expect("Failed to read data/window.ui")
-}
-
-#[cfg(not(target_os = "linux"))]
-fn rendered_window_ui() -> String {
-    let rendered = fs::read_to_string("data/window.ui").expect("Failed to read data/window.ui");
-    strip_non_linux_ui(rendered)
-}
-
-#[cfg(not(target_os = "linux"))]
-fn strip_non_linux_ui(mut source: String) -> String {
-    for id in NON_LINUX_WINDOW_UI_IDS {
-        source = remove_child_block_containing_id(&source, id);
-    }
-    source
-}
-
-#[cfg(not(target_os = "linux"))]
-fn remove_child_block_containing_id(source: &str, id: &str) -> String {
-    let marker = format!("id=\"{id}\"");
-    let Some(id_index) = source.find(&marker) else {
-        return source.to_string();
-    };
-    let Some(child_start) = source[..id_index].rfind("<child") else {
-        return source.to_string();
-    };
-
-    let mut depth = 0usize;
-    let mut cursor = child_start;
-    while cursor < source.len() {
-        let next_open = source[cursor..].find("<child").map(|index| cursor + index);
-        let next_close = source[cursor..]
-            .find("</child>")
-            .map(|index| cursor + index);
-
-        match (next_open, next_close) {
-            (Some(open), Some(close)) if open < close => {
-                depth += 1;
-                cursor = open + "<child".len();
-            }
-            (_, Some(close)) => {
-                depth = depth.saturating_sub(1);
-                cursor = close + "</child>".len();
-                if depth == 0 {
-                    let mut rendered = String::with_capacity(source.len());
-                    rendered.push_str(&source[..child_start]);
-                    rendered.push_str(&source[cursor..]);
-                    return rendered;
-                }
-            }
-            _ => break,
-        }
-    }
-
-    source.to_string()
 }
 
 fn export_dependency_versions() {

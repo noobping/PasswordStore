@@ -53,7 +53,7 @@
 
   <screenshots>
     <screenshot type="default">
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/40331c933fccef65b8ba1649de4ef3c3297f71fc/screenshots/list.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/a1fd14f13030f6f749f7938b8ac081519ac92b69/screenshots/list.png</image>
       <caption>Password list</caption>
     </screenshot>
     <screenshot>
@@ -75,6 +75,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.9.4" date="2026-03-28">
+      <description>
+        <p>Fix back icon</p>
+      </description>
+    </release>
     <release version="0.9.3" date="2026-03-27">
       <description>
         <ul>

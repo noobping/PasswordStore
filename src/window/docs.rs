@@ -207,7 +207,10 @@ impl DocumentationPageState {
         let mut target_widget = None::<Widget>;
         let mut index = 0usize;
         while index < document.blocks.len() {
-            if matches!(document.blocks[index].kind, DocumentationBlockKind::TableRow) {
+            if matches!(
+                document.blocks[index].kind,
+                DocumentationBlockKind::TableRow
+            ) {
                 let table_end = table_run_end(&document.blocks, index);
                 let widget = self.render_table(&document.blocks[index..table_end]);
                 if block_index.is_some_and(|target| target >= index && target < table_end) {
@@ -257,7 +260,9 @@ impl DocumentationPageState {
 
         match block.kind {
             DocumentationBlockKind::Heading(level) => apply_heading_style(&label, level),
-            DocumentationBlockKind::Paragraph | DocumentationBlockKind::ListItem | DocumentationBlockKind::TableRow => {}
+            DocumentationBlockKind::Paragraph
+            | DocumentationBlockKind::ListItem
+            | DocumentationBlockKind::TableRow => {}
             DocumentationBlockKind::CodeBlock => {}
         }
         container.append(&label);
@@ -795,7 +800,10 @@ fn parse_strong_span(chars: &[char], start: usize) -> Option<(usize, String)> {
     None
 }
 
-fn search_documents(documents: &[DocumentationDocument], query: &str) -> Vec<DocumentationSearchResult> {
+fn search_documents(
+    documents: &[DocumentationDocument],
+    query: &str,
+) -> Vec<DocumentationSearchResult> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return documents
@@ -833,9 +841,9 @@ fn search_documents(documents: &[DocumentationDocument], query: &str) -> Vec<Doc
 fn block_markup(block: &DocumentationBlock) -> String {
     match block.kind {
         DocumentationBlockKind::ListItem => block.markup.clone(),
-        DocumentationBlockKind::Paragraph | DocumentationBlockKind::Heading(_) | DocumentationBlockKind::CodeBlock => {
-            block.markup.clone()
-        }
+        DocumentationBlockKind::Paragraph
+        | DocumentationBlockKind::Heading(_)
+        | DocumentationBlockKind::CodeBlock => block.markup.clone(),
         DocumentationBlockKind::TableRow => block.markup.clone(),
     }
 }
@@ -1017,11 +1025,16 @@ fn table_cells(row: &str) -> Vec<String> {
 mod tests {
     use super::{
         inline_markup, parse_document, parse_inline_markdown, search_documents, table_cells,
-        table_run_end, DocumentationBlockKind, DocumentationDocument, DocumentationInlineLink, DocumentationLinkTarget,
+        table_run_end, DocumentationBlockKind, DocumentationDocument, DocumentationInlineLink,
+        DocumentationLinkTarget,
     };
     use std::collections::BTreeMap;
 
-    fn fake_document(title: &str, subtitle: &str, blocks: Vec<super::DocumentationBlock>) -> DocumentationDocument {
+    fn fake_document(
+        title: &str,
+        subtitle: &str,
+        blocks: Vec<super::DocumentationBlock>,
+    ) -> DocumentationDocument {
         DocumentationDocument {
             path: format!("{title}.md"),
             title: title.to_string(),
@@ -1079,7 +1092,10 @@ mod tests {
             "Use [Search Guide](search.md#Quick Reference), **Documentation**, and `find otp`.",
         );
 
-        assert_eq!(inline.text, "Use Search Guide, Documentation, and `find otp`.");
+        assert_eq!(
+            inline.text,
+            "Use Search Guide, Documentation, and `find otp`."
+        );
         assert_eq!(
             inline.markup,
             "Use <a href=\"keycord-doc:search.md#quick-reference\">Search Guide</a>, <b>Documentation</b>, and <tt>find otp</tt>."

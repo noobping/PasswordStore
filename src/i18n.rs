@@ -1,9 +1,14 @@
+#[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "linux")]
 const DOMAIN: &str = env!("GETTEXT_DOMAIN");
+#[cfg(target_os = "linux")]
 const DEFAULT_LOCALEDIR: &str = env!("LOCALEDIR");
+#[cfg(target_os = "linux")]
 const AVAILABLE_LOCALES: &str = env!("AVAILABLE_LOCALES");
 
+#[cfg(target_os = "linux")]
 pub fn domain() -> &'static str {
     DOMAIN
 }
@@ -29,16 +34,19 @@ pub fn gettext(message: &str) -> String {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn available_locales() -> impl Iterator<Item = &'static str> {
     AVAILABLE_LOCALES
         .split(':')
         .filter(|locale| !locale.is_empty())
 }
 
+#[cfg(target_os = "linux")]
 fn default_locale_dir() -> PathBuf {
     PathBuf::from(DEFAULT_LOCALEDIR)
 }
 
+#[cfg(target_os = "linux")]
 fn runtime_locale_dir_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
@@ -58,6 +66,7 @@ fn runtime_locale_dir_candidates() -> Vec<PathBuf> {
     candidates
 }
 
+#[cfg(target_os = "linux")]
 fn has_domain_catalog(locale_dir: &Path) -> bool {
     available_locales().any(|locale| {
         locale_dir
@@ -68,6 +77,7 @@ fn has_domain_catalog(locale_dir: &Path) -> bool {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn preferred_locale_dir() -> PathBuf {
     runtime_locale_dir_candidates()
         .into_iter()

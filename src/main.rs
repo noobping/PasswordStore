@@ -28,6 +28,7 @@ use crate::logging::{run_command_output, CommandLogOptions};
 use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
 use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
+use crate::window::navigation::APP_WINDOW_TITLE;
 
 use adw::gio::SimpleAction;
 use adw::gtk::{
@@ -175,16 +176,20 @@ fn build_shortcuts_window() -> ShortcutsWindow {
 }
 
 fn build_about_dialog() -> adw::AboutDialog {
-    let project = env!("CARGO_PKG_NAME");
+    let application_name = gettext(APP_WINDOW_TITLE);
     let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
+    let developer_name = authors
+        .first()
+        .copied()
+        .unwrap_or(application_name.as_str());
     let about = adw::AboutDialog::builder()
-        .application_name(project)
+        .application_name(&application_name)
         .application_icon(APP_ID)
         .version(env!("CARGO_PKG_VERSION"))
-        .developer_name(authors.first().copied().unwrap_or(project))
+        .developer_name(developer_name)
         .developers(&authors[..])
-        .comments(about_comments(project))
-        .translator_credits(gettext("Translated by AI; reviewed by Nick."))
+        .comments(about_comments(&application_name))
+        .translator_credits(gettext("Translated by Nick."))
         .license_type(License::Gpl30Only)
         .website(env!("CARGO_PKG_HOMEPAGE"))
         .issue_url(ISSUE_URL)

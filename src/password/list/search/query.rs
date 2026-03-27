@@ -3,6 +3,8 @@ use crate::password::file::{canonical_search_field_key, SearchablePassField};
 use regex::Regex;
 
 pub(super) const OTP_SEARCH_KEY: &str = "__meta_otp";
+pub(super) const STORE_PATH_SEARCH_KEY: &str = "store path";
+pub(super) const STORE_SEARCH_KEY: &str = "store";
 pub(super) const WEAK_PASSWORD_SEARCH_KEY: &str = "__meta_weak_password";
 
 #[derive(Clone, Debug)]
@@ -56,8 +58,12 @@ pub(super) enum SearchComparison {
 }
 
 impl SearchQuery {
-    pub(super) const fn requires_index(&self) -> bool {
-        matches!(self, Self::Regex(_) | Self::Structured(_))
+    pub(super) fn requires_index(&self) -> bool {
+        match self {
+            Self::Structured(query) => query.requires_index(),
+            Self::Regex(_) => true,
+            Self::Empty | Self::Plain(_) | Self::InvalidRegex | Self::InvalidStructured => false,
+        }
     }
 }
 
@@ -131,6 +137,19 @@ impl SearchClause {
             }
         }
     }
+
+    fn can_match_without_index(&self) -> bool {
+        if field_is_metadata_only(&self.field) {
+            return matches!(&self.operand, SearchOperand::Literal(_))
+                || matches!(
+                    &self.operand,
+                    SearchOperand::FieldReference(referenced_field)
+                        if field_is_metadata_only(referenced_field)
+                );
+        }
+
+        false
+    }
 }
 
 impl RegexSearchQuery {
@@ -144,6 +163,19 @@ impl RegexSearchQuery {
             pattern: pattern.to_string(),
             compiled,
         })
+    }
+}
+
+impl StructuredSearchQuery {
+    fn requires_index(&self) -> bool {
+        match self {
+            Self::Clause(clause) => !clause.can_match_without_index(),
+            Self::Otp | Self::WeakPassword => true,
+            Self::Not(query) => query.requires_index(),
+            Self::And(left, right) | Self::Or(left, right) => {
+                left.requires_index() || right.requires_index()
+            }
+        }
     }
 }
 
@@ -205,16 +237,23 @@ pub(super) fn parse_search_query(query: &str) -> SearchQuery {
 
 pub(super) fn row_matches_query(
     label: &str,
+    store_label: &str,
+    store_path: &str,
     fields: &SearchRowFieldIndexState,
     query: &SearchQuery,
 ) -> bool {
+    let metadata_fields = metadata_fields(store_label, store_path);
     match query {
         SearchQuery::Empty => true,
-        SearchQuery::Plain(query) => label.to_lowercase().contains(query),
-        SearchQuery::Regex(query) => regex_query_matches(label, fields, query),
+        SearchQuery::Plain(query) => plain_query_matches(label, &metadata_fields, query),
+        SearchQuery::Regex(query) => regex_query_matches(label, &metadata_fields, fields, query),
         SearchQuery::Structured(query) => match fields {
-            SearchRowFieldIndexState::Indexed(fields) => structured_query_matches(fields, query),
-            SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => false,
+            SearchRowFieldIndexState::Indexed(fields) => {
+                structured_query_matches(&metadata_fields, Some(fields), query)
+            }
+            SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => {
+                structured_query_matches(&metadata_fields, None, query)
+            }
         },
         SearchQuery::InvalidRegex => false,
         SearchQuery::InvalidStructured => false,
@@ -632,6 +671,10 @@ fn operator_boundary(ch: Option<char>) -> bool {
     matches!(ch, None | Some('(' | ')')) || ch.is_some_and(|ch| ch.is_ascii_whitespace())
 }
 
+fn field_is_metadata_only(field_key: &str) -> bool {
+    field_key == STORE_SEARCH_KEY || field_key == STORE_PATH_SEARCH_KEY
+}
+
 fn is_reserved_human_field_keyword(field: &str) -> bool {
     field.eq_ignore_ascii_case("and")
         || field.eq_ignore_ascii_case("with")
@@ -647,17 +690,50 @@ fn is_reserved_human_field_keyword(field: &str) -> bool {
         || field.eq_ignore_ascii_case("contains")
 }
 
-fn structured_query_matches(fields: &[SearchablePassField], query: &StructuredSearchQuery) -> bool {
+fn metadata_fields(store_label: &str, store_path: &str) -> [SearchablePassField; 2] {
+    [
+        SearchablePassField {
+            key: STORE_SEARCH_KEY.to_string(),
+            value: store_label.to_string(),
+            normalized_value: store_label.to_lowercase(),
+        },
+        SearchablePassField {
+            key: STORE_PATH_SEARCH_KEY.to_string(),
+            value: store_path.to_string(),
+            normalized_value: store_path.to_lowercase(),
+        },
+    ]
+}
+
+fn plain_query_matches(label: &str, metadata_fields: &[SearchablePassField], query: &str) -> bool {
+    label.to_lowercase().contains(query)
+        || metadata_fields
+            .iter()
+            .filter(|field| field.key == STORE_SEARCH_KEY)
+            .any(|field| field.normalized_value.contains(query))
+}
+
+fn structured_query_matches(
+    metadata_fields: &[SearchablePassField],
+    indexed_fields: Option<&[SearchablePassField]>,
+    query: &StructuredSearchQuery,
+) -> bool {
     match query {
-        StructuredSearchQuery::Clause(clause) => clause_matches(fields, clause),
-        StructuredSearchQuery::Otp => has_otp(fields),
-        StructuredSearchQuery::WeakPassword => has_weak_password(fields),
-        StructuredSearchQuery::Not(query) => !structured_query_matches(fields, query),
+        StructuredSearchQuery::Clause(clause) => {
+            clause_matches(metadata_fields, indexed_fields, clause)
+        }
+        StructuredSearchQuery::Otp => indexed_fields.is_some_and(has_otp),
+        StructuredSearchQuery::WeakPassword => indexed_fields.is_some_and(has_weak_password),
+        StructuredSearchQuery::Not(query) => {
+            !structured_query_matches(metadata_fields, indexed_fields, query)
+        }
         StructuredSearchQuery::And(left, right) => {
-            structured_query_matches(fields, left) && structured_query_matches(fields, right)
+            structured_query_matches(metadata_fields, indexed_fields, left)
+                && structured_query_matches(metadata_fields, indexed_fields, right)
         }
         StructuredSearchQuery::Or(left, right) => {
-            structured_query_matches(fields, left) || structured_query_matches(fields, right)
+            structured_query_matches(metadata_fields, indexed_fields, left)
+                || structured_query_matches(metadata_fields, indexed_fields, right)
         }
     }
 }
@@ -674,6 +750,7 @@ fn has_otp(fields: &[SearchablePassField]) -> bool {
 
 fn regex_query_matches(
     label: &str,
+    metadata_fields: &[SearchablePassField],
     fields: &SearchRowFieldIndexState,
     query: &RegexSearchQuery,
 ) -> bool {
@@ -683,15 +760,26 @@ fn regex_query_matches(
 
     match fields {
         SearchRowFieldIndexState::Indexed(fields) => {
-            query.compiled.is_match(&regex_search_corpus(label, fields))
+            query
+                .compiled
+                .is_match(&regex_search_corpus(label, metadata_fields, Some(fields)))
         }
-        SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => false,
+        SearchRowFieldIndexState::Unindexed | SearchRowFieldIndexState::Unavailable => query
+            .compiled
+            .is_match(&regex_search_corpus(label, metadata_fields, None)),
     }
 }
 
-fn regex_search_corpus(label: &str, fields: &[SearchablePassField]) -> String {
+fn regex_search_corpus(
+    label: &str,
+    metadata_fields: &[SearchablePassField],
+    indexed_fields: Option<&[SearchablePassField]>,
+) -> String {
     let mut corpus = String::from(label);
-    for field in fields {
+    for field in metadata_fields
+        .iter()
+        .chain(indexed_fields.into_iter().flat_map(|fields| fields.iter()))
+    {
         corpus.push('\n');
         corpus.push_str(&field.key);
         corpus.push(':');
@@ -701,36 +789,57 @@ fn regex_search_corpus(label: &str, fields: &[SearchablePassField]) -> String {
     corpus
 }
 
-fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool {
+fn clause_matches(
+    metadata_fields: &[SearchablePassField],
+    indexed_fields: Option<&[SearchablePassField]>,
+    clause: &SearchClause,
+) -> bool {
     match &clause.operand {
         SearchOperand::Literal(value) => match clause.comparison {
-            SearchComparison::Contains => matches_field(fields, &clause.field, |field| {
-                field.normalized_value.contains(value)
-            }),
-            SearchComparison::ContainsNot => !matches_field(fields, &clause.field, |field| {
-                field.normalized_value.contains(value)
-            }),
-            SearchComparison::Exact => matches_field(fields, &clause.field, |field| {
-                field.normalized_value == *value
-            }),
-            SearchComparison::ExactNot => !matches_field(fields, &clause.field, |field| {
-                field.normalized_value == *value
-            }),
-            SearchComparison::RegexMatch => matches_field(fields, &clause.field, |field| {
-                clause
-                    .compiled_regex
-                    .as_ref()
-                    .is_some_and(|regex| regex.is_match(&field.value))
-            }),
-            SearchComparison::RegexNotMatch => !matches_field(fields, &clause.field, |field| {
-                clause
-                    .compiled_regex
-                    .as_ref()
-                    .is_some_and(|regex| regex.is_match(&field.value))
-            }),
+            SearchComparison::Contains => {
+                matches_field(metadata_fields, indexed_fields, &clause.field, |field| {
+                    field.normalized_value.contains(value)
+                })
+            }
+            SearchComparison::ContainsNot => {
+                !matches_field(metadata_fields, indexed_fields, &clause.field, |field| {
+                    field.normalized_value.contains(value)
+                })
+            }
+            SearchComparison::Exact => {
+                matches_field(metadata_fields, indexed_fields, &clause.field, |field| {
+                    field.normalized_value == *value
+                })
+            }
+            SearchComparison::ExactNot => {
+                !matches_field(metadata_fields, indexed_fields, &clause.field, |field| {
+                    field.normalized_value == *value
+                })
+            }
+            SearchComparison::RegexMatch => {
+                matches_field(metadata_fields, indexed_fields, &clause.field, |field| {
+                    clause
+                        .compiled_regex
+                        .as_ref()
+                        .is_some_and(|regex| regex.is_match(&field.value))
+                })
+            }
+            SearchComparison::RegexNotMatch => {
+                !matches_field(metadata_fields, indexed_fields, &clause.field, |field| {
+                    clause
+                        .compiled_regex
+                        .as_ref()
+                        .is_some_and(|regex| regex.is_match(&field.value))
+                })
+            }
         },
         SearchOperand::FieldReference(referenced_field) => {
-            let matches_positive = field_reference_matches(fields, &clause.field, referenced_field);
+            let matches_positive = field_reference_matches(
+                metadata_fields,
+                indexed_fields,
+                &clause.field,
+                referenced_field,
+            );
             match clause.comparison {
                 SearchComparison::Exact => matches_positive,
                 SearchComparison::ExactNot => !matches_positive,
@@ -744,27 +853,33 @@ fn clause_matches(fields: &[SearchablePassField], clause: &SearchClause) -> bool
 }
 
 fn matches_field(
-    fields: &[SearchablePassField],
+    metadata_fields: &[SearchablePassField],
+    indexed_fields: Option<&[SearchablePassField]>,
     field_key: &str,
     mut predicate: impl FnMut(&SearchablePassField) -> bool,
 ) -> bool {
-    fields_for_key(fields, field_key).any(|field| predicate(field))
+    fields_for_key(metadata_fields, indexed_fields, field_key).any(|field| predicate(field))
 }
 
 fn field_reference_matches(
-    fields: &[SearchablePassField],
+    metadata_fields: &[SearchablePassField],
+    indexed_fields: Option<&[SearchablePassField]>,
     field_key: &str,
     referenced_field: &str,
 ) -> bool {
-    fields_for_key(fields, field_key).any(|field| {
-        fields_for_key(fields, referenced_field)
+    fields_for_key(metadata_fields, indexed_fields, field_key).any(|field| {
+        fields_for_key(metadata_fields, indexed_fields, referenced_field)
             .any(|other| field.normalized_value == other.normalized_value)
     })
 }
 
 fn fields_for_key<'a>(
-    fields: &'a [SearchablePassField],
+    metadata_fields: &'a [SearchablePassField],
+    indexed_fields: Option<&'a [SearchablePassField]>,
     field_key: &'a str,
 ) -> impl Iterator<Item = &'a SearchablePassField> + 'a {
-    fields.iter().filter(move |field| field.key == field_key)
+    metadata_fields
+        .iter()
+        .chain(indexed_fields.into_iter().flat_map(|fields| fields.iter()))
+        .filter(move |field| field.key == field_key)
 }

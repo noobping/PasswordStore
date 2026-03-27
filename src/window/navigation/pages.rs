@@ -1,13 +1,21 @@
 use super::chrome::show_secondary_page_chrome;
+#[cfg(target_os = "linux")]
 use super::restore::restore_window_for_current_page;
 use super::state::{HasWindowChrome, WindowNavigationState};
+#[cfg(target_os = "linux")]
 use crate::i18n::gettext;
+#[cfg(target_os = "linux")]
 use crate::store::git_page::StoreGitPageState;
+#[cfg(target_os = "linux")]
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::runtime::supports_logging_features;
+#[cfg(not(target_os = "linux"))]
+use crate::support::ui::push_navigation_page_if_needed;
+#[cfg(target_os = "linux")]
 use crate::support::ui::{
     navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
 };
+#[cfg(target_os = "linux")]
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
 pub fn show_log_page(state: &WindowNavigationState) {
@@ -28,6 +36,7 @@ pub fn show_docs_page(state: &WindowNavigationState) {
     push_navigation_page_if_needed(&state.nav, &state.docs_page);
 }
 
+#[cfg(target_os = "linux")]
 pub fn show_git_busy_page(
     state: &WindowNavigationState,
     page: &NavigationPage,
@@ -41,6 +50,7 @@ pub fn show_git_busy_page(
     push_navigation_page_if_needed(&state.nav, page);
 }
 
+#[cfg(target_os = "linux")]
 pub fn finish_git_busy_page(
     window: &ApplicationWindow,
     state: &WindowNavigationState,

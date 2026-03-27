@@ -12,27 +12,28 @@ Malformed `find` or `reg` queries do not fall back to plain search.
 
 | Mode | What it searches | Example |
 | --- | --- | --- |
-| Plain text | Entry labels only | `github` |
-| `reg` | Labels plus indexed field corpus | `reg:(?i)^work/.+github$` |
-| `find` | Structured fields and search predicates | `find url contains github` |
+| Plain text | Entry labels plus visible store labels | `github` |
+| `reg` | Labels, store metadata, plus indexed field corpus | `reg:(?i)store:\s+.+/work/.+` |
+| `find` | Structured fields, store metadata, and search predicates | `find store work AND url contains github` |
 
 ## What Counts As Searchable Data
 
 ### Plain search
 
-Plain search only checks the visible label, such as:
+Plain search checks the visible row text, including the entry label and the shown store label, such as:
 
 ```text
 work/alice/github
 ```
 
-It does not search field values.
+It does not search pass-file field values.
 
 ### Regex search
 
 `reg` queries use regular expressions and match:
 
 - labels,
+- store metadata such as `store: .../work/.password-store`,
 - plus a searchable field corpus built from indexed structured fields.
 
 That means a regex can match `email: alice@example.com` even when the label itself does not contain that value.
@@ -41,6 +42,8 @@ That means a regex can match `email: alice@example.com` even when the label itse
 
 `find` queries work on structured search fields:
 
+- `store` for the visible store label,
+- `"store path"` for the full store path,
 - `username` plus its aliases `user` and `login`,
 - any other `key: value` field in the pass file,
 - the `otp` predicate,
@@ -89,6 +92,9 @@ Examples:
 
 ```text
 find user alice
+find store work
+find store is not .../personal/.password-store
+find "store path" contains /home/nick/work
 find url contains github
 find email is $username
 ```
@@ -105,6 +111,7 @@ Everything else uses the pass-file field key, case-insensitively:
 
 ```text
 find email contains example.com
+find store contains work
 find url is https://example.com
 find "security question" is "first pet"
 ```
@@ -120,6 +127,7 @@ find username=noob
 find username~=noob
 find username contains noob
 find user noob
+find store work
 ```
 
 ### Does not contain
@@ -127,6 +135,7 @@ find user noob
 ```text
 find url!~gitlab
 find url does not contain gitlab
+find store is not .../personal/.password-store
 ```
 
 ### Exact match
@@ -260,11 +269,14 @@ find:notes=='Personal OR Work \'vault\''
 github
 personal/bank
 vpn
+work
 ```
 
 ### Simple structured searches
 
 ```text
+find store work
+find store is not .../personal/.password-store
 find user alice
 find email contains example.com
 find url is https://github.com/login

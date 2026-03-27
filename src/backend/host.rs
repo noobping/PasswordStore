@@ -1,8 +1,7 @@
+#[cfg(target_os = "linux")]
+use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
-    command::{
-        ensure_success, run_host_program_output, run_host_program_with_input,
-        run_store_command_output, run_store_command_with_input,
-    },
+    command::{ensure_success, run_store_command_output, run_store_command_with_input},
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
@@ -11,12 +10,14 @@ use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::path::Path;
 use std::process::Output;
 
+#[cfg(target_os = "linux")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostGpgPrivateKeySummary {
     pub fingerprint: String,
     pub user_ids: Vec<String>,
 }
 
+#[cfg(target_os = "linux")]
 impl HostGpgPrivateKeySummary {
     pub fn title(&self) -> String {
         self.user_ids
@@ -153,6 +154,7 @@ pub(super) fn store_recipients_private_key_requiring_unlock(
     Ok(None)
 }
 
+#[cfg(target_os = "linux")]
 pub fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, String> {
     let output = run_host_program_output(
         "gpg",
@@ -171,6 +173,7 @@ pub fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, Str
     )))
 }
 
+#[cfg(target_os = "linux")]
 pub fn armored_host_gpg_private_key(fingerprint: &str) -> Result<String, String> {
     let output = run_host_program_output(
         "gpg",
@@ -188,6 +191,7 @@ pub fn armored_host_gpg_private_key(fingerprint: &str) -> Result<String, String>
     String::from_utf8(output.stdout).map_err(|err| err.to_string())
 }
 
+#[cfg(target_os = "linux")]
 pub fn import_host_gpg_private_key_bytes(bytes: &[u8]) -> Result<(), String> {
     let input = std::str::from_utf8(bytes).map_err(|err| err.to_string())?;
     let output = run_host_program_with_input(
@@ -200,6 +204,7 @@ pub fn import_host_gpg_private_key_bytes(bytes: &[u8]) -> Result<(), String> {
     ensure_success(output, "gpg --import failed").map(|_| ())
 }
 
+#[cfg(target_os = "linux")]
 pub fn delete_host_gpg_private_key(fingerprint: &str) -> Result<(), String> {
     let output = run_host_program_output(
         "gpg",
@@ -210,6 +215,7 @@ pub fn delete_host_gpg_private_key(fingerprint: &str) -> Result<(), String> {
     ensure_success(output, "gpg --delete-secret-keys failed").map(|_| ())
 }
 
+#[cfg(target_os = "linux")]
 fn parse_host_gpg_private_keys(output: &str) -> Vec<HostGpgPrivateKeySummary> {
     #[derive(Default)]
     struct PartialHostKey {

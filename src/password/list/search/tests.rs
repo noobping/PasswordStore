@@ -1,7 +1,8 @@
 use super::index::is_stale_index_batch;
 use super::query::{
     parse_search_query, row_matches_query, SearchClause, SearchComparison, SearchQuery,
-    StructuredSearchQuery, OTP_SEARCH_KEY, WEAK_PASSWORD_SEARCH_KEY,
+    StructuredSearchQuery, OTP_SEARCH_KEY, STORE_PATH_SEARCH_KEY, STORE_SEARCH_KEY,
+    WEAK_PASSWORD_SEARCH_KEY,
 };
 use super::SearchRowFieldIndexState;
 use crate::password::file::SearchablePassField;
@@ -54,6 +55,26 @@ fn indexed_fields(entries: &[(&str, &str)]) -> SearchRowFieldIndexState {
             })
             .collect(),
     )
+}
+
+fn matches_query(label: &str, fields: &SearchRowFieldIndexState, query: &SearchQuery) -> bool {
+    matches_query_in_store(
+        label,
+        ".../personal/.password-store",
+        "/tmp/personal/.password-store",
+        fields,
+        query,
+    )
+}
+
+fn matches_query_in_store(
+    label: &str,
+    store_label: &str,
+    store_path: &str,
+    fields: &SearchRowFieldIndexState,
+    query: &SearchQuery,
+) -> bool {
+    row_matches_query(label, store_label, store_path, fields, query)
 }
 
 #[test]
@@ -535,13 +556,13 @@ fn malformed_find_queries_do_not_fall_back_to_plain_search() {
 }
 
 #[test]
-fn plain_label_search_matches_only_the_label() {
-    assert!(row_matches_query(
+fn plain_queries_match_labels_but_not_pass_file_fields() {
+    assert!(matches_query(
         "work/noobping/github",
         &SearchRowFieldIndexState::Unavailable,
         &SearchQuery::Plain("github".to_string()),
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Plain("alice".to_string()),
@@ -549,30 +570,49 @@ fn plain_label_search_matches_only_the_label() {
 }
 
 #[test]
+fn plain_queries_also_match_the_visible_store_label() {
+    assert!(matches_query_in_store(
+        "work/noobping/github",
+        ".../work/.password-store",
+        "/tmp/work/.password-store",
+        &SearchRowFieldIndexState::Unavailable,
+        &SearchQuery::Plain("work".to_string()),
+    ));
+}
+
+#[test]
 fn reg_queries_match_labels_and_indexed_field_corpus() {
     let label_query = parse_search_query(r#"reg:^(?i)work/alice/.+$"#);
     let field_query = parse_search_query(r#"reg:(?i)email:\s+alice@example\.com"#);
+    let store_query = parse_search_query(r#"reg:(?i)store:\s+\.\.\./work/.+"#);
 
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/alice/github",
         &SearchRowFieldIndexState::Unavailable,
         &label_query,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/bob/github",
         &indexed_fields(&[("email", "alice@example.com")]),
         &field_query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/bob/github",
         &indexed_fields(&[("email", "bob@example.com")]),
         &field_query,
+    ));
+    assert!(matches_query_in_store(
+        "work/bob/github",
+        ".../work/.password-store",
+        "/tmp/work/.password-store",
+        &SearchRowFieldIndexState::Unavailable,
+        &store_query,
     ));
 }
 
 #[test]
 fn structured_queries_match_indexed_fields_with_case_insensitive_contains() {
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping"), ("url", "https://example.com")]),
         &SearchQuery::Structured(clause("username", SearchComparison::Contains, "noob")),
@@ -582,14 +622,79 @@ fn structured_queries_match_indexed_fields_with_case_insensitive_contains() {
 #[test]
 fn human_friendly_queries_match_indexed_fields() {
     let query = parse_search_query("find user alice and not url gitlab");
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/alice/example",
         &indexed_fields(&[("username", "alice"), ("url", "https://example.com")]),
         &query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/alice/gitlab",
         &indexed_fields(&[("username", "alice"), ("url", "https://gitlab.com")]),
+        &query,
+    ));
+}
+
+#[test]
+fn store_queries_parse_and_match_without_content_indexing() {
+    let store_query = parse_search_query("find store work");
+    let exclude_store_query = parse_search_query("find store is not .../personal/.password-store");
+    let store_path_query = parse_search_query(r#"find "store path" contains /tmp/work"#);
+
+    assert!(!store_query.requires_index());
+    assert!(!exclude_store_query.requires_index());
+    assert!(!store_path_query.requires_index());
+
+    assert!(matches_query_in_store(
+        "work/alice/example",
+        ".../work/.password-store",
+        "/tmp/work/.password-store",
+        &SearchRowFieldIndexState::Unavailable,
+        &store_query,
+    ));
+    assert!(!matches_query_in_store(
+        "personal/alice/example",
+        ".../personal/.password-store",
+        "/tmp/personal/.password-store",
+        &SearchRowFieldIndexState::Unavailable,
+        &store_query,
+    ));
+    assert!(matches_query_in_store(
+        "work/alice/example",
+        ".../work/.password-store",
+        "/tmp/work/.password-store",
+        &SearchRowFieldIndexState::Unindexed,
+        &exclude_store_query,
+    ));
+    assert!(!matches_query_in_store(
+        "personal/alice/example",
+        ".../personal/.password-store",
+        "/tmp/personal/.password-store",
+        &SearchRowFieldIndexState::Unindexed,
+        &exclude_store_query,
+    ));
+    assert!(matches_query_in_store(
+        "work/alice/example",
+        ".../work/.password-store",
+        "/tmp/work/.password-store",
+        &SearchRowFieldIndexState::Unavailable,
+        &store_path_query,
+    ));
+}
+
+#[test]
+fn store_field_references_can_compare_store_metadata() {
+    let query = SearchQuery::Structured(field_ref_clause(
+        STORE_SEARCH_KEY,
+        SearchComparison::Exact,
+        STORE_PATH_SEARCH_KEY,
+    ));
+
+    assert!(!query.requires_index());
+    assert!(!matches_query_in_store(
+        "work/alice/example",
+        ".../work/.password-store",
+        "/tmp/work/.password-store",
+        &SearchRowFieldIndexState::Unavailable,
         &query,
     ));
 }
@@ -601,27 +706,27 @@ fn regex_queries_match_case_sensitive_patterns() {
     let ignore_case = parse_search_query(r#"find user regex '(?i)^alice$'"#);
     let negative = parse_search_query("find user does not match '^Alice$'");
 
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/Alice/example",
         &indexed_fields(&[("username", "Alice")]),
         &exact_case,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/Alice/example",
         &indexed_fields(&[("username", "Alice")]),
         &wrong_case,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/Alice/example",
         &indexed_fields(&[("username", "Alice")]),
         &ignore_case,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/Alice/example",
         &indexed_fields(&[("username", "Alice")]),
         &negative,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/Bob/example",
         &indexed_fields(&[("username", "Bob")]),
         &negative,
@@ -630,17 +735,17 @@ fn regex_queries_match_case_sensitive_patterns() {
 
 #[test]
 fn weak_password_queries_match_only_rows_with_the_weak_password_flag() {
-    assert!(row_matches_query(
+    assert!(matches_query(
         "alice",
         &indexed_fields(&[(WEAK_PASSWORD_SEARCH_KEY, "Too short (6 characters)")]),
         &SearchQuery::Structured(weak_password()),
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "alice",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Structured(weak_password()),
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "alice",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Structured(not(weak_password())),
@@ -649,17 +754,17 @@ fn weak_password_queries_match_only_rows_with_the_weak_password_flag() {
 
 #[test]
 fn otp_queries_match_only_rows_with_the_otp_flag() {
-    assert!(row_matches_query(
+    assert!(matches_query(
         "alice",
         &indexed_fields(&[(OTP_SEARCH_KEY, "true")]),
         &SearchQuery::Structured(otp()),
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "alice",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Structured(otp()),
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "alice",
         &indexed_fields(&[("username", "alice")]),
         &SearchQuery::Structured(not(otp())),
@@ -669,12 +774,12 @@ fn otp_queries_match_only_rows_with_the_otp_flag() {
 #[test]
 fn exact_match_uses_full_case_insensitive_equality() {
     let query = SearchQuery::Structured(clause("username", SearchComparison::Exact, "noobping"));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping")]),
         &query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noob")]),
         &query,
@@ -688,12 +793,12 @@ fn exact_field_reference_queries_match_case_insensitively() {
         SearchComparison::Exact,
         "username",
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/alice/github",
         &indexed_fields(&[("email", "ALICE"), ("username", "alice")]),
         &query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/alice/github",
         &indexed_fields(&[("email", "alice@example.com"), ("username", "alice")]),
         &query,
@@ -707,7 +812,7 @@ fn exact_field_reference_queries_match_any_repeated_value_pair() {
         SearchComparison::Exact,
         "username",
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/shared/example",
         &indexed_fields(&[
             ("email", "alice@example.com"),
@@ -731,42 +836,42 @@ fn negative_clause_operators_match_as_expected() {
         "username",
     ));
 
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping"), ("url", "https://example.com")]),
         &exact_not,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/alice/github",
         &indexed_fields(&[("username", "alice"), ("url", "https://example.com")]),
         &exact_not,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/multi/github",
         &indexed_fields(&[("username", "alice"), ("username", "bob")]),
         &exact_not,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping"), ("url", "https://example.com")]),
         &contains_not,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/noobping/gitlab",
         &indexed_fields(&[("username", "noobping"), ("url", "https://gitlab.com")]),
         &contains_not,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/shared/example",
         &indexed_fields(&[("email", "shared"), ("username", "SHARED")]),
         &field_exact_not,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/missing/example",
         &indexed_fields(&[("email", "shared")]),
         &field_exact_not,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/different/example",
         &indexed_fields(&[("email", "shared"), ("username", "owner")]),
         &field_exact_not,
@@ -780,32 +885,32 @@ fn negated_clauses_and_groups_match_as_expected() {
     let negated_group = parse_search_query("find:!(username~=alice OR email=='a@b.com')");
     let negated_field_ref = parse_search_query("find not email is $username");
 
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping"), ("email", "c@d.com")]),
         &negated_clause,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/alice/github",
         &indexed_fields(&[("username", "alice"), ("email", "c@d.com")]),
         &negated_clause,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping"), ("email", "c@d.com")]),
         &negated_group,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/alice/github",
         &indexed_fields(&[("username", "alice"), ("email", "c@d.com")]),
         &negated_group,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/different/github",
         &indexed_fields(&[("username", "alice"), ("email", "alice@example.com")]),
         &negated_field_ref,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/same/github",
         &indexed_fields(&[("username", "shared"), ("email", "SHARED")]),
         &negated_field_ref,
@@ -814,7 +919,7 @@ fn negated_clauses_and_groups_match_as_expected() {
 
 #[test]
 fn legacy_equals_operator_still_means_contains() {
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping")]),
         &SearchQuery::Structured(clause("username", SearchComparison::Contains, "noob")),
@@ -825,17 +930,17 @@ fn legacy_equals_operator_still_means_contains() {
 fn boolean_queries_evaluate_mixed_contains_and_exact_matches() {
     let query =
         parse_search_query("find:(username=noob OR username==alice) AND email==alice@example.com");
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/noobping/github",
         &indexed_fields(&[("username", "noobping"), ("email", "alice@example.com")]),
         &query,
     ));
-    assert!(row_matches_query(
+    assert!(matches_query(
         "work/alice/github",
         &indexed_fields(&[("username", "alice"), ("email", "alice@example.com")]),
         &query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/bob/github",
         &indexed_fields(&[("username", "bob"), ("email", "alice@example.com")]),
         &query,
@@ -849,12 +954,12 @@ fn exact_field_reference_queries_do_not_match_when_either_side_is_missing() {
         SearchComparison::Exact,
         "username",
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/missing-right/github",
         &indexed_fields(&[("email", "alice@example.com")]),
         &query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/missing-left/github",
         &indexed_fields(&[("username", "alice@example.com")]),
         &query,
@@ -864,12 +969,12 @@ fn exact_field_reference_queries_do_not_match_when_either_side_is_missing() {
 #[test]
 fn unreadable_rows_do_not_match_structured_queries() {
     let query = SearchQuery::Structured(clause("username", SearchComparison::Contains, "noobping"));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/noobping/github",
         &SearchRowFieldIndexState::Unindexed,
         &query,
     ));
-    assert!(!row_matches_query(
+    assert!(!matches_query(
         "work/noobping/github",
         &SearchRowFieldIndexState::Unavailable,
         &query,

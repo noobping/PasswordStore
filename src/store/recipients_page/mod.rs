@@ -175,7 +175,7 @@ pub fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
         state.save.set_visible(false);
         set_save_button_for_password(&state.save);
         state.win.set_title(&gettext("Store keys"));
-        state.win.set_subtitle(APP_WINDOW_TITLE);
+        state.win.set_subtitle(&gettext(APP_WINDOW_TITLE));
         return;
     };
 

@@ -9,11 +9,14 @@ use self::index::{
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
+#[cfg(target_os = "linux")]
 use crate::backend::{password_entry_is_readable, read_password_entry};
 use crate::password::file::SearchablePassField;
+#[cfg(target_os = "linux")]
 use crate::password::model::{
     collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
 };
+use crate::store::labels::shortened_store_label_map;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use adw::gtk::{ListBox, ListBoxRow};
@@ -67,8 +70,10 @@ impl SearchFilterController {
     pub(super) fn matches_row(&self, row: &ListBoxRow) -> bool {
         let query = self.state.query.borrow().clone();
         let label = non_null_to_string_option(row, "label").unwrap_or_default();
+        let store_label = non_null_to_string_option(row, "store-label").unwrap_or_default();
+        let store_path = non_null_to_string_option(row, "root").unwrap_or_default();
         let fields = row_field_index_state(row);
-        row_matches_query(&label, &fields, &query)
+        row_matches_query(&label, &store_label, &store_path, &fields, &query)
     }
 
     pub(super) fn begin_reload(&self, has_store_dirs: bool) {
@@ -175,6 +180,7 @@ pub(super) fn search_controller_for_list(list: &ListBox) -> Option<SearchFilterC
     cloned_data(list, SEARCH_CONTROLLER_KEY)
 }
 
+#[cfg(target_os = "linux")]
 pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<PassEntry> {
     let query = parse_search_query(query);
     if matches!(
@@ -185,9 +191,14 @@ pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<
     }
 
     let requires_index = query.requires_index();
+    let store_labels =
+        shortened_store_label_map(&crate::preferences::Preferences::new().store_roots());
     let mut matches = Vec::new();
     for item in collect_all_password_items_with_options(CollectItemsOptions::default()) {
         let label = item.label();
+        let store_label = store_labels
+            .get(&item.store_path)
+            .map_or(item.store_path.as_str(), String::as_str);
         let fields = if requires_index {
             match read_password_entry(&item.store_path, &label) {
                 Ok(contents) => {
@@ -201,7 +212,7 @@ pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<
             SearchRowFieldIndexState::Unavailable
         };
 
-        if !row_matches_query(&label, &fields, &query) {
+        if !row_matches_query(&label, store_label, &item.store_path, &fields, &query) {
             continue;
         }
 

@@ -1,13 +1,12 @@
-use crate::backend::list_ripasso_private_keys;
-
 #[cfg(target_os = "linux")]
 use crate::backend::{
     armored_host_gpg_private_key, armored_ripasso_private_key, delete_host_gpg_private_key,
-    import_host_gpg_private_key_bytes, list_host_gpg_private_keys, remove_ripasso_private_key,
-    ripasso_private_key_requires_passphrase, store_ripasso_private_key_bytes,
-    ManagedRipassoPrivateKeyProtection,
+    import_host_gpg_private_key_bytes, list_host_gpg_private_keys, list_ripasso_private_keys,
+    remove_ripasso_private_key, ripasso_private_key_requires_passphrase,
+    store_ripasso_private_key_bytes, ManagedRipassoPrivateKeyProtection,
 };
 
+#[cfg(target_os = "linux")]
 use std::collections::HashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +51,7 @@ pub fn sync_private_keys_with_host(direction: PrivateKeySyncDirection) -> Result
     }
 }
 
+#[cfg(target_os = "linux")]
 fn app_private_key_fingerprints() -> Result<HashSet<String>, String> {
     Ok(list_ripasso_private_keys()?
         .into_iter()
@@ -67,6 +67,7 @@ fn host_private_key_fingerprints() -> Result<HashSet<String>, String> {
         .collect())
 }
 
+#[cfg(target_os = "linux")]
 fn normalized_fingerprint(fingerprint: &str) -> String {
     fingerprint.trim().to_ascii_lowercase()
 }

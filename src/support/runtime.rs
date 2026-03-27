@@ -1,11 +1,18 @@
 use crate::logging::log_info;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use std::env;
+#[cfg(target_os = "windows")]
+use std::path::{Path, PathBuf};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use std::process::Command;
 use std::sync::Once;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use std::sync::OnceLock;
+
+pub fn configure_process_environment() {
+    #[cfg(target_os = "windows")]
+    configure_windows_environment();
+}
 
 pub fn log_runtime_capabilities_once() {
     static RUNTIME_LOGGED: Once = Once::new();
@@ -20,6 +27,38 @@ pub fn log_runtime_capabilities_once() {
             feature_status(has_smartcard_permission()),
         ));
     });
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_environment() {
+    let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+    else {
+        return;
+    };
+
+    let share_dir = exe_dir.join("share");
+    if share_dir.is_dir() {
+        prepend_env_path("XDG_DATA_DIRS", &share_dir);
+    }
+
+    let schema_dir = share_dir.join("glib-2.0").join("schemas");
+    if schema_dir.is_dir() {
+        std::env::set_var("GSETTINGS_SCHEMA_DIR", schema_dir);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn prepend_env_path(name: &str, path: &Path) {
+    let mut paths = vec![PathBuf::from(path)];
+    if let Some(existing) = std::env::var_os(name) {
+        paths.extend(std::env::split_paths(&existing));
+    }
+
+    if let Ok(joined) = std::env::join_paths(paths) {
+        std::env::set_var(name, joined);
+    }
 }
 
 pub const HOST_COMMAND_FEATURES_UNSUPPORTED: &str =

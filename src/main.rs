@@ -56,6 +56,7 @@ fn main() -> ExitCode {
         }
     }
 
+    support::runtime::configure_process_environment();
     i18n::init();
     resources_register_include!("compiled.gresource").expect("Failed to register resources");
 

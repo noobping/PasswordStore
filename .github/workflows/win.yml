@@ -63,6 +63,8 @@ jobs:
           $workspace = $env:GITHUB_WORKSPACE
           Write-Host "Workspace: $workspace"
           $bundleDir = Join-Path $workspace 'bundle'
+          $mingwRoot = 'C:\tools\msys64\mingw64'
+          $mingwBin = Join-Path $mingwRoot 'bin'
           if (Test-Path $bundleDir) {
            Remove-Item $bundleDir -Recurse -Force
           }
@@ -73,15 +75,32 @@ jobs:
           }
           Write-Host "Copying exe: $exe"
           Copy-Item $exe $bundleDir -Force
-          $mingwBin = 'C:\tools\msys64\mingw64\bin'
           if (-not (Test-Path $mingwBin)) {
            Write-Error "MinGW bin dir not found: $mingwBin"
           }
           Write-Host "Copying DLLs from: $mingwBin"
           Get-ChildItem -Path $mingwBin -Filter '*.dll' |
           Copy-Item -Destination $bundleDir -Force
+
+          $icon256Dir = Join-Path $bundleDir 'share\icons\hicolor\256x256\apps'
+          $iconScalableDir = Join-Path $bundleDir 'share\icons\hicolor\scalable\apps'
+          $schemaDir = Join-Path $bundleDir 'share\glib-2.0\schemas'
+          New-Item -ItemType Directory -Force -Path $icon256Dir | Out-Null
+          New-Item -ItemType Directory -Force -Path $iconScalableDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $schemaDir | Out-Null
+
+          Copy-Item (Join-Path $workspace 'data\256x256\apps\io.github.noobping.keycord.png') $icon256Dir -Force
+          Copy-Item (Join-Path $workspace 'data\scalable\apps\io.github.noobping.keycord.svg') $iconScalableDir -Force
+          Copy-Item (Join-Path $workspace 'data\gschema.xml') (Join-Path $schemaDir 'io.github.noobping.keycord.gschema.xml') -Force
+
+          $compileSchemas = Join-Path $mingwBin 'glib-compile-schemas.exe'
+          if (-not (Test-Path $compileSchemas)) {
+            Write-Error "glib-compile-schemas not found: $compileSchemas"
+          }
+          & $compileSchemas $schemaDir
+
           Write-Host "Bundle contents:"
-          Get-ChildItem $bundleDir
+          Get-ChildItem $bundleDir -Recurse | Sort-Object FullName | Format-Table FullName, Length
           $zip = Join-Path $workspace 'keycord-windows.zip'
           if (Test-Path $zip) {
            Remove-Item $zip -Force

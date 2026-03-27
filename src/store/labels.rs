@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 pub fn shortened_store_labels(stores: &[String]) -> Vec<String> {
@@ -44,9 +45,29 @@ pub fn shortened_store_labels(stores: &[String]) -> Vec<String> {
     stores.to_vec()
 }
 
+pub fn shortened_store_label_map(stores: &[String]) -> HashMap<String, String> {
+    stores
+        .iter()
+        .cloned()
+        .zip(shortened_store_labels(stores))
+        .collect()
+}
+
+pub fn shortened_store_label_for_path(
+    store_path: &str,
+    store_labels: &HashMap<String, String>,
+) -> String {
+    store_labels
+        .get(store_path)
+        .cloned()
+        .unwrap_or_else(|| store_path.to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::shortened_store_labels;
+    use super::{
+        shortened_store_label_for_path, shortened_store_label_map, shortened_store_labels,
+    };
 
     #[test]
     fn store_labels_use_short_unique_suffixes() {
@@ -69,5 +90,24 @@ mod tests {
         let stores = vec!["/same".to_string(), "/same".to_string()];
 
         assert_eq!(shortened_store_labels(&stores), stores);
+    }
+
+    #[test]
+    fn store_label_map_uses_shortened_labels_and_falls_back_for_unknown_paths() {
+        let stores = vec![
+            "/home/nick/.password-store".to_string(),
+            "/home/nick/work/.password-store".to_string(),
+        ];
+
+        let labels = shortened_store_label_map(&stores);
+
+        assert_eq!(
+            shortened_store_label_for_path("/home/nick/work/.password-store", &labels),
+            ".../work/.password-store".to_string()
+        );
+        assert_eq!(
+            shortened_store_label_for_path("/tmp/custom-store", &labels),
+            "/tmp/custom-store".to_string()
+        );
     }
 }

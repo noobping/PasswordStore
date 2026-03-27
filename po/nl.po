@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: keycord 0.9.3\n"
-"PO-Revision-Date: 2026-03-26 16:00+0100\n"
+"PO-Revision-Date: 2026-03-27 15:30+0100\n"
 "Last-Translator: Codex\n"
 "Language-Team: none\n"
 "Language: nl\n"
@@ -3457,7 +3457,7 @@ msgstr ""
 msgid "Branch"
 msgstr "Branch"
 
-#: data/window.ui:99 src/window/navigation/chrome.rs:8
+#: data/metainfo.xml:6 data/window.ui:99 src/window/navigation/chrome.rs:8
 msgid "Browse and edit password stores"
 msgstr "Wachtwoordopslagen bekijken en bewerken"
 
@@ -4870,10 +4870,10 @@ msgstr "Sleutelwachtwoord"
 msgid "Keyboard Shortcuts"
 msgstr "Sneltoetsen"
 
-#: data/window.ui:98 src/backend/integrated/git.rs:337
+#: data/metainfo.xml:5 data/window.ui:98 src/backend/integrated/git.rs:337
 #: src/window/navigation/chrome.rs:7
 msgid "Keycord"
-msgstr "Keycord"
+msgstr "Sleutelkoord"
 
 #: src/window/host_access.rs:64
 msgid ""
@@ -6192,8 +6192,8 @@ msgid "Total characters"
 msgstr "Totaal aantal tekens"
 
 #: src/main.rs:152
-msgid "Translated by AI; reviewed by Nick."
-msgstr "Vertaald door AI; beoordeeld door Nick."
+msgid "Translated by Nick."
+msgstr "Vertaald door Nick."
 
 #: src/window/tools.rs:44
 msgid "Try a different field filter."
@@ -6455,7 +6455,7 @@ msgstr ""
 
 #: data/window.ui:1559
 msgid "_About Keycord"
-msgstr "_Over Keycord"
+msgstr "_Over Sleutelkoord"
 
 #: data/window.ui:1547
 msgid "_Documentation"
@@ -7210,3 +7210,158 @@ msgstr "{}.svg"
 #: src/preferences/storage.rs:25 src/preferences/storage.rs:26
 msgid "{}.toml"
 msgstr "{}.toml"
+
+#: data/metainfo.xml:31
+msgid ""
+"Works with password stores that use the standard pass layout, so existing "
+"data can stay in place and remain compatible with established workflows."
+msgstr ""
+"Werkt met wachtwoordopslagen die de standaard pass-indeling gebruiken, zodat "
+"bestaande gegevens kunnen blijven staan en compatibel blijven met "
+"gevestigde werkwijzen."
+
+#: data/metainfo.xml:33
+msgid "Generate passwords and copy usernames, secrets, and one-time codes"
+msgstr "Genereer wachtwoorden en kopieer gebruikersnamen, geheimen en eenmalige codes"
+
+#: data/metainfo.xml:34
+msgid "Search across multiple password stores"
+msgstr "Zoek in meerdere wachtwoordopslagen"
+
+#: data/metainfo.xml:35
+msgid "Identify outdated accounts and weak passwords"
+msgstr "Identificeer verouderde accounts en zwakke wachtwoorden"
+
+#: data/metainfo.xml:36
+msgid "Work with both structured fields and raw pass file text"
+msgstr "Werk met zowel gestructureerde velden als onbewerkte pass-bestandstekst"
+
+#: data/metainfo.xml:37
+msgid "Optionally sync with Git"
+msgstr "Synchroniseer optioneel met Git"
+
+#: data/metainfo.xml:38
+msgid "Optionally sync with the system keyring"
+msgstr "Synchroniseer optioneel met de systeemsleutelbos"
+
+#: data/metainfo.xml:39
+msgid "Optionally use layered encryption"
+msgstr "Gebruik optioneel gelaagde versleuteling"
+
+#: data/metainfo.xml:40
+msgid "Use password-protected or hardware-backed OpenPGP private keys"
+msgstr ""
+"Gebruik met een wachtwoord beveiligde of door hardware ondersteunde "
+"OpenPGP-privésleutels"
+
+#: data/metainfo.xml:41
+msgid "Manage recipients and private keys"
+msgstr "Beheer ontvangers en privésleutels"
+
+#: data/metainfo.xml:42
+msgid "Sign commits and manage Git remotes"
+msgstr "Onderteken commits en beheer Git-remotes"
+
+#: data/metainfo.xml:57 docs/getting-started.md
+msgid "Password list"
+msgstr "Wachtwoordlijst"
+
+#: data/metainfo.xml:61
+msgid "Unlock a pass file"
+msgstr "Ontgrendel een pass-bestand"
+
+#: data/metainfo.xml:65
+msgid "Edit a password entry"
+msgstr "Bewerk een wachtwoordinvoer"
+
+#: data/metainfo.xml:69
+msgid "Manage stores"
+msgstr "Beheer wachtwoordopslagen"
+
+#: data/metainfo.xml:73
+msgid "Manage private keys"
+msgstr "Beheer privésleutels"
+
+#: data/metainfo.xml:81
+msgid "Add documentation"
+msgstr "Voeg documentatie toe"
+
+#: data/metainfo.xml:82
+msgid "Add search profider"
+msgstr "Voeg zoekprovider toe"
+
+#: data/metainfo.xml:83
+msgid "You can now open pass files in a new window"
+msgstr "Je kunt pass-bestanden nu in een nieuw venster openen"
+
+#: data/metainfo.xml:90
+msgid "Add OpenPGP hardware key support for private keys"
+msgstr "Voeg OpenPGP-hardwaresleutelondersteuning voor privésleutels toe"
+
+#: data/metainfo.xml:91
+msgid "Expand the password editor with cleanup actions"
+msgstr "Breid de wachtwoordeditor uit met opschoonacties"
+
+#: data/metainfo.xml:92
+msgid "You can now use the field values as variables in search"
+msgstr "Je kunt veldwaarden nu als variabelen in zoeken gebruiken"
+
+#: data/metainfo.xml:99
+msgid "Add the option to copy the logs"
+msgstr "Voeg de optie toe om de logboeken te kopiëren"
+
+#: data/metainfo.xml:100
+msgid "Fix optional Git synchronization"
+msgstr "Herstel optionele Git-synchronisatie"
+
+#: data/metainfo.xml:101
+msgid "Changed the app icon to a keycord"
+msgstr "App-pictogram gewijzigd naar een sleutelkoord"
+
+#: data/metainfo.xml:108
+msgid "Show disabled options instead of hiding them"
+msgstr "Toon uitgeschakelde opties in plaats van ze te verbergen"
+
+#: data/metainfo.xml:109
+msgid "Add tools page"
+msgstr "Voeg een hulpmiddelenpagina toe"
+
+#: data/metainfo.xml:110
+msgid "Add advanced search"
+msgstr "Voeg geavanceerd zoeken toe"
+
+#: data/metainfo.xml:111
+msgid "Add optional GPG synchronization"
+msgstr "Voeg optionele GPG-synchronisatie toe"
+
+#: data/metainfo.xml:112
+msgid "You can now manage Git remotes"
+msgstr "Je kunt nu Git-remotes beheren"
+
+#: data/metainfo.xml:118
+msgid "You can now generate new private keys."
+msgstr "Je kunt nu nieuwe privésleutels genereren."
+
+#: data/metainfo.xml:123
+msgid "First release"
+msgstr "Eerste release"
+
+#: data/metainfo.xml:140
+msgid "password"
+msgstr "wachtwoord"
+
+#: data/metainfo.xml:141
+msgid "pass"
+msgstr "pass"
+
+#: data/metainfo.xml:142
+msgid "gpg"
+msgstr "gpg"
+
+#: data/metainfo.xml:143
+msgid "otp"
+msgstr "otp"
+
+#: data/metainfo.xml:144
+msgid "totp"
+msgstr "totp"

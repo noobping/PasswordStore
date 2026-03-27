@@ -15,6 +15,7 @@ use crate::password::model::{
     collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
 };
 use crate::preferences::Preferences;
+use crate::store::labels::shortened_store_label_map;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::{cloned_data, set_cloned_data};
@@ -26,6 +27,8 @@ use adw::gtk::{
 };
 use adw::prelude::*;
 use adw::ToastOverlay;
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(target_os = "linux")]
@@ -169,6 +172,7 @@ pub fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
+    let store_labels = Rc::new(shortened_store_label_map(&settings.store_roots()));
     if let Some(controller) = search_controller_for_list(list) {
         controller.begin_reload(has_store_dirs);
     }
@@ -233,6 +237,7 @@ pub fn load_passwords_async(
                 &list_clone,
                 &overlay_clone,
                 items,
+                store_labels.clone(),
                 render_generation,
                 {
                     let list = list_clone.clone();
@@ -293,6 +298,7 @@ fn render_password_rows_in_batches(
     list: &ListBox,
     overlay: &ToastOverlay,
     items: Vec<(PassEntry, bool)>,
+    store_labels: Rc<HashMap<String, String>>,
     generation: u64,
     on_complete: impl FnOnce() + 'static,
 ) {
@@ -303,6 +309,7 @@ fn render_password_rows_in_batches(
 
     let list = list.clone();
     let overlay = overlay.clone();
+    let store_labels = store_labels.clone();
     let mut items = items.into_iter();
     let mut on_complete = Some(on_complete);
     glib::idle_add_local(move || {
@@ -318,7 +325,7 @@ fn render_password_rows_in_batches(
                 return glib::ControlFlow::Break;
             };
 
-            append_password_row(&list, item, readable, &overlay);
+            append_password_row(&list, item, readable, &overlay, store_labels.clone());
         }
 
         glib::ControlFlow::Continue

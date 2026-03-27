@@ -10,7 +10,7 @@ use crate::password::undo::{
     UndoError,
 };
 use crate::preferences::Preferences;
-use crate::store::labels::shortened_store_labels;
+use crate::store::labels::{shortened_store_label_for_path, shortened_store_labels};
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, set_cloned_data, set_string_data};
 use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
@@ -23,6 +23,7 @@ use adw::gtk::{
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow, Toast, ToastOverlay};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -67,6 +68,7 @@ struct PasswordRowState {
     row: ListBoxRow,
     stack: Stack,
     action_row: ActionRow,
+    store_labels: Rc<HashMap<String, String>>,
     text_edit_row: EntryRow,
     store_edit_row: ActionRow,
     store_dropdown: DropDown,
@@ -79,6 +81,7 @@ pub(super) fn append_password_row(
     item: PassEntry,
     readable: bool,
     overlay: &ToastOverlay,
+    store_labels: Rc<HashMap<String, String>>,
 ) {
     let row = ListBoxRow::new();
     row.set_activatable(readable);
@@ -87,6 +90,7 @@ pub(super) fn append_password_row(
     let action_row = ActionRow::builder()
         .title(item.basename.clone())
         .subtitle(item.relative_path.clone())
+        .subtitle_lines(1)
         .activatable(readable)
         .build();
     let unreadable_icon = build_unreadable_password_icon(!readable);
@@ -131,6 +135,7 @@ pub(super) fn append_password_row(
         row: row.clone(),
         stack,
         action_row,
+        store_labels,
         text_edit_row,
         store_edit_row,
         store_dropdown,
@@ -518,11 +523,16 @@ fn focused_password_row(list: &ListBox) -> Option<ListBoxRow> {
 
 fn sync_password_row_display(state: &PasswordRowState) {
     let item = state.item.borrow();
+    let store_label = shortened_store_label_for_path(&item.store_path, &state.store_labels);
     state.action_row.set_title(&item.basename);
-    state.action_row.set_subtitle(&item.relative_path);
+    state
+        .action_row
+        .set_subtitle(&password_row_subtitle(&item.relative_path, &store_label));
+    state.action_row.set_tooltip_text(None);
 
     set_string_data(&state.row, "root", item.store_path.clone());
     set_string_data(&state.row, "label", item.label());
+    set_string_data(&state.row, "store-label", store_label);
     set_string_data(
         &state.row,
         "openable",
@@ -532,6 +542,14 @@ fn sync_password_row_display(state: &PasswordRowState) {
             "false".to_string()
         },
     );
+}
+
+fn password_row_subtitle(relative_path: &str, store_label: &str) -> String {
+    if relative_path.is_empty() {
+        store_label.to_string()
+    } else {
+        format!("{store_label}/{relative_path}")
+    }
 }
 
 fn build_unreadable_password_icon(visible: bool) -> Image {
@@ -645,8 +663,8 @@ fn push_row_undo_action(
 #[cfg(test)]
 mod tests {
     use super::{
-        entry_parent_directory, moved_file_label, password_row_menu_entries, renamed_file_label,
-        OPEN_IN_NEW_WINDOW_LABEL,
+        entry_parent_directory, moved_file_label, password_row_menu_entries, password_row_subtitle,
+        renamed_file_label, OPEN_IN_NEW_WINDOW_LABEL,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::PassEntry;
@@ -679,6 +697,18 @@ mod tests {
             Some("personal/github".to_string())
         );
         assert_eq!(moved_file_label(&entry, ""), Some("github".to_string()));
+    }
+
+    #[test]
+    fn password_row_subtitle_combines_store_and_relative_path() {
+        assert_eq!(
+            password_row_subtitle("work/alice/", ".../work/.password-store"),
+            ".../work/.password-store/work/alice/".to_string()
+        );
+        assert_eq!(
+            password_row_subtitle("", ".../work/.password-store"),
+            ".../work/.password-store".to_string()
+        );
     }
 
     #[test]

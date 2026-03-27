@@ -96,6 +96,8 @@ fn write_translation_catalogs(po_dir: &Path, docs_dir: &Path) {
     let mut catalog = Catalog::new();
     collect_ui_strings(Path::new("data/window.ui"), &mut catalog);
     collect_ui_strings(Path::new("data/shortcuts.ui"), &mut catalog);
+    collect_metainfo_strings(Path::new("data/metainfo.xml"), &mut catalog);
+    collect_desktop_strings(Path::new("keycord.desktop"), &mut catalog);
     collect_rust_strings(Path::new("src"), &mut catalog);
     collect_docs_strings(docs_dir, &mut catalog);
 
@@ -157,6 +159,173 @@ fn collect_ui_strings(path: &Path, catalog: &mut Catalog) {
 
         search_start = text_end;
     }
+}
+
+fn collect_metainfo_strings(path: &Path, catalog: &mut Catalog) {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
+    let bytes = source.as_bytes();
+    let mut stack = Vec::new();
+    let mut index = 0usize;
+    let mut text_start = None;
+
+    while index < bytes.len() {
+        if bytes[index] != b'<' {
+            text_start.get_or_insert(index);
+            index += 1;
+            continue;
+        }
+
+        if let Some(start) = text_start.take() {
+            add_metainfo_text(catalog, &source, path, &stack, start, index);
+        }
+
+        if source[index..].starts_with("<!--") {
+            index = source[index + 4..]
+                .find("-->")
+                .map(|offset| index + 4 + offset + 3)
+                .unwrap_or(bytes.len());
+            continue;
+        }
+
+        if source[index..].starts_with("<![CDATA[") {
+            let data_start = index + 9;
+            let data_end = source[data_start..]
+                .find("]]>")
+                .map(|offset| data_start + offset)
+                .unwrap_or(bytes.len());
+            add_metainfo_text(catalog, &source, path, &stack, data_start, data_end);
+            index = data_end.saturating_add(3).min(bytes.len());
+            continue;
+        }
+
+        if source[index..].starts_with("<?") {
+            index = source[index + 2..]
+                .find("?>")
+                .map(|offset| index + 2 + offset + 2)
+                .unwrap_or(bytes.len());
+            continue;
+        }
+
+        let tag_end = find_xml_tag_end(bytes, index).unwrap_or(bytes.len().saturating_sub(1));
+        let tag = &source[index + 1..tag_end];
+        let trimmed = tag.trim();
+
+        if trimmed.starts_with('/') {
+            stack.pop();
+            index = tag_end + 1;
+            continue;
+        }
+
+        let tag_name = xml_tag_name(trimmed);
+        let inherited_skip = stack.last().copied().unwrap_or(false);
+        let skip =
+            inherited_skip || tag_has_translate_no(trimmed) || matches!(tag_name, "translation");
+        let self_closing = trimmed.ends_with('/');
+
+        if !self_closing {
+            stack.push(skip);
+        }
+
+        index = tag_end + 1;
+    }
+
+    if let Some(start) = text_start {
+        add_metainfo_text(catalog, &source, path, &stack, start, bytes.len());
+    }
+}
+
+fn collect_desktop_strings(path: &Path, catalog: &mut Catalog) {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
+
+    for (line_index, raw_line) in source.lines().enumerate() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+
+        if key.contains('[') {
+            continue;
+        }
+
+        if !matches!(key, "Name" | "GenericName" | "Comment" | "Keywords") {
+            continue;
+        }
+
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+
+        add_catalog_message(
+            catalog,
+            value,
+            format!("{}:{}", path.display(), line_index + 1),
+        );
+    }
+}
+
+fn add_metainfo_text(
+    catalog: &mut Catalog,
+    source: &str,
+    path: &Path,
+    stack: &[bool],
+    start: usize,
+    end: usize,
+) {
+    if stack.last().copied().unwrap_or(false) {
+        return;
+    }
+
+    let text = normalize_xml_text(&decode_xml_entities(&source[start..end]));
+    if text.is_empty() {
+        return;
+    }
+
+    add_catalog_message(
+        catalog,
+        &text,
+        format!("{}:{}", path.display(), line_number(source, start)),
+    );
+}
+
+fn normalize_xml_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn find_xml_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut index = start + 1;
+    let mut quote = None;
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\'' | b'"' if quote.is_none() => quote = Some(bytes[index]),
+            byte if Some(byte) == quote => quote = None,
+            b'>' if quote.is_none() => return Some(index),
+            _ => {}
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn xml_tag_name(tag: &str) -> &str {
+    let trimmed = tag.trim_start();
+    let start = trimmed.strip_prefix('/').unwrap_or(trimmed);
+    let end = start
+        .find(|ch: char| ch.is_whitespace() || ch == '/')
+        .unwrap_or(start.len());
+    &start[..end]
+}
+
+fn tag_has_translate_no(tag: &str) -> bool {
+    tag.contains("translate=\"no\"") || tag.contains("translate='no'")
 }
 
 fn collect_rust_strings(dir: &Path, catalog: &mut Catalog) {
@@ -347,6 +516,13 @@ fn push_unescaped_rust_char(bytes: &[u8], index: &mut usize, value: &mut String)
 fn looks_translatable_rust_string(value: &str) -> bool {
     let trimmed = value.trim();
     if trimmed.is_empty() {
+        return false;
+    }
+
+    if trimmed.starts_with("[Desktop Entry]")
+        || trimmed.starts_with("[Shell Search Provider]")
+        || trimmed.starts_with("[D-BUS Service]")
+    {
         return false;
     }
 

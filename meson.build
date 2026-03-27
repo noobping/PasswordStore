@@ -121,6 +121,26 @@ install_data(
 )
 
 install_data(
+  'data/scalable/apps/io.github.noobping.keycord-beta.svg',
+  install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', 'scalable', 'apps'),
+)
+
+install_data(
+  'data/256x256/apps/io.github.noobping.keycord.png',
+  install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', '256x256', 'apps'),
+)
+
+install_data(
+  'data/256x256/apps/io.github.noobping.keycord-beta.png',
+  install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', '256x256', 'apps'),
+)
+
+install_subdir(
+  'data/symbolic/apps',
+  install_dir: join_paths(get_option('datadir'), 'icons', 'hicolor', 'symbolic'),
+)
+
+install_data(
   'keycord.desktop',
   rename: 'io.github.noobping.keycord.desktop',
   install_dir: join_paths(get_option('datadir'), 'applications'),

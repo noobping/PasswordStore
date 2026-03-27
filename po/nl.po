@@ -6733,18 +6733,6 @@ msgstr "`gpg --list-secret-keys` mislukt"
 msgid "gpg secret-key import did not provide stdin"
 msgstr "de import van de geheime GPG-sleutel leverde geen stdin op"
 
-#: src/main.rs:60
-msgid "has git-symbolic? {}"
-msgstr "heeft git-symbolic? {}"
-
-#: src/main.rs:63
-msgid "has io.github.noobping.keycord? {}"
-msgstr "heeft io.github.noobping.keycord? {}"
-
-#: src/main.rs:61
-msgid "has left-symbolic? {}"
-msgstr "heeft left-symbolic? {}"
-
 #: src/preferences/mod.rs:46
 msgid "host command"
 msgstr "hostopdracht"

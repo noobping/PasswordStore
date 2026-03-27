@@ -52,6 +52,7 @@ jobs:
             echo "Cargo.lock missing; generating..."
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+            sed -i '/\[target.\x27cfg(target_os = "windows")\x27.*ependencies\]/,/^$/d' Cargo.toml
             cargo generate-lockfile
           fi
 

@@ -53,7 +53,7 @@ fn main() {
     fs::create_dir_all(po_dir).expect("Failed to create po directory");
 
     let mut icons = Vec::new();
-    collect_svg_icons(data_dir, data_dir, &mut icons);
+    collect_icon_assets(data_dir, data_dir, &mut icons);
     icons.sort();
     write_resources_xml(data_dir, &icons);
 
@@ -1170,14 +1170,20 @@ fn find_locked_package_version(lockfile: &str, package: &str) -> Option<String> 
     None
 }
 
-fn collect_svg_icons(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
+fn collect_icon_assets(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
     for entry in fs::read_dir(dir).expect("Failed to read resource directory") {
         let entry = entry.expect("Failed to read resource directory entry");
         let path = entry.path();
 
         if path.is_dir() {
-            collect_svg_icons(&path, data_dir, icons);
-        } else if path.extension().and_then(|value| value.to_str()) == Some("svg") {
+            collect_icon_assets(&path, data_dir, icons);
+        } else if matches!(
+            path.extension().and_then(|value| value.to_str()),
+            Some("png" | "svg")
+        ) && path
+            .components()
+            .any(|component| component.as_os_str() == "apps")
+        {
             let rel = path
                 .strip_prefix(data_dir)
                 .expect("Resource path should stay within data/");

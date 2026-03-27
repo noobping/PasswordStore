@@ -64,6 +64,10 @@ impl PasswordGenerationSettings {
             pools.push(SYMBOL_CHARS);
         }
 
+        if pools.is_empty() {
+            pools.push(LOWERCASE_CHARS);
+        }
+
         pools
     }
 }
@@ -172,7 +176,8 @@ pub fn generate_password(settings: &PasswordGenerationSettings) -> String {
     while chars.len() < settings.length as usize {
         let pool = enabled_pools
             .choose(&mut rng)
-            .expect("normalized settings always enable at least one pool");
+            .copied()
+            .unwrap_or(LOWERCASE_CHARS);
         chars.push(random_char(pool, &mut rng));
     }
 
@@ -187,7 +192,7 @@ fn append_random_chars(output: &mut Vec<char>, pool: &[u8], count: usize, rng: &
 }
 
 fn random_char(pool: &[u8], rng: &mut impl Rng) -> char {
-    *pool.choose(rng).expect("character pools are never empty") as char
+    pool.choose(rng).copied().unwrap_or(b'a') as char
 }
 
 fn set_spin_value(spin: &SpinButton, value: u32) {
@@ -203,8 +208,8 @@ fn set_spin_value(spin: &SpinButton, value: u32) {
 #[cfg(test)]
 mod tests {
     use super::{
-        generate_password, PasswordGenerationSettings, LOWERCASE_CHARS, NUMBER_CHARS, SYMBOL_CHARS,
-        UPPERCASE_CHARS,
+        generate_password, random_char, PasswordGenerationSettings, LOWERCASE_CHARS, NUMBER_CHARS,
+        SYMBOL_CHARS, UPPERCASE_CHARS,
     };
 
     fn count_pool_chars(password: &str, pool: &[u8]) -> usize {
@@ -227,6 +232,19 @@ mod tests {
 
         assert_eq!(settings.min_lowercase, 1);
         assert_eq!(settings.length, 2);
+    }
+
+    #[test]
+    fn enabled_pools_fall_back_to_lowercase_when_everything_is_zero() {
+        let settings = PasswordGenerationSettings {
+            length: 1,
+            min_lowercase: 0,
+            min_uppercase: 0,
+            min_numbers: 0,
+            min_symbols: 0,
+        };
+
+        assert_eq!(settings.enabled_pools(), vec![LOWERCASE_CHARS]);
     }
 
     #[test]
@@ -260,6 +278,13 @@ mod tests {
         assert!(count_pool_chars(&password, UPPERCASE_CHARS) >= 3);
         assert!(count_pool_chars(&password, NUMBER_CHARS) >= 5);
         assert_eq!(count_pool_chars(&password, SYMBOL_CHARS), 0);
+    }
+
+    #[test]
+    fn random_char_falls_back_to_ascii_when_pool_is_empty() {
+        let mut rng = rand::rng();
+
+        assert_eq!(random_char(&[], &mut rng), 'a');
     }
 
     #[test]

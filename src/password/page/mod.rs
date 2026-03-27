@@ -526,13 +526,15 @@ pub fn show_password_list_page(
 }
 
 pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
-    let has_opened_pass_file = get_opened_pass_file(&state.nav).is_some();
-    if !should_retry_open_password_entry(password_page_display(state), has_opened_pass_file) {
+    let pass_file = get_opened_pass_file(&state.nav);
+    if !should_retry_open_password_entry(password_page_display(state), pass_file.is_some()) {
         return false;
     }
 
-    let pass_file = get_opened_pass_file(&state.nav)
-        .expect("opened pass file should exist when retry is needed");
+    let Some(pass_file) = pass_file else {
+        log_error("Retry-open was requested without an opened pass file.");
+        return false;
+    };
     open_password_entry_page(state, pass_file, false);
     true
 }

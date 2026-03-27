@@ -6,19 +6,23 @@ use adw::gtk::Widget;
 use adw::prelude::*;
 
 pub fn set_opened_pass_file(widget: &impl IsA<Widget>, pass_file: OpenPassFile) {
-    window_session_for_widget(widget).set_opened_pass_file(pass_file);
+    if let Some(session) = window_session_for_widget(widget) {
+        session.set_opened_pass_file(pass_file);
+    }
 }
 
 pub fn get_opened_pass_file(widget: &impl IsA<Widget>) -> Option<OpenPassFile> {
-    window_session_for_widget(widget).get_opened_pass_file()
+    window_session_for_widget(widget).and_then(|session| session.get_opened_pass_file())
 }
 
 pub fn clear_opened_pass_file(widget: &impl IsA<Widget>) {
-    window_session_for_widget(widget).clear_opened_pass_file();
+    if let Some(session) = window_session_for_widget(widget) {
+        session.clear_opened_pass_file();
+    }
 }
 
 pub fn is_opened_pass_file(widget: &impl IsA<Widget>, pass_file: &OpenPassFile) -> bool {
-    window_session_for_widget(widget).is_opened_pass_file(pass_file)
+    window_session_for_widget(widget).is_some_and(|session| session.is_opened_pass_file(pass_file))
 }
 
 pub fn refresh_opened_pass_file_from_contents(
@@ -26,7 +30,8 @@ pub fn refresh_opened_pass_file_from_contents(
     pass_file: &OpenPassFile,
     contents: &str,
 ) -> Option<OpenPassFile> {
-    window_session_for_widget(widget).refresh_opened_pass_file_from_contents(pass_file, contents)
+    window_session_for_widget(widget)
+        .and_then(|session| session.refresh_opened_pass_file_from_contents(pass_file, contents))
 }
 
 #[cfg(test)]

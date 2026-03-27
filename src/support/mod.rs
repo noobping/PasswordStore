@@ -1,8 +1,10 @@
 pub mod actions;
 pub mod background;
+pub mod file_picker;
 pub mod git;
 pub mod object_data;
 pub mod pass_import;
 pub mod runtime;
+pub mod startup;
 pub mod ui;
 pub mod validation;

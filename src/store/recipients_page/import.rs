@@ -13,9 +13,10 @@ use crate::private_key::dialog::{
 };
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
+use crate::support::file_picker::choose_file_bytes;
 use crate::support::ui::connect_row_action;
 use adw::gio;
-use adw::gtk::{gdk::Display, FileChooserAction, FileChooserNative, ResponseType};
+use adw::gtk::gdk::Display;
 use adw::prelude::*;
 use adw::Toast;
 use std::rc::Rc;
@@ -205,48 +206,18 @@ fn open_hardware_public_key_picker(
     hardware: ManagedRipassoHardwareKey,
     title: &str,
 ) {
-    let dialog = FileChooserNative::new(
-        Some(&gettext(title)),
-        Some(&state.window),
-        FileChooserAction::Open,
-        Some(&gettext("Import")),
-        Some(&gettext("Cancel")),
-    );
     let state_for_response = state.clone();
-    dialog.connect_response(move |dialog, response| {
-        if response != ResponseType::Accept {
-            dialog.hide();
-            return;
-        }
-
-        let Some(file) = dialog.file() else {
-            dialog.hide();
-            return;
-        };
-
-        match file.load_bytes(None::<&gio::Cancellable>) {
-            Ok((bytes, _)) => {
-                import_hardware_key_bytes(
-                    &state_for_response,
-                    bytes.as_ref().to_vec(),
-                    hardware.clone(),
-                );
-            }
-            Err(err) => {
-                log_error(format!(
-                    "Failed to read the selected hardware public key file: {err}"
-                ));
-                state_for_response
-                    .platform
-                    .overlay
-                    .add_toast(Toast::new(&gettext("Couldn't read that file.")));
-            }
-        }
-
-        dialog.hide();
-    });
-
-    dialog.show();
+    choose_file_bytes(
+        &state.window,
+        title,
+        "Import",
+        &state.platform.overlay,
+        "Failed to read the selected hardware public key file",
+        "Couldn't read that file.",
+        move |bytes| {
+            import_hardware_key_bytes(&state_for_response, bytes, hardware.clone());
+        },
+    );
 }
 
 fn add_connected_hardware_key(state: &StoreRecipientsPageState) {
@@ -277,44 +248,18 @@ fn import_hardware_key_from_file(state: &StoreRecipientsPageState) {
 }
 
 fn open_private_key_picker(state: &StoreRecipientsPageState) {
-    let dialog = FileChooserNative::new(
-        Some(&gettext("Import private key")),
-        Some(&state.window),
-        FileChooserAction::Open,
-        Some(&gettext("Import")),
-        Some(&gettext("Cancel")),
-    );
     let state_for_response = state.clone();
-    dialog.connect_response(move |dialog, response| {
-        if response != ResponseType::Accept {
-            dialog.hide();
-            return;
-        }
-
-        let Some(file) = dialog.file() else {
-            dialog.hide();
-            return;
-        };
-
-        match file.load_bytes(None::<&gio::Cancellable>) {
-            Ok((bytes, _)) => {
-                import_private_key_bytes(&state_for_response, bytes.as_ref().to_vec());
-            }
-            Err(err) => {
-                log_error(format!(
-                    "Failed to read the selected private key file: {err}"
-                ));
-                state_for_response
-                    .platform
-                    .overlay
-                    .add_toast(Toast::new(&gettext("Couldn't read that file.")));
-            }
-        }
-
-        dialog.hide();
-    });
-
-    dialog.show();
+    choose_file_bytes(
+        &state.window,
+        "Import private key",
+        "Import",
+        &state.platform.overlay,
+        "Failed to read the selected private key file",
+        "Couldn't read that file.",
+        move |bytes| {
+            import_private_key_bytes(&state_for_response, bytes);
+        },
+    );
 }
 
 fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {

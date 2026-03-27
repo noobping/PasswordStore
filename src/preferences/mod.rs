@@ -16,7 +16,7 @@ use self::restricted::default_store_dirs;
 use self::storage::{load_file_prefs, save_file_prefs, PreferenceFile};
 use crate::support::runtime::supports_host_command_features;
 
-const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nemail:url:";
+const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nemail:\nurl:";
 const DEFAULT_WINDOW_WIDTH: i32 = 850;
 const DEFAULT_WINDOW_HEIGHT: i32 = 600;
 const APP_ID: &str = env!("APP_ID");

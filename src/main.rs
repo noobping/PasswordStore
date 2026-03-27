@@ -24,10 +24,12 @@ mod support;
 mod window;
 
 use crate::i18n::gettext;
-use crate::logging::{run_command_output, CommandLogOptions};
+use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
 use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
+use crate::support::runtime::handle_unsupported_host_command_invocation;
+use crate::support::startup::{fatal_startup_error, show_startup_error_dialog};
 use crate::window::navigation::APP_WINDOW_TITLE;
 
 use adw::gio::SimpleAction;
@@ -49,21 +51,29 @@ const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts.ui");
 
 fn main() -> ExitCode {
+    let args = std::env::args_os().collect::<Vec<_>>();
+    if handle_unsupported_host_command_invocation(&args) {
+        return 126.into();
+    }
+
     #[cfg(target_os = "linux")]
-    {
-        let args = std::env::args_os().collect::<Vec<_>>();
-        if search_provider::is_search_provider_command(&args) {
-            return search_provider::run();
-        }
+    if search_provider::is_search_provider_command(&args) {
+        return search_provider::run();
     }
 
     i18n::init();
-    resources_register_include!("compiled.gresource").expect("Failed to register resources");
+    if let Err(err) = resources_register_include!("compiled.gresource") {
+        return fatal_startup_error(APP_WINDOW_TITLE, "Failed to register resources.", err);
+    }
 
     // Initialize libadwaita
-    adw::init().expect("Failed to initialize libadwaita");
+    if let Err(err) = adw::init() {
+        return fatal_startup_error(APP_WINDOW_TITLE, "Failed to initialize libadwaita.", err);
+    }
 
-    let display = Display::default().expect("No display available");
+    let Some(display) = Display::default() else {
+        return fatal_startup_error(APP_WINDOW_TITLE, "No display available.", "missing display");
+    };
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);
     #[cfg(debug_assertions)]
@@ -113,8 +123,14 @@ fn main() -> ExitCode {
     app.connect_activate(|app| {
         let query = take_string_data(app, "query");
         let pass_file = take_data(app, "open-pass-file");
-        let win = window::create_main_window(app, query, pass_file);
-        win.present();
+        match window::create_main_window(app, query, pass_file) {
+            Ok(win) => win.present(),
+            Err(err) => {
+                let _ =
+                    fatal_startup_error(APP_WINDOW_TITLE, "Failed to build the main window.", err);
+                app.quit();
+            }
+        }
     });
 
     app.run()
@@ -158,21 +174,31 @@ fn register_app_actions(app: &Application) {
 
     let shortcuts_action = SimpleAction::new("shortcuts", None);
     let app_for_shortcuts = app.clone();
-    shortcuts_action.connect_activate(move |_, _| {
-        let shortcuts = build_shortcuts_window();
-        if let Some(active_window) = app_for_shortcuts.active_window() {
-            shortcuts.set_transient_for(Some(&active_window));
+    shortcuts_action.connect_activate(move |_, _| match build_shortcuts_window() {
+        Ok(shortcuts) => {
+            if let Some(active_window) = app_for_shortcuts.active_window() {
+                shortcuts.set_transient_for(Some(&active_window));
+            }
+            shortcuts.present();
         }
-        shortcuts.present();
+        Err(err) => {
+            log_error(format!(
+                "Failed to build the shortcuts window.\nerror: {err}"
+            ));
+            show_startup_error_dialog(
+                APP_WINDOW_TITLE,
+                &gettext("Couldn't open the shortcuts window."),
+            );
+        }
     });
     app.add_action(&shortcuts_action);
 }
 
-fn build_shortcuts_window() -> ShortcutsWindow {
+fn build_shortcuts_window() -> Result<ShortcutsWindow, String> {
     let builder = Builder::from_string(SHORTCUTS_UI);
     builder
         .object("shortcuts_window")
-        .expect("Failed to build shortcuts window")
+        .ok_or_else(|| "Failed to build shortcuts window.".to_string())
 }
 
 fn build_about_dialog() -> adw::AboutDialog {

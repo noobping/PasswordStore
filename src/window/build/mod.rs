@@ -336,9 +336,9 @@ pub fn create_main_window(
     app: &Application,
     startup_query: Option<String>,
     initial_pass_file: Option<OpenPassFile>,
-) -> ApplicationWindow {
+) -> Result<ApplicationWindow, String> {
     let builder = Builder::from_string(UI_SRC);
-    let widgets = WindowWidgets::load(&builder);
+    let widgets = WindowWidgets::load(&builder)?;
     widgets.window.set_application(Some(app));
     initialize_window_session(&widgets.window);
     log_runtime_capabilities_once();
@@ -484,5 +484,5 @@ pub fn create_main_window(
         open_password_entry_page(&password_list_state, initial_pass_file, true);
     }
 
-    widgets.window
+    Ok(widgets.window)
 }

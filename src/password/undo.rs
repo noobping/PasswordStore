@@ -106,11 +106,13 @@ pub fn unavailable_undo_message(action: &UndoAction) -> Option<&str> {
 }
 
 pub fn push_undo_action(widget: &impl IsA<Widget>, action: UndoAction) {
-    window_session_for_widget(widget).push_undo_action(action);
+    if let Some(session) = window_session_for_widget(widget) {
+        session.push_undo_action(action);
+    }
 }
 
 pub fn pop_undo_action(widget: &impl IsA<Widget>) -> Option<UndoAction> {
-    window_session_for_widget(widget).pop_undo_action()
+    window_session_for_widget(widget).and_then(|session| session.pop_undo_action())
 }
 
 #[cfg(test)]

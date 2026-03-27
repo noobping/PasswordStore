@@ -236,6 +236,10 @@ fn collect_metainfo_strings(path: &Path, catalog: &mut Catalog) {
 }
 
 fn collect_desktop_strings(path: &Path, catalog: &mut Catalog) {
+    if !path.is_file() {
+        return;
+    }
+
     let source = fs::read_to_string(path)
         .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
 

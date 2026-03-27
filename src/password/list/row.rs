@@ -603,8 +603,13 @@ fn open_entry_in_new_window(state: &PasswordRowState, overlay: &ToastOverlay) {
     };
 
     let pass_file = OpenPassFile::new(state.item.borrow().clone());
-    let new_window = create_main_window(&app, None, Some(pass_file));
-    new_window.present();
+    match create_main_window(&app, None, Some(pass_file)) {
+        Ok(new_window) => new_window.present(),
+        Err(err) => {
+            log_error(format!("Couldn't build a new window.\nerror: {err}"));
+            overlay.add_toast(Toast::new(&gettext("Couldn't open a new window.")));
+        }
+    }
 }
 
 fn entry_parent_directory(entry: &PassEntry) -> PathBuf {

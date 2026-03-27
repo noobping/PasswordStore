@@ -21,17 +21,17 @@ use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::actions::register_window_action;
+use crate::support::file_picker::choose_local_folder_path;
 use crate::support::ui::{
     append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
     flat_icon_button,
 };
-use adw::gtk::{FileChooserAction, FileChooserNative, ListBox, ResponseType};
+use adw::gtk::ListBox;
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::rc::Rc;
 
 fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
     if stores.iter().any(|store| store == new_store) {
@@ -61,20 +61,6 @@ fn initial_recipients_for_store_creation(
     }
 }
 
-fn selected_local_folder(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
-    let file = dialog.file()?;
-    let path = file.path().or_else(|| {
-        log_error(
-            "The selected folder is not available as a local path. Choose a local folder."
-                .to_string(),
-        );
-        overlay.add_toast(Toast::new(&gettext("Choose a local folder.")));
-        None
-    })?;
-
-    Some(path.to_string_lossy().to_string())
-}
-
 fn open_store_folder_picker(
     window: &ApplicationWindow,
     title: &str,
@@ -83,28 +69,14 @@ fn open_store_folder_picker(
     overlay: &ToastOverlay,
     on_selected: impl Fn(String) + 'static,
 ) {
-    let dialog = FileChooserNative::new(
-        Some(&gettext(title)),
-        Some(window),
-        FileChooserAction::SelectFolder,
-        Some(&gettext(accept_label)),
-        Some(&gettext("Cancel")),
+    choose_local_folder_path(
+        window,
+        title,
+        accept_label,
+        create_folders,
+        overlay,
+        on_selected,
     );
-    dialog.set_create_folders(create_folders);
-
-    let overlay = overlay.clone();
-    let on_selected = Rc::new(on_selected);
-    dialog.connect_response(move |dialog, response| {
-        if response == ResponseType::Accept {
-            if let Some(store) = selected_local_folder(dialog, &overlay) {
-                on_selected(store);
-            }
-        }
-
-        dialog.hide();
-    });
-
-    dialog.show();
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

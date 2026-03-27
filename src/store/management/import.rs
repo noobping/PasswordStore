@@ -3,6 +3,7 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::background::spawn_result_task;
+use crate::support::file_picker::{choose_local_file_path, choose_local_folder_path};
 use crate::support::object_data::{
     cloned_data, non_null_to_string_option, set_cloned_data, set_string_data,
 };
@@ -16,10 +17,7 @@ use crate::support::ui::{
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
 };
-use adw::gtk::{
-    Button, FileChooserAction, FileChooserNative, Image, ListBox, ResponseType, ScrolledWindow,
-    Stack,
-};
+use adw::gtk::{Button, Image, ListBox, ScrolledWindow, Stack};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, ComboRow, EntryRow, NavigationPage, StatusPage, Toast,
@@ -125,20 +123,6 @@ impl PassImportRowState {
             &self.source_state.borrow(),
         );
     }
-}
-
-fn selected_local_path(dialog: &FileChooserNative, overlay: &ToastOverlay) -> Option<String> {
-    let file = dialog.file()?;
-    let path = file.path().or_else(|| {
-        log_error(
-            "The selected file is not available as a local path. Choose a local file or folder."
-                .to_string(),
-        );
-        overlay.add_toast(Toast::new(&gettext("Choose a local file or folder.")));
-        None
-    })?;
-
-    Some(path.to_string_lossy().to_string())
 }
 
 const fn pass_import_row_enabled(
@@ -336,52 +320,37 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
     {
         let state = state.clone();
         state.source_file_button.connect_clicked(move |_| {
-            let dialog = FileChooserNative::new(
-                Some(&gettext("Choose import source file")),
-                Some(&state.window),
-                FileChooserAction::Open,
-                Some(&gettext("Select")),
-                Some(&gettext("Cancel")),
-            );
-            let overlay = state.overlay.clone();
             let source_path = state.source_path.clone();
             let source_path_row = state.source_path_row.clone();
-            dialog.connect_response(move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = selected_local_path(dialog, &overlay) {
-                        *source_path.borrow_mut() = Some(path.clone());
-                        source_path_row.set_subtitle(&path);
-                    }
-                }
-                dialog.hide();
-            });
-            dialog.show();
+            choose_local_file_path(
+                &state.window,
+                "Choose import source file",
+                "Select",
+                &state.overlay,
+                move |path| {
+                    *source_path.borrow_mut() = Some(path.clone());
+                    source_path_row.set_subtitle(&path);
+                },
+            );
         });
     }
 
     {
         let state = state.clone();
         state.source_folder_button.connect_clicked(move |_| {
-            let dialog = FileChooserNative::new(
-                Some(&gettext("Choose import source folder")),
-                Some(&state.window),
-                FileChooserAction::SelectFolder,
-                Some(&gettext("Select")),
-                Some(&gettext("Cancel")),
-            );
-            let overlay = state.overlay.clone();
             let source_path = state.source_path.clone();
             let source_path_row = state.source_path_row.clone();
-            dialog.connect_response(move |dialog, response| {
-                if response == ResponseType::Accept {
-                    if let Some(path) = selected_local_path(dialog, &overlay) {
-                        *source_path.borrow_mut() = Some(path.clone());
-                        source_path_row.set_subtitle(&path);
-                    }
-                }
-                dialog.hide();
-            });
-            dialog.show();
+            choose_local_folder_path(
+                &state.window,
+                "Choose import source folder",
+                "Select",
+                false,
+                &state.overlay,
+                move |path| {
+                    *source_path.borrow_mut() = Some(path.clone());
+                    source_path_row.set_subtitle(&path);
+                },
+            );
         });
     }
 

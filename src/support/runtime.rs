@@ -1,6 +1,7 @@
 use crate::logging::log_info;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use std::env;
+use std::ffi::OsString;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use std::process::Command;
 use std::sync::Once;
@@ -24,6 +25,7 @@ pub fn log_runtime_capabilities_once() {
 
 pub const HOST_COMMAND_FEATURES_UNSUPPORTED: &str =
     "Host command features are only available on Linux.";
+pub const UNSUPPORTED_HOST_COMMAND_ARG: &str = "--unsupported-host-command";
 
 const fn feature_status(enabled: bool) -> &'static str {
     if enabled {
@@ -51,6 +53,18 @@ pub fn require_host_command_features() -> Result<(), String> {
     } else {
         Err(HOST_COMMAND_FEATURES_UNSUPPORTED.to_string())
     }
+}
+
+pub fn handle_unsupported_host_command_invocation(args: &[OsString]) -> bool {
+    if !args
+        .get(1)
+        .is_some_and(|arg| arg == UNSUPPORTED_HOST_COMMAND_ARG)
+    {
+        return false;
+    }
+
+    eprintln!("{HOST_COMMAND_FEATURES_UNSUPPORTED}");
+    true
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
@@ -110,25 +124,50 @@ fn flatpak_host_spawn_probe() -> bool {
         .is_ok_and(|status| status.success())
 }
 
-#[cfg(all(test, target_os = "linux", feature = "flatpak"))]
+#[cfg(test)]
 mod tests {
+    use super::{
+        handle_unsupported_host_command_invocation, OsString, UNSUPPORTED_HOST_COMMAND_ARG,
+    };
+
+    #[test]
+    fn unsupported_host_command_flag_is_detected() {
+        assert!(handle_unsupported_host_command_invocation(&[
+            OsString::from("keycord"),
+            OsString::from(UNSUPPORTED_HOST_COMMAND_ARG),
+        ]));
+    }
+
+    #[test]
+    fn regular_arguments_do_not_trigger_the_unsupported_host_command_handler() {
+        assert!(!handle_unsupported_host_command_invocation(&[
+            OsString::from("keycord"),
+            OsString::from("--query"),
+        ]));
+    }
+
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
     use super::{detect_host_permission_with, detect_smartcard_permission_with};
 
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
     #[test]
     fn host_permission_is_available_when_probe_succeeds() {
         assert!(detect_host_permission_with(|| true));
     }
 
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
     #[test]
     fn host_permission_is_missing_when_probe_fails() {
         assert!(!detect_host_permission_with(|| false));
     }
 
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
     #[test]
     fn smartcard_permission_is_available_when_probe_succeeds() {
         assert!(detect_smartcard_permission_with(|| true));
     }
 
+    #[cfg(all(target_os = "linux", feature = "flatpak"))]
     #[test]
     fn smartcard_permission_is_missing_when_probe_fails() {
         assert!(!detect_smartcard_permission_with(|| false));

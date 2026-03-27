@@ -1,3 +1,4 @@
+use crate::logging::log_error;
 use crate::password::model::OpenPassFile;
 use crate::password::undo::UndoAction;
 use crate::support::object_data::{cloned_data, set_cloned_data};
@@ -78,17 +79,23 @@ pub fn initialize_window_session(window: &ApplicationWindow) -> WindowSessionSta
     session
 }
 
-pub fn window_session(window: &ApplicationWindow) -> WindowSessionState {
+pub fn window_session(window: &ApplicationWindow) -> Option<WindowSessionState> {
     cloned_data(window, WINDOW_SESSION_STATE_KEY)
-        .expect("window session should be initialized before use")
 }
 
-pub fn window_session_for_widget(widget: &impl IsA<Widget>) -> WindowSessionState {
+pub fn window_session_for_widget(widget: &impl IsA<Widget>) -> Option<WindowSessionState> {
     let window = widget
         .root()
-        .and_then(|root| root.downcast::<ApplicationWindow>().ok())
-        .expect("window session requires the widget to belong to an application window");
-    window_session(&window)
+        .and_then(|root| root.downcast::<ApplicationWindow>().ok());
+    let Some(window) = window else {
+        log_error("Widget was not attached to an application window when reading window session.");
+        return None;
+    };
+    let session = window_session(&window);
+    if session.is_none() {
+        log_error("Window session was not initialized before use.");
+    }
+    session
 }
 
 #[cfg(test)]

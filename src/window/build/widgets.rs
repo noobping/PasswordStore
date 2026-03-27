@@ -140,259 +140,169 @@ impl WindowWidgets {
         clippy::too_many_lines,
         reason = "This is a flat builder-to-widget registry; splitting it further would add indirection without reducing logic."
     )]
-    pub(in crate::window) fn load(builder: &Builder) -> Self {
-        Self {
-            window: required_object(builder, "main_window"),
-            back_button: required_object(builder, "back_button"),
-            add_button: required_object(builder, "add_button"),
-            find_button: required_object(builder, "find_button"),
-            git_button: required_object(builder, "git_button"),
-            store_button: required_object(builder, "store_button"),
-            window_title: required_object(builder, "window_title"),
-            save_button: required_object(builder, "save_button"),
-            toast_overlay: required_object(builder, "toast_overlay"),
-            settings_page: required_object(builder, "settings_page"),
-            tools_page: required_object(builder, "tools_page"),
-            tools_list: required_object(builder, "tools_list"),
-            tools_logs_list: required_object(builder, "tools_logs_list"),
-            docs_page: required_object(builder, "docs_page"),
-            docs_search_entry: required_object(builder, "docs_search_entry"),
-            docs_list: required_object(builder, "docs_list"),
-            docs_detail_page: required_object(builder, "docs_detail_page"),
-            docs_detail_scrolled: required_object(builder, "docs_detail_scrolled"),
-            docs_detail_box: required_object(builder, "docs_detail_box"),
-            tools_field_values_page: required_object(builder, "tools_field_values_page"),
-            tools_field_values_search_entry: required_object(
-                builder,
-                "tools_field_values_search_entry",
-            ),
-            tools_field_values_list: required_object(builder, "tools_field_values_list"),
-            tools_value_values_page: required_object(builder, "tools_value_values_page"),
-            tools_value_values_search_entry: required_object(
-                builder,
-                "tools_value_values_search_entry",
-            ),
-            tools_value_values_list: required_object(builder, "tools_value_values_list"),
-            tools_weak_passwords_page: required_object(builder, "tools_weak_passwords_page"),
-            tools_weak_passwords_search_entry: required_object(
-                builder,
-                "tools_weak_passwords_search_entry",
-            ),
-            tools_weak_passwords_list: required_object(builder, "tools_weak_passwords_list"),
-            store_import_page: required_object(builder, "store_import_page"),
-            store_import_stack: required_object(builder, "store_import_stack"),
-            store_import_form: required_object(builder, "store_import_form"),
-            store_import_loading: required_object(builder, "store_import_loading"),
-            store_import_store_dropdown: required_object(builder, "store_import_store_dropdown"),
-            store_import_source_dropdown: required_object(builder, "store_import_source_dropdown"),
-            store_import_source_path_row: required_object(builder, "store_import_source_path_row"),
-            store_import_source_file_button: required_object(
-                builder,
-                "store_import_source_file_button",
-            ),
-            store_import_source_folder_button: required_object(
-                builder,
-                "store_import_source_folder_button",
-            ),
-            store_import_source_clear_button: required_object(
-                builder,
-                "store_import_source_clear_button",
-            ),
-            store_import_target_path_row: required_object(builder, "store_import_target_path_row"),
-            store_import_button: required_object(builder, "store_import_button"),
-            store_recipients_page: required_object(builder, "store_recipients_page"),
-            store_recipients_host_gpg_warning_group: required_object(
-                builder,
-                "store_recipients_host_gpg_warning_group",
-            ),
-            store_recipients_host_gpg_warning_row: required_object(
-                builder,
-                "store_recipients_host_gpg_warning_row",
-            ),
-            store_recipients_list: required_object(builder, "store_recipients_list"),
-            store_recipients_add_group: required_object(builder, "store_recipients_add_group"),
-            store_recipients_add_list: required_object(builder, "store_recipients_add_list"),
-            store_recipients_create_group: required_object(
-                builder,
-                "store_recipients_create_group",
-            ),
-            store_recipients_options_group: required_object(
-                builder,
-                "store_recipients_options_group",
-            ),
-            store_recipients_git_group: required_object(builder, "store_recipients_git_group"),
-            store_recipients_git_list: required_object(builder, "store_recipients_git_list"),
-            store_recipients_add_hardware_key_row: required_object(
-                builder,
-                "store_recipients_add_hardware_key_row",
-            ),
-            store_recipients_import_hardware_key_row: required_object(
-                builder,
-                "store_recipients_import_hardware_key_row",
-            ),
-            store_recipients_import_clipboard_row: required_object(
-                builder,
-                "store_recipients_import_clipboard_row",
-            ),
-            store_recipients_import_file_row: required_object(
-                builder,
-                "store_recipients_import_file_row",
-            ),
-            store_recipients_generate_key_row: required_object(
-                builder,
-                "store_recipients_generate_key_row",
-            ),
-            store_recipients_require_all_row: required_object(
-                builder,
-                "store_recipients_require_all_row",
-            ),
-            store_recipients_require_all_check: required_object(
-                builder,
-                "store_recipients_require_all_check",
-            ),
-            store_git_page: required_object(builder, "store_git_page"),
-            store_git_remotes_list: required_object(builder, "store_git_remotes_list"),
-            store_git_actions_list: required_object(builder, "store_git_actions_list"),
-            store_git_status_list: required_object(builder, "store_git_status_list"),
-            private_key_generation_page: required_object(builder, "private_key_generation_page"),
-            private_key_generation_stack: required_object(builder, "private_key_generation_stack"),
-            private_key_generation_form: required_object(builder, "private_key_generation_form"),
-            private_key_generation_loading: required_object(
-                builder,
-                "private_key_generation_loading",
-            ),
-            private_key_generation_name_row: required_object(
-                builder,
-                "private_key_generation_name_row",
-            ),
-            private_key_generation_email_row: required_object(
-                builder,
-                "private_key_generation_email_row",
-            ),
-            private_key_generation_password_row: required_object(
-                builder,
-                "private_key_generation_password_row",
-            ),
-            private_key_generation_confirm_row: required_object(
-                builder,
-                "private_key_generation_confirm_row",
-            ),
-            log_page: required_object(builder, "log_page"),
-            new_pass_file_template_view: required_object(builder, "new_pass_file_template_view"),
-            clear_empty_fields_before_save_row: required_object(
-                builder,
-                "clear_empty_fields_before_save_row",
-            ),
-            clear_empty_fields_before_save_check: required_object(
-                builder,
-                "clear_empty_fields_before_save_check",
-            ),
-            preferences_username_folder_check: required_object(
-                builder,
-                "preferences_username_folder_check",
-            ),
-            preferences_username_filename_check: required_object(
-                builder,
-                "preferences_username_filename_check",
-            ),
-            password_stores: required_object(builder, "password_stores"),
-            password_store_actions: required_object(builder, "password_store_actions"),
-            navigation_view: required_object(builder, "navigation_view"),
-            search_entry: required_object(builder, "search_entry"),
-            password_list_stack: required_object(builder, "password_list_stack"),
-            password_list_status: required_object(builder, "password_list_status"),
-            password_list_spinner: required_object(builder, "password_list_spinner"),
-            password_list_scrolled: required_object(builder, "password_list_scrolled"),
-            list: required_object(builder, "list"),
-            text_page: required_object(builder, "text_page"),
-            raw_text_page: required_object(builder, "raw_text_page"),
-            password_status: required_object(builder, "password_status"),
-            password_entry: required_object(builder, "password_entry"),
-            password_generator_settings_button: required_object(
-                builder,
-                "password_generator_settings_button",
-            ),
-            password_generator_settings_revealer: required_object(
-                builder,
-                "password_generator_settings_revealer",
-            ),
-            password_generator_length_spin: required_object(
-                builder,
-                "password_generator_length_spin",
-            ),
-            password_generator_min_lowercase_spin: required_object(
-                builder,
-                "password_generator_min_lowercase_spin",
-            ),
-            password_generator_min_uppercase_spin: required_object(
-                builder,
-                "password_generator_min_uppercase_spin",
-            ),
-            password_generator_min_numbers_spin: required_object(
-                builder,
-                "password_generator_min_numbers_spin",
-            ),
-            password_generator_min_symbols_spin: required_object(
-                builder,
-                "password_generator_min_symbols_spin",
-            ),
-            username_entry: required_object(builder, "username_entry"),
-            otp_entry: required_object(builder, "otp_entry"),
-            add_field_row: required_object(builder, "add_field_row"),
-            apply_template_button: required_object(builder, "apply_template_button"),
-            clean_pass_file_button: required_object(builder, "clean_pass_file_button"),
-            add_otp_button: required_object(builder, "add_otp_button"),
-            copy_password_button: required_object(builder, "copy_password_button"),
-            copy_username_button: required_object(builder, "copy_username_button"),
-            copy_otp_button: required_object(builder, "copy_otp_button"),
-            text_view: required_object(builder, "text_view"),
-            dynamic_fields_box: required_object(builder, "dynamic_fields_box"),
-            open_raw_button: required_object(builder, "open_raw_button"),
-            preferences_password_generator_length_spin: required_object(
-                builder,
-                "preferences_password_generator_length_spin",
-            ),
-            preferences_password_generator_min_lowercase_spin: required_object(
-                builder,
-                "preferences_password_generator_min_lowercase_spin",
-            ),
-            preferences_password_generator_min_uppercase_spin: required_object(
-                builder,
-                "preferences_password_generator_min_uppercase_spin",
-            ),
-            preferences_password_generator_min_numbers_spin: required_object(
-                builder,
-                "preferences_password_generator_min_numbers_spin",
-            ),
-            preferences_password_generator_min_symbols_spin: required_object(
-                builder,
-                "preferences_password_generator_min_symbols_spin",
-            ),
-            backend_preferences: required_object(builder, "backend_preferences"),
-            host_access_preferences_group: required_object(
-                builder,
-                "host_access_preferences_group",
-            ),
-            backend_row: required_object(builder, "backend_row"),
-            pass_command_row: required_object(builder, "pass_command_row"),
-            sync_private_keys_with_host_row: required_object(
-                builder,
-                "sync_private_keys_with_host_row",
-            ),
-            sync_private_keys_with_host_check: required_object(
-                builder,
-                "sync_private_keys_with_host_check",
-            ),
-            git_busy_page: required_object(builder, "git_busy_page"),
-            git_busy_status: required_object(builder, "git_busy_status"),
-            git_busy_show_logs_button: required_object(builder, "git_busy_show_logs_button"),
-            log_view: required_object(builder, "log_view"),
+    pub(in crate::window) fn load(builder: &Builder) -> Result<Self, String> {
+        macro_rules! required {
+            ($id:literal) => {
+                required_object(builder, $id)?
+            };
         }
+
+        Ok(Self {
+            window: required!("main_window"),
+            back_button: required!("back_button"),
+            add_button: required!("add_button"),
+            find_button: required!("find_button"),
+            git_button: required!("git_button"),
+            store_button: required!("store_button"),
+            window_title: required!("window_title"),
+            save_button: required!("save_button"),
+            toast_overlay: required!("toast_overlay"),
+            settings_page: required!("settings_page"),
+            tools_page: required!("tools_page"),
+            tools_list: required!("tools_list"),
+            tools_logs_list: required!("tools_logs_list"),
+            docs_page: required!("docs_page"),
+            docs_search_entry: required!("docs_search_entry"),
+            docs_list: required!("docs_list"),
+            docs_detail_page: required!("docs_detail_page"),
+            docs_detail_scrolled: required!("docs_detail_scrolled"),
+            docs_detail_box: required!("docs_detail_box"),
+            tools_field_values_page: required!("tools_field_values_page"),
+            tools_field_values_search_entry: required!("tools_field_values_search_entry"),
+            tools_field_values_list: required!("tools_field_values_list"),
+            tools_value_values_page: required!("tools_value_values_page"),
+            tools_value_values_search_entry: required!("tools_value_values_search_entry"),
+            tools_value_values_list: required!("tools_value_values_list"),
+            tools_weak_passwords_page: required!("tools_weak_passwords_page"),
+            tools_weak_passwords_search_entry: required!("tools_weak_passwords_search_entry"),
+            tools_weak_passwords_list: required!("tools_weak_passwords_list"),
+            store_import_page: required!("store_import_page"),
+            store_import_stack: required!("store_import_stack"),
+            store_import_form: required!("store_import_form"),
+            store_import_loading: required!("store_import_loading"),
+            store_import_store_dropdown: required!("store_import_store_dropdown"),
+            store_import_source_dropdown: required!("store_import_source_dropdown"),
+            store_import_source_path_row: required!("store_import_source_path_row"),
+            store_import_source_file_button: required!("store_import_source_file_button"),
+            store_import_source_folder_button: required!("store_import_source_folder_button"),
+            store_import_source_clear_button: required!("store_import_source_clear_button"),
+            store_import_target_path_row: required!("store_import_target_path_row"),
+            store_import_button: required!("store_import_button"),
+            store_recipients_page: required!("store_recipients_page"),
+            store_recipients_host_gpg_warning_group: required!(
+                "store_recipients_host_gpg_warning_group"
+            ),
+            store_recipients_host_gpg_warning_row: required!(
+                "store_recipients_host_gpg_warning_row"
+            ),
+            store_recipients_list: required!("store_recipients_list"),
+            store_recipients_add_group: required!("store_recipients_add_group"),
+            store_recipients_add_list: required!("store_recipients_add_list"),
+            store_recipients_create_group: required!("store_recipients_create_group"),
+            store_recipients_options_group: required!("store_recipients_options_group"),
+            store_recipients_git_group: required!("store_recipients_git_group"),
+            store_recipients_git_list: required!("store_recipients_git_list"),
+            store_recipients_add_hardware_key_row: required!(
+                "store_recipients_add_hardware_key_row"
+            ),
+            store_recipients_import_hardware_key_row: required!(
+                "store_recipients_import_hardware_key_row"
+            ),
+            store_recipients_import_clipboard_row: required!(
+                "store_recipients_import_clipboard_row"
+            ),
+            store_recipients_import_file_row: required!("store_recipients_import_file_row"),
+            store_recipients_generate_key_row: required!("store_recipients_generate_key_row"),
+            store_recipients_require_all_row: required!("store_recipients_require_all_row"),
+            store_recipients_require_all_check: required!("store_recipients_require_all_check"),
+            store_git_page: required!("store_git_page"),
+            store_git_remotes_list: required!("store_git_remotes_list"),
+            store_git_actions_list: required!("store_git_actions_list"),
+            store_git_status_list: required!("store_git_status_list"),
+            private_key_generation_page: required!("private_key_generation_page"),
+            private_key_generation_stack: required!("private_key_generation_stack"),
+            private_key_generation_form: required!("private_key_generation_form"),
+            private_key_generation_loading: required!("private_key_generation_loading"),
+            private_key_generation_name_row: required!("private_key_generation_name_row"),
+            private_key_generation_email_row: required!("private_key_generation_email_row"),
+            private_key_generation_password_row: required!("private_key_generation_password_row"),
+            private_key_generation_confirm_row: required!("private_key_generation_confirm_row"),
+            log_page: required!("log_page"),
+            new_pass_file_template_view: required!("new_pass_file_template_view"),
+            clear_empty_fields_before_save_row: required!("clear_empty_fields_before_save_row"),
+            clear_empty_fields_before_save_check: required!("clear_empty_fields_before_save_check"),
+            preferences_username_folder_check: required!("preferences_username_folder_check"),
+            preferences_username_filename_check: required!("preferences_username_filename_check"),
+            password_stores: required!("password_stores"),
+            password_store_actions: required!("password_store_actions"),
+            navigation_view: required!("navigation_view"),
+            search_entry: required!("search_entry"),
+            password_list_stack: required!("password_list_stack"),
+            password_list_status: required!("password_list_status"),
+            password_list_spinner: required!("password_list_spinner"),
+            password_list_scrolled: required!("password_list_scrolled"),
+            list: required!("list"),
+            text_page: required!("text_page"),
+            raw_text_page: required!("raw_text_page"),
+            password_status: required!("password_status"),
+            password_entry: required!("password_entry"),
+            password_generator_settings_button: required!("password_generator_settings_button"),
+            password_generator_settings_revealer: required!("password_generator_settings_revealer"),
+            password_generator_length_spin: required!("password_generator_length_spin"),
+            password_generator_min_lowercase_spin: required!(
+                "password_generator_min_lowercase_spin"
+            ),
+            password_generator_min_uppercase_spin: required!(
+                "password_generator_min_uppercase_spin"
+            ),
+            password_generator_min_numbers_spin: required!("password_generator_min_numbers_spin"),
+            password_generator_min_symbols_spin: required!("password_generator_min_symbols_spin"),
+            username_entry: required!("username_entry"),
+            otp_entry: required!("otp_entry"),
+            add_field_row: required!("add_field_row"),
+            apply_template_button: required!("apply_template_button"),
+            clean_pass_file_button: required!("clean_pass_file_button"),
+            add_otp_button: required!("add_otp_button"),
+            copy_password_button: required!("copy_password_button"),
+            copy_username_button: required!("copy_username_button"),
+            copy_otp_button: required!("copy_otp_button"),
+            text_view: required!("text_view"),
+            dynamic_fields_box: required!("dynamic_fields_box"),
+            open_raw_button: required!("open_raw_button"),
+            preferences_password_generator_length_spin: required!(
+                "preferences_password_generator_length_spin"
+            ),
+            preferences_password_generator_min_lowercase_spin: required!(
+                "preferences_password_generator_min_lowercase_spin"
+            ),
+            preferences_password_generator_min_uppercase_spin: required!(
+                "preferences_password_generator_min_uppercase_spin"
+            ),
+            preferences_password_generator_min_numbers_spin: required!(
+                "preferences_password_generator_min_numbers_spin"
+            ),
+            preferences_password_generator_min_symbols_spin: required!(
+                "preferences_password_generator_min_symbols_spin"
+            ),
+            backend_preferences: required!("backend_preferences"),
+            host_access_preferences_group: required!("host_access_preferences_group"),
+            backend_row: required!("backend_row"),
+            pass_command_row: required!("pass_command_row"),
+            sync_private_keys_with_host_row: required!("sync_private_keys_with_host_row"),
+            sync_private_keys_with_host_check: required!("sync_private_keys_with_host_check"),
+            git_busy_page: required!("git_busy_page"),
+            git_busy_status: required!("git_busy_status"),
+            git_busy_show_logs_button: required!("git_busy_show_logs_button"),
+            log_view: required!("log_view"),
+        })
     }
 }
 
-pub(super) fn required_object<T: IsA<Object> + Clone + 'static>(builder: &Builder, id: &str) -> T {
+pub(super) fn required_object<T: IsA<Object> + Clone + 'static>(
+    builder: &Builder,
+    id: &str,
+) -> Result<T, String> {
     builder
         .object(id)
-        .unwrap_or_else(|| panic!("Failed to get {id}"))
+        .ok_or_else(|| format!("Failed to get {id}"))
 }

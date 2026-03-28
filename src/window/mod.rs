@@ -11,6 +11,7 @@ mod tools;
 
 pub use self::build::create_main_window;
 pub use self::git::clone_store_repository;
+pub(crate) use self::host_access::append_optional_host_access_row;
 
 #[cfg(test)]
 mod tests {

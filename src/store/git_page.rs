@@ -14,6 +14,7 @@ use crate::support::ui::{
     dim_label_icon, flat_icon_button_with_tooltip, navigation_stack_contains_page,
     push_navigation_page_if_needed, reveal_navigation_page, visible_navigation_page_is,
 };
+use crate::window::append_optional_host_access_row;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::{Align, Box as GtkBox, Button, Image, Label, ListBox, Orientation};
@@ -695,7 +696,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
 
             let add_state = state.clone();
             let store_for_add = store.clone();
-            append_action_row_with_button(
+            let add_row = append_action_row_with_button(
                 &state.actions_list,
                 "Add remote",
                 "Add a Git remote for this store.",
@@ -724,6 +725,10 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     );
                 },
             );
+            add_row.set_sensitive(has_host_permission());
+            add_row.set_activatable(has_host_permission());
+
+            append_optional_host_access_row(&state.status_list, &state.overlay);
 
             let sync_state = state.clone();
             let store_for_sync = store.clone();

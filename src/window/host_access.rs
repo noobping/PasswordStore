@@ -76,6 +76,13 @@ pub fn append_optional_host_access_group_row(group: &PreferencesGroup, overlay: 
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
+pub fn append_optional_host_access_row(list: &ListBox, overlay: &ToastOverlay) {
+    if let Some(row) = build_optional_host_access_row(overlay) {
+        list.prepend(&row);
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
 pub fn append_optional_smartcard_access_row(
     list: &ListBox,
     overlay: &ToastOverlay,
@@ -116,3 +123,6 @@ pub fn append_optional_host_access_group_row(
 ) {
     group.set_visible(false);
 }
+
+#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+pub fn append_optional_host_access_row(_list: &adw::gtk::ListBox, _overlay: &adw::ToastOverlay) {}

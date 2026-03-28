@@ -3,6 +3,7 @@ use super::field_values::{
     unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
 };
 use super::{tool_browser_flow_is_visible, tool_rows_enabled};
+use crate::i18n::gettext;
 use crate::password::file::SearchablePassField;
 use std::collections::BTreeMap;
 
@@ -99,10 +100,22 @@ fn exact_field_queries_escape_quotes_and_backslashes() {
 
 #[test]
 fn count_subtitles_pluralize() {
-    assert_eq!(unique_values_subtitle(1), "1 unique value");
-    assert_eq!(unique_values_subtitle(2), "2 unique values");
-    assert_eq!(matching_items_subtitle(1), "1 matching item");
-    assert_eq!(matching_items_subtitle(3), "3 matching items");
+    assert_eq!(
+        unique_values_subtitle(1),
+        gettext("{count} unique value").replace("{count}", "1")
+    );
+    assert_eq!(
+        unique_values_subtitle(2),
+        gettext("{count} unique values").replace("{count}", "2")
+    );
+    assert_eq!(
+        matching_items_subtitle(1),
+        gettext("{count} matching item").replace("{count}", "1")
+    );
+    assert_eq!(
+        matching_items_subtitle(3),
+        gettext("{count} matching items").replace("{count}", "3")
+    );
 }
 
 #[test]

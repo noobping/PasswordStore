@@ -880,13 +880,14 @@ mod tests {
         remote_dialog_error_message, remote_name_exists, remote_url_exists, store_git_row_state,
         suggested_remote_name_from_url, StoreGitHead, StoreGitRepositoryStatus,
     };
+    use crate::i18n::gettext;
     use crate::support::git::GitRemote;
 
     #[test]
     fn git_row_is_disabled_when_git_state_cannot_be_inspected() {
         let state = store_git_row_state(Err("boom".to_string()));
 
-        assert_eq!(state.subtitle, "Couldn't inspect Git remotes.");
+        assert_eq!(state.subtitle, gettext("Couldn't inspect Git remotes."));
         assert!(!state.enabled);
     }
 

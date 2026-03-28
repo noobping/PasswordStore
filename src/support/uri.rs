@@ -1,6 +1,9 @@
 #[cfg(any(target_os = "windows", test))]
 use adw::gio;
-use adw::prelude::{DisplayExt, FileExt};
+#[cfg(not(target_os = "windows"))]
+use adw::prelude::DisplayExt;
+#[cfg(any(target_os = "windows", test))]
+use adw::prelude::FileExt;
 
 #[cfg(target_os = "windows")]
 use winsafe::{self as w, co, prelude::*};

@@ -193,9 +193,13 @@ jobs:
         run: |
           $candle = (Get-Command candle.exe -ErrorAction Stop).Source
           $light  = (Get-Command light.exe  -ErrorAction Stop).Source
+          $license = Join-Path $env:GITHUB_WORKSPACE 'data\license.rtf'
 
           Write-Host "Using candle: $candle"
           Write-Host "Using light : $light"
+          if (-not (Test-Path $license)) {
+            throw "License file not found: $license"
+          }
 
           $ver = "${{ env.LATEST_TAG }}" -replace '^v',''
 
@@ -207,6 +211,8 @@ jobs:
           Write-Host "Using ProductVersion: $ver"
 
           & $candle `
+            -ext WixUIExtension `
+            -ext WixUtilExtension `
             -dBundleDir="$(Resolve-Path bundle)" `
             -dProductVersion="$ver" `
             -out wix\generated\ `
@@ -214,6 +220,8 @@ jobs:
             wix\generated\AppFiles.wxs
 
           & $light `
+            -ext WixUIExtension `
+            -ext WixUtilExtension `
             -out keycord.msi `
             wix\generated\keycord.wixobj `
             wix\generated\AppFiles.wixobj

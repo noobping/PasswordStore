@@ -11,6 +11,8 @@ use crate::password::new_item::register_open_new_password_action;
 use crate::password::new_item::NewPasswordPopoverState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::open_password_entry_page;
+#[cfg(target_os = "windows")]
+use crate::password::page::password_page_has_unsaved_changes;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
 use crate::private_key::sync::{sync_private_keys_with_host, PrivateKeySyncDirection};
@@ -68,6 +70,8 @@ use crate::support::runtime::{
 };
 use crate::window::session::initialize_window_session;
 use adw::glib::Propagation;
+#[cfg(target_os = "windows")]
+use std::rc::Rc;
 
 const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
 
@@ -477,6 +481,20 @@ pub fn create_main_window(
     register_reload_password_list_action(&widgets.window, &list_visibility_action_state);
     register_go_home_action(&widgets.window, &back_action_state);
     register_back_action(&widgets.window, &back_action_state);
+    #[cfg(target_os = "windows")]
+    crate::updater::register_window(
+        app,
+        &widgets.window,
+        &widgets.toast_overlay,
+        Rc::new({
+            let password_page = password_list_state.clone();
+            let recipients_page = store_recipients_page_state.clone();
+            move || {
+                password_page_has_unsaved_changes(&password_page)
+                    || recipients_page.recipients_are_dirty()
+            }
+        }),
+    );
 
     configure_window_shortcuts(app);
     apply_startup_query(startup_query, &widgets.search_entry, &widgets.list);

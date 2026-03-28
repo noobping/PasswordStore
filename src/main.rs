@@ -21,6 +21,8 @@ mod private_key;
 mod search_provider;
 mod store;
 mod support;
+#[cfg(target_os = "windows")]
+mod updater;
 mod window;
 
 use crate::i18n::gettext;
@@ -114,7 +116,11 @@ fn main() -> ExitCode {
         let query = take_string_data(app, "query");
         let pass_file = take_data(app, "open-pass-file");
         match window::create_main_window(app, query, pass_file) {
-            Ok(win) => win.present(),
+            Ok(win) => {
+                win.present();
+                #[cfg(target_os = "windows")]
+                updater::after_window_presented(app, &win);
+            }
             Err(err) => {
                 let _ =
                     fatal_startup_error(APP_WINDOW_TITLE, "Failed to build the main window.", err);
@@ -153,6 +159,9 @@ fn command_line_query(args: &[OsString]) -> Option<String> {
 }
 
 fn register_app_actions(app: &Application) {
+    #[cfg(target_os = "windows")]
+    updater::register_app_actions(app);
+
     let about_action = SimpleAction::new("about", None);
     let app_for_about = app.clone();
     about_action.connect_activate(move |_, _| {

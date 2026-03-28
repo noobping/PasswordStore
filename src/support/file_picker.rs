@@ -19,7 +19,7 @@ enum LocalPathKind {
 }
 
 impl LocalPathKind {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", test))]
     const fn chooser_error_message(self) -> &'static str {
         match self {
             Self::File => "Couldn't open the file chooser.",

@@ -14,10 +14,11 @@ use crate::store::labels::{shortened_store_label_for_path, shortened_store_label
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, set_cloned_data, set_string_data};
 use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
+use crate::support::uri::launch_default_uri;
 use crate::window::create_main_window;
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{
-    gdk::Display, Button, DropDown, Image, ListBox, ListBoxRow, MenuButton, Stack, StringList,
+    Button, DropDown, Image, ListBox, ListBoxRow, MenuButton, Stack, StringList,
     INVALID_LIST_POSITION,
 };
 use adw::prelude::*;
@@ -561,20 +562,7 @@ fn build_unreadable_password_icon(visible: bool) -> Image {
 
 fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {
     let folder_uri = adw::gio::File::for_path(entry_parent_directory(entry)).uri();
-    let launch_result = Display::default().map_or_else(
-        || {
-            adw::gio::AppInfo::launch_default_for_uri(
-                &folder_uri,
-                None::<&adw::gio::AppLaunchContext>,
-            )
-        },
-        |display| {
-            let context = display.app_launch_context();
-            adw::gio::AppInfo::launch_default_for_uri(&folder_uri, Some(&context))
-        },
-    );
-
-    if let Err(error) = launch_result {
+    if let Err(error) = launch_default_uri(&folder_uri) {
         log_error(format!(
             "Failed to open entry folder in the file manager.\nfolder: {folder_uri}\nerror: {error}"
         ));

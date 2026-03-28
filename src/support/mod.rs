@@ -7,4 +7,5 @@ pub mod pass_import;
 pub mod runtime;
 pub mod startup;
 pub mod ui;
+pub mod uri;
 pub mod validation;

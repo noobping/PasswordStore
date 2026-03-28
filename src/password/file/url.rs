@@ -1,6 +1,7 @@
 use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::support::ui::flat_icon_button_with_tooltip;
+use crate::support::uri::launch_default_uri;
 use adw::prelude::*;
 use adw::{EntryRow, Toast, ToastOverlay};
 
@@ -22,8 +23,6 @@ pub(super) fn add_open_url_suffix(
     text: impl Fn() -> String + 'static,
     overlay: &ToastOverlay,
 ) {
-    use adw::gtk::gdk::Display;
-
     let button = flat_icon_button_with_tooltip("external-link-symbolic", "Open URL");
     let overlay = overlay.clone();
     button.connect_clicked(move |_| {
@@ -32,15 +31,7 @@ pub(super) fn add_open_url_suffix(
             return;
         };
 
-        let launch_result = Display::default().map_or_else(
-            || adw::gio::AppInfo::launch_default_for_uri(&uri, None::<&adw::gio::AppLaunchContext>),
-            |display| {
-                let context = display.app_launch_context();
-                adw::gio::AppInfo::launch_default_for_uri(&uri, Some(&context))
-            },
-        );
-
-        if let Err(error) = launch_result {
+        if let Err(error) = launch_default_uri(&uri) {
             log_error(format!(
                 "Failed to open URL in the default browser.\nURL: {uri}\nerror: {error}"
             ));

@@ -1,13 +1,15 @@
 use crate::i18n::gettext;
+use crate::logging::log_error;
 use crate::support::actions::register_window_action;
 use crate::support::ui::{
     append_info_row, clear_list_box, push_navigation_page_if_needed, visible_navigation_page_is,
 };
+use crate::support::uri::launch_default_uri;
 use crate::window::navigation::{show_docs_page, show_secondary_page_chrome, HasWindowChrome};
 use adw::glib::markup_escape_text;
 use adw::gtk::{
-    gdk::Display, Align, Box as GtkBox, Grid, Label, ListBox, Orientation, PolicyType,
-    ScrolledWindow, SearchEntry, TextView, Widget, WrapMode,
+    Align, Box as GtkBox, Grid, Label, ListBox, Orientation, PolicyType, ScrolledWindow,
+    SearchEntry, TextView, Widget, WrapMode,
 };
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, NavigationPage};
@@ -911,15 +913,11 @@ fn scroll_to_widget(scrolled: &ScrolledWindow, widget: &Widget) {
 }
 
 fn open_external_link(uri: &str) {
-    let launch_result = Display::default().map_or_else(
-        || adw::gio::AppInfo::launch_default_for_uri(uri, None::<&adw::gio::AppLaunchContext>),
-        |display| {
-            let context = display.app_launch_context();
-            adw::gio::AppInfo::launch_default_for_uri(uri, Some(&context))
-        },
-    );
-
-    let _ = launch_result;
+    if let Err(error) = launch_default_uri(uri) {
+        log_error(format!(
+            "Failed to open documentation link.\nURL: {uri}\nerror: {error}"
+        ));
+    }
 }
 
 fn encode_link_target(target: &DocumentationLinkTarget) -> String {

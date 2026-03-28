@@ -1,7 +1,7 @@
 use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::password::generation::{PasswordGenerationControls, PasswordGenerationSettings};
-use crate::preferences::{BackendKind, Preferences, UsernameFallbackMode};
+use crate::preferences::{BackendKind, PasswordListSortMode, Preferences, UsernameFallbackMode};
 use crate::private_key::sync::{
     preflight_host_to_app_private_key_sync, sync_private_keys_with_host, PrivateKeySyncDirection,
 };
@@ -325,6 +325,11 @@ fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Pre
         &state.clear_empty_fields_before_save_check,
         settings.clear_empty_fields_before_save(),
     );
+    sync_password_list_sort_checks(
+        &state.password_list_sort_filename_check,
+        &state.password_list_sort_store_path_check,
+        settings.password_list_sort_mode(),
+    );
 }
 
 pub(super) fn toast_preferences_save_error(
@@ -347,6 +352,8 @@ pub struct PreferencesActionState {
     pub clear_empty_fields_before_save_check: CheckButton,
     pub username_folder_check: CheckButton,
     pub username_filename_check: CheckButton,
+    pub password_list_sort_filename_check: CheckButton,
+    pub password_list_sort_store_path_check: CheckButton,
     pub generator_controls: PasswordGenerationControls,
     pub stores_list: ListBox,
     pub store_actions_list: ListBox,
@@ -480,6 +487,70 @@ pub fn connect_username_fallback_autosave(
     }
 }
 
+fn sync_password_list_sort_checks(
+    filename_check: &CheckButton,
+    store_path_check: &CheckButton,
+    mode: PasswordListSortMode,
+) {
+    let (filename_active, store_path_active) = password_list_sort_check_state(mode);
+    filename_check.set_active(filename_active);
+    store_path_check.set_active(store_path_active);
+}
+
+const fn password_list_sort_check_state(mode: PasswordListSortMode) -> (bool, bool) {
+    match mode {
+        PasswordListSortMode::Filename => (true, false),
+        PasswordListSortMode::StorePath => (false, true),
+    }
+}
+
+pub fn connect_password_list_sort_autosave(
+    filename_check: &CheckButton,
+    store_path_check: &CheckButton,
+    overlay: &ToastOverlay,
+    window: &adw::ApplicationWindow,
+) {
+    let preferences = Preferences::new();
+    sync_password_list_sort_checks(
+        filename_check,
+        store_path_check,
+        preferences.password_list_sort_mode(),
+    );
+
+    let syncing = Rc::new(Cell::new(false));
+    for (button, mode) in [
+        (filename_check.clone(), PasswordListSortMode::Filename),
+        (store_path_check.clone(), PasswordListSortMode::StorePath),
+    ] {
+        let filename_check = filename_check.clone();
+        let store_path_check = store_path_check.clone();
+        let overlay = overlay.clone();
+        let preferences = preferences.clone();
+        let syncing = syncing.clone();
+        let window = window.clone();
+        button.connect_toggled(move |button| {
+            if syncing.get() || !button.is_active() {
+                return;
+            }
+
+            let stored = preferences.password_list_sort_mode();
+            if stored == mode {
+                return;
+            }
+
+            syncing.set(true);
+            if let Err(err) = preferences.set_password_list_sort_mode(mode) {
+                toast_preferences_save_error(&overlay, "password list sort", &err);
+                sync_password_list_sort_checks(&filename_check, &store_path_check, stored);
+            } else {
+                sync_password_list_sort_checks(&filename_check, &store_path_check, mode);
+                activate_widget_action(&window, "win.reload-password-list");
+            }
+            syncing.set(false);
+        });
+    }
+}
+
 pub fn connect_password_generation_autosave(
     controls: &PasswordGenerationControls,
     mirrors: &[PasswordGenerationControls],
@@ -576,9 +647,9 @@ pub fn register_open_preferences_action(
 mod tests {
     use super::{
         available_backend_kinds, backend_kind_for_combo_position, combo_position_for_backend_kind,
-        username_fallback_check_state,
+        password_list_sort_check_state, username_fallback_check_state,
     };
-    use crate::preferences::{BackendKind, UsernameFallbackMode};
+    use crate::preferences::{BackendKind, PasswordListSortMode, UsernameFallbackMode};
 
     #[test]
     fn username_fallback_sync_marks_only_the_selected_mode() {
@@ -588,6 +659,18 @@ mod tests {
         );
         assert_eq!(
             username_fallback_check_state(UsernameFallbackMode::Filename),
+            (false, true)
+        );
+    }
+
+    #[test]
+    fn password_list_sort_sync_marks_only_the_selected_mode() {
+        assert_eq!(
+            password_list_sort_check_state(PasswordListSortMode::Filename),
+            (true, false)
+        );
+        assert_eq!(
+            password_list_sort_check_state(PasswordListSortMode::StorePath),
             (false, true)
         );
     }

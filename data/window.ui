@@ -618,6 +618,39 @@
 
                             <child>
                               <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Password List</property>
+                                <property name="description" translatable="yes">Choose how pass files are ordered on the home page.</property>
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Use file name</property>
+                                    <property name="subtitle" translatable="yes">Sort entries by pass file name only.</property>
+                                    <child type="suffix">
+                                      <object class="GtkCheckButton"
+                                        id="preferences_password_list_sort_filename_check">
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Use store, folders, and file name</property>
+                                    <property name="subtitle" translatable="yes">Keep entries grouped by store and folder before the file name.</property>
+                                    <child type="suffix">
+                                      <object class="GtkCheckButton"
+                                        id="preferences_password_list_sort_store_path_check">
+                                        <property name="group">preferences_password_list_sort_filename_check</property>
+                                        <property name="active">true</property>
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
+                              <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">New Password Template</property>
                                 <property name="description" translatable="yes">These lines are added after the password line when you create a new password entry. Leave it empty to start with a blank pass file.</property>
                                 <child>

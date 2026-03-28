@@ -234,6 +234,12 @@ pub(super) fn preferences_action_state(
         clear_empty_fields_before_save_check: widgets.clear_empty_fields_before_save_check.clone(),
         username_folder_check: widgets.preferences_username_folder_check.clone(),
         username_filename_check: widgets.preferences_username_filename_check.clone(),
+        password_list_sort_filename_check: widgets
+            .preferences_password_list_sort_filename_check
+            .clone(),
+        password_list_sort_store_path_check: widgets
+            .preferences_password_list_sort_store_path_check
+            .clone(),
         generator_controls: PasswordGenerationControls::new(
             &widgets.preferences_password_generator_length_spin,
             &widgets.preferences_password_generator_min_lowercase_spin,

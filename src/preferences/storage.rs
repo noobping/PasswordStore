@@ -1,4 +1,4 @@
-use super::UsernameFallbackMode;
+use super::{PasswordListSortMode, UsernameFallbackMode};
 use crate::password::generation::PasswordGenerationSettings;
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,7 @@ pub(super) struct PreferenceFile {
     pub(super) clear_empty_fields_before_save: Option<bool>,
     pub(super) password_generation: Option<PasswordGenerationSettings>,
     pub(super) username_fallback_mode: Option<UsernameFallbackMode>,
+    pub(super) password_list_sort_mode: Option<PasswordListSortMode>,
     pub(super) ripasso_own_fingerprint: Option<String>,
     pub(super) sync_private_keys_with_host: Option<bool>,
 }

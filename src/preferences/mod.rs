@@ -86,6 +86,31 @@ impl UsernameFallbackMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PasswordListSortMode {
+    Filename,
+    #[default]
+    StorePath,
+}
+
+impl PasswordListSortMode {
+    pub const fn stored_value(self) -> &'static str {
+        match self {
+            Self::Filename => "filename",
+            Self::StorePath => "store-path",
+        }
+    }
+
+    pub fn from_stored(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "filename" | "file" | "name" => Self::Filename,
+            "store-path" | "store" | "path" | "folder" | "folders" => Self::StorePath,
+            _ => Self::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Preferences {
     settings: Option<Settings>,
@@ -219,6 +244,15 @@ impl Preferences {
         )
     }
 
+    pub fn password_list_sort_mode(&self) -> PasswordListSortMode {
+        self.read_preference(
+            |settings| {
+                PasswordListSortMode::from_stored(&settings.string("password-list-sort-mode"))
+            },
+            |cfg| cfg.password_list_sort_mode.unwrap_or_default(),
+        )
+    }
+
     pub fn stores(&self) -> Vec<String> {
         self.read_preference(
             |settings| {
@@ -306,6 +340,13 @@ impl Preferences {
         )
     }
 
+    pub fn set_password_list_sort_mode(&self, mode: PasswordListSortMode) -> Result<(), BoolError> {
+        self.write_preference(
+            |settings| settings.set_string("password-list-sort-mode", mode.stored_value()),
+            |cfg| cfg.password_list_sort_mode = Some(mode),
+        )
+    }
+
     pub fn prune_missing_stores(&self) -> Result<bool, BoolError> {
         let stores = self.stores();
         let existing = stores
@@ -346,8 +387,8 @@ impl Preferences {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_backend_kind, default_store_dirs, BackendKind, Preferences, UsernameFallbackMode,
-        DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH,
+        default_backend_kind, default_store_dirs, BackendKind, PasswordListSortMode, Preferences,
+        UsernameFallbackMode, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH,
     };
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -451,6 +492,36 @@ mod tests {
         assert_eq!(
             UsernameFallbackMode::from_stored("filename"),
             UsernameFallbackMode::Filename
+        );
+    }
+
+    #[test]
+    fn password_list_sort_mode_defaults_to_store_path() {
+        assert_eq!(
+            PasswordListSortMode::default(),
+            PasswordListSortMode::StorePath
+        );
+    }
+
+    #[test]
+    fn password_list_sort_mode_storage_accepts_current_names() {
+        assert_eq!(PasswordListSortMode::Filename.stored_value(), "filename");
+        assert_eq!(PasswordListSortMode::StorePath.stored_value(), "store-path");
+        assert_eq!(
+            PasswordListSortMode::from_stored("filename"),
+            PasswordListSortMode::Filename
+        );
+        assert_eq!(
+            PasswordListSortMode::from_stored("store-path"),
+            PasswordListSortMode::StorePath
+        );
+    }
+
+    #[test]
+    fn password_list_sort_mode_invalid_values_fall_back_to_store_path() {
+        assert_eq!(
+            PasswordListSortMode::from_stored("unexpected"),
+            PasswordListSortMode::StorePath
         );
     }
 

@@ -1,4 +1,4 @@
-use crate::preferences::{Preferences, UsernameFallbackMode};
+use crate::preferences::{PasswordListSortMode, Preferences, UsernameFallbackMode};
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -253,6 +253,7 @@ fn extract_username_field_from_contents(output: &str) -> Option<ParsedUsernameFi
 pub fn collect_all_password_items_with_options(options: CollectItemsOptions) -> Vec<PassEntry> {
     let settings = Preferences::new();
     let roots = settings.paths();
+    let sort_mode = settings.password_list_sort_mode();
     let mut result: Vec<PassEntry> = Vec::new();
 
     let mut i = 0;
@@ -264,14 +265,23 @@ pub fn collect_all_password_items_with_options(options: CollectItemsOptions) -> 
     }
 
     result = filter_duplicate_store_entries(result, options.show_duplicates);
+    sort_password_items(&mut result, sort_mode);
+    result
+}
 
-    result.sort_by(|left, right| {
-        left.store_path
+fn sort_password_items(items: &mut [PassEntry], mode: PasswordListSortMode) {
+    items.sort_by(|left, right| match mode {
+        PasswordListSortMode::StorePath => left
+            .store_path
             .cmp(&right.store_path)
             .then_with(|| left.relative_path.cmp(&right.relative_path))
-            .then_with(|| left.basename.cmp(&right.basename))
+            .then_with(|| left.basename.cmp(&right.basename)),
+        PasswordListSortMode::Filename => left
+            .basename
+            .cmp(&right.basename)
+            .then_with(|| left.store_path.cmp(&right.store_path))
+            .then_with(|| left.relative_path.cmp(&right.relative_path)),
     });
-    result
 }
 
 fn collapse_duplicate_store_entries(items: Vec<PassEntry>) -> Vec<PassEntry> {
@@ -379,11 +389,18 @@ fn collect_items_in_dir(
 mod tests {
     use super::{
         collapse_duplicate_store_entries, collect_items_in_dir, filter_duplicate_store_entries,
-        CollectItemsOptions, OpenPassFile, PassEntry, UsernameFallbackError,
+        sort_password_items, CollectItemsOptions, OpenPassFile, PassEntry, UsernameFallbackError,
     };
-    use crate::preferences::UsernameFallbackMode;
+    use crate::preferences::{PasswordListSortMode, UsernameFallbackMode};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn item_order(items: &[PassEntry]) -> Vec<(String, String)> {
+        items
+            .iter()
+            .map(|item| (item.store_path.clone(), item.label()))
+            .collect()
+    }
 
     #[test]
     fn root_level_entries_do_not_invent_a_username() {
@@ -587,5 +604,51 @@ mod tests {
         ];
 
         assert_eq!(filter_duplicate_store_entries(items.clone(), true), items);
+    }
+
+    #[test]
+    fn store_path_sort_orders_by_store_then_folder_then_file_name() {
+        let mut items = vec![
+            PassEntry::from_label("/tmp/work", "team/github"),
+            PassEntry::from_label("/tmp/personal", "github"),
+            PassEntry::from_label("/tmp/personal", "accounts/email"),
+            PassEntry::from_label("/tmp/personal", "accounts/github"),
+        ];
+
+        sort_password_items(&mut items, PasswordListSortMode::StorePath);
+
+        assert_eq!(
+            item_order(&items),
+            vec![
+                ("/tmp/personal".to_string(), "github".to_string()),
+                ("/tmp/personal".to_string(), "accounts/email".to_string()),
+                ("/tmp/personal".to_string(), "accounts/github".to_string()),
+                ("/tmp/work".to_string(), "team/github".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn filename_sort_orders_by_file_name_then_store_and_folder() {
+        let mut items = vec![
+            PassEntry::from_label("/tmp/work", "zulu/github"),
+            PassEntry::from_label("/tmp/personal", "accounts/email"),
+            PassEntry::from_label("/tmp/personal", "accounts/github"),
+            PassEntry::from_label("/tmp/archive", "alpha/github"),
+            PassEntry::from_label("/tmp/personal", "github"),
+        ];
+
+        sort_password_items(&mut items, PasswordListSortMode::Filename);
+
+        assert_eq!(
+            item_order(&items),
+            vec![
+                ("/tmp/personal".to_string(), "accounts/email".to_string()),
+                ("/tmp/archive".to_string(), "alpha/github".to_string()),
+                ("/tmp/personal".to_string(), "github".to_string()),
+                ("/tmp/personal".to_string(), "accounts/github".to_string()),
+                ("/tmp/work".to_string(), "zulu/github".to_string()),
+            ]
+        );
     }
 }

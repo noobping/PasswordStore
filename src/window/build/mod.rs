@@ -59,8 +59,8 @@ use super::preferences::{
 };
 use super::preferences::{
     connect_clear_empty_fields_before_save_autosave, connect_new_password_template_autosave,
-    connect_password_generation_autosave, connect_username_fallback_autosave,
-    register_open_preferences_action, PreferencesActionState,
+    connect_password_generation_autosave, connect_password_list_sort_autosave,
+    connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
 use super::tools::{register_open_tools_action, ToolsPageState};
 use crate::logging::{log_error, log_info};
@@ -264,6 +264,12 @@ fn connect_window_behaviors(
         &widgets.preferences_username_folder_check,
         &widgets.preferences_username_filename_check,
         &widgets.toast_overlay,
+    );
+    connect_password_list_sort_autosave(
+        &widgets.preferences_password_list_sort_filename_check,
+        &widgets.preferences_password_list_sort_store_path_check,
+        &widgets.toast_overlay,
+        &widgets.window,
     );
     connect_password_generation_autosave(
         &password_list_state.generator_controls,

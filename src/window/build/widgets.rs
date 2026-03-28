@@ -86,6 +86,8 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) clear_empty_fields_before_save_check: CheckButton,
     pub(in crate::window) preferences_username_folder_check: CheckButton,
     pub(in crate::window) preferences_username_filename_check: CheckButton,
+    pub(in crate::window) preferences_password_list_sort_filename_check: CheckButton,
+    pub(in crate::window) preferences_password_list_sort_store_path_check: CheckButton,
     pub(in crate::window) password_stores: ListBox,
     pub(in crate::window) password_store_actions: ListBox,
     pub(in crate::window) navigation_view: NavigationView,
@@ -233,6 +235,12 @@ impl WindowWidgets {
             clear_empty_fields_before_save_check: required!("clear_empty_fields_before_save_check"),
             preferences_username_folder_check: required!("preferences_username_folder_check"),
             preferences_username_filename_check: required!("preferences_username_filename_check"),
+            preferences_password_list_sort_filename_check: required!(
+                "preferences_password_list_sort_filename_check"
+            ),
+            preferences_password_list_sort_store_path_check: required!(
+                "preferences_password_list_sort_store_path_check"
+            ),
             password_stores: required!("password_stores"),
             password_store_actions: required!("password_store_actions"),
             navigation_view: required!("navigation_view"),

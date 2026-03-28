@@ -65,6 +65,14 @@
       </description>
     </key>
 
+    <key name="password-list-sort-mode" type="s">
+      <default>'store-path'</default>
+      <summary>Password list sort mode</summary>
+      <description>
+        Password list ordering. Valid values are "store-path" and "filename".
+      </description>
+    </key>
+
     <key name="password-generator-length" type="u">
       <default>24</default>
       <summary>Password generator length</summary>

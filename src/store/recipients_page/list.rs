@@ -411,6 +411,10 @@ fn private_key_verification_warning(
     sync_enabled: bool,
     host_key_inspection_failed: bool,
 ) -> Option<PrivateKeyVerificationWarning> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
     if uses_host_backend && host_key_inspection_failed {
         Some(PrivateKeyVerificationWarning::HostInspectionFailed)
     } else if !uses_host_backend && !sync_enabled {
@@ -823,16 +827,27 @@ mod tests {
 
     #[test]
     fn private_key_verification_warning_matches_backend_sync_and_inspection_state() {
-        assert_eq!(
-            private_key_verification_warning(true, false, true),
-            Some(PrivateKeyVerificationWarning::HostInspectionFailed)
-        );
-        assert_eq!(
-            private_key_verification_warning(false, false, false),
-            Some(PrivateKeyVerificationWarning::SyncDisabled)
-        );
-        assert_eq!(private_key_verification_warning(true, false, false), None);
-        assert_eq!(private_key_verification_warning(false, true, false), None);
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(
+                private_key_verification_warning(true, false, true),
+                Some(PrivateKeyVerificationWarning::HostInspectionFailed)
+            );
+            assert_eq!(
+                private_key_verification_warning(false, false, false),
+                Some(PrivateKeyVerificationWarning::SyncDisabled)
+            );
+            assert_eq!(private_key_verification_warning(true, false, false), None);
+            assert_eq!(private_key_verification_warning(false, true, false), None);
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert_eq!(private_key_verification_warning(true, false, true), None);
+            assert_eq!(private_key_verification_warning(false, false, false), None);
+            assert_eq!(private_key_verification_warning(true, false, false), None);
+            assert_eq!(private_key_verification_warning(false, true, false), None);
+        }
     }
 
     #[test]

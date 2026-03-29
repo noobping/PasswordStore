@@ -6,7 +6,8 @@ use self::placeholder::{
     register_placeholder_state, show_loading_placeholder, show_resolved_placeholder,
 };
 use self::row::{
-    activate_selected_password_row_action, append_password_row, SelectedPasswordRowAction,
+    activate_selected_password_row_action, append_password_folder_row, append_password_row,
+    SelectedPasswordRowAction,
 };
 use self::search::{search_controller_for_list, SearchFilterController};
 use crate::backend::password_entry_is_readable;
@@ -14,11 +15,11 @@ use crate::logging::{log_error, log_info};
 use crate::password::model::{
     collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
 };
-use crate::preferences::Preferences;
+use crate::preferences::{PasswordListSortMode, Preferences};
 use crate::store::labels::shortened_store_label_map;
 use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
-use crate::support::object_data::{cloned_data, set_cloned_data};
+use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use crate::support::runtime::has_host_permission;
 use crate::support::ui::clear_list_box;
 use adw::glib::{self, Propagation};
@@ -110,6 +111,26 @@ impl PasswordListActions {
 
 const PASSWORD_LIST_RENDER_GENERATION_KEY: &str = "password-list-render-generation";
 const PASSWORD_ROW_RENDER_BATCH_SIZE: usize = 100;
+const PASSWORD_LIST_ROW_KIND_KEY: &str = "password-list-row-kind";
+const PASSWORD_LIST_ROW_DEPTH_KEY: &str = "password-list-row-depth";
+const PASSWORD_LIST_ROW_STORE_PATH_KEY: &str = "password-list-row-store-path";
+const PASSWORD_LIST_ROW_EXPANDED_KEY: &str = "password-list-row-expanded";
+const PASSWORD_LIST_ROW_KIND_ENTRY: &str = "entry";
+const PASSWORD_LIST_ROW_KIND_FOLDER: &str = "folder";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RenderedPasswordListRow {
+    Folder {
+        store_path: String,
+        folder_path: String,
+        depth: usize,
+    },
+    Entry {
+        item: PassEntry,
+        readable: bool,
+        depth: usize,
+    },
+}
 
 const fn list_action_visibility(context: ListActionContext) -> ListActionVisibility {
     if matches!(context.actions, ListActionsMode::Hidden) {
@@ -172,6 +193,7 @@ pub fn load_passwords_async(
     let settings = Preferences::new();
     prune_missing_store_dirs(&settings);
     let has_store_dirs = !settings.stores().is_empty();
+    let sort_mode = settings.password_list_sort_mode();
     let store_labels = Rc::new(shortened_store_label_map(&settings.store_roots()));
     if let Some(controller) = search_controller_for_list(list) {
         controller.begin_reload(has_store_dirs);
@@ -238,6 +260,7 @@ pub fn load_passwords_async(
                 &overlay_clone,
                 items,
                 store_labels.clone(),
+                sort_mode,
                 render_generation,
                 {
                     let list = list_clone.clone();
@@ -299,10 +322,12 @@ fn render_password_rows_in_batches(
     overlay: &ToastOverlay,
     items: Vec<(PassEntry, bool)>,
     store_labels: Rc<HashMap<String, String>>,
+    sort_mode: PasswordListSortMode,
     generation: u64,
     on_complete: impl FnOnce() + 'static,
 ) {
-    if items.is_empty() {
+    let rows = build_password_list_rows(items, sort_mode);
+    if rows.is_empty() {
         on_complete();
         return;
     }
@@ -310,7 +335,7 @@ fn render_password_rows_in_batches(
     let list = list.clone();
     let overlay = overlay.clone();
     let store_labels = store_labels.clone();
-    let mut items = items.into_iter();
+    let mut rows = rows.into_iter();
     let mut on_complete = Some(on_complete);
     glib::idle_add_local(move || {
         if !password_list_render_cycle_is_current(&list, generation) {
@@ -318,18 +343,133 @@ fn render_password_rows_in_batches(
         }
 
         for _ in 0..PASSWORD_ROW_RENDER_BATCH_SIZE {
-            let Some((item, readable)) = items.next() else {
+            let Some(row) = rows.next() else {
                 if let Some(on_complete) = on_complete.take() {
                     on_complete();
                 }
                 return glib::ControlFlow::Break;
             };
 
-            append_password_row(&list, item, readable, &overlay, store_labels.clone());
+            match row {
+                RenderedPasswordListRow::Folder {
+                    store_path,
+                    folder_path,
+                    depth,
+                } => {
+                    let store_label = store_labels
+                        .get(&store_path)
+                        .map_or(store_path.as_str(), String::as_str);
+                    append_password_folder_row(
+                        &list,
+                        &store_path,
+                        password_list_folder_title(&folder_path),
+                        &password_list_folder_subtitle(store_label, &folder_path),
+                        depth,
+                    );
+                }
+                RenderedPasswordListRow::Entry {
+                    item,
+                    readable,
+                    depth,
+                } => append_password_row(
+                    &list,
+                    item,
+                    readable,
+                    &overlay,
+                    store_labels.clone(),
+                    depth,
+                ),
+            }
         }
 
         glib::ControlFlow::Continue
     });
+}
+
+fn build_password_list_rows(
+    items: Vec<(PassEntry, bool)>,
+    sort_mode: PasswordListSortMode,
+) -> Vec<RenderedPasswordListRow> {
+    match sort_mode {
+        PasswordListSortMode::Filename => items
+            .into_iter()
+            .map(|(item, readable)| RenderedPasswordListRow::Entry {
+                item,
+                readable,
+                depth: 0,
+            })
+            .collect(),
+        PasswordListSortMode::StorePath => build_store_path_password_list_rows(items),
+    }
+}
+
+fn build_store_path_password_list_rows(
+    items: Vec<(PassEntry, bool)>,
+) -> Vec<RenderedPasswordListRow> {
+    let mut rows = Vec::new();
+    let mut current_store_path = None::<String>;
+    let mut current_folder_segments = Vec::<String>::new();
+
+    for (item, readable) in items {
+        if current_store_path.as_deref() != Some(item.store_path.as_str()) {
+            current_store_path = Some(item.store_path.clone());
+            current_folder_segments.clear();
+        }
+
+        let folder_segments = password_list_folder_segments(&item.relative_path);
+        let common_prefix_len = current_folder_segments
+            .iter()
+            .zip(folder_segments.iter())
+            .take_while(|(left, right)| left == right)
+            .count();
+        let mut folder_path = if common_prefix_len == 0 {
+            String::new()
+        } else {
+            current_folder_segments[..common_prefix_len].join("/")
+        };
+
+        for (depth, segment) in folder_segments.iter().enumerate().skip(common_prefix_len) {
+            if !folder_path.is_empty() {
+                folder_path.push('/');
+            }
+            folder_path.push_str(segment);
+            rows.push(RenderedPasswordListRow::Folder {
+                store_path: item.store_path.clone(),
+                folder_path: folder_path.clone(),
+                depth,
+            });
+        }
+
+        let depth = folder_segments.len();
+        current_folder_segments = folder_segments;
+        rows.push(RenderedPasswordListRow::Entry {
+            item,
+            readable,
+            depth,
+        });
+    }
+
+    rows
+}
+
+fn password_list_folder_segments(relative_path: &str) -> Vec<String> {
+    relative_path
+        .trim_end_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn password_list_folder_title(folder_path: &str) -> &str {
+    folder_path.rsplit('/').next().unwrap_or(folder_path)
+}
+
+fn password_list_folder_subtitle(store_label: &str, folder_path: &str) -> String {
+    match folder_path.rsplit_once('/') {
+        Some((parent, _)) => format!("{store_label}/{parent}/"),
+        None => store_label.to_string(),
+    }
 }
 
 const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
@@ -364,6 +504,7 @@ pub fn setup_search_filter(
     let list_for_entry = list.clone();
     search_entry.connect_search_changed(move |entry| {
         controller_for_entry.update_query(entry.text().as_str());
+        controller_for_entry.refresh_row_visibility(&list_for_entry);
         controller_for_entry.start_indexing_if_needed(&list_for_entry);
         list_for_entry.invalidate_filter();
         controller_for_entry.update_placeholder(&list_for_entry);
@@ -491,10 +632,37 @@ fn first_visible_row(list: &ListBox) -> Option<ListBoxRow> {
     let mut index = 0;
     loop {
         let row = list.row_at_index(index)?;
-        if row.is_child_visible() {
+        if row.is_child_visible() && password_list_row_is_focusable(&row) {
             return Some(row);
         }
         index += 1;
+    }
+}
+
+fn password_list_row_is_focusable(row: &ListBoxRow) -> bool {
+    non_null_to_string_option(row, "openable").is_some() || password_list_row_is_folder(row)
+}
+
+pub(crate) fn refresh_password_list_filter(list: &ListBox) {
+    if let Some(controller) = search_controller_for_list(list) {
+        controller.refresh_row_visibility(list);
+    }
+    list.invalidate_filter();
+    if let Some(controller) = search_controller_for_list(list) {
+        controller.update_placeholder(list);
+    }
+}
+
+pub(crate) fn toggle_password_list_folder_row(list: &ListBox, row: &ListBoxRow) -> bool {
+    if !password_list_row_is_folder(row) {
+        return false;
+    }
+
+    if row::toggle_password_folder_row(row) {
+        refresh_password_list_filter(list);
+        true
+    } else {
+        false
     }
 }
 
@@ -568,16 +736,36 @@ fn next_password_list_render_generation(current: Option<u64>) -> u64 {
     current.unwrap_or(0_u64).wrapping_add(1).max(1)
 }
 
+fn password_list_row_is_folder(row: &ListBoxRow) -> bool {
+    non_null_to_string_option(row, PASSWORD_LIST_ROW_KIND_KEY).as_deref()
+        == Some(PASSWORD_LIST_ROW_KIND_FOLDER)
+}
+
+fn password_list_row_depth(row: &ListBoxRow) -> usize {
+    cloned_data(row, PASSWORD_LIST_ROW_DEPTH_KEY).unwrap_or(0)
+}
+
+fn password_list_row_store_path(row: &ListBoxRow) -> Option<String> {
+    non_null_to_string_option(row, PASSWORD_LIST_ROW_STORE_PATH_KEY)
+        .or_else(|| non_null_to_string_option(row, "root"))
+}
+
+fn password_list_folder_row_is_expanded(row: &ListBoxRow) -> bool {
+    cloned_data(row, PASSWORD_LIST_ROW_EXPANDED_KEY).unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_items_options, list_action_visibility, next_password_list_render_generation,
+        build_password_list_rows, collect_items_options, list_action_visibility,
+        next_password_list_render_generation, password_list_folder_segments,
         selected_pass_file_shortcut_action, should_show_root_git_button,
         should_show_root_store_button, GitAvailability, ListActionContext, ListActionVisibility,
-        ListActionsMode, ListContents, StoreSetup, Visibility,
+        ListActionsMode, ListContents, RenderedPasswordListRow, StoreSetup, Visibility,
     };
     use crate::password::list::row::SelectedPasswordRowAction;
-    use crate::password::model::CollectItemsOptions;
+    use crate::password::model::{CollectItemsOptions, PassEntry};
+    use crate::preferences::PasswordListSortMode;
     use adw::gtk::gdk;
 
     fn expected_root_store_button_visibility() -> bool {
@@ -793,5 +981,106 @@ mod tests {
             selected_pass_file_shortcut_action(gdk::Key::m, gdk::ModifierType::empty()),
             None
         );
+    }
+
+    #[test]
+    fn filename_sort_rows_stay_flat() {
+        let rows = build_password_list_rows(
+            vec![
+                (PassEntry::from_label("/tmp/store", "accounts/github"), true),
+                (PassEntry::from_label("/tmp/store", "github"), false),
+            ],
+            PasswordListSortMode::Filename,
+        );
+
+        assert_eq!(
+            rows,
+            vec![
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/store", "accounts/github"),
+                    readable: true,
+                    depth: 0,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/store", "github"),
+                    readable: false,
+                    depth: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn store_path_sort_rows_insert_folder_headers_per_store() {
+        let rows = build_password_list_rows(
+            vec![
+                (PassEntry::from_label("/tmp/personal", "github"), true),
+                (PassEntry::from_label("/tmp/personal", "work/email"), true),
+                (PassEntry::from_label("/tmp/personal", "work/github"), false),
+                (PassEntry::from_label("/tmp/work", "work/alice/slack"), true),
+                (PassEntry::from_label("/tmp/work", "work/bob/matrix"), true),
+            ],
+            PasswordListSortMode::StorePath,
+        );
+
+        assert_eq!(
+            rows,
+            vec![
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/personal", "github"),
+                    readable: true,
+                    depth: 0,
+                },
+                RenderedPasswordListRow::Folder {
+                    store_path: "/tmp/personal".to_string(),
+                    folder_path: "work".to_string(),
+                    depth: 0,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/personal", "work/email"),
+                    readable: true,
+                    depth: 1,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/personal", "work/github"),
+                    readable: false,
+                    depth: 1,
+                },
+                RenderedPasswordListRow::Folder {
+                    store_path: "/tmp/work".to_string(),
+                    folder_path: "work".to_string(),
+                    depth: 0,
+                },
+                RenderedPasswordListRow::Folder {
+                    store_path: "/tmp/work".to_string(),
+                    folder_path: "work/alice".to_string(),
+                    depth: 1,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/work", "work/alice/slack"),
+                    readable: true,
+                    depth: 2,
+                },
+                RenderedPasswordListRow::Folder {
+                    store_path: "/tmp/work".to_string(),
+                    folder_path: "work/bob".to_string(),
+                    depth: 1,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/work", "work/bob/matrix"),
+                    readable: true,
+                    depth: 2,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn folder_segments_ignore_empty_path_parts() {
+        assert_eq!(
+            password_list_folder_segments("work/alice/"),
+            vec!["work".to_string(), "alice".to_string()]
+        );
+        assert!(password_list_folder_segments("").is_empty());
     }
 }

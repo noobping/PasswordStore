@@ -1,4 +1,9 @@
-use super::search::{search_controller_for_list, SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
+use super::search::{SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
+use super::{
+    refresh_password_list_filter, PASSWORD_LIST_ROW_DEPTH_KEY, PASSWORD_LIST_ROW_EXPANDED_KEY,
+    PASSWORD_LIST_ROW_KIND_ENTRY, PASSWORD_LIST_ROW_KIND_FOLDER, PASSWORD_LIST_ROW_KIND_KEY,
+    PASSWORD_LIST_ROW_STORE_PATH_KEY,
+};
 use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::i18n::gettext;
@@ -23,7 +28,7 @@ use adw::gtk::{
 };
 use adw::prelude::*;
 use adw::{ActionRow, EntryRow, Toast, ToastOverlay};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -45,7 +50,10 @@ pub(super) enum SelectedPasswordRowAction {
 const UNREADABLE_PASSWORD_ROW_TOOLTIP: &str =
     "This item can't be opened with the private keys currently available in the app. File actions are still available, but copy and move-to-store are disabled until a compatible private key is available.";
 const PASSWORD_ROW_STATE_KEY: &str = "password-row-state";
+const PASSWORD_FOLDER_ROW_STATE_KEY: &str = "password-folder-row-state";
 const OPEN_IN_NEW_WINDOW_LABEL: &str = "Open in New Window";
+const PASSWORD_LIST_INDENT_WIDTH: i32 = 18;
+const PASSWORD_LIST_MAX_INDENT_DEPTH: usize = 8;
 
 fn password_row_menu_entries(readable: bool) -> Vec<(&'static str, &'static str)> {
     let mut entries = Vec::new();
@@ -77,15 +85,30 @@ struct PasswordRowState {
     text_edit_mode: Rc<RefCell<TextEditMode>>,
 }
 
+#[derive(Clone)]
+struct PasswordFolderRowState {
+    row: ListBoxRow,
+    folder_icon: Image,
+    expand_icon: Image,
+    expanded: Rc<Cell<bool>>,
+}
+
 pub(super) fn append_password_row(
     list: &ListBox,
     item: PassEntry,
     readable: bool,
     overlay: &ToastOverlay,
     store_labels: Rc<HashMap<String, String>>,
+    depth: usize,
 ) {
     let row = ListBoxRow::new();
     row.set_activatable(readable);
+    set_string_data(
+        &row,
+        PASSWORD_LIST_ROW_KIND_KEY,
+        PASSWORD_LIST_ROW_KIND_ENTRY.to_string(),
+    );
+    set_cloned_data(&row, PASSWORD_LIST_ROW_DEPTH_KEY, depth);
     let stack = Stack::new();
 
     let action_row = ActionRow::builder()
@@ -94,6 +117,7 @@ pub(super) fn append_password_row(
         .subtitle_lines(1)
         .activatable(readable)
         .build();
+    action_row.set_margin_start(password_list_indent(depth));
     let unreadable_icon = build_unreadable_password_icon(!readable);
     let copy_button = flat_icon_button("edit-copy-symbolic");
     copy_button.set_visible(readable);
@@ -159,6 +183,63 @@ pub(super) fn append_password_row(
     );
 
     list.append(&row);
+}
+
+pub(super) fn append_password_folder_row(
+    list: &ListBox,
+    store_path: &str,
+    title: &str,
+    subtitle: &str,
+    depth: usize,
+) {
+    let row = ListBoxRow::new();
+    row.set_activatable(true);
+
+    let action_row = ActionRow::builder()
+        .title(title)
+        .subtitle(subtitle)
+        .subtitle_lines(1)
+        .activatable(true)
+        .build();
+    action_row.set_margin_start(password_list_indent(depth));
+    let folder_icon = dim_label_icon("folder-open-symbolic");
+    let expand_icon = dim_label_icon("go-down-symbolic");
+    action_row.add_prefix(&folder_icon);
+    action_row.add_suffix(&expand_icon);
+
+    row.set_child(Some(&action_row));
+    set_string_data(
+        &row,
+        PASSWORD_LIST_ROW_KIND_KEY,
+        PASSWORD_LIST_ROW_KIND_FOLDER.to_string(),
+    );
+    set_cloned_data(&row, PASSWORD_LIST_ROW_DEPTH_KEY, depth);
+    set_string_data(
+        &row,
+        PASSWORD_LIST_ROW_STORE_PATH_KEY,
+        store_path.to_string(),
+    );
+    let state = PasswordFolderRowState {
+        row: row.clone(),
+        folder_icon,
+        expand_icon,
+        expanded: Rc::new(Cell::new(false)),
+    };
+    set_cloned_data(&row, PASSWORD_FOLDER_ROW_STATE_KEY, state.clone());
+    sync_password_folder_row_display(&state);
+    list.append(&row);
+}
+
+pub(super) fn toggle_password_folder_row(row: &ListBoxRow) -> bool {
+    let Some(state): Option<PasswordFolderRowState> =
+        cloned_data(row, PASSWORD_FOLDER_ROW_STATE_KEY)
+    else {
+        return false;
+    };
+
+    state.expanded.set(!state.expanded.get());
+    sync_password_folder_row_display(&state);
+    true
 }
 
 fn configure_password_row_menu(
@@ -307,7 +388,7 @@ fn connect_text_edit_actions(
                 );
                 sync_password_row_display(&state);
                 show_password_row_display(&state);
-                refresh_password_list_search(&list);
+                request_password_list_reload(&list);
             }
             Err(err) => {
                 log_error(format!("Failed to move or rename password entry: {err}"));
@@ -392,7 +473,7 @@ fn connect_store_move_actions(
                     *state_for_result.item.borrow_mut() = updated_entry;
                     sync_password_row_display(&state_for_result);
                     show_password_row_display(&state_for_result);
-                    refresh_password_list_search(&list_for_result);
+                    request_password_list_reload(&list_for_result);
                     overlay_for_result.add_toast(Toast::new(&gettext("Moved.")));
                 }
                 Err(err) => {
@@ -424,7 +505,7 @@ fn delete_current_entry(state: &PasswordRowState, list: &ListBox, overlay: &Toas
                     push_undo_action(&row, undo_action);
                 }
                 list.remove(&row);
-                refresh_password_list_search(&list);
+                request_password_list_reload(&list);
             }
             Err(err) => {
                 log_undo_error("delete password entry", &err);
@@ -545,6 +626,25 @@ fn sync_password_row_display(state: &PasswordRowState) {
     );
 }
 
+fn sync_password_folder_row_display(state: &PasswordFolderRowState) {
+    let expanded = state.expanded.get();
+    state.folder_icon.set_icon_name(Some(if expanded {
+        "folder-open-symbolic"
+    } else {
+        "folder-symbolic"
+    }));
+    state.expand_icon.set_icon_name(Some(if expanded {
+        "go-down-symbolic"
+    } else {
+        "go-next-symbolic"
+    }));
+    set_cloned_data(&state.row, PASSWORD_LIST_ROW_EXPANDED_KEY, expanded);
+}
+
+fn password_list_indent(depth: usize) -> i32 {
+    (depth.min(PASSWORD_LIST_MAX_INDENT_DEPTH) as i32) * PASSWORD_LIST_INDENT_WIDTH
+}
+
 fn password_row_subtitle(relative_path: &str, store_label: &str) -> String {
     if relative_path.is_empty() {
         store_label.to_string()
@@ -635,10 +735,18 @@ fn log_undo_error(action: &str, error: &UndoError) {
 }
 
 fn refresh_password_list_search(list: &ListBox) {
-    list.invalidate_filter();
-    if let Some(controller) = search_controller_for_list(list) {
-        controller.update_placeholder(list);
+    refresh_password_list_filter(list);
+}
+
+fn request_password_list_reload(list: &ListBox) {
+    if list
+        .activate_action("win.reload-password-list", None)
+        .is_ok()
+    {
+        return;
     }
+
+    refresh_password_list_search(list);
 }
 
 fn push_row_undo_action(

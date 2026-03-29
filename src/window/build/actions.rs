@@ -1,5 +1,6 @@
 use crate::clipboard::connect_copy_button;
 use crate::i18n::gettext;
+use crate::password::list::toggle_password_list_folder_row;
 use crate::password::model::OpenPassFile;
 use crate::password::new_item::{
     clear_new_password_dialog_error, selected_new_password_store, show_new_password_dialog_error,
@@ -24,7 +25,11 @@ pub(super) fn connect_password_list_activation(
 ) {
     let overlay = overlay.clone();
     let page_state = page_state.clone();
-    list.connect_row_activated(move |_list, row| {
+    list.connect_row_activated(move |list, row| {
+        if toggle_password_list_folder_row(list, row) {
+            return;
+        }
+
         if matches!(
             non_null_to_string_option(row, "openable").as_deref(),
             Some("false")

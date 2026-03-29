@@ -9,6 +9,10 @@ use self::index::{
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
+use super::{
+    password_list_folder_row_is_expanded, password_list_row_depth, password_list_row_is_folder,
+    password_list_row_store_path,
+};
 #[cfg(target_os = "linux")]
 use crate::backend::{password_entry_is_readable, read_password_entry};
 use crate::password::file::SearchablePassField;
@@ -25,6 +29,21 @@ use std::rc::Rc;
 
 const SEARCH_CONTROLLER_KEY: &str = "search-controller";
 pub(super) const SEARCH_FIELDS_KEY: &str = "search-fields";
+const SEARCH_VISIBILITY_KEY: &str = "search-visibility";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FilterablePasswordListRow {
+    Folder {
+        store_path: String,
+        depth: usize,
+        expanded: bool,
+    },
+    Entry {
+        store_path: String,
+        depth: usize,
+        matches_query: bool,
+    },
+}
 
 #[derive(Clone)]
 pub(super) struct SearchFilterController {
@@ -67,13 +86,19 @@ impl SearchFilterController {
         *self.state.query.borrow_mut() = parse_search_query(query);
     }
 
-    pub(super) fn matches_row(&self, row: &ListBoxRow) -> bool {
+    pub(super) fn refresh_row_visibility(&self, list: &ListBox) {
         let query = self.state.query.borrow().clone();
-        let label = non_null_to_string_option(row, "label").unwrap_or_default();
-        let store_label = non_null_to_string_option(row, "store-label").unwrap_or_default();
-        let store_path = non_null_to_string_option(row, "root").unwrap_or_default();
-        let fields = row_field_index_state(row);
-        row_matches_query(&label, &store_label, &store_path, &fields, &query)
+        let query_is_empty = query.is_empty();
+        let rows = collect_filterable_rows(list, &query);
+        let visibility = password_list_row_visibility(&rows, query_is_empty);
+
+        for (row, visible) in visibility {
+            set_cloned_data(&row, SEARCH_VISIBILITY_KEY, visible);
+        }
+    }
+
+    pub(super) fn matches_row(&self, row: &ListBoxRow) -> bool {
+        cloned_data(row, SEARCH_VISIBILITY_KEY).unwrap_or(true)
     }
 
     pub(super) fn begin_reload(&self, has_store_dirs: bool) {
@@ -87,6 +112,7 @@ impl SearchFilterController {
 
     pub(super) fn finish_reload(&self, list: &ListBox) {
         self.state.loading.set(false);
+        self.refresh_row_visibility(list);
         self.start_indexing_if_needed(list);
         list.invalidate_filter();
         self.update_placeholder(list);
@@ -151,6 +177,7 @@ impl SearchFilterController {
             }
         }
 
+        self.refresh_row_visibility(list);
         list.invalidate_filter();
         self.update_placeholder(list);
     }
@@ -178,6 +205,145 @@ impl SearchFilterController {
 
 pub(super) fn search_controller_for_list(list: &ListBox) -> Option<SearchFilterController> {
     cloned_data(list, SEARCH_CONTROLLER_KEY)
+}
+
+fn collect_filterable_rows(
+    list: &ListBox,
+    query: &SearchQuery,
+) -> Vec<(ListBoxRow, FilterablePasswordListRow)> {
+    let mut rows = Vec::new();
+    for_each_row(list, |row| {
+        let Some(store_path) = password_list_row_store_path(&row) else {
+            set_cloned_data(&row, SEARCH_VISIBILITY_KEY, true);
+            return;
+        };
+        let depth = password_list_row_depth(&row);
+
+        if password_list_row_is_folder(&row) {
+            rows.push((
+                row.clone(),
+                FilterablePasswordListRow::Folder {
+                    store_path,
+                    depth,
+                    expanded: password_list_folder_row_is_expanded(&row),
+                },
+            ));
+            return;
+        }
+
+        rows.push((
+            row.clone(),
+            FilterablePasswordListRow::Entry {
+                store_path,
+                depth,
+                matches_query: password_entry_matches_query(&row, query),
+            },
+        ));
+    });
+    rows
+}
+
+fn password_entry_matches_query(row: &ListBoxRow, query: &SearchQuery) -> bool {
+    let label = non_null_to_string_option(row, "label").unwrap_or_default();
+    let store_label = non_null_to_string_option(row, "store-label").unwrap_or_default();
+    let store_path = non_null_to_string_option(row, "root").unwrap_or_default();
+    let fields = row_field_index_state(row);
+    row_matches_query(&label, &store_label, &store_path, &fields, query)
+}
+
+fn password_list_row_visibility(
+    rows: &[(ListBoxRow, FilterablePasswordListRow)],
+    query_is_empty: bool,
+) -> Vec<(ListBoxRow, bool)> {
+    let states = rows.iter().map(|(_, row)| row.clone()).collect::<Vec<_>>();
+    let visibility = if query_is_empty {
+        password_list_collapsed_visibility(&states)
+    } else {
+        password_list_search_visibility(&states)
+    };
+
+    rows.iter()
+        .zip(visibility)
+        .map(|((row, _), visible)| (row.clone(), visible))
+        .collect()
+}
+
+fn password_list_collapsed_visibility(rows: &[FilterablePasswordListRow]) -> Vec<bool> {
+    let mut visibility = Vec::with_capacity(rows.len());
+    let mut current_store = None::<&str>;
+    let mut expansion_stack = Vec::<bool>::new();
+
+    for row in rows {
+        let store_path = row.store_path();
+        if current_store != Some(store_path) {
+            current_store = Some(store_path);
+            expansion_stack.clear();
+        }
+
+        let depth = row.depth();
+        expansion_stack.truncate(depth);
+        let ancestors_expanded = expansion_stack.iter().all(|expanded| *expanded);
+        visibility.push(ancestors_expanded);
+
+        if let FilterablePasswordListRow::Folder { expanded, .. } = row {
+            expansion_stack.push(*expanded);
+        }
+    }
+
+    visibility
+}
+
+fn password_list_search_visibility(rows: &[FilterablePasswordListRow]) -> Vec<bool> {
+    let mut visibility = vec![false; rows.len()];
+    let mut current_store = None::<&str>;
+    let mut folder_stack = Vec::<usize>::new();
+
+    for (index, row) in rows.iter().enumerate() {
+        let store_path = row.store_path();
+        if current_store != Some(store_path) {
+            current_store = Some(store_path);
+            folder_stack.clear();
+        }
+
+        let depth = row.depth();
+        folder_stack.truncate(depth);
+
+        match row {
+            FilterablePasswordListRow::Folder { .. } => folder_stack.push(index),
+            FilterablePasswordListRow::Entry { matches_query, .. } => {
+                if *matches_query {
+                    visibility[index] = true;
+                    for folder_index in &folder_stack {
+                        visibility[*folder_index] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    visibility
+}
+
+impl FilterablePasswordListRow {
+    fn store_path(&self) -> &str {
+        match self {
+            Self::Folder { store_path, .. } | Self::Entry { store_path, .. } => store_path,
+        }
+    }
+
+    const fn depth(&self) -> usize {
+        match self {
+            Self::Folder { depth, .. } | Self::Entry { depth, .. } => *depth,
+        }
+    }
+}
+
+fn for_each_row(list: &ListBox, mut f: impl FnMut(ListBoxRow)) {
+    let mut index = 0;
+    while let Some(row) = list.row_at_index(index) {
+        f(row);
+        index += 1;
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -223,4 +389,89 @@ pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<
     }
 
     matches
+}
+
+#[cfg(test)]
+mod visibility_tests {
+    use super::{
+        password_list_collapsed_visibility, password_list_search_visibility,
+        FilterablePasswordListRow,
+    };
+
+    #[test]
+    fn collapsed_visibility_hides_descendants_of_closed_folders() {
+        let rows = vec![
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/personal".to_string(),
+                depth: 0,
+                expanded: false,
+            },
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/personal".to_string(),
+                depth: 1,
+                matches_query: true,
+            },
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/personal".to_string(),
+                depth: 1,
+                expanded: true,
+            },
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/personal".to_string(),
+                depth: 2,
+                matches_query: true,
+            },
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/personal".to_string(),
+                depth: 0,
+                matches_query: true,
+            },
+        ];
+
+        assert_eq!(
+            password_list_collapsed_visibility(&rows),
+            vec![true, false, false, false, true]
+        );
+    }
+
+    #[test]
+    fn search_visibility_shows_matching_entries_and_their_folder_chain() {
+        let rows = vec![
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/personal".to_string(),
+                depth: 0,
+                matches_query: false,
+            },
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/personal".to_string(),
+                depth: 0,
+                expanded: false,
+            },
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/personal".to_string(),
+                depth: 1,
+                expanded: false,
+            },
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/personal".to_string(),
+                depth: 2,
+                matches_query: true,
+            },
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/work".to_string(),
+                depth: 0,
+                expanded: true,
+            },
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/work".to_string(),
+                depth: 1,
+                matches_query: false,
+            },
+        ];
+
+        assert_eq!(
+            password_list_search_visibility(&rows),
+            vec![false, true, true, true, false, false]
+        );
+    }
 }

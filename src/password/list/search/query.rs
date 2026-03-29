@@ -58,6 +58,10 @@ pub(super) enum SearchComparison {
 }
 
 impl SearchQuery {
+    pub(super) const fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
+
     pub(super) fn requires_index(&self) -> bool {
         match self {
             Self::Structured(query) => query.requires_index(),

@@ -1231,7 +1231,7 @@
                               <object class="AdwPreferencesGroup" id="store_recipients_create_group">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Recommended for new stores</property>
-                                <property name="description" translatable="yes">Generate a new password-protected key inside Keycord.</property>
+                                <property name="description" translatable="yes">Generate a new app-managed key inside Keycord.</property>
                                 <child>
                                   <object class="GtkListBox" id="store_recipients_create_list">
                                     <property name="selection-mode">none</property>
@@ -1260,13 +1260,26 @@
                               <object class="AdwPreferencesGroup" id="store_recipients_add_group">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Other ways to add a key</property>
-                                <property name="description" translatable="yes">Import an existing private key or connect a hardware token.</property>
+                                <property name="description" translatable="yes">Import an existing private key, add a FIDO2 recipient, or connect a hardware token.</property>
                                 <child>
                                   <object class="GtkListBox" id="store_recipients_add_list">
                                     <property name="selection-mode">none</property>
                                     <style>
                                       <class name="boxed-list" />
                                     </style>
+                                    <child>
+                                      <object class="AdwActionRow"
+                                        id="store_recipients_add_fido2_key_row">
+                                        <property name="title" translatable="yes">Add FIDO2 security key</property>
+                                        <property name="subtitle" translatable="yes">Use a connected security key for Keycord-only encryption.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                     <child>
                                       <object class="AdwActionRow"
                                         id="store_recipients_add_hardware_key_row">

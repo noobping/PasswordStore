@@ -16,10 +16,13 @@
 
         <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
         <MediaTemplate EmbedCab="yes" />
-        <WixVariable Id="WixUILicenseRtf" Value="data\license.rtf" />
-        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Keycord" />
         <Property Id="WixShellExecTarget" Value="[INSTALLDIR]$(var.ExecutableName).exe" />
-        <CustomAction Id="LaunchApplication" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" />
+        <CustomAction
+            Id="LaunchApplication"
+            BinaryKey="WixCA"
+            DllEntry="WixShellExec"
+            Impersonate="yes"
+            Return="asyncNoWait" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFilesFolder">
@@ -52,12 +55,11 @@
         </Feature>
 
         <UI>
-            <UIRef Id="WixUI_Minimal" />
-            <Publish
-                Dialog="ExitDialog"
-                Control="Finish"
-                Event="DoAction"
-                Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+            <UIRef Id="WixUI_ProgressOnly" />
         </UI>
+
+        <InstallExecuteSequence>
+            <Custom Action="LaunchApplication" After="InstallFinalize">NOT Installed</Custom>
+        </InstallExecuteSequence>
     </Product>
 </Wix>

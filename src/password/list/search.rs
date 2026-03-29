@@ -259,12 +259,22 @@ fn password_list_row_visibility(
     let visibility = if query_is_empty {
         password_list_collapsed_visibility(&states)
     } else {
-        password_list_search_visibility(&states)
+        combine_password_list_visibility(
+            password_list_collapsed_visibility(&states),
+            password_list_search_visibility(&states),
+        )
     };
 
     rows.iter()
         .zip(visibility)
         .map(|((row, _), visible)| (row.clone(), visible))
+        .collect()
+}
+
+fn combine_password_list_visibility(left: Vec<bool>, right: Vec<bool>) -> Vec<bool> {
+    left.into_iter()
+        .zip(right)
+        .map(|(left, right)| left && right)
         .collect()
 }
 
@@ -394,8 +404,8 @@ pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<
 #[cfg(test)]
 mod visibility_tests {
     use super::{
-        password_list_collapsed_visibility, password_list_search_visibility,
-        FilterablePasswordListRow,
+        combine_password_list_visibility, password_list_collapsed_visibility,
+        password_list_search_visibility, FilterablePasswordListRow,
     };
 
     #[test]
@@ -472,6 +482,35 @@ mod visibility_tests {
         assert_eq!(
             password_list_search_visibility(&rows),
             vec![false, true, true, true, false, false]
+        );
+    }
+
+    #[test]
+    fn combined_visibility_keeps_search_results_collapsible() {
+        let rows = vec![
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/personal".to_string(),
+                depth: 0,
+                expanded: false,
+            },
+            FilterablePasswordListRow::Folder {
+                store_path: "/tmp/personal".to_string(),
+                depth: 1,
+                expanded: true,
+            },
+            FilterablePasswordListRow::Entry {
+                store_path: "/tmp/personal".to_string(),
+                depth: 2,
+                matches_query: true,
+            },
+        ];
+
+        assert_eq!(
+            combine_password_list_visibility(
+                password_list_collapsed_visibility(&rows),
+                password_list_search_visibility(&rows),
+            ),
+            vec![true, false, false]
         );
     }
 }

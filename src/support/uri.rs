@@ -6,7 +6,7 @@ use adw::prelude::DisplayExt;
 use adw::prelude::FileExt;
 
 #[cfg(target_os = "windows")]
-use winsafe::{self as w, co, prelude::*};
+use winsafe::{self as w, co};
 
 pub fn launch_default_uri(uri: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]

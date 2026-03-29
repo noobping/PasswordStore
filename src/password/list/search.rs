@@ -4,9 +4,11 @@ mod query;
 mod tests;
 
 use self::index::{
-    build_search_index_batch, collect_unindexed_requests, find_row, indexed_fields_for_contents,
-    is_stale_index_batch, list_is_empty, row_field_index_state, SearchIndexBatch,
+    build_search_index_batch, collect_unindexed_requests, find_row, is_stale_index_batch,
+    list_is_empty, row_field_index_state, SearchIndexBatch,
 };
+#[cfg(target_os = "linux")]
+use self::index::indexed_fields_for_contents;
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
 use super::{
@@ -20,6 +22,7 @@ use crate::password::file::SearchablePassField;
 use crate::password::model::{
     collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
 };
+#[cfg(target_os = "linux")]
 use crate::store::labels::shortened_store_label_map;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};

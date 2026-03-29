@@ -4,6 +4,7 @@ use crate::logging::log_error;
 use adw::gio;
 #[cfg(target_os = "linux")]
 use adw::gtk::{FileChooserAction, FileChooserNative, ResponseType};
+#[cfg(target_os = "linux")]
 use adw::prelude::*;
 use adw::{ApplicationWindow, Toast, ToastOverlay};
 #[cfg(target_os = "linux")]
@@ -27,6 +28,7 @@ impl LocalPathKind {
         }
     }
 
+    #[cfg(any(target_os = "linux", test))]
     const fn local_path_error_message(self) -> &'static str {
         match self {
             Self::File => "Choose a local file.",

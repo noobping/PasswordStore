@@ -1,6 +1,9 @@
 use crate::logging::log_error;
+use adw::glib;
+#[cfg(target_os = "linux")]
 use adw::prelude::*;
-use adw::{glib, MessageDialog};
+#[cfg(target_os = "linux")]
+use adw::MessageDialog;
 use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};

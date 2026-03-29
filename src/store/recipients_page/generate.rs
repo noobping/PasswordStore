@@ -27,12 +27,7 @@ struct PrivateKeyGenerationRequest {
     passphrase: String,
 }
 
-fn validate_private_key_generation_request(
-    name: &str,
-    email: &str,
-    passphrase: &str,
-    confirmation: &str,
-) -> Result<PrivateKeyGenerationRequest, &'static str> {
+fn validate_name_and_email(name: &str, email: &str) -> Result<(String, String), &'static str> {
     let name = name.trim();
     if name.is_empty() {
         return Err("Enter a name.");
@@ -41,6 +36,16 @@ fn validate_private_key_generation_request(
     let email = email.trim();
     let email = validate_email_address(email)?;
 
+    Ok((name.to_string(), email))
+}
+
+fn validate_private_key_generation_request(
+    name: &str,
+    email: &str,
+    passphrase: &str,
+    confirmation: &str,
+) -> Result<PrivateKeyGenerationRequest, &'static str> {
+    let (name, email) = validate_name_and_email(name, email)?;
     if passphrase.trim().is_empty() {
         return Err("Enter a key password.");
     }
@@ -49,7 +54,7 @@ fn validate_private_key_generation_request(
     }
 
     Ok(PrivateKeyGenerationRequest {
-        name: name.to_string(),
+        name,
         email,
         passphrase: passphrase.to_string(),
     })
@@ -215,9 +220,9 @@ pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageS
     });
 }
 
-pub(super) fn connect_private_key_generation_autofill(state: &StoreRecipientsPageState) {
-    let name_row = state.platform.private_key_generation_name_row.clone();
-    let email_row = state.platform.private_key_generation_email_row.clone();
+fn connect_generation_autofill_rows(name_row: &adw::EntryRow, email_row: &adw::EntryRow) {
+    let name_row = name_row.clone();
+    let email_row = email_row.clone();
     let syncing = Rc::new(Cell::new(false));
     let last_autofilled_name = Rc::new(RefCell::new(None::<String>));
     let last_autofilled_email = Rc::new(RefCell::new(None::<String>));
@@ -276,11 +281,18 @@ pub(super) fn connect_private_key_generation_autofill(state: &StoreRecipientsPag
     }
 }
 
+pub(super) fn connect_private_key_generation_autofill(state: &StoreRecipientsPageState) {
+    connect_generation_autofill_rows(
+        &state.platform.private_key_generation_name_row,
+        &state.platform.private_key_generation_email_row,
+    );
+}
+
 pub(super) fn connect_private_key_generate_controls(state: &StoreRecipientsPageState) {
     let row = state.platform.generate_key_row.clone();
-    let state = state.clone();
+    let state_for_password = state.clone();
     connect_row_action(&row, move || {
-        show_private_key_generation_page(&state);
+        show_private_key_generation_page(&state_for_password);
     });
 }
 
@@ -314,40 +326,28 @@ mod tests {
     #[test]
     fn autofill_helpers_only_fill_empty_fields() {
         assert_eq!(
-            suggested_name_from_email("alice@example.com"),
-            Some("alice".to_string())
+            next_autofilled_value("", None, Some("Alice".to_string())),
+            Some("Alice".to_string())
         );
         assert_eq!(
-            suggested_email_from_name("alice"),
-            Some("alice@pass.store".to_string())
+            next_autofilled_value("custom", None, Some("Alice".to_string())),
+            None
+        );
+        assert_eq!(
+            next_autofilled_value("Alice", Some("Alice"), Some("Bob".to_string())),
+            Some("Bob".to_string())
         );
     }
 
     #[test]
-    fn autofill_keeps_tracking_the_last_generated_value() {
+    fn autofill_suggestions_match_expected_patterns() {
         assert_eq!(
-            next_autofilled_value(
-                "alice",
-                Some("alice"),
-                suggested_name_from_email("bob@example.com"),
-            ),
-            Some("bob".to_string())
+            suggested_name_from_email("alice@example.com").as_deref(),
+            Some("alice")
         );
         assert_eq!(
-            next_autofilled_value(
-                "alice@pass.store",
-                Some("alice@pass.store"),
-                suggested_email_from_name("bob"),
-            ),
-            Some("bob@pass.store".to_string())
-        );
-        assert_eq!(
-            next_autofilled_value(
-                "custom@example.com",
-                Some("alice@pass.store"),
-                suggested_email_from_name("bob"),
-            ),
-            None
+            suggested_email_from_name("Alice Example").as_deref(),
+            Some("Alice Example@pass.store")
         );
     }
 }

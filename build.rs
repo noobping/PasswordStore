@@ -11,6 +11,13 @@ struct CatalogEntry {
     references: BTreeSet<String>,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CompiledDocSource {
+    canonical_path: String,
+    locale: Option<String>,
+    relative_path: String,
+}
+
 #[derive(Clone, Debug, Default)]
 struct PoEntry {
     msgid: String,
@@ -48,6 +55,7 @@ fn main() {
     let data_dir = Path::new("data");
     let docs_dir = Path::new("docs");
     let po_dir = Path::new("po");
+    write_docs_manifest(docs_dir, &out_dir);
 
     fs::create_dir_all(data_dir).expect("Failed to create data directory");
     fs::create_dir_all(po_dir).expect("Failed to create po directory");
@@ -72,7 +80,7 @@ fn main() {
         res.compile().expect("Failed to compile resources");
     }
 
-    write_translation_catalogs(po_dir, docs_dir);
+    write_translation_catalogs(po_dir);
     let locales = compile_translations(po_dir, &locale_dir);
     println!("cargo:rustc-env=LOCALEDIR={}", locale_dir.display());
     println!("cargo:rustc-env=AVAILABLE_LOCALES={}", locales.join(":"));
@@ -92,40 +100,18 @@ fn main() {
     }
 }
 
-fn write_translation_catalogs(po_dir: &Path, docs_dir: &Path) {
+fn write_translation_catalogs(po_dir: &Path) {
     let mut catalog = Catalog::new();
     collect_ui_strings(Path::new("data/window.ui"), &mut catalog);
     collect_ui_strings(Path::new("data/shortcuts.ui"), &mut catalog);
     collect_metainfo_strings(Path::new("data/metainfo.xml"), &mut catalog);
     collect_desktop_strings(Path::new("keycord.desktop"), &mut catalog);
     collect_rust_strings(Path::new("src"), &mut catalog);
-    collect_docs_strings(docs_dir, &mut catalog);
 
     let pot_path = po_dir.join(format!("{}.pot", gettext_domain()));
     let en_path = po_dir.join("en.po");
     write_if_changed(&pot_path, render_pot_catalog(&catalog));
     write_if_changed(&en_path, render_po_catalog(&catalog, "en"));
-}
-
-fn collect_docs_strings(docs_dir: &Path, catalog: &mut Catalog) {
-    for rel_path in [
-        "README.md",
-        "getting-started.md",
-        "search.md",
-        "workflows.md",
-        "permissions-and-backends.md",
-        "teams-and-organizations.md",
-        "use-cases.md",
-    ] {
-        let path = docs_dir.join(rel_path);
-        let contents = fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("Failed to read {}: {err}", path.display()));
-        if contents.trim().is_empty() {
-            continue;
-        }
-
-        add_catalog_message(catalog, &contents, format!("docs/{rel_path}"));
-    }
 }
 
 fn collect_ui_strings(path: &Path, catalog: &mut Catalog) {
@@ -520,6 +506,10 @@ fn push_unescaped_rust_char(bytes: &[u8], index: &mut usize, value: &mut String)
 fn looks_translatable_rust_string(value: &str) -> bool {
     let trimmed = value.trim();
     if trimmed.is_empty() {
+        return false;
+    }
+
+    if trimmed.ends_with(".md") && !trimmed.chars().any(char::is_whitespace) {
         return false;
     }
 
@@ -1108,6 +1098,79 @@ fn write_window_ui() {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set for build script");
     fs::write(Path::new(&out_dir).join("window.ui"), rendered)
         .expect("Failed to write generated window.ui");
+}
+
+fn write_docs_manifest(docs_dir: &Path, out_dir: &Path) {
+    let mut sources = collect_doc_sources(docs_dir);
+    sources.sort();
+
+    let mut output = String::from("const DOC_SOURCES: &[CompiledDocumentSource] = &[\n");
+    for source in sources {
+        let locale = match source.locale {
+            Some(locale) => format!("Some({locale:?})"),
+            None => "None".to_string(),
+        };
+        writeln!(
+            output,
+            "    CompiledDocumentSource {{ path: {:?}, locale: {}, source: include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/{}\")) }},",
+            source.canonical_path,
+            locale,
+            source.relative_path
+        )
+        .expect("Failed to format docs manifest entry");
+    }
+    output.push_str("];\n");
+
+    write_if_changed(&out_dir.join("docs_manifest.rs"), output);
+}
+
+fn collect_doc_sources(docs_dir: &Path) -> Vec<CompiledDocSource> {
+    let mut sources = Vec::new();
+
+    for entry in fs::read_dir(docs_dir)
+        .unwrap_or_else(|err| panic!("Failed to read {}: {err}", docs_dir.display()))
+    {
+        let entry = entry.expect("Failed to read docs directory entry");
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let Some((canonical_path, locale)) = parse_doc_source_file_name(file_name) else {
+            continue;
+        };
+
+        sources.push(CompiledDocSource {
+            canonical_path,
+            locale,
+            relative_path: format!("docs/{file_name}"),
+        });
+    }
+
+    sources
+}
+
+fn parse_doc_source_file_name(file_name: &str) -> Option<(String, Option<String>)> {
+    let stem = file_name.strip_suffix(".md")?;
+
+    if let Some((base, locale)) = stem.rsplit_once('.') {
+        if looks_like_locale_tag(locale) {
+            return Some((format!("{base}.md"), Some(locale.to_string())));
+        }
+    }
+
+    Some((file_name.to_string(), None))
+}
+
+fn looks_like_locale_tag(value: &str) -> bool {
+    value.len() >= 2
+        && value.chars().any(|ch| ch.is_ascii_alphabetic())
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
 }
 
 fn with_translation_domain(source: String) -> String {

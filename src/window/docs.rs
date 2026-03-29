@@ -1,4 +1,3 @@
-use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::support::actions::register_window_action;
 use crate::support::ui::{
@@ -24,24 +23,24 @@ const DOCS_EMPTY_TITLE: &str = "No matching docs";
 const DOCS_EMPTY_SUBTITLE: &str = "Try a different search term.";
 const INTERNAL_DOC_URI_SCHEME: &str = "keycord-doc:";
 
-const DOC_SOURCES: [(&str, &str); 7] = [
-    ("README.md", include_str!("../../docs/README.md")),
-    (
-        "getting-started.md",
-        include_str!("../../docs/getting-started.md"),
-    ),
-    ("search.md", include_str!("../../docs/search.md")),
-    ("workflows.md", include_str!("../../docs/workflows.md")),
-    (
-        "permissions-and-backends.md",
-        include_str!("../../docs/permissions-and-backends.md"),
-    ),
-    (
-        "teams-and-organizations.md",
-        include_str!("../../docs/teams-and-organizations.md"),
-    ),
-    ("use-cases.md", include_str!("../../docs/use-cases.md")),
+const DOC_PATHS: [&str; 7] = [
+    "README.md",
+    "getting-started.md",
+    "search.md",
+    "workflows.md",
+    "permissions-and-backends.md",
+    "teams-and-organizations.md",
+    "use-cases.md",
 ];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CompiledDocumentSource {
+    path: &'static str,
+    locale: Option<&'static str>,
+    source: &'static str,
+}
+
+include!(concat!(env!("OUT_DIR"), "/docs_manifest.rs"));
 
 #[derive(Clone)]
 pub struct DocumentationPageState {
@@ -439,13 +438,107 @@ pub fn register_open_docs_action(window: &ApplicationWindow, state: &Documentati
 }
 
 fn load_documents() -> Vec<DocumentationDocument> {
-    DOC_SOURCES
+    let preferred_locales = preferred_doc_locales();
+
+    DOC_PATHS
         .iter()
-        .map(|(path, source)| {
-            let translated = gettext(source);
-            parse_document(path, &translated)
+        .filter_map(|path| {
+            select_document_source(path, &preferred_locales)
+                .map(|source| parse_document(path, source))
         })
         .collect()
+}
+
+fn select_document_source(path: &str, preferred_locales: &[String]) -> Option<&'static str> {
+    select_document_source_from(DOC_SOURCES, path, preferred_locales)
+}
+
+fn select_document_source_from(
+    sources: &[CompiledDocumentSource],
+    path: &str,
+    preferred_locales: &[String],
+) -> Option<&'static str> {
+    let variants = sources
+        .iter()
+        .filter(|source| source.path == path)
+        .copied()
+        .collect::<Vec<_>>();
+
+    for locale in preferred_locales {
+        if let Some(source) = variants.iter().find(|source| {
+            source
+                .locale
+                .and_then(normalize_locale_tag)
+                .is_some_and(|value| value == *locale)
+        }) {
+            return Some(source.source);
+        }
+    }
+
+    variants
+        .iter()
+        .find(|source| source.locale.is_none())
+        .map(|source| source.source)
+}
+
+fn preferred_doc_locales() -> Vec<String> {
+    collect_preferred_doc_locales(
+        ["LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"]
+            .into_iter()
+            .filter_map(|key| std::env::var(key).ok()),
+    )
+}
+
+fn collect_preferred_doc_locales(values: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut locales = Vec::new();
+
+    for value in values {
+        for candidate in value.split(':') {
+            for locale in expanded_locale_tags(candidate) {
+                if !locales.contains(&locale) {
+                    locales.push(locale);
+                }
+            }
+        }
+    }
+
+    locales
+}
+
+fn expanded_locale_tags(value: &str) -> Vec<String> {
+    let Some(normalized) = normalize_locale_tag(value) else {
+        return Vec::new();
+    };
+
+    let mut locales = vec![normalized.clone()];
+    if let Some((language, _)) = normalized.split_once('_') {
+        if !locales.iter().any(|locale| locale == language) {
+            locales.push(language.to_string());
+        }
+    }
+
+    locales
+}
+
+fn normalize_locale_tag(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let without_codeset = trimmed.split('.').next().unwrap_or(trimmed);
+    let without_modifier = without_codeset.split('@').next().unwrap_or(without_codeset);
+    if without_modifier.eq_ignore_ascii_case("c") || without_modifier.eq_ignore_ascii_case("posix")
+    {
+        return None;
+    }
+
+    let normalized = without_modifier.replace('-', "_").to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    Some(normalized)
 }
 
 fn parse_document(path: &str, source: &str) -> DocumentationDocument {
@@ -1022,9 +1115,10 @@ fn table_cells(row: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        inline_markup, parse_document, parse_inline_markdown, search_documents, table_cells,
-        table_run_end, DocumentationBlockKind, DocumentationDocument, DocumentationInlineLink,
-        DocumentationLinkTarget,
+        collect_preferred_doc_locales, inline_markup, parse_document, parse_inline_markdown,
+        search_documents, select_document_source_from, table_cells, table_run_end,
+        CompiledDocumentSource, DocumentationBlockKind, DocumentationDocument,
+        DocumentationInlineLink, DocumentationLinkTarget,
     };
     use std::collections::BTreeMap;
 
@@ -1207,6 +1301,51 @@ mod tests {
 
         assert_eq!(table_run_end(&blocks, 1), 3);
         assert_eq!(table_cells("A | B | C"), vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn preferred_doc_locales_normalize_locale_variants() {
+        let locales = collect_preferred_doc_locales([
+            "nl_NL.UTF-8:fr".to_string(),
+            "POSIX".to_string(),
+            "nl".to_string(),
+        ]);
+
+        assert_eq!(locales, vec!["nl_nl", "nl", "fr"]);
+    }
+
+    #[test]
+    fn document_sources_prefer_locale_specific_variants() {
+        let sources = [
+            CompiledDocumentSource {
+                path: "guide.md",
+                locale: None,
+                source: "english",
+            },
+            CompiledDocumentSource {
+                path: "guide.md",
+                locale: Some("nl"),
+                source: "dutch",
+            },
+            CompiledDocumentSource {
+                path: "guide.md",
+                locale: Some("pt_BR"),
+                source: "brazilian-portuguese",
+            },
+        ];
+
+        assert_eq!(
+            select_document_source_from(&sources, "guide.md", &["nl".to_string()]),
+            Some("dutch")
+        );
+        assert_eq!(
+            select_document_source_from(&sources, "guide.md", &["pt_br".to_string()]),
+            Some("brazilian-portuguese")
+        );
+        assert_eq!(
+            select_document_source_from(&sources, "guide.md", &["de".to_string()]),
+            Some("english")
+        );
     }
 
     #[test]

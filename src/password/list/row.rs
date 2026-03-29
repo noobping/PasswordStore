@@ -121,15 +121,12 @@ pub(super) fn append_password_row(
     let unreadable_icon = build_unreadable_password_icon(!readable);
     let copy_button = flat_icon_button("edit-copy-symbolic");
     copy_button.set_visible(readable);
-    let open_icon = Image::from_icon_name("go-next-symbolic");
-    open_icon.set_visible(readable);
     let menu_button = MenuButton::builder()
         .icon_name("view-more-symbolic")
         .has_frame(false)
         .css_classes(vec!["flat"])
         .build();
     action_row.add_prefix(&unreadable_icon);
-    action_row.add_suffix(&open_icon);
     action_row.add_suffix(&copy_button);
     action_row.add_suffix(&menu_button);
 

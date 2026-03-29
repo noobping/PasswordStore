@@ -28,7 +28,7 @@ use adw::gtk::{
 };
 use adw::prelude::*;
 use adw::ToastOverlay;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
@@ -130,6 +130,12 @@ enum RenderedPasswordListRow {
         readable: bool,
         depth: usize,
     },
+}
+
+#[derive(Debug, Default)]
+struct PasswordFolderTree {
+    folders: BTreeMap<String, PasswordFolderTree>,
+    entries: Vec<(PassEntry, bool)>,
 }
 
 const fn list_action_visibility(context: ListActionContext) -> ListActionVisibility {
@@ -408,48 +414,60 @@ fn build_store_path_password_list_rows(
 ) -> Vec<RenderedPasswordListRow> {
     let mut rows = Vec::new();
     let mut current_store_path = None::<String>;
-    let mut current_folder_segments = Vec::<String>::new();
+    let mut tree = PasswordFolderTree::default();
 
     for (item, readable) in items {
         if current_store_path.as_deref() != Some(item.store_path.as_str()) {
-            current_store_path = Some(item.store_path.clone());
-            current_folder_segments.clear();
-        }
-
-        let folder_segments = password_list_folder_segments(&item.relative_path);
-        let common_prefix_len = current_folder_segments
-            .iter()
-            .zip(folder_segments.iter())
-            .take_while(|(left, right)| left == right)
-            .count();
-        let mut folder_path = if common_prefix_len == 0 {
-            String::new()
-        } else {
-            current_folder_segments[..common_prefix_len].join("/")
-        };
-
-        for (depth, segment) in folder_segments.iter().enumerate().skip(common_prefix_len) {
-            if !folder_path.is_empty() {
-                folder_path.push('/');
+            if let Some(store_path) = current_store_path.replace(item.store_path.clone()) {
+                append_store_folder_rows(&mut rows, &store_path, &tree, 0, None);
+                tree = PasswordFolderTree::default();
             }
-            folder_path.push_str(segment);
-            rows.push(RenderedPasswordListRow::Folder {
-                store_path: item.store_path.clone(),
-                folder_path: folder_path.clone(),
-                depth,
-            });
         }
 
-        let depth = folder_segments.len();
-        current_folder_segments = folder_segments;
-        rows.push(RenderedPasswordListRow::Entry {
-            item,
-            readable,
-            depth,
-        });
+        insert_password_tree_entry(&mut tree, item, readable);
+    }
+
+    if let Some(store_path) = current_store_path {
+        append_store_folder_rows(&mut rows, &store_path, &tree, 0, None);
     }
 
     rows
+}
+
+fn insert_password_tree_entry(tree: &mut PasswordFolderTree, item: PassEntry, readable: bool) {
+    let mut node = tree;
+    for segment in password_list_folder_segments(&item.relative_path) {
+        node = node.folders.entry(segment).or_default();
+    }
+    node.entries.push((item, readable));
+}
+
+fn append_store_folder_rows(
+    rows: &mut Vec<RenderedPasswordListRow>,
+    store_path: &str,
+    tree: &PasswordFolderTree,
+    depth: usize,
+    parent_path: Option<&str>,
+) {
+    for (segment, child) in &tree.folders {
+        let folder_path = parent_path
+            .map(|parent_path| format!("{parent_path}/{segment}"))
+            .unwrap_or_else(|| segment.clone());
+        rows.push(RenderedPasswordListRow::Folder {
+            store_path: store_path.to_string(),
+            folder_path: folder_path.clone(),
+            depth,
+        });
+        append_store_folder_rows(rows, store_path, child, depth + 1, Some(&folder_path));
+    }
+
+    for (item, readable) in &tree.entries {
+        rows.push(RenderedPasswordListRow::Entry {
+            item: item.clone(),
+            readable: *readable,
+            depth,
+        });
+    }
 }
 
 fn password_list_folder_segments(relative_path: &str) -> Vec<String> {
@@ -1026,11 +1044,6 @@ mod tests {
         assert_eq!(
             rows,
             vec![
-                RenderedPasswordListRow::Entry {
-                    item: PassEntry::from_label("/tmp/personal", "github"),
-                    readable: true,
-                    depth: 0,
-                },
                 RenderedPasswordListRow::Folder {
                     store_path: "/tmp/personal".to_string(),
                     folder_path: "work".to_string(),
@@ -1045,6 +1058,11 @@ mod tests {
                     item: PassEntry::from_label("/tmp/personal", "work/github"),
                     readable: false,
                     depth: 1,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/personal", "github"),
+                    readable: true,
+                    depth: 0,
                 },
                 RenderedPasswordListRow::Folder {
                     store_path: "/tmp/work".to_string(),
@@ -1070,6 +1088,46 @@ mod tests {
                     item: PassEntry::from_label("/tmp/work", "work/bob/matrix"),
                     readable: true,
                     depth: 2,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn store_path_sort_rows_put_nested_folders_before_direct_files() {
+        let rows = build_password_list_rows(
+            vec![
+                (PassEntry::from_label("/tmp/personal", "work/github"), true),
+                (
+                    PassEntry::from_label("/tmp/personal", "work/team/email"),
+                    true,
+                ),
+            ],
+            PasswordListSortMode::StorePath,
+        );
+
+        assert_eq!(
+            rows,
+            vec![
+                RenderedPasswordListRow::Folder {
+                    store_path: "/tmp/personal".to_string(),
+                    folder_path: "work".to_string(),
+                    depth: 0,
+                },
+                RenderedPasswordListRow::Folder {
+                    store_path: "/tmp/personal".to_string(),
+                    folder_path: "work/team".to_string(),
+                    depth: 1,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/personal", "work/team/email"),
+                    readable: true,
+                    depth: 2,
+                },
+                RenderedPasswordListRow::Entry {
+                    item: PassEntry::from_label("/tmp/personal", "work/github"),
+                    readable: true,
+                    depth: 1,
                 },
             ]
         );

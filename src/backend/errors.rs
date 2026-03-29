@@ -278,6 +278,16 @@ pub enum PrivateKeyError {
     #[error("{0}")]
     HardwareTokenRemoved(String),
     #[error("{0}")]
+    Fido2TokenNotPresent(String),
+    #[error("{0}")]
+    Fido2PinRequired(String),
+    #[error("{0}")]
+    IncorrectFido2Pin(String),
+    #[error("{0}")]
+    UnsupportedFido2Key(String),
+    #[error("{0}")]
+    Fido2TokenRemoved(String),
+    #[error("{0}")]
     Other(String),
 }
 
@@ -330,6 +340,26 @@ impl PrivateKeyError {
         Self::HardwareTokenRemoved(message.into())
     }
 
+    pub fn fido2_token_not_present(message: impl Into<String>) -> Self {
+        Self::Fido2TokenNotPresent(message.into())
+    }
+
+    pub fn fido2_pin_required(message: impl Into<String>) -> Self {
+        Self::Fido2PinRequired(message.into())
+    }
+
+    pub fn incorrect_fido2_pin(message: impl Into<String>) -> Self {
+        Self::IncorrectFido2Pin(message.into())
+    }
+
+    pub fn unsupported_fido2_key(message: impl Into<String>) -> Self {
+        Self::UnsupportedFido2Key(message.into())
+    }
+
+    pub fn fido2_token_removed(message: impl Into<String>) -> Self {
+        Self::Fido2TokenRemoved(message.into())
+    }
+
     pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
     }
@@ -344,6 +374,12 @@ impl PrivateKeyError {
             }
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
+            Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key and try again.",
+            Self::Fido2PinRequired(_) | Self::IncorrectFido2Pin(_) => {
+                "Couldn't unlock the FIDO2 security key."
+            }
+            Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
+            Self::Fido2TokenRemoved(_) => "Reconnect the FIDO2 security key and try again.",
             _ => "Couldn't unlock the key.",
         }
     }
@@ -360,6 +396,12 @@ impl PrivateKeyError {
             }
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
+            Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key first.",
+            Self::Fido2PinRequired(_) | Self::IncorrectFido2Pin(_) => {
+                "Couldn't unlock the FIDO2 security key."
+            }
+            Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
+            Self::Fido2TokenRemoved(_) => "Reconnect the FIDO2 security key and try again.",
             Self::PassphraseRequired(_) | Self::IncorrectPassphrase(_) => {
                 "Couldn't unlock the key."
             }

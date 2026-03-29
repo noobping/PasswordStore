@@ -7,6 +7,7 @@ use sequoia_openpgp::{
 pub enum ManagedRipassoPrivateKeyProtection {
     Password,
     HardwareOpenPgpCard,
+    Fido2HmacSecret,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +31,7 @@ pub enum PrivateKeyUnlockRequest {
     Password(String),
     HardwarePin(String),
     HardwareExternal,
+    Fido2(Option<String>),
 }
 
 impl ManagedRipassoPrivateKey {

@@ -60,6 +60,7 @@ fn private_key_unlock_row_title(protection: ManagedRipassoPrivateKeyProtection) 
     match protection {
         ManagedRipassoPrivateKeyProtection::Password => "Key password",
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Hardware key PIN",
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => "Security key PIN",
     }
 }
 
@@ -76,6 +77,7 @@ fn private_key_unlock_dialog_error_message(
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             Some("Enter the hardware key PIN.")
         }
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => Some("Enter the security key PIN."),
     }
 }
 
@@ -266,6 +268,9 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
                 PrivateKeyUnlockRequest::HardwarePin(input)
             }
+            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+                PrivateKeyUnlockRequest::Fido2(Some(input))
+            }
         };
         on_submit_for_apply(request);
     });
@@ -328,6 +333,10 @@ mod tests {
             private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,),
             "Hardware key PIN"
         );
+        assert_eq!(
+            private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,),
+            "Security key PIN"
+        );
         assert_eq!(HARDWARE_EXTERNAL_BUTTON_LABEL, "Or use a hardware key.");
     }
 
@@ -346,6 +355,13 @@ mod tests {
                 "",
             ),
             Some("Enter the hardware key PIN.")
+        );
+        assert_eq!(
+            private_key_unlock_dialog_error_message(
+                ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
+                "",
+            ),
+            Some("Enter the security key PIN.")
         );
         assert_eq!(
             private_key_unlock_dialog_error_message(

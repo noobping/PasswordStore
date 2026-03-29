@@ -9,6 +9,9 @@ use crate::backend::{
 #[cfg(target_os = "linux")]
 use crate::backend::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
 use crate::clipboard::set_clipboard_text;
+use crate::fido2_recipient::{
+    fido2_recipient_subtitle, fido2_recipient_title, is_fido2_recipient_string,
+};
 use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
@@ -184,13 +187,20 @@ fn selected_available_private_key_count(
     recipients: &[String],
     keys: &[AvailablePrivateKey],
 ) -> usize {
-    keys.iter()
+    let available_private_keys = keys
+        .iter()
         .filter(|key| {
             recipients
                 .iter()
                 .any(|recipient| recipient_matches_available_private_key(recipient, key))
         })
-        .count()
+        .count();
+    let available_fido2 = recipients
+        .iter()
+        .filter(|recipient| is_fido2_recipient_string(recipient))
+        .count();
+
+    available_private_keys + available_fido2
 }
 
 fn private_key_is_currently_usable(key: &AvailablePrivateKey) -> bool {
@@ -204,14 +214,21 @@ fn private_key_is_currently_usable(key: &AvailablePrivateKey) -> bool {
 }
 
 fn selected_usable_private_key_count(recipients: &[String], keys: &[AvailablePrivateKey]) -> usize {
-    keys.iter()
+    let usable_private_keys = keys
+        .iter()
         .filter(|key| {
             recipients
                 .iter()
                 .any(|recipient| recipient_matches_available_private_key(recipient, key))
                 && private_key_is_currently_usable(key)
         })
-        .count()
+        .count();
+    let usable_fido2 = recipients
+        .iter()
+        .filter(|recipient| is_fido2_recipient_string(recipient))
+        .count();
+
+    usable_private_keys + usable_fido2
 }
 
 fn private_key_delete_block_message(
@@ -269,6 +286,9 @@ fn unresolved_private_key_recipients(
     let mut unresolved = Vec::new();
 
     for recipient in recipients {
+        if is_fido2_recipient_string(recipient) {
+            continue;
+        }
         if keys
             .iter()
             .any(|key| recipient_matches_available_private_key(recipient, key))
@@ -334,6 +354,14 @@ fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: 
         state.private_key_requirement.get(),
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys
     ));
+}
+
+fn selected_fido2_recipients(recipients: &[String]) -> Vec<String> {
+    recipients
+        .iter()
+        .filter(|recipient| is_fido2_recipient_string(recipient))
+        .cloned()
+        .collect()
 }
 
 fn sync_private_key_verification_warning(
@@ -482,10 +510,11 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     let (keys, host_key_inspection_failed) =
         load_available_private_keys(managed_keys, uses_host_backend);
     let current_recipients = state.recipients.borrow().clone();
+    let fido2_recipients = selected_fido2_recipients(&current_recipients);
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
     let selected_available_keys = selected_available_private_key_count(&current_recipients, &keys);
     let selected_usable_keys = selected_usable_private_key_count(&current_recipients, &keys);
-    sync_private_key_requirement_row(state, managed_key_count > 0);
+    sync_private_key_requirement_row(state, managed_key_count > 0 || !fido2_recipients.is_empty());
     sync_private_key_verification_warning(
         state,
         private_key_verification_warning(
@@ -495,12 +524,12 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         ),
     );
 
-    if keys.is_empty() {
+    if keys.is_empty() && fido2_recipients.is_empty() {
         if unresolved_recipients.is_empty() {
             append_info_row(
                 &state.list,
-                "No private keys yet",
-                "Generate or import a private key first.",
+                "No recipients yet",
+                "Generate or import a private key, or add a FIDO2 security key.",
             );
         } else {
             append_unresolved_private_key_rows(state, &unresolved_recipients);
@@ -509,6 +538,14 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     }
 
     append_unresolved_private_key_rows(state, &unresolved_recipients);
+    for recipient in &fido2_recipients {
+        append_fido2_recipient_row(
+            state,
+            recipient,
+            selected_available_keys,
+            selected_usable_keys,
+        );
+    }
 
     for key in keys {
         match key {
@@ -526,6 +563,75 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             ),
         }
     }
+}
+
+fn append_fido2_recipient_row(
+    state: &StoreRecipientsPageState,
+    recipient: &str,
+    selected_available_keys: usize,
+    selected_usable_keys: usize,
+) {
+    let active = state
+        .recipients
+        .borrow()
+        .iter()
+        .any(|value| value == recipient);
+    let require_all_selected_keys = matches!(
+        state.private_key_requirement.get(),
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys
+    );
+    let toggle_blocked_message = private_key_toggle_block_message(
+        active,
+        true,
+        require_all_selected_keys,
+        selected_available_keys,
+        selected_usable_keys,
+    );
+    let delete_blocked_message = private_key_delete_block_message(
+        active,
+        require_all_selected_keys,
+        selected_available_keys,
+    );
+    let title = fido2_recipient_title(recipient).unwrap_or_else(|| gettext("FIDO2 security key"));
+    let subtitle =
+        fido2_recipient_subtitle(recipient).unwrap_or_else(|| gettext("FIDO2 recipient"));
+    let (row, toggle) =
+        append_private_key_row_shell(&title, &subtitle, active, toggle_blocked_message);
+    let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove recipient");
+    sync_private_key_delete_button(&delete_button, delete_blocked_message);
+    row.add_suffix(&delete_button);
+    state.list.append(&row);
+
+    let state_for_toggle = state.clone();
+    let recipient_for_toggle = recipient.to_string();
+    toggle.connect_toggled(move |button| {
+        let before = state_for_toggle.recipients.borrow().clone();
+        {
+            let mut recipients = state_for_toggle.recipients.borrow_mut();
+            recipients.retain(|value| value != &recipient_for_toggle);
+            if button.is_active() {
+                recipients.push(recipient_for_toggle.clone());
+            }
+        }
+        super::rebuild_store_recipients_list(&state_for_toggle);
+        if *state_for_toggle.recipients.borrow() != before {
+            queue_store_recipients_autosave(&state_for_toggle);
+        }
+    });
+
+    let state_for_delete = state.clone();
+    let recipient_for_delete = recipient.to_string();
+    delete_button.connect_clicked(move |_| {
+        let before = state_for_delete.recipients.borrow().clone();
+        state_for_delete
+            .recipients
+            .borrow_mut()
+            .retain(|value| value != &recipient_for_delete);
+        super::rebuild_store_recipients_list(&state_for_delete);
+        if *state_for_delete.recipients.borrow() != before {
+            queue_store_recipients_autosave(&state_for_delete);
+        }
+    });
 }
 
 fn append_private_key_row_shell(
@@ -586,6 +692,9 @@ fn append_managed_private_key_row(
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             gettext("{fingerprint} - Hardware key").replace("{fingerprint}", &key.fingerprint)
         }
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+            gettext("{fingerprint} - FIDO2 protected").replace("{fingerprint}", &key.fingerprint)
+        }
     };
     let (row, toggle) =
         append_private_key_row_shell(&key.title(), &subtitle, active, toggle_blocked_message);
@@ -596,6 +705,7 @@ fn append_managed_private_key_row(
         match key.protection {
             ManagedRipassoPrivateKeyProtection::Password => "Copy armored private key",
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Copy armored public key",
+            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => "Copy armored private key",
         },
     );
     row.add_suffix(&copy_button);

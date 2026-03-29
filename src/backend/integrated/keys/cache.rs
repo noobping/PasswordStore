@@ -3,6 +3,7 @@ use super::hardware::HardwareSessionPolicy;
 use sequoia_openpgp::Cert;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
+use zeroize::Zeroizing;
 
 fn unlocked_ripasso_private_keys() -> &'static RwLock<HashMap<String, Arc<Cert>>> {
     static UNLOCKED_KEYS: OnceLock<RwLock<HashMap<String, Arc<Cert>>>> = OnceLock::new();
@@ -13,6 +14,11 @@ fn unlocked_hardware_private_keys() -> &'static RwLock<HashMap<String, HardwareS
     static UNLOCKED_KEYS: OnceLock<RwLock<HashMap<String, HardwareSessionPolicy>>> =
         OnceLock::new();
     UNLOCKED_KEYS.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn cached_fido2_pins() -> &'static RwLock<HashMap<String, Arc<Zeroizing<Vec<u8>>>>> {
+    static FIDO2_PINS: OnceLock<RwLock<HashMap<String, Arc<Zeroizing<Vec<u8>>>>>> = OnceLock::new();
+    FIDO2_PINS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
 fn with_unlocked_ripasso_keys_read<T>(f: impl FnOnce(&HashMap<String, Arc<Cert>>) -> T) -> T {
@@ -59,6 +65,30 @@ fn with_unlocked_hardware_keys_write<T>(
     }
 }
 
+fn with_cached_fido2_pins_read<T>(
+    f: impl FnOnce(&HashMap<String, Arc<Zeroizing<Vec<u8>>>>) -> T,
+) -> T {
+    match cached_fido2_pins().read() {
+        Ok(pins) => f(&pins),
+        Err(poisoned) => {
+            let pins = poisoned.into_inner();
+            f(&pins)
+        }
+    }
+}
+
+fn with_cached_fido2_pins_write<T>(
+    f: impl FnOnce(&mut HashMap<String, Arc<Zeroizing<Vec<u8>>>>) -> T,
+) -> T {
+    match cached_fido2_pins().write() {
+        Ok(mut pins) => f(&mut pins),
+        Err(poisoned) => {
+            let mut pins = poisoned.into_inner();
+            f(&mut pins)
+        }
+    }
+}
+
 pub(in crate::backend::integrated) fn cached_unlocked_ripasso_private_key(
     fingerprint: &str,
 ) -> Result<Option<Arc<Cert>>, String> {
@@ -95,6 +125,36 @@ pub(in crate::backend::integrated) fn cache_unlocked_hardware_private_key(
     Ok(())
 }
 
+pub(in crate::backend::integrated) fn cached_fido2_pin(
+    fingerprint: &str,
+) -> Result<Option<Arc<Zeroizing<Vec<u8>>>>, String> {
+    let fingerprint = normalized_fingerprint(fingerprint)?;
+    Ok(with_cached_fido2_pins_read(|pins| {
+        pins.get(&fingerprint).cloned()
+    }))
+}
+
+pub(in crate::backend::integrated) fn cache_fido2_pin(
+    fingerprint: &str,
+    pin: impl AsRef<[u8]>,
+) -> Result<(), String> {
+    let fingerprint = normalized_fingerprint(fingerprint)?;
+    with_cached_fido2_pins_write(|pins| {
+        pins.insert(fingerprint, Arc::new(Zeroizing::new(pin.as_ref().to_vec())));
+    });
+    Ok(())
+}
+
+pub(in crate::backend::integrated) fn clear_cached_fido2_pin(
+    fingerprint: &str,
+) -> Result<(), String> {
+    let fingerprint = normalized_fingerprint(fingerprint)?;
+    with_cached_fido2_pins_write(|pins| {
+        pins.remove(&fingerprint);
+    });
+    Ok(())
+}
+
 pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key(
     fingerprint: &str,
 ) -> Result<(), String> {
@@ -105,6 +165,9 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
     with_unlocked_hardware_keys_write(|keys| {
         keys.remove(&fingerprint);
     });
+    with_cached_fido2_pins_write(|pins| {
+        pins.remove(&fingerprint);
+    });
     Ok(())
 }
 
@@ -112,4 +175,5 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
 pub(in crate::backend) fn clear_cached_unlocked_ripasso_private_keys() {
     with_unlocked_ripasso_keys_write(std::collections::HashMap::clear);
     with_unlocked_hardware_keys_write(std::collections::HashMap::clear);
+    with_cached_fido2_pins_write(std::collections::HashMap::clear);
 }

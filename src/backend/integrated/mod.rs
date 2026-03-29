@@ -18,12 +18,13 @@ pub use self::git::{
 #[cfg(test)]
 pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_keys;
 pub use self::keys::{
-    armored_ripasso_private_key, armored_ripasso_public_key, discover_ripasso_hardware_keys,
-    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    remove_ripasso_private_key, ripasso_private_key_requires_passphrase,
-    ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
-    store_ripasso_private_key_bytes, unlock_ripasso_private_key_for_session,
+    armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
+    discover_ripasso_hardware_keys, generate_ripasso_private_key,
+    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
+    is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
+    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
+    ripasso_private_key_title, store_ripasso_private_key_bytes,
+    unlock_fido2_store_recipient_for_session, unlock_ripasso_private_key_for_session,
     DiscoveredHardwareToken, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
     ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };

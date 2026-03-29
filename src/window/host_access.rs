@@ -3,7 +3,9 @@ use crate::clipboard::set_clipboard_text;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::i18n::gettext;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-use crate::support::runtime::{has_host_permission, has_smartcard_permission};
+use crate::support::runtime::{
+    has_fido2_permission, has_host_permission, has_smartcard_permission,
+};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::ui::flat_icon_button_with_tooltip;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
@@ -21,6 +23,10 @@ const FLATPAK_HOST_OVERRIDE_COMMAND: &str =
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 const FLATPAK_SMARTCARD_OVERRIDE_COMMAND: &str =
     "flatpak override --user --socket=pcsc io.github.noobping.keycord";
+
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+const FLATPAK_FIDO2_OVERRIDE_COMMAND: &str =
+    "flatpak override --user --device=all io.github.noobping.keycord";
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn build_optional_permission_row(
@@ -108,11 +114,45 @@ pub fn append_optional_smartcard_access_row(
     list.prepend(&row);
 }
 
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+pub fn append_optional_fido2_access_row(
+    list: &ListBox,
+    overlay: &ToastOverlay,
+    fido2_rows: &[&ActionRow],
+) {
+    let granted = has_fido2_permission();
+    let blocked_tooltip = gettext("Grant USB security key access first.");
+    for row in fido2_rows {
+        row.set_sensitive(granted);
+        row.set_tooltip_text((!granted).then_some(blocked_tooltip.as_str()));
+    }
+
+    if granted {
+        return;
+    }
+
+    let row = build_optional_permission_row(
+        overlay,
+        "Allow USB security key access",
+        "FIDO2 recipients are optional. Grant USB device access if you want Keycord to use a connected FIDO2 security key directly for Keycord-only encryption, then restart Keycord.",
+        FLATPAK_FIDO2_OVERRIDE_COMMAND,
+    );
+    list.prepend(&row);
+}
+
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
 pub fn append_optional_smartcard_access_row(
     _list: &adw::gtk::ListBox,
     _overlay: &adw::ToastOverlay,
     _hardware_rows: &[&adw::ActionRow],
+) {
+}
+
+#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+pub fn append_optional_fido2_access_row(
+    _list: &adw::gtk::ListBox,
+    _overlay: &adw::ToastOverlay,
+    _fido2_rows: &[&adw::ActionRow],
 ) {
 }
 

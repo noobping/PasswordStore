@@ -41,6 +41,7 @@ fn private_key_unlock_protection(fingerprint: &str) -> ManagedRipassoPrivateKeyP
 }
 
 fn start_private_key_unlock_for_git_commit(
+    window: &ApplicationWindow,
     overlay: &ToastOverlay,
     fingerprint: String,
     request: PrivateKeyUnlockRequest,
@@ -50,13 +51,56 @@ fn start_private_key_unlock_for_git_commit(
     let overlay_for_disconnect = overlay.clone();
     let fingerprint_for_worker = fingerprint.clone();
     let fingerprint_for_failure = fingerprint.clone();
+    let fingerprint_for_result = fingerprint.clone();
+    let window_for_retry = window.clone();
     let after_unlock_attempt_for_result = after_unlock_attempt.clone();
     let after_unlock_attempt_for_disconnect = after_unlock_attempt.clone();
+    let request_for_worker = request.clone();
     spawn_result_task(
-        move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request.clone()),
+        move || {
+            unlock_ripasso_private_key_for_session(
+                &fingerprint_for_worker,
+                request_for_worker.clone(),
+            )
+        },
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
                 after_unlock_attempt_for_result();
+            }
+            Err(PrivateKeyError::Fido2PinRequired(_))
+                if matches!(request, PrivateKeyUnlockRequest::Fido2(None)) =>
+            {
+                let key_title = ripasso_private_key_title(&fingerprint_for_result).ok();
+                let after_unlock_attempt_for_submit = after_unlock_attempt_for_result.clone();
+                let overlay_for_submit = overlay.clone();
+                let fingerprint_for_submit = fingerprint_for_result.clone();
+                let overlay_for_close = overlay.clone();
+                let after_unlock_attempt_for_close = after_unlock_attempt_for_result.clone();
+                let window_for_dialog = window_for_retry.clone();
+                let window_for_submit = window_for_retry.clone();
+                present_private_key_unlock_dialog_with_close_handler(
+                    &window_for_dialog,
+                    &overlay,
+                    "Unlock key",
+                    key_title.as_deref(),
+                    ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
+                    move |request| {
+                        start_private_key_unlock_for_git_commit(
+                            &window_for_submit,
+                            &overlay_for_submit,
+                            fingerprint_for_submit.clone(),
+                            request,
+                            &after_unlock_attempt_for_submit,
+                        );
+                    },
+                    move || {
+                        continue_without_git_signature(
+                            &overlay_for_close,
+                            "Dismissed the FIDO2 PIN prompt. Continuing without a signature.",
+                            &after_unlock_attempt_for_close,
+                        );
+                    },
+                );
             }
             Err(err) => {
                 log_error(format!("Failed to unlock ripasso private key: {err}"));
@@ -120,6 +164,20 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
             let overlay_for_close = overlay.clone();
             let after_unlock_attempt_for_close = after_unlock_attempt.clone();
             let context_for_close = context;
+            let window_for_submit = window.clone();
+            if matches!(
+                protection,
+                ManagedRipassoPrivateKeyProtection::Fido2HmacSecret
+            ) {
+                start_private_key_unlock_for_git_commit(
+                    &window,
+                    &overlay_for_submit,
+                    fingerprint_for_submit,
+                    PrivateKeyUnlockRequest::Fido2(None),
+                    &after_unlock_attempt_for_submit,
+                );
+                return true;
+            }
             present_private_key_unlock_dialog_with_close_handler(
                 &window,
                 overlay,
@@ -128,6 +186,7 @@ fn prompt_private_key_unlock_for_git_commit_if_needed(
                 protection,
                 move |request| {
                     start_private_key_unlock_for_git_commit(
+                        &window_for_submit,
                         &overlay_for_submit,
                         fingerprint_for_submit.clone(),
                         request,

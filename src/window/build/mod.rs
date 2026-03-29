@@ -49,7 +49,8 @@ use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
 };
 use super::host_access::{
-    append_optional_host_access_group_row, append_optional_smartcard_access_row,
+    append_optional_fido2_access_row, append_optional_host_access_group_row,
+    append_optional_smartcard_access_row,
 };
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::{set_save_button_for_password, WindowNavigationState};
@@ -65,8 +66,8 @@ use super::preferences::{
 use super::tools::{register_open_tools_action, ToolsPageState};
 use crate::logging::{log_error, log_info};
 use crate::support::runtime::{
-    has_host_permission, log_runtime_capabilities_once, supports_host_command_features,
-    supports_logging_features, supports_smartcard_features,
+    has_host_permission, log_runtime_capabilities_once, supports_fido2_features,
+    supports_host_command_features, supports_logging_features, supports_smartcard_features,
 };
 use crate::window::session::initialize_window_session;
 use adw::glib::Propagation;
@@ -159,25 +160,35 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
 
 fn initialize_store_recipients_permissions(widgets: &WindowWidgets) {
     let smartcard_features_supported = supports_smartcard_features();
+    let fido2_features_supported = supports_fido2_features();
     widgets
         .store_recipients_add_hardware_key_row
         .set_visible(smartcard_features_supported);
     widgets
         .store_recipients_import_hardware_key_row
         .set_visible(smartcard_features_supported);
+    widgets
+        .store_recipients_add_fido2_key_row
+        .set_visible(fido2_features_supported);
 
-    if !smartcard_features_supported {
-        return;
+    if smartcard_features_supported {
+        append_optional_smartcard_access_row(
+            &widgets.store_recipients_add_list,
+            &widgets.toast_overlay,
+            &[
+                &widgets.store_recipients_add_hardware_key_row,
+                &widgets.store_recipients_import_hardware_key_row,
+            ],
+        );
     }
 
-    append_optional_smartcard_access_row(
-        &widgets.store_recipients_add_list,
-        &widgets.toast_overlay,
-        &[
-            &widgets.store_recipients_add_hardware_key_row,
-            &widgets.store_recipients_import_hardware_key_row,
-        ],
-    );
+    if fido2_features_supported {
+        append_optional_fido2_access_row(
+            &widgets.store_recipients_add_list,
+            &widgets.toast_overlay,
+            &[&widgets.store_recipients_add_fido2_key_row],
+        );
+    }
 }
 
 fn connect_backend_preferences(

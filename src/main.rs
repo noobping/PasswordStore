@@ -8,6 +8,7 @@ mod setup;
 
 mod backend;
 mod clipboard;
+mod fido2_recipient;
 mod i18n;
 #[cfg(target_os = "linux")]
 mod logging;

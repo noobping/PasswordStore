@@ -1,4 +1,5 @@
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::fido2_recipient::{is_fido2_recipient_string, parse_fido2_recipient_metadata_line};
 use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use std::fs;
@@ -78,15 +79,25 @@ pub fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str)
 
 pub fn parse_gpg_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
-    for recipient in value.split([',', ';', '\n']) {
-        let recipient = recipient
-            .split_once('#')
-            .map_or(recipient, |(value, _)| value);
-        let recipient = normalize_gpg_recipient(recipient);
-        if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
+
+    for line in value.lines() {
+        if let Ok(Some(recipient)) = parse_fido2_recipient_metadata_line(line) {
+            if !recipients.iter().any(|existing| existing == &recipient) {
+                recipients.push(recipient);
+            }
             continue;
         }
-        recipients.push(recipient);
+
+        for recipient in line.split([',', ';']) {
+            let recipient = recipient
+                .split_once('#')
+                .map_or(recipient, |(value, _)| value);
+            let recipient = normalize_gpg_recipient(recipient);
+            if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
+                continue;
+            }
+            recipients.push(recipient);
+        }
     }
     recipients
 }
@@ -95,6 +106,9 @@ pub fn normalize_gpg_recipient(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return String::new();
+    }
+    if is_fido2_recipient_string(trimmed) {
+        return trimmed.to_string();
     }
 
     let compact = trimmed
@@ -163,6 +177,15 @@ mod tests {
                 "alice@example.com".to_string(),
                 "bob@example.com".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn fido2_recipient_metadata_lines_are_preserved() {
+        let value = "# keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564";
+        assert_eq!(
+            parse_gpg_recipients(value),
+            vec![value.trim_start_matches("# ").to_string()]
         );
     }
 

@@ -1,4 +1,4 @@
-use super::crypto::IntegratedCryptoContext;
+use super::crypto::{decrypt_any_managed_entry_for_fingerprint, IntegratedCryptoContext};
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::keys::ensure_ripasso_private_key_is_ready;
 use super::paths::{cleanup_empty_store_dirs, entry_file_path};
@@ -10,6 +10,7 @@ use super::recipients::{
 use crate::backend::{
     PasswordEntryError, PasswordEntryWriteError, StoreRecipientsPrivateKeyRequirement,
 };
+use crate::fido2_recipient::is_fido2_recipient_string;
 use crate::logging::log_error;
 use std::fs;
 use std::path::Path;
@@ -41,30 +42,19 @@ pub fn read_password_entry(store_root: &str, label: &str) -> Result<String, Pass
     for fingerprint in decryption_candidate_fingerprints_for_entry(store_root, label)
         .map_err(PasswordEntryError::other)?
     {
-        match ensure_ripasso_private_key_is_ready(&fingerprint) {
-            Ok(()) => {}
-            Err(PasswordEntryError::LockedPrivateKey(_)) => {
-                saw_locked_key = true;
-                continue;
-            }
-            Err(PasswordEntryError::IncompatiblePrivateKey(_)) => {
-                saw_incompatible_key = true;
-                last_error = Some(PasswordEntryError::incompatible_private_key(
-                    "The available private keys cannot decrypt this item.",
-                ));
-                continue;
-            }
-            Err(err) => {
-                last_error = Some(err);
-                continue;
-            }
-        }
-
-        match IntegratedCryptoContext::load_for_fingerprint(&fingerprint)
-            .and_then(|context| context.decrypt_entry(&entry_path))
-        {
+        match decrypt_any_managed_entry_for_fingerprint(&fingerprint, &entry_path) {
             Ok(secret) => return Ok(secret),
-            Err(err) => last_error = Some(PasswordEntryError::from_store_message(err)),
+            Err(err) => match PasswordEntryError::from_store_message(err) {
+                PasswordEntryError::LockedPrivateKey(message) => {
+                    saw_locked_key = true;
+                    last_error = Some(PasswordEntryError::LockedPrivateKey(message));
+                }
+                PasswordEntryError::IncompatiblePrivateKey(message) => {
+                    saw_incompatible_key = true;
+                    last_error = Some(PasswordEntryError::IncompatiblePrivateKey(message));
+                }
+                other => last_error = Some(other),
+            },
         }
     }
 
@@ -209,6 +199,9 @@ fn ensure_required_private_keys_are_ready(
     fingerprints: &[String],
 ) -> Result<(), PasswordEntryError> {
     for fingerprint in fingerprints {
+        if is_fido2_recipient_string(fingerprint) {
+            continue;
+        }
         ensure_ripasso_private_key_is_ready(fingerprint)?;
     }
 

@@ -115,6 +115,7 @@ pub struct StoreRecipientsPlatformState {
     pub git_group: PreferencesGroup,
     pub git_list: ListBox,
     pub add_hardware_key_row: ActionRow,
+    pub add_fido2_key_row: ActionRow,
     pub store_git_page: StoreGitPageState,
     pub import_hardware_key_row: ActionRow,
     pub import_clipboard_row: ActionRow,

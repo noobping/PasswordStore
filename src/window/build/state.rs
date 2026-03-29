@@ -112,6 +112,7 @@ fn build_store_recipients_platform_state(
         git_group: widgets.store_recipients_git_group.clone(),
         git_list: widgets.store_recipients_git_list.clone(),
         add_hardware_key_row: widgets.store_recipients_add_hardware_key_row.clone(),
+        add_fido2_key_row: widgets.store_recipients_add_fido2_key_row.clone(),
         store_git_page: store_git_page.clone(),
         import_hardware_key_row: widgets.store_recipients_import_hardware_key_row.clone(),
         import_clipboard_row: widgets.store_recipients_import_clipboard_row.clone(),

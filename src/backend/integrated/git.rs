@@ -6,6 +6,7 @@ use super::keys::{
 };
 use super::recipients::recipient_contents;
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use crate::fido2_recipient::is_fido2_recipient_string;
 use crate::logging::{
     log_error, log_info, run_command_output, run_command_with_input, CommandLogOptions,
 };
@@ -252,6 +253,9 @@ pub fn git_commit_private_key_requiring_unlock_for_entry(
         return Ok(None);
     }
     let fingerprint = IntegratedCryptoContext::fingerprint_for_label(store_root, label)?;
+    if is_fido2_recipient_string(&fingerprint) {
+        return Ok(None);
+    }
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 
@@ -275,6 +279,9 @@ pub fn git_commit_private_key_requiring_unlock_for_store_recipients(
             }
             Err(err) => return Err(err),
         };
+    if is_fido2_recipient_string(&fingerprint) {
+        return Ok(None);
+    }
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 

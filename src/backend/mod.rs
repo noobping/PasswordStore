@@ -24,14 +24,15 @@ pub use self::host::{
 #[cfg(target_os = "linux")]
 pub use integrated::store_ripasso_private_key_bytes;
 pub use integrated::{
-    armored_ripasso_private_key, armored_ripasso_public_key, discover_ripasso_hardware_keys,
-    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
+    discover_ripasso_hardware_keys, generate_ripasso_private_key,
+    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
+    is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    ripasso_private_key_title, unlock_ripasso_private_key_for_session, DiscoveredHardwareToken,
-    ManagedRipassoHardwareKey, ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection,
-    PrivateKeyUnlockRequest,
+    ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
+    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, ManagedRipassoHardwareKey,
+    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };
 pub use integrated::{
     git_commit_private_key_requiring_unlock_for_entry,

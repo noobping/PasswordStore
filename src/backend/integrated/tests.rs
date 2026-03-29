@@ -14,14 +14,17 @@ use super::git::{
 };
 use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
-    discover_ripasso_hardware_keys, ensure_ripasso_private_key_is_ready,
-    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
+    create_fido2_store_recipient, discover_ripasso_hardware_keys,
+    ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
+    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
+    is_ripasso_private_key_unlocked, list_ripasso_private_keys, parse_managed_private_key_bytes,
+    prepare_managed_private_key_bytes, remove_ripasso_private_key, reset_fido2_transport_for_tests,
     reset_hardware_transport_for_tests, resolved_ripasso_own_fingerprint, ripasso_keys_dir,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    set_hardware_transport_for_tests, store_ripasso_hardware_key_bytes,
-    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, HardwareSessionPolicy,
+    set_fido2_transport_for_tests, set_hardware_transport_for_tests,
+    store_ripasso_hardware_key_bytes, unlock_fido2_store_recipient_for_session,
+    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, Fido2AssertionOutput,
+    Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError, HardwareSessionPolicy,
     HardwareTransport, ManagedRipassoHardwareKey, ManagedRipassoPrivateKeyProtection,
     PrivateKeyUnlockRequest,
 };
@@ -149,6 +152,113 @@ impl HardwareTransportGuard {
 impl Drop for HardwareTransportGuard {
     fn drop(&mut self) {
         reset_hardware_transport_for_tests();
+    }
+}
+
+#[derive(Default)]
+struct MockFido2Transport {
+    enrollments: Mutex<Vec<Result<Fido2Enrollment, Fido2TransportError>>>,
+    assertions: Mutex<Vec<Result<Fido2AssertionOutput, Fido2TransportError>>>,
+}
+
+impl MockFido2Transport {
+    fn with_enrollment_result(
+        mut self,
+        result: Result<Fido2Enrollment, Fido2TransportError>,
+    ) -> Self {
+        self.enrollments
+            .get_mut()
+            .expect("enrollment mutex poisoned")
+            .push(result);
+        self
+    }
+
+    fn with_assertion_results(
+        mut self,
+        results: Vec<Result<Fido2AssertionOutput, Fido2TransportError>>,
+    ) -> Self {
+        self.assertions
+            .get_mut()
+            .expect("assertion mutex poisoned")
+            .extend(results);
+        self
+    }
+
+    fn next_enrollment(&self) -> Result<Fido2Enrollment, Fido2TransportError> {
+        self.enrollments
+            .lock()
+            .expect("enrollment mutex poisoned")
+            .remove(0)
+    }
+
+    fn next_assertion(&self) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+        self.assertions
+            .lock()
+            .expect("assertion mutex poisoned")
+            .remove(0)
+    }
+}
+
+impl Fido2Transport for MockFido2Transport {
+    fn enroll_hmac_secret(
+        &self,
+        _rp_id: &str,
+        _user_name: &str,
+        _user_display_name: &str,
+        _pin: Option<&str>,
+        _salt: &[u8],
+    ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        self.next_enrollment()
+    }
+
+    fn derive_hmac_secret(
+        &self,
+        _rp_id: &str,
+        _credential_id: &[u8],
+        _pin: Option<&str>,
+        _salt: &[u8],
+    ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+        self.next_assertion()
+    }
+}
+
+struct Fido2TransportGuard;
+
+impl Fido2TransportGuard {
+    fn install(transport: Arc<dyn Fido2Transport>) -> Self {
+        set_fido2_transport_for_tests(transport);
+        Self
+    }
+}
+
+impl Drop for Fido2TransportGuard {
+    fn drop(&mut self) {
+        reset_fido2_transport_for_tests();
+    }
+}
+
+fn mock_fido2_enrollment(secret: &[u8]) -> Fido2Enrollment {
+    Fido2Enrollment {
+        credential_id: b"mock-credential-id".to_vec(),
+        device: Fido2DeviceLabel {
+            manufacturer: Some("Mock".to_string()),
+            product: Some("Security Key".to_string()),
+            vendor_id: Some(1),
+            product_id: Some(2),
+        },
+        hmac_secret: secret.to_vec(),
+    }
+}
+
+fn mock_fido2_assertion(secret: &[u8]) -> Fido2AssertionOutput {
+    Fido2AssertionOutput {
+        hmac_secret: secret.to_vec(),
+        device: Some(Fido2DeviceLabel {
+            manufacturer: Some("Mock".to_string()),
+            product: Some("Security Key".to_string()),
+            vendor_id: Some(1),
+            product_id: Some(2),
+        }),
     }
 }
 
@@ -426,6 +536,126 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
     .expect("unlock private key for session");
     assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
     assert!(ensure_ripasso_private_key_is_ready(&imported.fingerprint).is_ok());
+}
+
+#[test]
+fn pure_fido2_recipients_can_retry_after_pin_required() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"pure-fido2-secret")))
+            .with_assertion_results(vec![
+                Err(Fido2TransportError::PinRequired),
+                Ok(mock_fido2_assertion(b"pure-fido2-secret")),
+            ]),
+    ));
+
+    let recipient = create_fido2_store_recipient(None).expect("create FIDO2 recipient");
+
+    let err = unlock_fido2_store_recipient_for_session(&recipient, None)
+        .expect_err("missing PIN should be reported");
+    assert!(matches!(err, PrivateKeyError::Fido2PinRequired(_)));
+
+    unlock_fido2_store_recipient_for_session(&recipient, Some("123456"))
+        .expect("unlock FIDO2 recipient with PIN");
+}
+
+#[test]
+fn single_fido2_recipient_entries_use_the_security_key_directly() {
+    let env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"direct-entry-secret")))
+            .with_assertion_results(vec![
+                Ok(mock_fido2_assertion(b"direct-entry-secret")),
+                Ok(mock_fido2_assertion(b"direct-entry-secret")),
+            ]),
+    ));
+
+    let recipient = create_fido2_store_recipient(None).expect("create FIDO2 recipient");
+
+    let store = env.root_dir().join("fido2-direct-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&recipient),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2-only recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save FIDO2 direct entry");
+
+    let ciphertext = fs::read(store.join("team/service.gpg")).expect("read direct entry bytes");
+    assert!(ciphertext.starts_with(b"keycord-fido2-any-managed-v1\n"));
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry directly from the FIDO2 security key"),
+        "supersecret\nusername: alice"
+    );
+}
+
+#[test]
+fn all_keys_mode_can_layer_a_fido2_security_key() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"layered-fido2-secret")))
+            .with_assertion_results(vec![
+                Ok(mock_fido2_assertion(b"layered-fido2-secret")),
+                Ok(mock_fido2_assertion(b"layered-fido2-secret")),
+            ]),
+    ));
+    let fido2_recipient = create_fido2_store_recipient(None).expect("create FIDO2 recipient");
+
+    let store = env.root_dir().join("secondary-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[key_a.fingerprint.clone(), fido2_recipient.clone()],
+        StoreRecipientsPrivateKeyRequirement::AllManagedKeys,
+    )
+    .expect("save all-keys recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save layered entry");
+
+    let outer_layer = IntegratedCryptoContext::load_for_fingerprint(&key_a.fingerprint)
+        .expect("load first-layer decrypt context")
+        .decrypt_entry(&store.join("team/service.gpg"))
+        .expect("decrypt only the first layer");
+    let (_, encoded_inner) = outer_layer
+        .split_once('\n')
+        .expect("split the layered all-keys wrapper");
+    let encoded_inner = encoded_inner.trim();
+    let inner_layer = (0..encoded_inner.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&encoded_inner[index..index + 2], 16))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("decode the inner layer");
+    assert!(inner_layer.starts_with(b"keycord-fido2-required-layer-v1\n"));
+
+    clear_cached_unlocked_ripasso_private_keys();
+    unlock_ripasso_private_key_for_session(
+        &key_a.fingerprint,
+        PrivateKeyUnlockRequest::Password("hunter2".to_string()),
+    )
+    .expect("unlock password-protected key for the layered read");
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry that requires both a password key and a FIDO2 key"),
+        "supersecret\nusername: alice"
+    );
 }
 
 #[test]

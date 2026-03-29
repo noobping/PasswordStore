@@ -17,9 +17,12 @@ jobs:
       contents: write
 
     env:
+      FIDO2_LIB_DIR: C:/tools/msys64/mingw64/lib
       PKG_CONFIG_ALLOW_CROSS: 1
+      PKG_CONFIG: C:\tools\msys64\mingw64\bin\pkgconf.exe
       MSYS2_PATH: C:\tools\msys64
       PKG_CONFIG_PATH: C:\tools\msys64\mingw64\lib\pkgconfig
+      PKG_CONFIG_PATH_x86_64_pc_windows_gnu: C:\tools\msys64\mingw64\lib\pkgconfig
       GETTEXT_SYSTEM: 1
 
     steps:
@@ -37,16 +40,48 @@ jobs:
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-capnproto"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gtk4"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-libadwaita"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-libcbor"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-libfido2"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gpgme"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-hidapi"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-pkgconf"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-openssl"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-make"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-ntldd"
           C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-gettext-tools"
+          C:\tools\msys64\usr\bin\bash -lc "pacman -S --noconfirm mingw-w64-x86_64-zlib"
 
       - name: Add MSYS2 paths
         run: |
           echo "C:\tools\msys64\mingw64\bin" >> $env:GITHUB_PATH
           echo "C:\tools\msys64\usr\bin" >> $env:GITHUB_PATH
+
+      - name: Normalize zlib import library name
+        shell: pwsh
+        run: |
+          $mingwLib = 'C:\tools\msys64\mingw64\lib'
+          $zImport = Join-Path $mingwLib 'libz.dll.a'
+          $zCompat = Join-Path $mingwLib 'libzlib1.dll.a'
+          if (-not (Test-Path $zImport)) {
+            throw "zlib import library not found: $zImport"
+          }
+          if (-not (Test-Path $zCompat)) {
+            Copy-Item $zImport $zCompat
+          }
+
+      - name: Verify libfido2 discovery
+        shell: pwsh
+        run: |
+          if (-not (Test-Path $env:FIDO2_LIB_DIR)) {
+            throw "FIDO2 lib dir not found: $env:FIDO2_LIB_DIR"
+          }
+          Get-ChildItem $env:FIDO2_LIB_DIR -Filter 'libfido2*'
+          Get-ChildItem $env:FIDO2_LIB_DIR -Filter 'libz*'
+          if (-not (Test-Path $env:PKG_CONFIG)) {
+            throw "pkg-config helper not found: $env:PKG_CONFIG"
+          }
+          & $env:PKG_CONFIG --modversion libfido2
+          & $env:PKG_CONFIG --libs libfido2
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -178,7 +213,7 @@ jobs:
           & $heat dir "bundle" `
             -cg AppFiles `
             -dr INSTALLDIR `
-            -gg -g1 -srd -sreg -sfrag `
+            -gg -g1 -srd -sreg -sfrag -suid `
             -var var.BundleDir `
             -out "wix\generated\AppFiles.wxs"
 
@@ -193,13 +228,9 @@ jobs:
         run: |
           $candle = (Get-Command candle.exe -ErrorAction Stop).Source
           $light  = (Get-Command light.exe  -ErrorAction Stop).Source
-          $license = Join-Path $env:GITHUB_WORKSPACE 'data\license.rtf'
 
           Write-Host "Using candle: $candle"
           Write-Host "Using light : $light"
-          if (-not (Test-Path $license)) {
-            throw "License file not found: $license"
-          }
 
           $ver = "${{ env.LATEST_TAG }}" -replace '^v',''
 
@@ -211,7 +242,6 @@ jobs:
           Write-Host "Using ProductVersion: $ver"
 
           & $candle `
-            -ext WixUIExtension `
             -ext WixUtilExtension `
             -dBundleDir="$(Resolve-Path bundle)" `
             -dProductVersion="$ver" `
@@ -220,7 +250,6 @@ jobs:
             wix\generated\AppFiles.wxs
 
           & $light `
-            -ext WixUIExtension `
             -ext WixUtilExtension `
             -out keycord.msi `
             wix\generated\keycord.wixobj `

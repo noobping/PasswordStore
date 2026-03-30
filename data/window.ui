@@ -1584,6 +1584,7 @@
       <item>
         <attribute name="label" translatable="yes">_Synchronize with remote</attribute>
         <attribute name="action">win.synchronize</attribute>
+        <attribute name="hidden-when">action-missing</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Tools</attribute>

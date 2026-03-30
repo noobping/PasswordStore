@@ -1620,13 +1620,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/iri-string/iri-string-0.7.11.crate
-  sha256: d8e7418f59cc01c88316161279a7f665217ae316b388e58a0d10e29f54f1e5eb
-  dest: cargo/vendor/iri-string-0.7.11
+  url: https://static.crates.io/crates/iri-string/iri-string-0.7.12.crate
+  sha256: 25e659a4bb38e810ebc252e53b5814ff908a8c58c2a9ce2fae1bbec24cbf4e20
+  dest: cargo/vendor/iri-string-0.7.12
 - type: inline
-  contents: '{"package": "d8e7418f59cc01c88316161279a7f665217ae316b388e58a0d10e29f54f1e5eb",
+  contents: '{"package": "25e659a4bb38e810ebc252e53b5814ff908a8c58c2a9ce2fae1bbec24cbf4e20",
     "files": {}}'
-  dest: cargo/vendor/iri-string-0.7.11
+  dest: cargo/vendor/iri-string-0.7.12
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -4140,13 +4140,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/winnow/winnow-1.0.0.crate
-  sha256: a90e88e4667264a994d34e6d1ab2d26d398dcdca8b7f52bec8668957517fc7d8
-  dest: cargo/vendor/winnow-1.0.0
+  url: https://static.crates.io/crates/winnow/winnow-1.0.1.crate
+  sha256: 09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5
+  dest: cargo/vendor/winnow-1.0.1
 - type: inline
-  contents: '{"package": "a90e88e4667264a994d34e6d1ab2d26d398dcdca8b7f52bec8668957517fc7d8",
+  contents: '{"package": "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5",
     "files": {}}'
-  dest: cargo/vendor/winnow-1.0.0
+  dest: cargo/vendor/winnow-1.0.1
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

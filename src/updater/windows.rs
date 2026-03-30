@@ -34,6 +34,8 @@ const GITHUB_RELEASES_PER_PAGE: usize = 100;
 const WORKER_POLL_INTERVAL_MS: u64 = 50;
 const UPDATE_DIALOG_TITLE: &str = "Keycord Update";
 const UPDATE_DIALOG_SUBTITLE: &str = "Install the latest Windows release";
+const UPDATE_DIALOG_CONTENT_WIDTH: i32 = 560;
+const UPDATE_DIALOG_CONTENT_HEIGHT: i32 = 320;
 const UPDATE_CHECK_HEADING: &str = "Checking for updates";
 const UPDATE_CHECK_BODY: &str = "Looking for a newer Windows installer on GitHub Releases.";
 const UPDATE_INSTALL_BUTTON_LABEL: &str = "Install Update";
@@ -755,7 +757,9 @@ fn build_update_dialog(controller: &UpdaterController) -> UpdateDialog {
 
     let dialog = Dialog::builder()
         .title(&gettext(UPDATE_DIALOG_TITLE))
-        .content_width(520)
+        .content_width(UPDATE_DIALOG_CONTENT_WIDTH)
+        .content_height(UPDATE_DIALOG_CONTENT_HEIGHT)
+        .follows_content_size(true)
         .child(&dialog_content_shell(
             UPDATE_DIALOG_TITLE,
             Some(UPDATE_DIALOG_SUBTITLE),

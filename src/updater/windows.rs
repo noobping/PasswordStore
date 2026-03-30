@@ -6,7 +6,7 @@ use super::DirtyProbe;
 use crate::i18n::gettext;
 use crate::logging::{log_error, log_info};
 use crate::support::object_data::{cloned_data, set_cloned_data};
-use crate::support::ui::dialog_content_shell;
+use crate::support::ui::wrapped_dialog_body;
 use adw::gio::SimpleAction;
 use adw::glib::{self, WeakRef};
 use adw::gtk::{Align, Box as GtkBox, Button, Label, Orientation, ProgressBar};
@@ -33,7 +33,6 @@ const GITHUB_API_VERSION: &str = "2022-11-28";
 const GITHUB_RELEASES_PER_PAGE: usize = 100;
 const WORKER_POLL_INTERVAL_MS: u64 = 50;
 const UPDATE_DIALOG_TITLE: &str = "Keycord Update";
-const UPDATE_DIALOG_SUBTITLE: &str = "Install the latest Windows release";
 const UPDATE_DIALOG_CONTENT_WIDTH: i32 = 560;
 const UPDATE_DIALOG_CONTENT_HEIGHT: i32 = 320;
 const UPDATE_CHECK_HEADING: &str = "Checking for updates";
@@ -760,11 +759,7 @@ fn build_update_dialog(controller: &UpdaterController) -> UpdateDialog {
         .content_width(UPDATE_DIALOG_CONTENT_WIDTH)
         .content_height(UPDATE_DIALOG_CONTENT_HEIGHT)
         .follows_content_size(true)
-        .child(&dialog_content_shell(
-            UPDATE_DIALOG_TITLE,
-            Some(UPDATE_DIALOG_SUBTITLE),
-            &content,
-        ))
+        .child(&wrapped_dialog_body(&content))
         .build();
 
     let dialog_for_later = dialog.clone();

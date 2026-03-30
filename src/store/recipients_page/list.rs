@@ -61,6 +61,9 @@ enum PrivateKeyVerificationWarning {
     SyncDisabled,
 }
 
+const FIDO2_BACKEND_REQUIRED_MESSAGE: &str =
+    "Switch to the Integrated backend to use this FIDO2 security key.";
+
 impl PrivateKeyVerificationWarning {
     const fn title(self) -> &'static str {
         match self {
@@ -186,6 +189,7 @@ fn set_private_key_recipient_values(
 fn selected_available_private_key_count(
     recipients: &[String],
     keys: &[AvailablePrivateKey],
+    count_fido2_recipients: bool,
 ) -> usize {
     let available_private_keys = keys
         .iter()
@@ -195,10 +199,14 @@ fn selected_available_private_key_count(
                 .any(|recipient| recipient_matches_available_private_key(recipient, key))
         })
         .count();
-    let available_fido2 = recipients
-        .iter()
-        .filter(|recipient| is_fido2_recipient_string(recipient))
-        .count();
+    let available_fido2 = if count_fido2_recipients {
+        recipients
+            .iter()
+            .filter(|recipient| is_fido2_recipient_string(recipient))
+            .count()
+    } else {
+        0
+    };
 
     available_private_keys + available_fido2
 }
@@ -213,7 +221,11 @@ fn private_key_is_currently_usable(key: &AvailablePrivateKey) -> bool {
     }
 }
 
-fn selected_usable_private_key_count(recipients: &[String], keys: &[AvailablePrivateKey]) -> usize {
+fn selected_usable_private_key_count(
+    recipients: &[String],
+    keys: &[AvailablePrivateKey],
+    count_fido2_recipients: bool,
+) -> usize {
     let usable_private_keys = keys
         .iter()
         .filter(|key| {
@@ -223,10 +235,14 @@ fn selected_usable_private_key_count(recipients: &[String], keys: &[AvailablePri
                 && private_key_is_currently_usable(key)
         })
         .count();
-    let usable_fido2 = recipients
-        .iter()
-        .filter(|recipient| is_fido2_recipient_string(recipient))
-        .count();
+    let usable_fido2 = if count_fido2_recipients {
+        recipients
+            .iter()
+            .filter(|recipient| is_fido2_recipient_string(recipient))
+            .count()
+    } else {
+        0
+    };
 
     usable_private_keys + usable_fido2
 }
@@ -362,6 +378,39 @@ fn selected_fido2_recipients(recipients: &[String]) -> Vec<String> {
         .filter(|recipient| is_fido2_recipient_string(recipient))
         .cloned()
         .collect()
+}
+
+fn fido2_recipient_toggle_block_message(
+    uses_integrated_backend: bool,
+    active: bool,
+    require_all_selected_keys: bool,
+    selected_available_keys: usize,
+    selected_usable_keys: usize,
+) -> Option<&'static str> {
+    if !uses_integrated_backend {
+        Some(FIDO2_BACKEND_REQUIRED_MESSAGE)
+    } else {
+        private_key_toggle_block_message(
+            active,
+            true,
+            require_all_selected_keys,
+            selected_available_keys,
+            selected_usable_keys,
+        )
+    }
+}
+
+fn fido2_recipient_delete_block_message(
+    uses_integrated_backend: bool,
+    active: bool,
+    require_all_selected_keys: bool,
+    selected_available_keys: usize,
+) -> Option<&'static str> {
+    if !uses_integrated_backend {
+        None
+    } else {
+        private_key_delete_block_message(active, require_all_selected_keys, selected_available_keys)
+    }
 }
 
 fn sync_private_key_verification_warning(
@@ -504,17 +553,24 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         }
     };
 
-    let uses_host_backend = Preferences::new().uses_host_command_backend();
-    let sync_enabled = Preferences::new().sync_private_keys_with_host();
+    let preferences = Preferences::new();
+    let uses_host_backend = preferences.uses_host_command_backend();
+    let uses_integrated_backend = preferences.uses_integrated_backend();
+    let sync_enabled = preferences.sync_private_keys_with_host();
     let managed_key_count = managed_keys.len();
     let (keys, host_key_inspection_failed) =
         load_available_private_keys(managed_keys, uses_host_backend);
     let current_recipients = state.recipients.borrow().clone();
     let fido2_recipients = selected_fido2_recipients(&current_recipients);
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
-    let selected_available_keys = selected_available_private_key_count(&current_recipients, &keys);
-    let selected_usable_keys = selected_usable_private_key_count(&current_recipients, &keys);
-    sync_private_key_requirement_row(state, managed_key_count > 0 || !fido2_recipients.is_empty());
+    let selected_available_keys =
+        selected_available_private_key_count(&current_recipients, &keys, uses_integrated_backend);
+    let selected_usable_keys =
+        selected_usable_private_key_count(&current_recipients, &keys, uses_integrated_backend);
+    sync_private_key_requirement_row(
+        state,
+        managed_key_count > 0 || (uses_integrated_backend && !fido2_recipients.is_empty()),
+    );
     sync_private_key_verification_warning(
         state,
         private_key_verification_warning(
@@ -529,7 +585,11 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
             append_info_row(
                 &state.list,
                 "No recipients yet",
-                "Generate or import a private key, or add a FIDO2 security key.",
+                if uses_integrated_backend {
+                    "Generate or import a private key, or add a FIDO2 security key."
+                } else {
+                    "Generate or import a private key."
+                },
             );
         } else {
             append_unresolved_private_key_rows(state, &unresolved_recipients);
@@ -542,6 +602,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         append_fido2_recipient_row(
             state,
             recipient,
+            uses_integrated_backend,
             selected_available_keys,
             selected_usable_keys,
         );
@@ -568,6 +629,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 fn append_fido2_recipient_row(
     state: &StoreRecipientsPageState,
     recipient: &str,
+    uses_integrated_backend: bool,
     selected_available_keys: usize,
     selected_usable_keys: usize,
 ) {
@@ -580,14 +642,15 @@ fn append_fido2_recipient_row(
         state.private_key_requirement.get(),
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys
     );
-    let toggle_blocked_message = private_key_toggle_block_message(
+    let toggle_blocked_message = fido2_recipient_toggle_block_message(
+        uses_integrated_backend,
         active,
-        true,
         require_all_selected_keys,
         selected_available_keys,
         selected_usable_keys,
     );
-    let delete_blocked_message = private_key_delete_block_message(
+    let delete_blocked_message = fido2_recipient_delete_block_message(
+        uses_integrated_backend,
         active,
         require_all_selected_keys,
         selected_available_keys,
@@ -878,10 +941,12 @@ fn connect_managed_private_key_row_actions(
 #[cfg(test)]
 mod tests {
     use super::{
+        fido2_recipient_delete_block_message, fido2_recipient_toggle_block_message,
         merge_available_private_keys, private_key_delete_block_message,
         private_key_toggle_block_message, private_key_verification_warning,
         selected_available_private_key_count, unresolved_private_key_recipients,
         AvailablePrivateKey, HostGpgPrivateKeySummary, PrivateKeyVerificationWarning,
+        FIDO2_BACKEND_REQUIRED_MESSAGE,
     };
     use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
 
@@ -983,8 +1048,30 @@ mod tests {
                     "missing@example.com".to_string(),
                 ],
                 &keys,
+                true,
             ),
             2
+        );
+    }
+
+    #[test]
+    fn selected_available_private_key_count_ignores_fido2_when_backend_cannot_use_it() {
+        assert_eq!(
+            selected_available_private_key_count(
+                &[
+                    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                    "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+                        .to_string(),
+                ],
+                &[AvailablePrivateKey::Managed(ManagedRipassoPrivateKey {
+                    fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                    user_ids: vec!["Alice <alice@example.com>".to_string()],
+                    protection: ManagedRipassoPrivateKeyProtection::Password,
+                    hardware: None,
+                })],
+                false,
+            ),
+            1
         );
     }
 
@@ -1026,6 +1113,18 @@ mod tests {
         );
         assert_eq!(
             private_key_toggle_block_message(true, false, false, 2, 0),
+            None
+        );
+    }
+
+    #[test]
+    fn host_backend_blocks_fido2_toggles_but_still_allows_removal() {
+        assert_eq!(
+            fido2_recipient_toggle_block_message(false, true, false, 0, 0),
+            Some(FIDO2_BACKEND_REQUIRED_MESSAGE)
+        );
+        assert_eq!(
+            fido2_recipient_delete_block_message(false, true, true, 0),
             None
         );
     }

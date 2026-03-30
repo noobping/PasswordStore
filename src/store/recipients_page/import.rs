@@ -9,6 +9,7 @@ use crate::backend::{
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::preferences::Preferences;
 use crate::private_key::dialog::{
     build_private_key_progress_dialog, present_private_key_password_dialog,
     present_private_key_unlock_dialog_with_close_handler, PrivateKeyDialogHandle,
@@ -131,6 +132,13 @@ fn start_private_key_import(
 }
 
 fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<String>) {
+    if !Preferences::new().uses_integrated_backend() {
+        state.platform.overlay.add_toast(Toast::new(&gettext(
+            "Switch to the Integrated backend to add a FIDO2 security key.",
+        )));
+        return;
+    }
+
     let state = state.clone();
     let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
         &state.window,

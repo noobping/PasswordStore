@@ -58,7 +58,7 @@
     </key>
 
     <key name="username-fallback-mode" type="s">
-      <default>'folder'</default>
+      <default>'filename'</default>
       <summary>Username fallback mode</summary>
       <description>
         Username fallback used when a pass file has no encrypted username field. Valid values are "folder" and "filename".

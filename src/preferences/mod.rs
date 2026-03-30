@@ -65,8 +65,8 @@ impl BackendKind {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum UsernameFallbackMode {
-    #[default]
     Folder,
+    #[default]
     Filename,
 }
 
@@ -474,10 +474,10 @@ mod tests {
     }
 
     #[test]
-    fn username_fallback_mode_defaults_to_folder() {
+    fn username_fallback_mode_defaults_to_filename() {
         assert_eq!(
             UsernameFallbackMode::default(),
-            UsernameFallbackMode::Folder
+            UsernameFallbackMode::Filename
         );
     }
 

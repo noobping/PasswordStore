@@ -589,11 +589,12 @@
                                 <property name="description" translatable="yes">Used only when a pass file has no encrypted username field.</property>
                                 <child>
                                   <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Use folder name</property>
-                                    <property name="subtitle" translatable="yes">Show the last folder segment as the username.</property>
+                                    <property name="title" translatable="yes">Use file name</property>
+                                    <property name="subtitle" translatable="yes">Show the pass file name as the username.</property>
                                     <child type="suffix">
                                       <object class="GtkCheckButton"
-                                        id="preferences_username_folder_check">
+                                        id="preferences_username_filename_check">
+                                        <property name="group">preferences_username_folder_check</property>
                                         <property name="active">true</property>
                                         <property name="valign">center</property>
                                       </object>
@@ -602,12 +603,11 @@
                                 </child>
                                 <child>
                                   <object class="AdwActionRow">
-                                    <property name="title" translatable="yes">Use file name</property>
-                                    <property name="subtitle" translatable="yes">Show the pass file name as the username.</property>
+                                    <property name="title" translatable="yes">Use folder name</property>
+                                    <property name="subtitle" translatable="yes">Show the last folder segment as the username.</property>
                                     <child type="suffix">
                                       <object class="GtkCheckButton"
-                                        id="preferences_username_filename_check">
-                                        <property name="group">preferences_username_folder_check</property>
+                                        id="preferences_username_folder_check">
                                         <property name="valign">center</property>
                                       </object>
                                     </child>

@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: keycord 0.9.3\n"
-"PO-Revision-Date: 2026-03-29 19:00+0100\n"
+"PO-Revision-Date: 2026-03-30 10:30+0200\n"
 "Last-Translator: Codex\n"
 "Language-Team: none\n"
 "Language: nl\n"
@@ -4861,4 +4861,28 @@ msgstr "{} van {} ({percentage:.0}%)"
 #: src/setup.rs:119 src/setup.rs:198
 msgid "{}.search-provider.ini"
 msgstr "{}.search-provider.ini"
+
+#: data/metainfo.xml:81
+msgid "Change the default to use the filename as the username."
+msgstr "Gebruik standaard de naam van het pass-bestand als gebruikersnaam."
+
+#: src/store/recipients_page/list.rs:591
+msgid "Generate or import a private key."
+msgstr "Genereer of importeer een privésleutel."
+
+#: data/metainfo.xml:82
+msgid "Only enable FIDO2 features if the integrated backend is used."
+msgstr "Schakel FIDO2-functies alleen in met de geïntegreerde backend."
+
+#: src/store/recipients_page/import.rs:137
+msgid "Switch to the Integrated backend to add a FIDO2 security key."
+msgstr "Schakel over naar de geïntegreerde backend om een FIDO2-beveiligingssleutel toe te voegen."
+
+#: src/window/host_access.rs:31
+msgid "Switch to the Integrated backend to use FIDO2 security keys."
+msgstr "Schakel over naar de geïntegreerde backend om FIDO2-beveiligingssleutels te gebruiken."
+
+#: src/store/recipients_page/list.rs:65
+msgid "Switch to the Integrated backend to use this FIDO2 security key."
+msgstr "Schakel over naar de geïntegreerde backend om deze FIDO2-beveiligingssleutel te gebruiken."
 

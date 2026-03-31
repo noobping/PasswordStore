@@ -17,6 +17,8 @@ pub use self::git::{
 };
 #[cfg(test)]
 pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_keys;
+#[cfg(target_os = "linux")]
+pub use self::keys::store_ripasso_private_key_bytes;
 pub use self::keys::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
     discover_ripasso_hardware_keys, generate_ripasso_private_key,
@@ -25,14 +27,17 @@ pub use self::keys::{
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
     ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
     unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, ManagedRipassoHardwareKey,
-    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
+    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind,
+    PrivateKeyUnlockRequest,
 };
-#[cfg(target_os = "linux")]
-pub use self::keys::store_ripasso_private_key_bytes;
 pub use self::recipients::preferred_ripasso_private_key_fingerprint_for_entry;
 
 pub use self::entries::{
-    delete_password_entry, password_entry_is_readable, read_password_entry, read_password_line,
-    rename_password_entry, save_password_entry,
+    delete_password_entry, password_entry_fido2_recipient_count, password_entry_is_readable,
+    read_password_entry, read_password_entry_with_progress, read_password_line,
+    rename_password_entry, save_password_entry, save_password_entry_with_progress,
 };
-pub use self::store::{save_store_recipients, store_recipients_private_key_requiring_unlock};
+pub use self::store::{
+    save_store_recipients, save_store_recipients_with_progress,
+    store_recipients_private_key_requiring_unlock,
+};

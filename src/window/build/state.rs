@@ -106,8 +106,11 @@ fn build_store_recipients_platform_state(
         overlay: widgets.toast_overlay.clone(),
         host_gpg_warning_group: widgets.store_recipients_host_gpg_warning_group.clone(),
         host_gpg_warning_row: widgets.store_recipients_host_gpg_warning_row.clone(),
+        fido2_info_group: widgets.store_recipients_fido2_info_group.clone(),
         add_group: widgets.store_recipients_add_group.clone(),
+        add_list: widgets.store_recipients_add_list.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
+        create_list: widgets.store_recipients_create_list.clone(),
         options_group: widgets.store_recipients_options_group.clone(),
         git_group: widgets.store_recipients_git_group.clone(),
         git_list: widgets.store_recipients_git_list.clone(),
@@ -119,6 +122,7 @@ fn build_store_recipients_platform_state(
         import_file_row: widgets.store_recipients_import_file_row.clone(),
         generate_key_row: widgets.store_recipients_generate_key_row.clone(),
         require_all_row: widgets.store_recipients_require_all_row.clone(),
+        all_fido2_keys_required_row: widgets.store_recipients_all_fido2_keys_required_row.clone(),
         require_all_check: widgets.store_recipients_require_all_check.clone(),
         private_key_generation_page: widgets.private_key_generation_page.clone(),
         private_key_generation_stack: widgets.private_key_generation_stack.clone(),
@@ -147,6 +151,8 @@ fn build_store_recipients_page_state(
     ));
     let save_in_flight = Rc::new(Cell::new(false));
     let save_queued = Rc::new(Cell::new(false));
+    let additional_fido2_save_guide_dialog = Rc::new(RefCell::new(None));
+    let fido2_save_progress_dialog = Rc::new(RefCell::new(None));
 
     StoreRecipientsPageState {
         window: widgets.window.clone(),
@@ -169,6 +175,8 @@ fn build_store_recipients_page_state(
         saved_private_key_requirement,
         save_in_flight,
         save_queued,
+        additional_fido2_save_guide_dialog,
+        fido2_save_progress_dialog,
     }
 }
 

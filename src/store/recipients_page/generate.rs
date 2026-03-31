@@ -1,4 +1,5 @@
 use super::list::rebuild_store_recipients_list;
+use super::mode::ensure_standard_recipient_actions_allowed;
 use super::sync::sync_private_keys_to_host_if_enabled;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::backend::{generate_ripasso_private_key, ManagedRipassoPrivateKey, PrivateKeyError};
@@ -174,6 +175,10 @@ fn pop_private_key_generation_page_if_visible(state: &StoreRecipientsPageState) 
 }
 
 fn show_private_key_generation_page(state: &StoreRecipientsPageState) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
     let chrome = state.window_chrome();
     show_secondary_page_chrome(
         &chrome,

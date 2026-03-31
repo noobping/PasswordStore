@@ -8,9 +8,7 @@ pub use self::clone::prompt_store_clone;
 pub use self::import::{
     initialize_store_import_page, schedule_store_import_row, StoreImportPageState,
 };
-use super::recipients::{
-    read_store_gpg_recipients, store_gpg_recipients_subtitle, suggested_gpg_recipients,
-};
+use super::recipients::{read_store_recipients, store_recipients_subtitle};
 pub use super::recipients_page::{
     connect_store_recipients_controls, register_store_recipients_reload_action,
     register_store_recipients_save_action, show_store_recipients_create_page,
@@ -50,15 +48,8 @@ fn updated_stores_after_delete(stores: &[String], store_to_remove: &str) -> Opti
     Some(updated)
 }
 
-fn initial_recipients_for_store_creation(
-    existing_recipients: Vec<String>,
-    suggested_recipients: Vec<String>,
-) -> Vec<String> {
-    if existing_recipients.is_empty() {
-        suggested_recipients
-    } else {
-        existing_recipients
-    }
+fn initial_recipients_for_store_creation(existing_recipients: Vec<String>) -> Vec<String> {
+    existing_recipients
 }
 
 fn open_store_folder_picker(
@@ -192,7 +183,7 @@ fn append_store_row(
 ) {
     let row = ActionRow::builder()
         .title(store)
-        .subtitle(store_gpg_recipients_subtitle(store))
+        .subtitle(store_recipients_subtitle(store))
         .build();
     row.set_activatable(true);
 
@@ -300,10 +291,8 @@ pub fn prompt_add_or_create_store(
                     show_store_recipients_edit_page(&recipients_page, &store);
                 }
                 SelectedStoreFolderMode::CreateNew => {
-                    let recipients = initial_recipients_for_store_creation(
-                        read_store_gpg_recipients(&store),
-                        suggested_gpg_recipients(&settings),
-                    );
+                    let recipients =
+                        initial_recipients_for_store_creation(read_store_recipients(&store));
                     show_store_recipients_create_page(&recipients_page, store, recipients);
                 }
             }
@@ -369,20 +358,14 @@ mod tests {
     }
 
     #[test]
-    fn store_creation_prefers_existing_recipients_over_suggested_ones() {
+    fn store_creation_starts_empty_unless_the_folder_already_has_recipients() {
         assert_eq!(
-            initial_recipients_for_store_creation(
-                vec!["existing@example.com".to_string()],
-                vec!["suggested@example.com".to_string()],
-            ),
+            initial_recipients_for_store_creation(vec!["existing@example.com".to_string()]),
             vec!["existing@example.com".to_string()]
         );
         assert_eq!(
-            initial_recipients_for_store_creation(
-                Vec::new(),
-                vec!["suggested@example.com".to_string()],
-            ),
-            vec!["suggested@example.com".to_string()]
+            initial_recipients_for_store_creation(Vec::new()),
+            Vec::<String>::new()
         );
     }
 

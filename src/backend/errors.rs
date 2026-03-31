@@ -39,6 +39,32 @@ fn store_message_is_invalid_store_path(lowered: &str) -> bool {
     lowered.contains("selected password store path is not a folder")
 }
 
+fn save_toast_message_for_fido2_store_message(message: &str) -> Option<&'static str> {
+    if message.contains("Enter the FIDO2 security key PIN.") {
+        Some("Enter the FIDO2 security key PIN.")
+    } else if message.contains("Touch the FIDO2 security key and try again.") {
+        Some("Touch the FIDO2 security key and try again.")
+    } else if message.contains("Reconnect the FIDO2 security key and try again.") {
+        Some("Reconnect the FIDO2 security key and try again.")
+    } else if message.contains("Connect the matching FIDO2 security key.") {
+        Some("Connect the matching FIDO2 security key.")
+    } else if message
+        .contains("That FIDO2 security key does not support the hmac-secret extension.")
+    {
+        Some("That FIDO2 security key does not support the hmac-secret extension.")
+    } else {
+        None
+    }
+}
+
+fn import_toast_message_for_private_key_other(message: &str) -> Option<&'static str> {
+    if message.contains("Connect only one FIDO2 security key before continuing.") {
+        Some("Unplug the other security keys, then try again.")
+    } else {
+        save_toast_message_for_fido2_store_message(message)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum StoreMessageKind {
     EntryNotFound,
@@ -171,13 +197,15 @@ impl PasswordEntryWriteError {
         }
     }
 
-    pub const fn save_toast_message(&self) -> &'static str {
+    pub fn save_toast_message(&self) -> &'static str {
         match self {
             Self::EntryAlreadyExists(_) => "An item with that name already exists.",
             Self::MissingPrivateKey(_) => "Add a private key in Preferences.",
             Self::LockedPrivateKey(_) => "Unlock the key in Preferences.",
             Self::IncompatiblePrivateKey(_) => "This key can't open your items.",
-            Self::EntryNotFound(_) | Self::Other(_) => "Couldn't save changes.",
+            Self::Other(message) => save_toast_message_for_fido2_store_message(message)
+                .unwrap_or("Couldn't save changes."),
+            Self::EntryNotFound(_) => "Couldn't save changes.",
         }
     }
 
@@ -240,17 +268,20 @@ impl StoreRecipientsError {
         }
     }
 
-    pub const fn toast_message(&self, fallback: &'static str) -> &'static str {
+    pub fn toast_message(&self, fallback: &'static str) -> &'static str {
         match self {
             Self::InvalidStorePath(_) => "The selected store path is not a folder.",
             Self::MissingPrivateKey(_) => "Add a private key in Preferences.",
             Self::LockedPrivateKey(_) => "Unlock the key in Preferences.",
             Self::IncompatiblePrivateKey(_) => "This key can't open your items.",
-            Self::Other(_) => fallback,
+            Self::Other(message) => {
+                save_toast_message_for_fido2_store_message(message).unwrap_or(fallback)
+            }
         }
     }
 }
 
+#[cfg_attr(not(feature = "fido"), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum PrivateKeyError {
     #[error("{0}")]
@@ -286,11 +317,14 @@ pub enum PrivateKeyError {
     #[error("{0}")]
     UnsupportedFido2Key(String),
     #[error("{0}")]
+    Fido2UserActionTimeout(String),
+    #[error("{0}")]
     Fido2TokenRemoved(String),
     #[error("{0}")]
     Other(String),
 }
 
+#[cfg_attr(not(feature = "fido"), allow(dead_code))]
 impl PrivateKeyError {
     pub fn not_stored(message: impl Into<String>) -> Self {
         Self::NotStored(message.into())
@@ -356,6 +390,10 @@ impl PrivateKeyError {
         Self::UnsupportedFido2Key(message.into())
     }
 
+    pub fn fido2_user_action_timeout(message: impl Into<String>) -> Self {
+        Self::Fido2UserActionTimeout(message.into())
+    }
+
     pub fn fido2_token_removed(message: impl Into<String>) -> Self {
         Self::Fido2TokenRemoved(message.into())
     }
@@ -379,12 +417,13 @@ impl PrivateKeyError {
                 "Couldn't unlock the FIDO2 security key."
             }
             Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
+            Self::Fido2UserActionTimeout(_) => "Touch the FIDO2 security key and try again.",
             Self::Fido2TokenRemoved(_) => "Reconnect the FIDO2 security key and try again.",
             _ => "Couldn't unlock the key.",
         }
     }
 
-    pub const fn import_message(&self) -> &'static str {
+    pub fn import_message(&self) -> &'static str {
         match self {
             Self::MissingPrivateKeyMaterial(_) => "That file does not contain a private key.",
             Self::RequiresPasswordProtection(_) => "Add a password to that key first.",
@@ -401,10 +440,13 @@ impl PrivateKeyError {
                 "Couldn't unlock the FIDO2 security key."
             }
             Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
+            Self::Fido2UserActionTimeout(_) => "Touch the FIDO2 security key and try again.",
             Self::Fido2TokenRemoved(_) => "Reconnect the FIDO2 security key and try again.",
             Self::PassphraseRequired(_) | Self::IncorrectPassphrase(_) => {
                 "Couldn't unlock the key."
             }
+            Self::Other(message) => import_toast_message_for_private_key_other(message)
+                .unwrap_or("Couldn't import the key."),
             _ => "Couldn't import the key.",
         }
     }
@@ -419,7 +461,9 @@ impl PrivateKeyError {
 
 #[cfg(test)]
 mod tests {
-    use super::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
+    use super::{
+        PasswordEntryError, PasswordEntryWriteError, PrivateKeyError, StoreRecipientsError,
+    };
     use std::io;
 
     #[test]
@@ -446,6 +490,13 @@ mod tests {
         assert_eq!(
             PasswordEntryWriteError::EntryNotFound("missing".to_string()).delete_toast_message(),
             "That item no longer exists."
+        );
+        assert_eq!(
+            PasswordEntryWriteError::Other(
+                "Touch the FIDO2 security key and try again.".to_string()
+            )
+            .save_toast_message(),
+            "Touch the FIDO2 security key and try again."
         );
     }
 
@@ -476,6 +527,20 @@ mod tests {
             )
             .toast_message("Couldn't create the store."),
             "The selected store path is not a folder."
+        );
+        assert_eq!(
+            StoreRecipientsError::other("Touch the FIDO2 security key and try again.")
+                .toast_message("Couldn't save recipients."),
+            "Touch the FIDO2 security key and try again."
+        );
+    }
+
+    #[test]
+    fn private_key_import_errors_keep_specific_fido2_guidance() {
+        assert_eq!(
+            PrivateKeyError::other("Connect only one FIDO2 security key before continuing.")
+                .import_message(),
+            "Unplug the other security keys, then try again."
         );
     }
 

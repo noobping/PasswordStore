@@ -3,6 +3,7 @@ use super::super::file::{
 };
 use super::super::generation::PasswordGenerationControls;
 use super::super::otp::PasswordOtpState;
+use super::password_open_status_copy;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::gtk::{Box as GtkBox, Button, ListBox, Revealer, TextView, ToggleButton};
 use adw::prelude::*;
@@ -73,10 +74,16 @@ pub(super) fn show_password_status_message(
     state.status.set_description(Some(status_description));
 }
 
-pub(super) fn show_password_loading_state(state: &PasswordPageState, title: &str, subtitle: &str) {
+pub(super) fn show_password_loading_state(
+    state: &PasswordPageState,
+    title: &str,
+    subtitle: &str,
+    fido2_recipient_count: usize,
+) {
     state.username.set_text("");
     show_password_editor_chrome(state, title, subtitle);
-    show_password_status_message(state, "Opening item", "Please wait.");
+    let (status_title, status_description) = password_open_status_copy(fido2_recipient_count);
+    show_password_status_message(state, status_title, status_description);
 }
 
 pub(super) fn show_password_editor_fields(state: &PasswordPageState) {

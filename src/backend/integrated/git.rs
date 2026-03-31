@@ -4,8 +4,8 @@ use super::keys::{
     list_ripasso_private_keys, ripasso_private_key_requires_session_unlock,
     sign_with_hardware_session, ManagedRipassoPrivateKey,
 };
-use super::recipients::recipient_contents;
-use crate::backend::StoreRecipientsPrivateKeyRequirement;
+use super::recipients::{fido2_recipient_file_contents, standard_recipient_file_contents};
+use crate::backend::{StoreRecipients, StoreRecipientsPrivateKeyRequirement};
 use crate::fido2_recipient::is_fido2_recipient_string;
 use crate::logging::{
     log_error, log_info, run_command_output, run_command_with_input, CommandLogOptions,
@@ -31,6 +31,7 @@ struct CommitIdentity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CommitIdentitySource {
     ExplicitPrivateKey(String),
+    Fido2StoreRecipient(String),
     MissingExplicitPrivateKey(String),
     MissingExplicitFingerprint,
 }
@@ -227,6 +228,17 @@ fn preferred_commit_private_key_from_values(
         .cloned()
 }
 
+fn commit_signing_fingerprint(explicit_fingerprint: &str) -> Result<Option<String>, String> {
+    if is_fido2_recipient_string(explicit_fingerprint) {
+        return Ok(None);
+    }
+
+    let Some(key) = preferred_commit_private_key(Some(explicit_fingerprint))? else {
+        return Ok(None);
+    };
+    Ok(Some(key.fingerprint))
+}
+
 fn commit_signing_key_requiring_unlock(
     store_root: &str,
     fingerprint: String,
@@ -253,35 +265,39 @@ pub fn git_commit_private_key_requiring_unlock_for_entry(
         return Ok(None);
     }
     let fingerprint = IntegratedCryptoContext::fingerprint_for_label(store_root, label)?;
-    if is_fido2_recipient_string(&fingerprint) {
+    let Some(fingerprint) = commit_signing_fingerprint(&fingerprint)? else {
         return Ok(None);
-    }
+    };
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 
 pub fn git_commit_private_key_requiring_unlock_for_store_recipients(
     store_root: &str,
-    recipients: &[String],
+    recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<Option<String>, String> {
     if !supports_host_command_features() {
         return Ok(None);
     }
-    let recipients_contents = recipient_contents(recipients, private_key_requirement);
-    let fingerprint =
-        match IntegratedCryptoContext::fingerprint_for_recipient_contents(&recipients_contents) {
-            Ok(fingerprint) => fingerprint,
-            Err(err)
-                if err.contains("is not available in the app.")
-                    || err.contains("No recipients were found") =>
-            {
-                return Ok(None);
-            }
-            Err(err) => return Err(err),
-        };
-    if is_fido2_recipient_string(&fingerprint) {
+    let standard_contents =
+        standard_recipient_file_contents(recipients.standard(), private_key_requirement);
+    let fido2_contents = fido2_recipient_file_contents(recipients.fido2());
+    let fingerprint = match IntegratedCryptoContext::fingerprint_for_recipient_contents(
+        &standard_contents,
+        &fido2_contents,
+    ) {
+        Ok(fingerprint) => fingerprint,
+        Err(err)
+            if err.contains("is not available in the app.")
+                || err.contains("No recipients were found") =>
+        {
+            return Ok(None);
+        }
+        Err(err) => return Err(err),
+    };
+    let Some(fingerprint) = commit_signing_fingerprint(&fingerprint)? else {
         return Ok(None);
-    }
+    };
     commit_signing_key_requiring_unlock(store_root, fingerprint)
 }
 
@@ -318,6 +334,13 @@ fn parse_private_key_user_id(user_id: &str, fingerprint: &str) -> (String, Strin
 
 fn commit_identity(explicit_fingerprint: Option<&str>) -> Result<CommitIdentityResolution, String> {
     if let Some(explicit_fingerprint) = explicit_fingerprint {
+        if is_fido2_recipient_string(explicit_fingerprint) {
+            return Ok(CommitIdentityResolution {
+                identity: generic_commit_identity(),
+                source: CommitIdentitySource::Fido2StoreRecipient(explicit_fingerprint.to_string()),
+            });
+        }
+
         if let Some(key) = preferred_commit_private_key(Some(explicit_fingerprint))? {
             return Ok(CommitIdentityResolution {
                 identity: commit_identity_from_private_key(&key),
@@ -510,6 +533,9 @@ fn log_commit_identity_resolution(store_root: &str, resolution: &CommitIdentityR
             name = resolution.identity.name,
             email = resolution.identity.email,
         )),
+        CommitIdentitySource::Fido2StoreRecipient(_) => log_info(format!(
+            "Preparing password store Git commit for {store_root} without signing because this store uses a FIDO2 security key."
+        )),
         CommitIdentitySource::MissingExplicitPrivateKey(fingerprint) => log_info(format!(
             "Preparing password store Git commit for {store_root} without signing because private key {fingerprint} is not available in the app."
         )),
@@ -635,8 +661,14 @@ fn commit_git_paths(
     Ok(())
 }
 
-pub(super) fn password_entry_git_path(label: &str) -> String {
-    format!("{label}.gpg")
+pub(super) fn password_entry_git_path(
+    store_root: &Path,
+    entry_path: &Path,
+) -> Result<String, String> {
+    let relative = entry_path
+        .strip_prefix(store_root)
+        .map_err(|_| "Invalid password entry path.".to_string())?;
+    Ok(relative.to_string_lossy().to_string())
 }
 
 pub(super) fn maybe_commit_git_paths(
@@ -772,6 +804,23 @@ mod tests {
                 identity: generic_commit_identity(),
                 source: CommitIdentitySource::MissingExplicitPrivateKey(
                     "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC".to_string(),
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn commit_identity_is_generic_and_unsigned_for_fido2_store_recipients() {
+        assert_eq!(
+            commit_identity(Some(
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+            ))
+            .expect("build generic identity for a FIDO2 recipient"),
+            CommitIdentityResolution {
+                identity: generic_commit_identity(),
+                source: CommitIdentitySource::Fido2StoreRecipient(
+                    "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+                        .to_string(),
                 ),
             }
         );

@@ -9,6 +9,54 @@ pub use self::errors::PasswordEntryError;
 pub use self::errors::PrivateKeyError;
 pub use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasswordEntryProgress {
+    pub current_step: usize,
+    pub total_steps: usize,
+}
+
+pub type PasswordEntryReadProgress = PasswordEntryProgress;
+pub type PasswordEntryWriteProgress = PasswordEntryProgress;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StoreRecipients {
+    standard: Vec<String>,
+    fido2: Vec<String>,
+}
+
+impl StoreRecipients {
+    pub fn new(standard: Vec<String>, fido2: Vec<String>) -> Self {
+        Self { standard, fido2 }
+    }
+
+    pub fn standard(&self) -> &[String] {
+        &self.standard
+    }
+
+    pub fn fido2(&self) -> &[String] {
+        &self.fido2
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.standard.is_empty() && self.fido2.is_empty()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreRecipientsSaveStage {
+    ReadingExistingItems,
+    WritingUpdatedItems,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoreRecipientsSaveProgress {
+    pub stage: StoreRecipientsSaveStage,
+    pub current_item: usize,
+    pub total_items: usize,
+    pub current_touch: usize,
+    pub total_touches: usize,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum StoreRecipientsPrivateKeyRequirement {
     #[default]
@@ -32,7 +80,8 @@ pub use integrated::{
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
     ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
     unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, ManagedRipassoHardwareKey,
-    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
+    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind,
+    PrivateKeyUnlockRequest,
 };
 pub use integrated::{
     git_commit_private_key_requiring_unlock_for_entry,
@@ -79,15 +128,72 @@ dispatch_backend_call! {
     fn delete_password_entry(store_root: &str, label: &str) -> Result<(), PasswordEntryWriteError>;
     fn save_store_recipients(
         store_root: &str,
-        recipients: &[String],
+        recipients: &StoreRecipients,
         private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     ) -> Result<(), StoreRecipientsError>;
+}
+
+pub fn save_password_entry_with_progress(
+    store_root: &str,
+    label: &str,
+    contents: &str,
+    overwrite: bool,
+    report_progress: &mut dyn FnMut(PasswordEntryWriteProgress),
+) -> Result<(), PasswordEntryWriteError> {
+    if Preferences::new().uses_integrated_backend() {
+        integrated::save_password_entry_with_progress(
+            store_root,
+            label,
+            contents,
+            overwrite,
+            report_progress,
+        )
+    } else {
+        host::save_password_entry_with_progress(store_root, label, contents, overwrite)
+    }
+}
+
+pub fn save_store_recipients_with_progress(
+    store_root: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+    report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
+) -> Result<(), StoreRecipientsError> {
+    if Preferences::new().uses_integrated_backend() {
+        integrated::save_store_recipients_with_progress(
+            store_root,
+            recipients,
+            private_key_requirement,
+            report_progress,
+        )
+    } else {
+        host::save_store_recipients_with_progress(store_root, recipients, private_key_requirement)
+    }
+}
+
+pub fn read_password_entry_with_progress(
+    store_root: &str,
+    label: &str,
+    report_progress: &mut dyn FnMut(PasswordEntryReadProgress),
+) -> Result<String, PasswordEntryError> {
+    if Preferences::new().uses_integrated_backend() {
+        integrated::read_password_entry_with_progress(store_root, label, report_progress)
+    } else {
+        host::read_password_entry_with_progress(store_root, label)
+    }
 }
 
 pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
     dispatch_backend(
         || integrated::password_entry_is_readable(store_root, label),
         || host::password_entry_is_readable(store_root, label),
+    )
+}
+
+pub fn password_entry_fido2_recipient_count(store_root: &str, label: &str) -> usize {
+    dispatch_backend(
+        || integrated::password_entry_fido2_recipient_count(store_root, label),
+        || host::password_entry_fido2_recipient_count(store_root, label),
     )
 }
 

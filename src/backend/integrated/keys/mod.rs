@@ -1,5 +1,9 @@
 mod cache;
 mod cert;
+#[cfg(feature = "fido")]
+mod fido2;
+#[cfg(not(feature = "fido"))]
+#[path = "fido2_disabled.rs"]
 mod fido2;
 mod hardware;
 #[cfg(target_os = "linux")]
@@ -10,6 +14,7 @@ pub(in crate::backend::integrated) use self::cache::cached_unlocked_hardware_pri
 pub(in crate::backend::integrated) use self::cache::cached_unlocked_ripasso_private_key;
 #[cfg(test)]
 pub(in crate::backend) use self::cache::clear_cached_unlocked_ripasso_private_keys;
+pub(in crate::backend::integrated) use self::cache::clear_pending_fido2_enrollment;
 pub(in crate::backend::integrated) use self::cert::fingerprint_from_string;
 #[cfg(test)]
 pub(in crate::backend::integrated) use self::cert::{
@@ -17,14 +22,17 @@ pub(in crate::backend::integrated) use self::cert::{
 };
 pub use self::cert::{
     ManagedRipassoHardwareKey, ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection,
-    PrivateKeyUnlockRequest,
+    PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
 };
 pub(in crate::backend::integrated) use self::fido2::{
-    ciphertext_is_any_managed_bundle, decrypt_fido2_any_managed_bundle_for_fingerprint,
-    decrypt_fido2_direct_required_layer, decrypt_payload_from_any_managed_bundle,
-    direct_binding_from_store_recipient, encrypt_fido2_any_managed_bundle,
-    encrypt_fido2_direct_required_layer, extract_pgp_wrapped_dek_from_any_managed_bundle,
-    Fido2DirectBinding,
+    ciphertext_is_any_managed_bundle, decrypt_fido2_any_managed_bundle_dek_for_bindings,
+    decrypt_fido2_any_managed_bundle_dek_for_fingerprint,
+    decrypt_fido2_any_managed_bundle_for_fingerprint, decrypt_fido2_direct_required_layer,
+    decrypt_payload_from_any_managed_bundle, direct_binding_from_store_recipient,
+    encrypt_fido2_any_managed_bundle_with_progress, encrypt_fido2_direct_required_layer,
+    extract_pgp_wrapped_dek_from_any_managed_bundle,
+    reencrypt_fido2_any_managed_bundle_with_progress, Fido2DirectBinding, Fido2ReadProgress,
+    Fido2WriteProgress,
 };
 #[cfg(test)]
 pub(in crate::backend::integrated) use self::fido2::{

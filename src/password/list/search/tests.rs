@@ -4,7 +4,7 @@ use super::query::{
     StructuredSearchQuery, OTP_SEARCH_KEY, STORE_PATH_SEARCH_KEY, STORE_SEARCH_KEY,
     WEAK_PASSWORD_SEARCH_KEY,
 };
-use super::SearchRowFieldIndexState;
+use super::{advanced_search_includes_store, SearchRowFieldIndexState};
 use crate::password::file::SearchablePassField;
 
 fn clause(field: &str, comparison: SearchComparison, value: &str) -> StructuredSearchQuery {
@@ -260,6 +260,13 @@ fn single_quoted_values_preserve_spaces_keywords_and_escapes() {
             "personal or work 'vault'",
         ))
     );
+}
+
+#[test]
+fn advanced_search_skips_fido_only_stores() {
+    assert!(advanced_search_includes_store(false, true));
+    assert!(advanced_search_includes_store(true, false));
+    assert!(!advanced_search_includes_store(true, true));
 }
 
 #[test]

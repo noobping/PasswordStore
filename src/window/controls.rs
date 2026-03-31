@@ -18,6 +18,7 @@ use crate::support::runtime::{has_host_permission, supports_logging_features};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::git::{handle_git_busy_back, GitActionState};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
+use crate::window::tools::sync_tools_action_availability;
 use adw::gtk::{Button, ListBox, SearchEntry};
 use adw::prelude::*;
 use adw::ToastOverlay;
@@ -257,6 +258,11 @@ fn reload_password_list(
         visibility.show_hidden(),
         visibility.show_duplicates(),
     );
+    if let Some(root) = list.root() {
+        if let Ok(window) = root.downcast::<ApplicationWindow>() {
+            sync_tools_action_availability(&window);
+        }
+    }
 }
 
 pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextUndoActionState) {

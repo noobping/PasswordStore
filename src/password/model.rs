@@ -1,3 +1,4 @@
+use crate::password::entry_files::label_from_password_entry_path;
 use crate::preferences::{PasswordListSortMode, Preferences, UsernameFallbackMode};
 
 use std::collections::BTreeMap;
@@ -315,7 +316,7 @@ fn filter_duplicate_store_entries(items: Vec<PassEntry>, show_duplicates: bool) 
 fn absolute_secret_path(item: &PassEntry) -> PathBuf {
     Path::new(&item.store_path)
         .join(&item.relative_path)
-        .join(format!("{}.gpg", item.basename))
+        .join(&item.basename)
 }
 
 fn should_prefer_duplicate_entry(current: &PassEntry, candidate: &PassEntry) -> bool {
@@ -332,9 +333,7 @@ fn is_hidden_name(path: &Path) -> bool {
 }
 
 fn secret_label_from_path(base: &Path, path: &Path) -> Option<String> {
-    let relative = path.strip_prefix(base).ok()?;
-    let relative = relative.to_string_lossy();
-    relative.strip_suffix(".gpg").map(str::to_string)
+    label_from_password_entry_path(base, path)
 }
 
 fn collect_items_in_dir(
@@ -576,6 +575,31 @@ mod tests {
         assert_eq!(
             labels,
             vec![".hidden/inside".to_string(), ".top-secret".to_string()]
+        );
+
+        fs::remove_dir_all(store).expect("remove test store");
+    }
+
+    #[test]
+    fn keycord_extension_entries_are_discovered() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        let store = std::env::temp_dir().join(format!("passwordstore-keycord-{nanos}"));
+        fs::create_dir_all(store.join("vault")).expect("create store dir");
+        fs::write(store.join("vault").join("entry.keycord"), b"x").expect("write keycord secret");
+
+        let mut items = Vec::new();
+        collect_items_in_dir(&store, &store, &mut items, CollectItemsOptions::default())
+            .expect("collect keycord secrets");
+
+        assert_eq!(
+            item_order(&items),
+            vec![(
+                store.to_string_lossy().to_string(),
+                "vault/entry".to_string()
+            )]
         );
 
         fs::remove_dir_all(store).expect("remove test store");

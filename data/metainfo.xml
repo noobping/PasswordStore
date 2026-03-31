@@ -75,6 +75,14 @@
   </screenshots>
 
   <releases>
+    <release version="0.9.7" date="2026-03-31">
+      <description>
+        <ul>
+          <li>Fixed OTP bug where valid secrets were incorrectly invalidated.</li>
+          <li>Added FIDO2 guides and progress indicators.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.9.6" date="2026-03-30">
       <description>
         <ul>

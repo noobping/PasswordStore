@@ -34,6 +34,8 @@ const FIDO2_PERMISSION_REQUIRED_TOOLTIP: &str = "Grant USB security key access f
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 const OPTIONAL_FIDO2_ACCESS_ROW_NAME: &str = "keycord-optional-fido2-access-row";
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+const OPTIONAL_SMARTCARD_ACCESS_ROW_NAME: &str = "keycord-optional-smartcard-access-row";
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn build_optional_permission_row(
@@ -100,25 +102,25 @@ pub fn append_optional_smartcard_access_row(
     list: &ListBox,
     overlay: &ToastOverlay,
     hardware_rows: &[&ActionRow],
+    enabled: bool,
 ) {
     let granted = has_smartcard_permission();
     let blocked_tooltip = gettext("Grant smartcard access first.");
     for row in hardware_rows {
-        row.set_sensitive(granted);
-        row.set_tooltip_text((!granted).then_some(blocked_tooltip.as_str()));
+        row.set_sensitive(enabled && granted);
+        row.set_tooltip_text((enabled && !granted).then_some(blocked_tooltip.as_str()));
     }
 
-    if granted {
+    let show_permission_row = enabled && !granted;
+    if let Some(row) = find_optional_permission_row(list, OPTIONAL_SMARTCARD_ACCESS_ROW_NAME) {
+        row.set_visible(show_permission_row);
+    }
+    if !show_permission_row {
         return;
     }
 
-    let row = build_optional_permission_row(
-        overlay,
-        "Allow smartcard access",
-        "Hardware keys are optional. Grant PC/SC access if you want Keycord to use connected OpenPGP smartcards or YubiKeys, then restart Keycord. Password-protected keys remain available without this.",
-        FLATPAK_SMARTCARD_OVERRIDE_COMMAND,
-    );
-    list.prepend(&row);
+    let row = ensure_optional_smartcard_access_row(list, overlay);
+    row.set_visible(true);
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
@@ -182,11 +184,29 @@ fn ensure_optional_fido2_access_row(list: &ListBox, overlay: &ToastOverlay) -> A
     row
 }
 
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+fn ensure_optional_smartcard_access_row(list: &ListBox, overlay: &ToastOverlay) -> ActionRow {
+    if let Some(row) = find_optional_permission_row(list, OPTIONAL_SMARTCARD_ACCESS_ROW_NAME) {
+        return row;
+    }
+
+    let row = build_optional_permission_row(
+        overlay,
+        "Allow smartcard access",
+        "Hardware keys are optional. Grant PC/SC access if you want Keycord to use connected OpenPGP smartcards or YubiKeys, then restart Keycord. Password-protected keys remain available without this.",
+        FLATPAK_SMARTCARD_OVERRIDE_COMMAND,
+    );
+    row.set_widget_name(OPTIONAL_SMARTCARD_ACCESS_ROW_NAME);
+    list.prepend(&row);
+    row
+}
+
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
 pub fn append_optional_smartcard_access_row(
     _list: &adw::gtk::ListBox,
     _overlay: &adw::ToastOverlay,
     _hardware_rows: &[&adw::ActionRow],
+    _enabled: bool,
 ) {
 }
 

@@ -2,6 +2,11 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
 
+use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
+use crate::password::entry_files::{
+    is_password_entry_file, label_from_password_entry_path, password_entry_extension,
+};
+
 pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String> {
     let mut relative = PathBuf::new();
     for component in Path::new(label).components() {
@@ -19,20 +24,80 @@ pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String>
     Ok(relative)
 }
 
-pub(super) fn secret_entry_relative_path(label: &str) -> Result<PathBuf, String> {
+fn secret_entry_relative_path_with_extension(
+    label: &str,
+    uses_fido2: bool,
+) -> Result<PathBuf, String> {
     let mut relative = validated_entry_label_path(label)?;
     let file_name = relative
         .file_name()
         .and_then(|value| value.to_str())
         .ok_or_else(|| "Invalid password entry path.".to_string())?;
-    relative.set_file_name(format!("{file_name}.gpg"));
+    relative.set_file_name(format!(
+        "{file_name}.{}",
+        password_entry_extension(uses_fido2)
+    ));
     Ok(relative)
 }
 
-pub(super) fn entry_file_path(store_root: &str, label: &str) -> Result<PathBuf, String> {
+#[cfg(test)]
+pub(super) fn secret_entry_relative_path(label: &str) -> Result<PathBuf, String> {
+    secret_entry_relative_path_with_extension(label, false)
+}
+
+fn entry_file_path_with_extension(
+    store_root: &str,
+    label: &str,
+    uses_fido2: bool,
+) -> Result<PathBuf, String> {
     let mut path = PathBuf::from(store_root);
-    path.push(secret_entry_relative_path(label)?);
+    path.push(secret_entry_relative_path_with_extension(
+        label, uses_fido2,
+    )?);
     Ok(path)
+}
+
+pub(super) fn existing_entry_file_path(
+    store_root: &str,
+    label: &str,
+) -> Result<Option<PathBuf>, String> {
+    let fido2_path = entry_file_path_with_extension(store_root, label, true)?;
+    if fido2_path.is_file() {
+        return Ok(Some(fido2_path));
+    }
+
+    let standard_path = entry_file_path_with_extension(store_root, label, false)?;
+    if standard_path.is_file() {
+        return Ok(Some(standard_path));
+    }
+
+    Ok(None)
+}
+
+fn label_uses_fido2_recipients(store_root: &str, label: &str) -> Result<bool, String> {
+    let recipients_path = recipients_file_for_label(store_root, label)?;
+    let fido2_recipients_path = fido2_recipients_file_for_recipients_path(&recipients_path);
+    match fs::read_to_string(fido2_recipients_path) {
+        Ok(contents) => Ok(contents.lines().any(|line| !line.trim().is_empty())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+pub(super) fn desired_entry_file_path(store_root: &str, label: &str) -> Result<PathBuf, String> {
+    entry_file_path_with_extension(
+        store_root,
+        label,
+        label_uses_fido2_recipients(store_root, label)?,
+    )
+}
+
+pub(super) fn entry_file_path(store_root: &str, label: &str) -> Result<PathBuf, String> {
+    if let Some(path) = existing_entry_file_path(store_root, label)? {
+        Ok(path)
+    } else {
+        desired_entry_file_path(store_root, label)
+    }
 }
 
 pub(super) fn recipients_file_for_label(store_root: &str, label: &str) -> Result<PathBuf, String> {
@@ -50,19 +115,16 @@ pub(super) fn recipients_file_for_label(store_root: &str, label: &str) -> Result
     Err("No recipients were found for this password entry.".to_string())
 }
 
+pub(super) fn fido2_recipients_file_for_recipients_path(recipients_path: &Path) -> PathBuf {
+    recipients_path.with_file_name(FIDO2_RECIPIENTS_FILE_NAME)
+}
+
 pub(super) fn label_from_entry_path(
     store_root: &Path,
     entry_path: &Path,
 ) -> Result<String, String> {
-    let relative = entry_path
-        .strip_prefix(store_root)
-        .map_err(|_| "Invalid password entry path.".to_string())?;
-    let mut label = relative.to_path_buf();
-    if label.extension().and_then(|value| value.to_str()) != Some("gpg") {
-        return Err("Invalid password entry path.".to_string());
-    }
-    label.set_extension("");
-    Ok(label.to_string_lossy().to_string())
+    label_from_password_entry_path(store_root, entry_path)
+        .ok_or_else(|| "Invalid password entry path.".to_string())
 }
 
 pub(super) fn ensure_store_directory(store_root: &str) -> Result<PathBuf, String> {
@@ -77,13 +139,39 @@ pub(super) fn ensure_store_directory(store_root: &str) -> Result<PathBuf, String
     Ok(store_dir)
 }
 
-pub(super) fn with_updated_recipients_file<T>(
+fn write_optional_text_file(path: &Path, contents: &str) -> Result<(), String> {
+    if contents.trim().is_empty() {
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err.to_string()),
+        }
+    } else {
+        fs::write(path, contents).map_err(|err| err.to_string())
+    }
+}
+
+pub(super) fn with_updated_recipient_files<T>(
     recipients_path: &Path,
-    contents: &str,
+    recipients_contents: &str,
+    fido2_recipients_path: &Path,
+    fido2_recipients_contents: &str,
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let previous_contents = fs::read_to_string(recipients_path).ok();
-    fs::write(recipients_path, contents).map_err(|err| err.to_string())?;
+    let previous_fido2_contents = fs::read_to_string(fido2_recipients_path).ok();
+    fs::write(recipients_path, recipients_contents).map_err(|err| err.to_string())?;
+    if let Err(err) = write_optional_text_file(fido2_recipients_path, fido2_recipients_contents) {
+        match previous_contents {
+            Some(previous) => {
+                let _ = fs::write(recipients_path, previous);
+            }
+            None => {
+                let _ = fs::remove_file(recipients_path);
+            }
+        }
+        return Err(err);
+    }
 
     match f() {
         Ok(value) => Ok(value),
@@ -94,6 +182,14 @@ pub(super) fn with_updated_recipients_file<T>(
                 }
                 None => {
                     let _ = fs::remove_file(recipients_path);
+                }
+            }
+            match previous_fido2_contents {
+                Some(previous) => {
+                    let _ = fs::write(fido2_recipients_path, previous);
+                }
+                None => {
+                    let _ = fs::remove_file(fido2_recipients_path);
                 }
             }
             Err(err)
@@ -138,10 +234,108 @@ pub(super) fn collect_password_entry_files(store_root: &Path) -> Result<Vec<Path
         if !entry.file_type().is_file() {
             continue;
         }
-        if entry.path().extension().and_then(|value| value.to_str()) == Some("gpg") {
+        if is_password_entry_file(entry.path()) {
             entries.push(entry.into_path());
         }
     }
 
     Ok(entries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        collect_password_entry_files, desired_entry_file_path, entry_file_path,
+        existing_entry_file_path, label_from_entry_path,
+    };
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_store(prefix: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
+
+    #[test]
+    fn entry_paths_choose_keycord_extension_for_fido2_recipients() {
+        let store = temp_store("keycord-paths-fido2");
+        fs::create_dir_all(store.join("team")).expect("create store");
+        fs::write(store.join(".gpg-id"), "user@example.com\n").expect("write recipients");
+        fs::write(
+            store.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+        )
+        .expect("write fido2 recipients");
+
+        let desired = desired_entry_file_path(store.to_string_lossy().as_ref(), "team/service")
+            .expect("resolve desired path");
+        assert_eq!(desired, store.join("team/service.keycord"));
+        assert_eq!(
+            entry_file_path(store.to_string_lossy().as_ref(), "team/service")
+                .expect("resolve entry path"),
+            store.join("team/service.keycord")
+        );
+
+        fs::remove_dir_all(store).expect("remove store");
+    }
+
+    #[test]
+    fn existing_standard_entry_paths_still_resolve_for_legacy_fido2_items() {
+        let store = temp_store("keycord-paths-legacy");
+        fs::create_dir_all(store.join("team")).expect("create store");
+        fs::write(store.join(".gpg-id"), "user@example.com\n").expect("write recipients");
+        fs::write(
+            store.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+        )
+        .expect("write fido2 recipients");
+        fs::write(store.join("team/service.gpg"), b"x").expect("write legacy entry");
+
+        assert_eq!(
+            existing_entry_file_path(store.to_string_lossy().as_ref(), "team/service")
+                .expect("resolve existing path"),
+            Some(store.join("team/service.gpg"))
+        );
+        assert_eq!(
+            entry_file_path(store.to_string_lossy().as_ref(), "team/service")
+                .expect("resolve entry path"),
+            store.join("team/service.gpg")
+        );
+
+        fs::remove_dir_all(store).expect("remove store");
+    }
+
+    #[test]
+    fn entry_path_helpers_understand_both_supported_extensions() {
+        let store = temp_store("keycord-paths-collect");
+        fs::create_dir_all(store.join("team")).expect("create store");
+        fs::write(store.join("team/service.gpg"), b"x").expect("write standard entry");
+        fs::write(store.join("team/key.keycord"), b"x").expect("write fido2 entry");
+
+        let mut entries = collect_password_entry_files(&store).expect("collect entries");
+        entries.sort();
+
+        assert_eq!(
+            entries,
+            vec![
+                store.join("team/key.keycord"),
+                store.join("team/service.gpg"),
+            ]
+        );
+        assert_eq!(
+            label_from_entry_path(&store, &store.join("team/key.keycord"))
+                .expect("decode keycord label"),
+            "team/key".to_string()
+        );
+        assert_eq!(
+            label_from_entry_path(&store, &store.join("team/service.gpg"))
+                .expect("decode gpg label"),
+            "team/service".to_string()
+        );
+
+        fs::remove_dir_all(store).expect("remove store");
+    }
 }

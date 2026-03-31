@@ -1214,6 +1214,33 @@
                               </object>
                             </child>
                             <child>
+                              <object class="AdwPreferencesGroup" id="store_recipients_fido2_info_group">
+                                <property name="visible">false</property>
+                                <child>
+                                  <object class="GtkListBox">
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                    <child>
+                                      <object class="AdwActionRow"
+                                        id="store_recipients_all_fido2_keys_required_row">
+                                        <property name="title" translatable="yes">All security keys are required</property>
+                                        <property name="subtitle" translatable="yes">This store uses more than one security key. Saving a password will ask each selected security key one by one.</property>
+                                        <property name="activatable">False</property>
+                                        <property name="visible">False</property>
+                                        <child type="prefix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">dialog-information-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
                               <object class="AdwPreferencesGroup" id="store_recipients_keys_group">
                                 <property name="title" translatable="yes">Keys for this store</property>
                                 <property name="description" translatable="yes">Select the private keys that can unlock passwords in this store.</property>
@@ -1231,7 +1258,6 @@
                               <object class="AdwPreferencesGroup" id="store_recipients_create_group">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Recommended for new stores</property>
-                                <property name="description" translatable="yes">Generate a new app-managed key inside Keycord.</property>
                                 <child>
                                   <object class="GtkListBox" id="store_recipients_create_list">
                                     <property name="selection-mode">none</property>
@@ -1252,26 +1278,11 @@
                                         </child>
                                       </object>
                                     </child>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="AdwPreferencesGroup" id="store_recipients_add_group">
-                                <property name="visible">false</property>
-                                <property name="title" translatable="yes">Other ways to add a key</property>
-                                <property name="description" translatable="yes">Import an existing private key, add a FIDO2 recipient, or connect a hardware token.</property>
-                                <child>
-                                  <object class="GtkListBox" id="store_recipients_add_list">
-                                    <property name="selection-mode">none</property>
-                                    <style>
-                                      <class name="boxed-list" />
-                                    </style>
                                     <child>
                                       <object class="AdwActionRow"
                                         id="store_recipients_add_fido2_key_row">
                                         <property name="title" translatable="yes">Add FIDO2 security key</property>
-                                        <property name="subtitle" translatable="yes">Use a connected security key for Keycord-only encryption.</property>
+                                        <property name="subtitle" translatable="yes">Use a connected security key for Keycord-only encryption. This option is incompatible with advanced search, Keycord tools, and other pass apps.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
                                           <object class="GtkImage">
@@ -1280,6 +1291,21 @@
                                         </child>
                                       </object>
                                     </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="store_recipients_add_group">
+                                <property name="visible">false</property>
+                                <property name="title" translatable="yes">Other ways to add a key</property>
+                                <property name="description" translatable="yes">Import an existing private key or connect a hardware token.</property>
+                                <child>
+                                  <object class="GtkListBox" id="store_recipients_add_list">
+                                    <property name="selection-mode">none</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
                                     <child>
                                       <object class="AdwActionRow"
                                         id="store_recipients_add_hardware_key_row">
@@ -1352,7 +1378,7 @@
                                       <object class="AdwActionRow"
                                         id="store_recipients_require_all_row">
                                         <property name="title" translatable="yes">Require all selected private keys</property>
-                                        <property name="subtitle" translatable="yes">Uses layered encryption so every selected key must be unlocked. Other pass apps will not be able to read these items.</property>
+                                        <property name="subtitle" translatable="yes">When off, any selected key can unlock an item. When on, every selected key must be unlocked. Other pass apps will not be able to read these items.</property>
                                         <property name="activatable">True</property>
                                         <property name="visible">False</property>
                                         <child type="suffix">

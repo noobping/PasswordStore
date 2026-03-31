@@ -62,6 +62,13 @@ impl SearchQuery {
         matches!(self, Self::Empty)
     }
 
+    pub(super) const fn uses_advanced_features(&self) -> bool {
+        matches!(
+            self,
+            Self::Regex(_) | Self::Structured(_) | Self::InvalidRegex | Self::InvalidStructured
+        )
+    }
+
     pub(super) fn requires_index(&self) -> bool {
         match self {
             Self::Structured(query) => query.requires_index(),

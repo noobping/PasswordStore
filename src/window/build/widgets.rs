@@ -54,10 +54,12 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_page: NavigationPage,
     pub(in crate::window) store_recipients_host_gpg_warning_group: PreferencesGroup,
     pub(in crate::window) store_recipients_host_gpg_warning_row: ActionRow,
+    pub(in crate::window) store_recipients_fido2_info_group: PreferencesGroup,
     pub(in crate::window) store_recipients_list: ListBox,
     pub(in crate::window) store_recipients_add_group: PreferencesGroup,
     pub(in crate::window) store_recipients_add_list: ListBox,
     pub(in crate::window) store_recipients_create_group: PreferencesGroup,
+    pub(in crate::window) store_recipients_create_list: ListBox,
     pub(in crate::window) store_recipients_options_group: PreferencesGroup,
     pub(in crate::window) store_recipients_git_group: PreferencesGroup,
     pub(in crate::window) store_recipients_git_list: ListBox,
@@ -68,6 +70,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_import_file_row: ActionRow,
     pub(in crate::window) store_recipients_generate_key_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_row: ActionRow,
+    pub(in crate::window) store_recipients_all_fido2_keys_required_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_check: CheckButton,
     pub(in crate::window) store_git_page: NavigationPage,
     pub(in crate::window) store_git_remotes_list: ListBox,
@@ -198,10 +201,12 @@ impl WindowWidgets {
             store_recipients_host_gpg_warning_row: required!(
                 "store_recipients_host_gpg_warning_row"
             ),
+            store_recipients_fido2_info_group: required!("store_recipients_fido2_info_group"),
             store_recipients_list: required!("store_recipients_list"),
             store_recipients_add_group: required!("store_recipients_add_group"),
             store_recipients_add_list: required!("store_recipients_add_list"),
             store_recipients_create_group: required!("store_recipients_create_group"),
+            store_recipients_create_list: required!("store_recipients_create_list"),
             store_recipients_options_group: required!("store_recipients_options_group"),
             store_recipients_git_group: required!("store_recipients_git_group"),
             store_recipients_git_list: required!("store_recipients_git_list"),
@@ -218,6 +223,9 @@ impl WindowWidgets {
             store_recipients_import_file_row: required!("store_recipients_import_file_row"),
             store_recipients_generate_key_row: required!("store_recipients_generate_key_row"),
             store_recipients_require_all_row: required!("store_recipients_require_all_row"),
+            store_recipients_all_fido2_keys_required_row: required!(
+                "store_recipients_all_fido2_keys_required_row"
+            ),
             store_recipients_require_all_check: required!("store_recipients_require_all_check"),
             store_git_page: required!("store_git_page"),
             store_git_remotes_list: required!("store_git_remotes_list"),

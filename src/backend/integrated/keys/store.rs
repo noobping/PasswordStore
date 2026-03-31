@@ -362,8 +362,7 @@ fn stored_key_can_decrypt(entry: &StoredPrivateKeyEntry) -> bool {
         ManagedRipassoPrivateKeyProtection::Password => {
             cert_can_decrypt_password_entries(&entry.cert)
         }
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
-        | ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             cert_has_transport_encryption_key(&entry.cert)
         }
     }
@@ -425,22 +424,6 @@ pub(in crate::backend::integrated) fn ensure_ripasso_private_key_is_ready(
             }
             Ok(())
         }
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            if cached_unlocked_ripasso_private_key(fingerprint)
-                .map_err(PasswordEntryError::other)?
-                .is_none()
-            {
-                return Err(PasswordEntryError::locked_private_key(
-                    locked_private_key_error(),
-                ));
-            }
-            if !stored_key_can_decrypt(&entry) {
-                return Err(PasswordEntryError::incompatible_private_key(
-                    incompatible_private_key_error(),
-                ));
-            }
-            Ok(())
-        }
     }
 }
 
@@ -456,9 +439,6 @@ pub fn is_ripasso_private_key_unlocked(fingerprint: &str) -> Result<bool, String
         }
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             Ok(cached_unlocked_hardware_private_key(fingerprint)?.is_some())
-        }
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            Ok(cached_unlocked_ripasso_private_key(fingerprint)?.is_some())
         }
     }
 }
@@ -478,9 +458,6 @@ pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<
         }
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             Ok(cached_unlocked_hardware_private_key(fingerprint)?.is_none())
-        }
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            Ok(cached_unlocked_ripasso_private_key(fingerprint)?.is_none())
         }
     }
 }
@@ -518,39 +495,15 @@ fn hardware_unlock_mode(
     }
 }
 
-fn fido2_unlock_pin(request: PrivateKeyUnlockRequest) -> Result<Option<String>, PrivateKeyError> {
-    match request {
-        PrivateKeyUnlockRequest::Fido2(Some(pin)) => {
-            let trimmed = pin.trim();
-            if trimmed.is_empty() {
-                return Err(PrivateKeyError::fido2_pin_required(
-                    "Enter the FIDO2 security key PIN.",
-                ));
-            }
-            Ok(Some(trimmed.to_string()))
-        }
-        PrivateKeyUnlockRequest::Fido2(None) => Ok(None),
-        PrivateKeyUnlockRequest::Password(_)
-        | PrivateKeyUnlockRequest::HardwarePin(_)
-        | PrivateKeyUnlockRequest::HardwareExternal => Err(PrivateKeyError::other(
-            "This private key requires a FIDO2 security key.",
-        )),
-    }
-}
-
 pub fn unlock_ripasso_private_key_for_session(
     fingerprint: &str,
     request: PrivateKeyUnlockRequest,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     if is_fido2_recipient_string(fingerprint) {
-        let pin = fido2_unlock_pin(request)?;
-        super::fido2::unlock_fido2_store_recipient_for_session(fingerprint, pin.as_deref())?;
-        return Ok(ManagedRipassoPrivateKey {
-            fingerprint: fingerprint.to_string(),
-            user_ids: fido2_recipient_title(fingerprint).into_iter().collect(),
-            protection: ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
-            hardware: None,
-        });
+        let _ = request;
+        return Err(PrivateKeyError::other(
+            "FIDO2 store recipients must be unlocked separately.",
+        ));
     }
 
     let entry = find_stored_private_key(fingerprint).map_err(|err| {
@@ -874,19 +827,6 @@ pub fn armored_ripasso_private_key(fingerprint: &str) -> Result<String, String> 
             return Err(
                 "That hardware-backed key does not have an exportable private key.".to_string(),
             );
-        }
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            let Some(cert) = cached_unlocked_ripasso_private_key(fingerprint)? else {
-                return Err(
-                    "Unlock the FIDO2 security key before exporting its private key.".to_string(),
-                );
-            };
-            let armored = cert
-                .as_tsk()
-                .armored()
-                .to_vec()
-                .map_err(|err| err.to_string())?;
-            armored
         }
     };
     String::from_utf8(armored).map_err(|err| err.to_string())

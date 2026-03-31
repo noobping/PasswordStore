@@ -1,5 +1,6 @@
 const FIDO2_RECIPIENT_METADATA_PREFIX: &str = "keycord-fido2-recipient-v1=";
 const FIDO2_RECIPIENT_FALLBACK_LABEL: &str = "FIDO2 security key";
+pub const FIDO2_RECIPIENTS_FILE_NAME: &str = ".fido-id";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fido2StoreRecipient {

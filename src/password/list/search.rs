@@ -3,12 +3,12 @@ mod query;
 #[cfg(test)]
 mod tests;
 
+#[cfg(target_os = "linux")]
+use self::index::indexed_fields_for_contents;
 use self::index::{
     build_search_index_batch, collect_unindexed_requests, find_row, is_stale_index_batch,
     list_is_empty, row_field_index_state, SearchIndexBatch,
 };
-#[cfg(target_os = "linux")]
-use self::index::indexed_fields_for_contents;
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
 use super::{
@@ -24,10 +24,12 @@ use crate::password::model::{
 };
 #[cfg(target_os = "linux")]
 use crate::store::labels::shortened_store_label_map;
+use crate::store::recipients::store_uses_fido2_recipients;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use adw::gtk::{ListBox, ListBoxRow};
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 const SEARCH_CONTROLLER_KEY: &str = "search-controller";
@@ -215,6 +217,8 @@ fn collect_filterable_rows(
     query: &SearchQuery,
 ) -> Vec<(ListBoxRow, FilterablePasswordListRow)> {
     let mut rows = Vec::new();
+    let mut advanced_search_compatible_stores = HashMap::<String, bool>::new();
+    let uses_advanced_features = query.uses_advanced_features();
     for_each_row(list, |row| {
         let Some(store_path) = password_list_row_store_path(&row) else {
             set_cloned_data(&row, SEARCH_VISIBILITY_KEY, true);
@@ -237,13 +241,45 @@ fn collect_filterable_rows(
         rows.push((
             row.clone(),
             FilterablePasswordListRow::Entry {
-                store_path,
+                matches_query: store_supports_advanced_search(
+                    &store_path,
+                    uses_advanced_features,
+                    &mut advanced_search_compatible_stores,
+                ) && password_entry_matches_query(&row, query),
                 depth,
-                matches_query: password_entry_matches_query(&row, query),
+                store_path,
             },
         ));
     });
     rows
+}
+
+fn store_supports_advanced_search(
+    store_path: &str,
+    uses_advanced_features: bool,
+    cache: &mut HashMap<String, bool>,
+) -> bool {
+    if !uses_advanced_features {
+        return true;
+    }
+
+    if let Some(supported) = cache.get(store_path) {
+        return *supported;
+    }
+
+    let supported = advanced_search_includes_store(
+        uses_advanced_features,
+        store_uses_fido2_recipients(store_path),
+    );
+    cache.insert(store_path.to_string(), supported);
+    supported
+}
+
+const fn advanced_search_includes_store(
+    uses_advanced_features: bool,
+    store_uses_fido2: bool,
+) -> bool {
+    !uses_advanced_features || !store_uses_fido2
 }
 
 fn password_entry_matches_query(row: &ListBoxRow, query: &SearchQuery) -> bool {
@@ -370,10 +406,20 @@ pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<
     }
 
     let requires_index = query.requires_index();
+    let uses_advanced_features = query.uses_advanced_features();
     let store_labels =
         shortened_store_label_map(&crate::preferences::Preferences::new().store_roots());
     let mut matches = Vec::new();
+    let mut advanced_search_compatible_stores = HashMap::<String, bool>::new();
     for item in collect_all_password_items_with_options(CollectItemsOptions::default()) {
+        if !store_supports_advanced_search(
+            &item.store_path,
+            uses_advanced_features,
+            &mut advanced_search_compatible_stores,
+        ) {
+            continue;
+        }
+
         let label = item.label();
         let store_label = store_labels
             .get(&item.store_path)

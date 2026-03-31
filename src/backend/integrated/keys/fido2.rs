@@ -1,4 +1,7 @@
-use super::cache::{cached_fido2_pin, clear_cached_fido2_pin};
+use super::cache::{
+    cache_pending_fido2_enrollment, cached_fido2_pin, cached_pending_fido2_enrollment,
+    clear_cached_fido2_pin,
+};
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{
     build_fido2_recipient_string, parse_fido2_recipient_string, Fido2StoreRecipient,
@@ -6,7 +9,10 @@ use crate::fido2_recipient::{
 use rand::random;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::mpsc;
+use std::sync::{Arc, Barrier, OnceLock, RwLock};
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -44,6 +50,19 @@ const FIDO2_DIRECT_LAYER_KIND: &str = "fido2-required-layer";
 const FIDO2_DIRECT_ANY_PAYLOAD_AAD: &[u8] = b"keycord/fido2-any-managed/payload/v1";
 const FIDO2_DIRECT_ANY_WRAPPED_DEK_AAD_PREFIX: &[u8] = b"keycord/fido2-any-managed/wrapped-dek/v1:";
 const FIDO2_DIRECT_LAYER_AAD_PREFIX: &[u8] = b"keycord/fido2-required-layer/payload/v1:";
+const PASSWORD_ENTRY_CANDIDATE_MISMATCH: &str =
+    "The available private keys cannot decrypt this item.";
+const FIDO2_MATCHING_KEY_RETRY_WINDOW: Duration = Duration::from_secs(4);
+const FIDO2_MATCHING_KEY_RETRY_INTERVAL: Duration = Duration::from_millis(150);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::backend::integrated) struct Fido2Progress {
+    pub current_step: usize,
+    pub total_steps: usize,
+}
+
+pub(in crate::backend::integrated) type Fido2ReadProgress = Fido2Progress;
+pub(in crate::backend::integrated) type Fido2WriteProgress = Fido2Progress;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fido2DirectBinding {
@@ -66,6 +85,7 @@ pub enum Fido2TransportError {
     PinRequired,
     IncorrectPin,
     TokenNotPresent,
+    UserActionTimeout,
     TokenRemoved,
     Unsupported,
     Other(String),
@@ -77,6 +97,7 @@ impl Display for Fido2TransportError {
             Self::PinRequired => write!(f, "Enter the FIDO2 security key PIN."),
             Self::IncorrectPin => write!(f, "The FIDO2 security key PIN is incorrect."),
             Self::TokenNotPresent => write!(f, "Connect the matching FIDO2 security key."),
+            Self::UserActionTimeout => write!(f, "Touch the FIDO2 security key and try again."),
             Self::TokenRemoved => write!(f, "Reconnect the FIDO2 security key and try again."),
             Self::Unsupported => write!(
                 f,
@@ -134,6 +155,16 @@ struct Fido2DirectLayerEnvelope {
     payload_ciphertext: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DirectAnyRecipientCandidate {
+    fingerprint: String,
+    rp_id: String,
+    credential_id: Vec<u8>,
+    hmac_salt: Vec<u8>,
+    wrapped_dek_nonce: Vec<u8>,
+    wrapped_dek: Vec<u8>,
+}
+
 pub trait Fido2Transport: Send + Sync {
     fn enroll_hmac_secret(
         &self,
@@ -150,6 +181,7 @@ pub trait Fido2Transport: Send + Sync {
         credential_id: &[u8],
         pin: Option<&str>,
         salt: &[u8],
+        excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError>;
 }
 
@@ -205,6 +237,9 @@ pub(in crate::backend::integrated) fn private_key_error_from_fido2_error(
         Fido2TransportError::TokenNotPresent => {
             PrivateKeyError::fido2_token_not_present("Connect the matching FIDO2 security key.")
         }
+        Fido2TransportError::UserActionTimeout => PrivateKeyError::fido2_user_action_timeout(
+            "Touch the FIDO2 security key and try again.",
+        ),
         Fido2TransportError::TokenRemoved => {
             PrivateKeyError::fido2_token_removed("Reconnect the FIDO2 security key and try again.")
         }
@@ -217,18 +252,26 @@ pub(in crate::backend::integrated) fn private_key_error_from_fido2_error(
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn create_fido2_store_recipient(pin: Option<&str>) -> Result<String, PrivateKeyError> {
+    let enrollment_salt = random_bytes::<FIDO2_HMAC_SALT_LEN>();
     let enrollment = with_fido2_transport_read(|transport| {
         transport.enroll_hmac_secret(
             FIDO2_RP_ID,
             "keycord-fido2-recipient",
             "Keycord FIDO2 recipient",
             pin,
-            &random_bytes::<FIDO2_HMAC_SALT_LEN>(),
+            &enrollment_salt,
         )
     })
     .map_err(private_key_error_from_fido2_error)?;
     let id = direct_binding_id(&enrollment.credential_id);
     let label = direct_binding_label(&enrollment.device);
+    cache_pending_fido2_enrollment(
+        &id,
+        &enrollment.credential_id,
+        &enrollment_salt,
+        &enrollment.hmac_secret,
+    )
+    .map_err(PrivateKeyError::other)?;
     if let Some(pin) = pin {
         super::cache::cache_fido2_pin(&id, pin).map_err(PrivateKeyError::other)?;
     }
@@ -256,6 +299,7 @@ pub fn unlock_fido2_store_recipient_for_session(
             &recipient.credential_id,
             pin,
             &random_bytes::<FIDO2_HMAC_SALT_LEN>(),
+            &[],
         )
     })
     .map_err(private_key_error_from_fido2_error)?;
@@ -283,11 +327,12 @@ pub(in crate::backend::integrated) fn direct_binding_from_store_recipient(
         .map(|recipient| direct_binding_from_store_recipient_data(&recipient)))
 }
 
-pub(in crate::backend::integrated) fn encrypt_fido2_any_managed_bundle(
+pub(in crate::backend::integrated) fn encrypt_fido2_any_managed_bundle_with_progress(
     bindings: &[Fido2DirectBinding],
     dek: &[u8],
     payload: &[u8],
     pgp_wrapped_dek: Option<&[u8]>,
+    mut report_progress: Option<&mut dyn FnMut(Fido2WriteProgress)>,
 ) -> Result<Vec<u8>, String> {
     if bindings.is_empty() && pgp_wrapped_dek.is_none() {
         return Err("No recipients were found for this password entry.".to_string());
@@ -299,32 +344,84 @@ pub(in crate::backend::integrated) fn encrypt_fido2_any_managed_bundle(
             .map_err(|err| err.to_string())?;
 
     let mut fido2_recipients = Vec::with_capacity(bindings.len());
-    for binding in bindings {
-        let hmac_salt = random_bytes::<FIDO2_HMAC_SALT_LEN>();
-        let hmac_secret = derive_direct_hmac_secret(
-            &binding.fingerprint,
-            &binding.rp_id,
-            &binding.credential_id,
-            &hmac_salt,
-        )?;
-        let kek = derive_kek(&hmac_secret, &binding.fingerprint, &hmac_salt)
+    for (index, binding) in bindings.iter().enumerate() {
+        if let Some(report_progress) = report_progress.as_deref_mut() {
+            report_progress(Fido2WriteProgress {
+                current_step: index + 1,
+                total_steps: bindings.len(),
+            });
+        }
+        fido2_recipients.push(build_direct_any_recipient_envelope(binding, dek)?);
+    }
+
+    serialize_text_envelope(
+        FIDO2_DIRECT_ANY_MANAGED_HEADER,
+        &Fido2DirectAnyManagedEnvelope {
+            format: FIDO2_DIRECT_ENTRY_FORMAT,
+            protection: FIDO2_DIRECT_ANY_MANAGED_KIND.to_string(),
+            payload_nonce: encode_base64(&payload_nonce),
+            payload_ciphertext: encode_base64(&payload_ciphertext),
+            pgp_wrapped_dek: pgp_wrapped_dek.map(encode_base64),
+            fido2_recipients,
+        },
+    )
+}
+
+pub(in crate::backend::integrated) fn reencrypt_fido2_any_managed_bundle_with_progress(
+    bindings: &[Fido2DirectBinding],
+    dek: &[u8],
+    payload: &[u8],
+    pgp_wrapped_dek: Option<&[u8]>,
+    previous_ciphertext: &[u8],
+    mut report_progress: Option<&mut dyn FnMut(Fido2WriteProgress)>,
+) -> Result<Vec<u8>, String> {
+    if bindings.is_empty() && pgp_wrapped_dek.is_none() {
+        return Err("No recipients were found for this password entry.".to_string());
+    }
+
+    let Some(previous) = parse_text_envelope::<Fido2DirectAnyManagedEnvelope>(
+        FIDO2_DIRECT_ANY_MANAGED_HEADER,
+        previous_ciphertext,
+    )?
+    else {
+        return Err("Invalid FIDO2 any-managed password entry.".to_string());
+    };
+    validate_direct_any_envelope(&previous)?;
+
+    let payload_nonce = random_bytes::<AES_GCM_NONCE_LEN>();
+    let payload_ciphertext =
+        encrypt_aes_256_gcm(dek, &payload_nonce, FIDO2_DIRECT_ANY_PAYLOAD_AAD, payload)
             .map_err(|err| err.to_string())?;
-        let wrapped_dek_nonce = random_bytes::<AES_GCM_NONCE_LEN>();
-        let wrapped_dek = encrypt_aes_256_gcm(
-            &kek,
-            &wrapped_dek_nonce,
-            &direct_any_wrapped_dek_aad(&binding.fingerprint),
-            dek,
-        )
-        .map_err(|err| err.to_string())?;
-        fido2_recipients.push(Fido2DirectRecipientEnvelope {
-            fingerprint: binding.fingerprint.clone(),
-            rp_id: binding.rp_id.clone(),
-            credential_id: encode_base64(&binding.credential_id),
-            hmac_salt: encode_base64(&hmac_salt),
-            wrapped_dek_nonce: encode_base64(&wrapped_dek_nonce),
-            wrapped_dek: encode_base64(&wrapped_dek),
-        });
+
+    let mut preserved = previous
+        .fido2_recipients
+        .into_iter()
+        .map(|recipient| (recipient.fingerprint.to_ascii_lowercase(), recipient))
+        .collect::<std::collections::HashMap<_, _>>();
+    let total_steps = bindings.iter().try_fold(0usize, |count, binding| {
+        let needs_rewrap = match preserved.get(&binding.fingerprint.to_ascii_lowercase()) {
+            Some(existing) => !direct_any_recipient_matches_binding(existing, binding)?,
+            None => true,
+        };
+        Ok::<usize, String>(count + usize::from(needs_rewrap))
+    })?;
+    let mut fido2_recipients = Vec::with_capacity(bindings.len());
+    let mut current_step = 0usize;
+    for binding in bindings {
+        if let Some(existing) = preserved.remove(&binding.fingerprint.to_ascii_lowercase()) {
+            if direct_any_recipient_matches_binding(&existing, binding)? {
+                fido2_recipients.push(existing);
+                continue;
+            }
+        }
+        current_step += 1;
+        if let Some(report_progress) = report_progress.as_deref_mut() {
+            report_progress(Fido2WriteProgress {
+                current_step,
+                total_steps,
+            });
+        }
+        fido2_recipients.push(build_direct_any_recipient_envelope(binding, dek)?);
     }
 
     serialize_text_envelope(
@@ -344,6 +441,15 @@ pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_for_finge
     fingerprint: &str,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, String> {
+    let dek = decrypt_fido2_any_managed_bundle_dek_for_fingerprint(fingerprint, ciphertext)?;
+    let payload = decrypt_payload_from_any_managed_bundle(ciphertext, &dek)?;
+    Ok(payload)
+}
+
+pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_dek_for_fingerprint(
+    fingerprint: &str,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, String> {
     let Some(envelope) = parse_text_envelope::<Fido2DirectAnyManagedEnvelope>(
         FIDO2_DIRECT_ANY_MANAGED_HEADER,
         ciphertext,
@@ -353,48 +459,59 @@ pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_for_finge
     };
     validate_direct_any_envelope(&envelope)?;
 
-    let recipient = envelope
-        .fido2_recipients
-        .iter()
-        .find(|recipient| recipient.fingerprint.eq_ignore_ascii_case(fingerprint))
-        .ok_or_else(|| "The available private keys cannot decrypt this item.".to_string())?;
-    let hmac_salt = decode_base64(&recipient.hmac_salt)?;
-    let credential_id = decode_base64(&recipient.credential_id)?;
-    let hmac_secret =
-        derive_direct_hmac_secret(fingerprint, &recipient.rp_id, &credential_id, &hmac_salt)?;
-    let kek = derive_kek(&hmac_secret, &recipient.fingerprint, &hmac_salt)
-        .map_err(|err| err.to_string())?;
-    let wrapped_dek_nonce = decode_base64(&recipient.wrapped_dek_nonce)?;
-    let wrapped_dek = decode_base64(&recipient.wrapped_dek)?;
-    let dek = decrypt_aes_256_gcm(
-        &kek,
-        &wrapped_dek_nonce,
-        &direct_any_wrapped_dek_aad(&recipient.fingerprint),
-        &wrapped_dek,
-    )
-    .map_err(|err| err.to_string())?;
-    let payload_nonce = decode_base64(&envelope.payload_nonce)?;
-    let payload_ciphertext = decode_base64(&envelope.payload_ciphertext)?;
-    decrypt_aes_256_gcm(
-        &dek,
-        &payload_nonce,
-        FIDO2_DIRECT_ANY_PAYLOAD_AAD,
-        &payload_ciphertext,
-    )
-    .map_err(|err| err.to_string())
+    let recipient = direct_any_recipient_candidate_for_fingerprint(&envelope, fingerprint)?;
+    decrypt_direct_any_recipient_candidate(&recipient)
+}
+
+pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_dek_for_bindings(
+    bindings: &[Fido2DirectBinding],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, String> {
+    let Some(envelope) = parse_text_envelope::<Fido2DirectAnyManagedEnvelope>(
+        FIDO2_DIRECT_ANY_MANAGED_HEADER,
+        ciphertext,
+    )?
+    else {
+        return Err("Invalid FIDO2 any-managed password entry.".to_string());
+    };
+    validate_direct_any_envelope(&envelope)?;
+
+    let candidates = direct_any_recipient_candidates_for_bindings(&envelope, bindings)?;
+    let Some((first_candidate, remaining_candidates)) = candidates.split_first() else {
+        return Err(PASSWORD_ENTRY_CANDIDATE_MISMATCH.to_string());
+    };
+    if remaining_candidates.is_empty() {
+        return decrypt_direct_any_recipient_candidate(first_candidate);
+    }
+
+    let (send, recv) = mpsc::channel();
+    let start = Arc::new(Barrier::new(candidates.len()));
+    for candidate in candidates {
+        let send = send.clone();
+        let start = start.clone();
+        thread::spawn(move || {
+            start.wait();
+            let _ = send.send(decrypt_direct_any_recipient_candidate(&candidate));
+        });
+    }
+    drop(send);
+
+    let mut best_error = None;
+    for result in recv {
+        match result {
+            Ok(dek) => return Ok(dek),
+            Err(err) => best_error = prefer_direct_any_candidate_error(best_error, err),
+        }
+    }
+
+    Err(best_error.unwrap_or_else(|| PASSWORD_ENTRY_CANDIDATE_MISMATCH.to_string()))
 }
 
 pub(in crate::backend::integrated) fn encrypt_fido2_direct_required_layer(
     binding: &Fido2DirectBinding,
     payload: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let hmac_salt = random_bytes::<FIDO2_HMAC_SALT_LEN>();
-    let hmac_secret = derive_direct_hmac_secret(
-        &binding.fingerprint,
-        &binding.rp_id,
-        &binding.credential_id,
-        &hmac_salt,
-    )?;
+    let (hmac_salt, hmac_secret) = direct_hmac_material_for_binding(binding)?;
     let kek = derive_kek(&hmac_secret, &binding.fingerprint, &hmac_salt)
         .map_err(|err| err.to_string())?;
     let payload_nonce = random_bytes::<AES_GCM_NONCE_LEN>();
@@ -440,23 +557,25 @@ pub(in crate::backend::integrated) fn decrypt_fido2_direct_required_layer(
 
     let hmac_salt = decode_base64(&envelope.hmac_salt)?;
     let credential_id = decode_base64(&envelope.credential_id)?;
-    let hmac_secret = derive_direct_hmac_secret(
+    let payload_nonce = decode_base64(&envelope.payload_nonce)?;
+    let payload_ciphertext = decode_base64(&envelope.payload_ciphertext)?;
+    decrypt_with_direct_hmac_secret_candidates(
         expected_fingerprint,
         &envelope.rp_id,
         &credential_id,
         &hmac_salt,
-    )?;
-    let kek = derive_kek(&hmac_secret, &envelope.fingerprint, &hmac_salt)
-        .map_err(|err| err.to_string())?;
-    let payload_nonce = decode_base64(&envelope.payload_nonce)?;
-    let payload_ciphertext = decode_base64(&envelope.payload_ciphertext)?;
-    decrypt_aes_256_gcm(
-        &kek,
-        &payload_nonce,
-        &direct_required_layer_aad(&envelope.fingerprint),
-        &payload_ciphertext,
+        |hmac_secret| {
+            let kek = derive_kek(hmac_secret, &envelope.fingerprint, &hmac_salt)
+                .map_err(|err| err.to_string())?;
+            decrypt_aes_256_gcm(
+                &kek,
+                &payload_nonce,
+                &direct_required_layer_aad(&envelope.fingerprint),
+                &payload_ciphertext,
+            )
+            .map_err(|err| err.to_string())
+        },
     )
-    .map_err(|err| err.to_string())
 }
 
 pub(in crate::backend::integrated) fn extract_pgp_wrapped_dek_from_any_managed_bundle(
@@ -510,6 +629,172 @@ fn direct_any_wrapped_dek_aad(fingerprint: &str) -> Vec<u8> {
     aad
 }
 
+fn build_direct_any_recipient_envelope(
+    binding: &Fido2DirectBinding,
+    dek: &[u8],
+) -> Result<Fido2DirectRecipientEnvelope, String> {
+    let (hmac_salt, hmac_secret) = direct_hmac_material_for_binding(binding)?;
+    let kek = derive_kek(&hmac_secret, &binding.fingerprint, &hmac_salt)
+        .map_err(|err| err.to_string())?;
+    let wrapped_dek_nonce = random_bytes::<AES_GCM_NONCE_LEN>();
+    let wrapped_dek = encrypt_aes_256_gcm(
+        &kek,
+        &wrapped_dek_nonce,
+        &direct_any_wrapped_dek_aad(&binding.fingerprint),
+        dek,
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(Fido2DirectRecipientEnvelope {
+        fingerprint: binding.fingerprint.clone(),
+        rp_id: binding.rp_id.clone(),
+        credential_id: encode_base64(&binding.credential_id),
+        hmac_salt: encode_base64(&hmac_salt),
+        wrapped_dek_nonce: encode_base64(&wrapped_dek_nonce),
+        wrapped_dek: encode_base64(&wrapped_dek),
+    })
+}
+
+fn direct_any_recipient_candidate_for_fingerprint(
+    envelope: &Fido2DirectAnyManagedEnvelope,
+    fingerprint: &str,
+) -> Result<DirectAnyRecipientCandidate, String> {
+    let recipient = envelope
+        .fido2_recipients
+        .iter()
+        .find(|recipient| recipient.fingerprint.eq_ignore_ascii_case(fingerprint))
+        .ok_or_else(|| PASSWORD_ENTRY_CANDIDATE_MISMATCH.to_string())?;
+    direct_any_recipient_candidate(recipient)
+}
+
+fn direct_any_recipient_candidates_for_bindings(
+    envelope: &Fido2DirectAnyManagedEnvelope,
+    bindings: &[Fido2DirectBinding],
+) -> Result<Vec<DirectAnyRecipientCandidate>, String> {
+    let mut candidates = Vec::new();
+
+    for binding in bindings {
+        let Some(recipient) = envelope.fido2_recipients.iter().find(|recipient| {
+            recipient
+                .fingerprint
+                .eq_ignore_ascii_case(&binding.fingerprint)
+        }) else {
+            continue;
+        };
+
+        if !direct_any_recipient_matches_binding(recipient, binding)? {
+            continue;
+        }
+
+        candidates.push(direct_any_recipient_candidate(recipient)?);
+    }
+
+    Ok(candidates)
+}
+
+fn direct_any_recipient_candidate(
+    recipient: &Fido2DirectRecipientEnvelope,
+) -> Result<DirectAnyRecipientCandidate, String> {
+    Ok(DirectAnyRecipientCandidate {
+        fingerprint: recipient.fingerprint.clone(),
+        rp_id: recipient.rp_id.clone(),
+        credential_id: decode_base64(&recipient.credential_id)?,
+        hmac_salt: decode_base64(&recipient.hmac_salt)?,
+        wrapped_dek_nonce: decode_base64(&recipient.wrapped_dek_nonce)?,
+        wrapped_dek: decode_base64(&recipient.wrapped_dek)?,
+    })
+}
+
+fn direct_hmac_material_for_binding(
+    binding: &Fido2DirectBinding,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    if let Some(enrollment) = cached_pending_fido2_enrollment(&binding.fingerprint)?
+        .filter(|enrollment| enrollment.matches_credential_id(&binding.credential_id))
+    {
+        return Ok((
+            enrollment.hmac_salt().to_vec(),
+            enrollment.hmac_secret().to_vec(),
+        ));
+    }
+
+    let hmac_salt = random_bytes::<FIDO2_HMAC_SALT_LEN>().to_vec();
+    let hmac_secret = derive_direct_hmac_secret(
+        &binding.fingerprint,
+        &binding.rp_id,
+        &binding.credential_id,
+        &hmac_salt,
+    )?;
+    Ok((hmac_salt, hmac_secret))
+}
+
+fn decrypt_direct_any_recipient_candidate(
+    recipient: &DirectAnyRecipientCandidate,
+) -> Result<Vec<u8>, String> {
+    decrypt_with_direct_hmac_secret_candidates(
+        &recipient.fingerprint,
+        &recipient.rp_id,
+        &recipient.credential_id,
+        &recipient.hmac_salt,
+        |hmac_secret| {
+            let kek = derive_kek(hmac_secret, &recipient.fingerprint, &recipient.hmac_salt)
+                .map_err(|err| err.to_string())?;
+            decrypt_aes_256_gcm(
+                &kek,
+                &recipient.wrapped_dek_nonce,
+                &direct_any_wrapped_dek_aad(&recipient.fingerprint),
+                &recipient.wrapped_dek,
+            )
+            .map_err(|err| err.to_string())
+        },
+    )
+}
+
+fn direct_any_candidate_error_rank(message: &str) -> usize {
+    if message.contains("Touch the FIDO2 security key") {
+        0
+    } else if message.contains("Enter the FIDO2 security key PIN")
+        || message.contains("incorrect")
+        || message.contains("locked")
+    {
+        1
+    } else if message.contains("Reconnect the FIDO2 security key") {
+        2
+    } else if message.contains("Connect the matching FIDO2 security key") {
+        3
+    } else if message.contains("does not support the hmac-secret extension") {
+        4
+    } else if message == PASSWORD_ENTRY_CANDIDATE_MISMATCH {
+        6
+    } else {
+        5
+    }
+}
+
+fn prefer_direct_any_candidate_error(current: Option<String>, candidate: String) -> Option<String> {
+    match current {
+        None => Some(candidate),
+        Some(current) => {
+            if direct_any_candidate_error_rank(&candidate)
+                < direct_any_candidate_error_rank(&current)
+            {
+                Some(candidate)
+            } else {
+                Some(current)
+            }
+        }
+    }
+}
+
+fn direct_any_recipient_matches_binding(
+    recipient: &Fido2DirectRecipientEnvelope,
+    binding: &Fido2DirectBinding,
+) -> Result<bool, String> {
+    Ok(recipient
+        .fingerprint
+        .eq_ignore_ascii_case(&binding.fingerprint)
+        && recipient.rp_id == binding.rp_id
+        && decode_base64(&recipient.credential_id)? == binding.credential_id)
+}
+
 fn direct_required_layer_aad(fingerprint: &str) -> Vec<u8> {
     let mut aad = FIDO2_DIRECT_LAYER_AAD_PREFIX.to_vec();
     aad.extend_from_slice(fingerprint.as_bytes());
@@ -522,12 +807,78 @@ fn derive_direct_hmac_secret(
     credential_id: &[u8],
     salt: &[u8],
 ) -> Result<Vec<u8>, String> {
+    derive_direct_hmac_assertion(fingerprint, rp_id, credential_id, salt, &[])
+        .map(|assertion| assertion.hmac_secret)
+}
+
+fn decrypt_with_direct_hmac_secret_candidates<T>(
+    fingerprint: &str,
+    rp_id: &str,
+    credential_id: &[u8],
+    salt: &[u8],
+    mut try_decrypt: impl FnMut(&[u8]) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut excluded_devices = Vec::new();
+
+    loop {
+        let assertion = derive_direct_hmac_assertion(
+            fingerprint,
+            rp_id,
+            credential_id,
+            salt,
+            &excluded_devices,
+        )?;
+
+        match try_decrypt(&assertion.hmac_secret) {
+            Ok(value) => return Ok(value),
+            Err(err) if assertion.device.is_some() => {
+                let device = assertion.device.expect("checked above");
+                if excluded_devices.iter().any(|excluded| excluded == &device) {
+                    return Err(err);
+                }
+                excluded_devices.push(device);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn derive_direct_hmac_assertion(
+    fingerprint: &str,
+    rp_id: &str,
+    credential_id: &[u8],
+    salt: &[u8],
+    excluded_devices: &[Fido2DeviceLabel],
+) -> Result<Fido2AssertionOutput, String> {
     let cached_pin = cached_pin_string(fingerprint)?;
-    with_fido2_transport_read(|transport| {
-        transport.derive_hmac_secret(rp_id, credential_id, cached_pin.as_deref(), salt)
-    })
-    .map(|assertion| assertion.hmac_secret)
-    .map_err(|err| direct_fido2_store_message(fingerprint, err))
+    let retry_deadline = Instant::now() + FIDO2_MATCHING_KEY_RETRY_WINDOW;
+
+    loop {
+        match with_fido2_transport_read(|transport| {
+            transport.derive_hmac_secret(
+                rp_id,
+                credential_id,
+                cached_pin.as_deref(),
+                salt,
+                excluded_devices,
+            )
+        }) {
+            Ok(assertion) => return Ok(assertion),
+            Err(err) if should_retry_direct_hmac_error(&err) && Instant::now() < retry_deadline => {
+                thread::sleep(FIDO2_MATCHING_KEY_RETRY_INTERVAL);
+            }
+            Err(err) => return Err(direct_fido2_store_message(fingerprint, err)),
+        }
+    }
+}
+
+fn should_retry_direct_hmac_error(err: &Fido2TransportError) -> bool {
+    matches!(
+        err,
+        Fido2TransportError::TokenNotPresent
+            | Fido2TransportError::UserActionTimeout
+            | Fido2TransportError::TokenRemoved
+    )
 }
 
 fn cached_pin_string(fingerprint: &str) -> Result<Option<String>, String> {
@@ -547,6 +898,9 @@ fn direct_fido2_store_message(fingerprint: &str, err: Fido2TransportError) -> St
         }
         Fido2TransportError::TokenNotPresent => {
             "Connect the matching FIDO2 security key.".to_string()
+        }
+        Fido2TransportError::UserActionTimeout => {
+            "Touch the FIDO2 security key and try again.".to_string()
         }
         Fido2TransportError::TokenRemoved => {
             "Reconnect the FIDO2 security key and try again.".to_string()
@@ -851,35 +1205,54 @@ fn random_bytes<const N: usize>() -> [u8; N] {
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
+fn enroll_with_passkey_fallback(
+    mut enroll: impl FnMut(bool) -> Result<Fido2Enrollment, Fido2TransportError>,
+) -> Result<Fido2Enrollment, Fido2TransportError> {
+    match enroll(true) {
+        Ok(enrollment) => Ok(enrollment),
+        Err(Fido2TransportError::Unsupported) => enroll(false),
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn map_fido2_library_error(err: Fido2LibraryError) -> Fido2TransportError {
-    let lowered = err.to_string().to_ascii_lowercase();
-    if lowered.contains("pin required")
-        || lowered.contains("pin invalid")
-        || lowered.contains("pin not set")
-        || lowered.contains("uv invalid")
+    map_fido2_error_message(&err.to_string())
+}
+
+fn map_fido2_error_message(message: &str) -> Fido2TransportError {
+    let lowered = message.to_ascii_lowercase();
+    let normalized = lowered.replace('_', " ");
+    if normalized.contains("pin required")
+        || normalized.contains("pin not set")
+        || normalized.contains("uv invalid")
     {
-        if lowered.contains("required") || lowered.contains("not set") {
-            Fido2TransportError::PinRequired
-        } else {
-            Fido2TransportError::IncorrectPin
-        }
-    } else if lowered.contains("no credentials")
-        || lowered.contains("not found")
-        || lowered.contains("open")
-        || lowered.contains("device not found")
+        Fido2TransportError::PinRequired
+    } else if normalized.contains("pin invalid")
+        || normalized.contains("pin auth invalid")
+        || normalized.contains("pin auth blocked")
+    {
+        Fido2TransportError::IncorrectPin
+    } else if normalized.contains("no credentials")
+        || normalized.contains("not found")
+        || normalized.contains("open")
+        || normalized.contains("device not found")
     {
         Fido2TransportError::TokenNotPresent
-    } else if lowered.contains("unsupported") || lowered.contains("invalid option") {
+    } else if normalized.contains("unsupported") || normalized.contains("invalid option") {
         Fido2TransportError::Unsupported
-    } else if lowered.contains("rx")
-        || lowered.contains("keepalive")
-        || lowered.contains("action timeout")
-        || lowered.contains("removed")
-        || lowered.contains("cancelled")
+    } else if normalized.contains("action timeout") {
+        Fido2TransportError::UserActionTimeout
+    } else if normalized.contains("operation denied") {
+        Fido2TransportError::UserActionTimeout
+    } else if normalized.contains("rx")
+        || normalized.contains("keepalive")
+        || normalized.contains("removed")
+        || normalized.contains("cancelled")
     {
         Fido2TransportError::TokenRemoved
     } else {
-        Fido2TransportError::Other(err.to_string())
+        Fido2TransportError::Other(message.to_string())
     }
 }
 
@@ -892,6 +1265,47 @@ fn client_data_hash(label: &str) -> [u8; FIDO2_CLIENT_DATA_HASH_LEN] {
     let mut hash = [0u8; FIDO2_CLIENT_DATA_HASH_LEN];
     hash.copy_from_slice(&digest);
     hash
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn client_data(label: &str) -> Vec<u8> {
+    let mut data = random_bytes::<FIDO2_CLIENT_DATA_HASH_LEN>().to_vec();
+    data.extend_from_slice(label.as_bytes());
+    data
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn set_assert_client_data(
+    device: &Device,
+    request: &mut AssertRequest,
+    label: &str,
+) -> Result<(), Fido2TransportError> {
+    if device.is_winhello() {
+        request
+            .set_client_data(client_data(label))
+            .map_err(map_fido2_library_error)
+    } else {
+        request
+            .set_client_data_hash(client_data_hash(label))
+            .map_err(map_fido2_library_error)
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn set_credential_client_data(
+    device: &Device,
+    credential: &mut Credential,
+    label: &str,
+) -> Result<(), Fido2TransportError> {
+    if device.is_winhello() {
+        credential
+            .set_client_data(client_data(label))
+            .map_err(map_fido2_library_error)
+    } else {
+        credential
+            .set_client_data_hash(client_data_hash(label))
+            .map_err(map_fido2_library_error)
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -939,9 +1353,7 @@ impl RealFido2Transport {
     ) -> Result<Vec<u8>, Fido2TransportError> {
         let mut request = AssertRequest::new();
         request.set_rp(rp_id).map_err(map_fido2_library_error)?;
-        request
-            .set_client_data_hash(client_data_hash(rp_id))
-            .map_err(map_fido2_library_error)?;
+        set_assert_client_data(device, &mut request, rp_id)?;
         request
             .set_allow_credential(credential_id)
             .map_err(map_fido2_library_error)?;
@@ -955,7 +1367,10 @@ impl RealFido2Transport {
         let assertions = device
             .get_assertion(request, pin)
             .map_err(map_fido2_library_error)?;
-        let Some(assertion) = assertions.iter().next() else {
+        let Some(assertion) = assertions
+            .iter()
+            .find(|assertion| assertion.id() == credential_id)
+        else {
             return Err(Fido2TransportError::TokenNotPresent);
         };
         let secret = assertion.hmac_secret();
@@ -964,23 +1379,19 @@ impl RealFido2Transport {
         }
         Ok(secret.to_vec())
     }
-}
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-impl Fido2Transport for RealFido2Transport {
-    fn enroll_hmac_secret(
-        &self,
+    fn enroll_hmac_secret_on_device(
+        device: &Device,
+        label: &Fido2DeviceLabel,
         rp_id: &str,
         user_name: &str,
         user_display_name: &str,
         pin: Option<&str>,
         salt: &[u8],
+        discoverable: bool,
     ) -> Result<Fido2Enrollment, Fido2TransportError> {
-        let (device, label) = Self::single_enrollment_device()?;
         let mut credential = Credential::new();
-        credential
-            .set_client_data_hash(client_data_hash(user_name))
-            .map_err(map_fido2_library_error)?;
+        set_credential_client_data(device, &mut credential, user_name)?;
         credential
             .set_rp(rp_id, rp_id)
             .map_err(map_fido2_library_error)?;
@@ -991,7 +1402,7 @@ impl Fido2Transport for RealFido2Transport {
             .set_extension(Extensions::HMAC_SECRET)
             .map_err(map_fido2_library_error)?;
         credential
-            .set_rk(Opt::False)
+            .set_rk(if discoverable { Opt::True } else { Opt::False })
             .map_err(map_fido2_library_error)?;
         credential
             .set_uv(Opt::Omit)
@@ -1008,11 +1419,37 @@ impl Fido2Transport for RealFido2Transport {
                 "The FIDO2 security key did not return a credential identifier.".to_string(),
             ));
         }
-        let hmac_secret = Self::hmac_secret_for_device(&device, rp_id, &credential_id, pin, salt)?;
+        let hmac_secret = Self::hmac_secret_for_device(device, rp_id, &credential_id, pin, salt)?;
         Ok(Fido2Enrollment {
             credential_id,
-            device: label,
+            device: label.clone(),
             hmac_secret,
+        })
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+impl Fido2Transport for RealFido2Transport {
+    fn enroll_hmac_secret(
+        &self,
+        rp_id: &str,
+        user_name: &str,
+        user_display_name: &str,
+        pin: Option<&str>,
+        salt: &[u8],
+    ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        let (device, label) = Self::single_enrollment_device()?;
+        enroll_with_passkey_fallback(|discoverable| {
+            Self::enroll_hmac_secret_on_device(
+                &device,
+                &label,
+                rp_id,
+                user_name,
+                user_display_name,
+                pin,
+                salt,
+                discoverable,
+            )
         })
     }
 
@@ -1022,12 +1459,16 @@ impl Fido2Transport for RealFido2Transport {
         credential_id: &[u8],
         pin: Option<&str>,
         salt: &[u8],
+        excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
         let mut last_error = None;
         let mut found_any_device = false;
         for info in DeviceList::list_devices(16) {
             found_any_device = true;
             let label = owned_device_label(info);
+            if excluded_devices.iter().any(|excluded| excluded == &label) {
+                continue;
+            }
             let device = match info.open() {
                 Ok(device) => device,
                 Err(err) => {
@@ -1075,6 +1516,7 @@ impl Fido2Transport for RealFido2Transport {
         _credential_id: &[u8],
         _pin: Option<&str>,
         _salt: &[u8],
+        _excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
         Err(Fido2TransportError::Unsupported)
     }
@@ -1082,7 +1524,11 @@ impl Fido2Transport for RealFido2Transport {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_base64, encode_base64, hkdf_sha256, map_fido2_library_error, FIDO2_RP_ID};
+    use super::{
+        decode_base64, encode_base64, enroll_with_passkey_fallback, hkdf_sha256,
+        map_fido2_error_message, map_fido2_library_error, Fido2DeviceLabel, Fido2Enrollment,
+        Fido2TransportError, FIDO2_RP_ID,
+    };
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     use fido2_rs::error::Error as Fido2LibraryError;
 
@@ -1108,6 +1554,71 @@ mod tests {
     fn fido2_error_mapping_covers_pin_required() {
         let err = map_fido2_library_error(Fido2LibraryError::Unsupported);
         assert!(matches!(err, super::Fido2TransportError::Unsupported));
+    }
+
+    #[test]
+    fn fido2_error_mapping_understands_libfido2_pin_required_code_strings() {
+        let err = map_fido2_error_message(
+            "libfido2: Error { code: 54, message: \"FIDO_ERR_PIN_REQUIRED\" }",
+        );
+        assert!(matches!(err, Fido2TransportError::PinRequired));
+    }
+
+    #[test]
+    fn fido2_error_mapping_understands_action_timeout_strings() {
+        let err = map_fido2_error_message(
+            "libfido2: Error { code: 47, message: \"FIDO_ERR_USER_ACTION_TIMEOUT\" }",
+        );
+        assert!(matches!(err, Fido2TransportError::UserActionTimeout));
+    }
+
+    #[test]
+    fn fido2_error_mapping_understands_operation_denied_strings() {
+        let err = map_fido2_error_message(
+            "libfido2: Error { code: 39, message: \"FIDO_ERR_OPERATION_DENIED\" }",
+        );
+        assert!(matches!(err, Fido2TransportError::UserActionTimeout));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn passkey_enrollment_falls_back_when_discoverable_credentials_are_unsupported() {
+        let mut attempts = Vec::new();
+        let enrollment = enroll_with_passkey_fallback(|discoverable| {
+            attempts.push(discoverable);
+            if discoverable {
+                Err(Fido2TransportError::Unsupported)
+            } else {
+                Ok(Fido2Enrollment {
+                    credential_id: b"cred".to_vec(),
+                    device: Fido2DeviceLabel {
+                        manufacturer: None,
+                        product: Some("Security Key".to_string()),
+                        vendor_id: None,
+                        product_id: None,
+                    },
+                    hmac_secret: b"secret".to_vec(),
+                })
+            }
+        })
+        .expect("fallback enrollment");
+
+        assert_eq!(attempts, [true, false]);
+        assert_eq!(enrollment.credential_id, b"cred");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn passkey_enrollment_does_not_retry_after_non_capability_errors() {
+        let mut attempts = Vec::new();
+        let err = enroll_with_passkey_fallback(|discoverable| {
+            attempts.push(discoverable);
+            Err(Fido2TransportError::TokenRemoved)
+        })
+        .expect_err("non-capability error should stop immediately");
+
+        assert_eq!(attempts, [true]);
+        assert!(matches!(err, Fido2TransportError::TokenRemoved));
     }
 
     #[test]

@@ -1,11 +1,15 @@
+use super::guide::{present_additional_fido2_save_guidance_dialog, saved_fido2_recipient_exists};
 use super::list::rebuild_store_recipients_list;
+use super::mode::{
+    ensure_fido2_recipient_actions_allowed, ensure_standard_recipient_actions_allowed,
+};
 use super::sync::sync_private_keys_to_host_if_enabled;
 use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::backend::{
     create_fido2_store_recipient, discover_ripasso_hardware_keys,
     import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
     ripasso_private_key_requires_passphrase, DiscoveredHardwareToken, ManagedRipassoHardwareKey,
-    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyError,
+    ManagedRipassoPrivateKey, PrivateKeyError, PrivateKeyUnlockKind,
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
@@ -54,17 +58,24 @@ fn finish_fido2_recipient_add(
 ) {
     match result {
         Ok(recipient) => {
+            let requires_manual_save =
+                saved_fido2_recipient_exists(&state.saved_recipients.borrow());
             let mut recipients = state.recipients.borrow_mut();
+            let mut added = false;
             if !recipients.iter().any(|existing| existing == &recipient) {
                 recipients.push(recipient);
+                added = true;
             }
             drop(recipients);
+            if !added {
+                return;
+            }
             rebuild_store_recipients_list(state);
-            queue_store_recipients_autosave(state);
-            state
-                .platform
-                .overlay
-                .add_toast(Toast::new(&gettext("FIDO2 security key added.")));
+            if requires_manual_save {
+                present_additional_fido2_save_guidance_dialog(state);
+            } else {
+                queue_store_recipients_autosave(state);
+            }
         }
         Err(err) => {
             log_error(format!("Failed to add FIDO2 security key: {err}"));
@@ -132,6 +143,10 @@ fn start_private_key_import(
 }
 
 fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<String>) {
+    if !ensure_fido2_recipient_actions_allowed(state) {
+        return;
+    }
+
     if !Preferences::new().uses_integrated_backend() {
         state.platform.overlay.add_toast(Toast::new(&gettext(
             "Switch to the Integrated backend to add a FIDO2 security key.",
@@ -144,7 +159,7 @@ fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<Strin
         &state.window,
         "Adding FIDO2 security key",
         None,
-        "Please wait.",
+        "Touch it if it starts blinking.",
     ));
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
@@ -293,6 +308,10 @@ fn open_hardware_public_key_picker(
 }
 
 fn add_connected_hardware_key(state: &StoreRecipientsPageState) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
     let Some(token) = selected_hardware_token(state) else {
         return;
     };
@@ -309,6 +328,10 @@ fn add_connected_hardware_key(state: &StoreRecipientsPageState) {
 }
 
 fn import_hardware_key_from_file(state: &StoreRecipientsPageState) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
     let Some(token) = selected_hardware_token(state) else {
         return;
     };
@@ -320,6 +343,10 @@ fn import_hardware_key_from_file(state: &StoreRecipientsPageState) {
 }
 
 fn open_private_key_picker(state: &StoreRecipientsPageState) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
     let state_for_response = state.clone();
     choose_file_bytes(
         &state.window,
@@ -335,6 +362,10 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
 }
 
 fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
     let Some(display) = Display::default() else {
         state
             .platform
@@ -374,7 +405,7 @@ fn prompt_fido2_recipient_pin(state: &StoreRecipientsPageState) {
         &overlay,
         "Add FIDO2 security key",
         None,
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
+        PrivateKeyUnlockKind::Fido2SecurityKey,
         move |request| {
             let pin = match request {
                 crate::backend::PrivateKeyUnlockRequest::Fido2(pin) => pin,

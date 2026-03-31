@@ -1,3 +1,4 @@
+pub mod entry_files;
 pub mod file;
 pub mod generation;
 pub mod list;

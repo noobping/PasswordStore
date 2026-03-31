@@ -5,16 +5,18 @@
 
 use super::crypto::IntegratedCryptoContext;
 use super::entries::{
-    delete_password_entry, password_entry_is_readable, read_password_entry, rename_password_entry,
-    save_password_entry,
+    delete_password_entry, password_entry_fido2_recipient_count, password_entry_is_readable,
+    read_password_entry, read_password_entry_with_progress, rename_password_entry,
+    save_password_entry, save_password_entry_with_progress,
 };
 use super::git::{
     git_commit_private_key_requiring_unlock_for_entry,
-    git_commit_private_key_requiring_unlock_for_store_recipients,
+    git_commit_private_key_requiring_unlock_for_store_recipients as git_commit_private_key_requiring_unlock_for_split_store_recipients,
 };
 use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
-    create_fido2_store_recipient, discover_ripasso_hardware_keys,
+    create_fido2_store_recipient, direct_binding_from_store_recipient,
+    discover_ripasso_hardware_keys, encrypt_fido2_any_managed_bundle_with_progress,
     ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
     import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, parse_managed_private_key_bytes,
@@ -29,14 +31,22 @@ use super::keys::{
     PrivateKeyUnlockRequest,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
-use super::store::{save_store_recipients, store_recipients_private_key_requiring_unlock};
-use crate::backend::{
-    test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryWriteError,
-    PrivateKeyError, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
+use super::store::{
+    save_store_recipients as save_split_store_recipients,
+    save_store_recipients_with_progress as save_split_store_recipients_with_progress,
+    store_recipients_private_key_requiring_unlock,
 };
+use crate::backend::{
+    test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryReadProgress,
+    PasswordEntryWriteError, PasswordEntryWriteProgress, PrivateKeyError, StoreRecipientsError,
+    StoreRecipientsPrivateKeyRequirement, StoreRecipientsSaveProgress, StoreRecipientsSaveStage,
+};
+use crate::fido2_recipient::{build_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME};
 use crate::preferences::Preferences;
+use crate::store::recipients::split_store_recipients;
 use crate::support::git::has_git_repository;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, parse::Parse, serialize::Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -79,6 +89,43 @@ fn public_cert_bytes(email: &str) -> Vec<u8> {
         .serialize(&mut bytes)
         .expect("failed to serialize public test certificate");
     bytes
+}
+
+fn save_store_recipients(
+    store_root: &str,
+    recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
+    let recipients = split_store_recipients(recipients);
+    save_split_store_recipients(store_root, &recipients, private_key_requirement)
+}
+
+fn save_store_recipients_with_progress(
+    store_root: &str,
+    recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+    report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
+) -> Result<(), StoreRecipientsError> {
+    let recipients = split_store_recipients(recipients);
+    save_split_store_recipients_with_progress(
+        store_root,
+        &recipients,
+        private_key_requirement,
+        report_progress,
+    )
+}
+
+fn git_commit_private_key_requiring_unlock_for_store_recipients(
+    store_root: &str,
+    recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<Option<String>, String> {
+    let recipients = split_store_recipients(recipients);
+    git_commit_private_key_requiring_unlock_for_split_store_recipients(
+        store_root,
+        &recipients,
+        private_key_requirement,
+    )
 }
 
 #[derive(Default)]
@@ -217,8 +264,409 @@ impl Fido2Transport for MockFido2Transport {
         _credential_id: &[u8],
         _pin: Option<&str>,
         _salt: &[u8],
+        _excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
         self.next_assertion()
+    }
+}
+
+struct SequentialOnlyFido2Transport {
+    state: Mutex<SequentialOnlyFido2TransportState>,
+    credentials: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct SequentialOnlyFido2TransportState {
+    active_calls: usize,
+    poisoned: bool,
+}
+
+impl SequentialOnlyFido2Transport {
+    fn new(credentials: &[(&[u8], &[u8])]) -> Self {
+        Self {
+            state: Mutex::new(SequentialOnlyFido2TransportState::default()),
+            credentials: credentials
+                .iter()
+                .map(|(credential_id, secret)| (credential_id.to_vec(), secret.to_vec()))
+                .collect(),
+        }
+    }
+}
+
+impl Fido2Transport for SequentialOnlyFido2Transport {
+    fn enroll_hmac_secret(
+        &self,
+        _rp_id: &str,
+        _user_name: &str,
+        _user_display_name: &str,
+        _pin: Option<&str>,
+        _salt: &[u8],
+    ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        Err(Fido2TransportError::Other(
+            "SequentialOnlyFido2Transport does not support enrollment.".to_string(),
+        ))
+    }
+
+    fn derive_hmac_secret(
+        &self,
+        _rp_id: &str,
+        credential_id: &[u8],
+        _pin: Option<&str>,
+        _salt: &[u8],
+        _excluded_devices: &[Fido2DeviceLabel],
+    ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("sequential-only state mutex poisoned");
+        if state.poisoned {
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        state.active_calls += 1;
+        if state.active_calls > 1 {
+            state.poisoned = true;
+            state.active_calls -= 1;
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        drop(state);
+
+        let result = self
+            .credentials
+            .iter()
+            .find(|(known_credential_id, _)| credential_id == known_credential_id.as_slice())
+            .map(|(_, secret)| mock_fido2_assertion(secret))
+            .ok_or(Fido2TransportError::TokenNotPresent);
+
+        let mut state = self
+            .state
+            .lock()
+            .expect("sequential-only state mutex poisoned");
+        state.active_calls -= 1;
+        result
+    }
+}
+
+struct RecordingSequentialFido2Transport {
+    state: Mutex<SequentialOnlyFido2TransportState>,
+    credentials: Vec<(Vec<u8>, Vec<u8>)>,
+    observed_credentials: Mutex<Vec<Vec<u8>>>,
+}
+
+impl RecordingSequentialFido2Transport {
+    fn new(credentials: &[(&[u8], &[u8])]) -> Self {
+        Self {
+            state: Mutex::new(SequentialOnlyFido2TransportState::default()),
+            credentials: credentials
+                .iter()
+                .map(|(credential_id, secret)| (credential_id.to_vec(), secret.to_vec()))
+                .collect(),
+            observed_credentials: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn observed_credentials(&self) -> Vec<Vec<u8>> {
+        self.observed_credentials
+            .lock()
+            .expect("recording sequential observed mutex poisoned")
+            .clone()
+    }
+}
+
+impl Fido2Transport for RecordingSequentialFido2Transport {
+    fn enroll_hmac_secret(
+        &self,
+        _rp_id: &str,
+        _user_name: &str,
+        _user_display_name: &str,
+        _pin: Option<&str>,
+        _salt: &[u8],
+    ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        Err(Fido2TransportError::Other(
+            "RecordingSequentialFido2Transport does not support enrollment.".to_string(),
+        ))
+    }
+
+    fn derive_hmac_secret(
+        &self,
+        _rp_id: &str,
+        credential_id: &[u8],
+        _pin: Option<&str>,
+        _salt: &[u8],
+        _excluded_devices: &[Fido2DeviceLabel],
+    ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("recording sequential state mutex poisoned");
+        if state.poisoned {
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        state.active_calls += 1;
+        if state.active_calls > 1 {
+            state.poisoned = true;
+            state.active_calls -= 1;
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        drop(state);
+
+        self.observed_credentials
+            .lock()
+            .expect("recording sequential observed mutex poisoned")
+            .push(credential_id.to_vec());
+
+        let result = self
+            .credentials
+            .iter()
+            .find(|(known_credential_id, _)| credential_id == known_credential_id.as_slice())
+            .map(|(_, secret)| mock_fido2_assertion(secret))
+            .ok_or(Fido2TransportError::TokenNotPresent);
+
+        let mut state = self
+            .state
+            .lock()
+            .expect("recording sequential state mutex poisoned");
+        state.active_calls -= 1;
+        result
+    }
+}
+
+struct MisleadingMultiDeviceFido2Transport {
+    state: Mutex<SequentialOnlyFido2TransportState>,
+    first_label: Fido2DeviceLabel,
+    second_label: Fido2DeviceLabel,
+    first_credential: Vec<u8>,
+    first_secret: Vec<u8>,
+    second_credential: Vec<u8>,
+    wrong_second_secret: Vec<u8>,
+    correct_second_secret: Vec<u8>,
+    observed: Mutex<Vec<(Vec<u8>, String)>>,
+}
+
+impl MisleadingMultiDeviceFido2Transport {
+    fn new(
+        first_credential: &[u8],
+        first_secret: &[u8],
+        second_credential: &[u8],
+        wrong_second_secret: &[u8],
+        correct_second_secret: &[u8],
+    ) -> Self {
+        Self {
+            state: Mutex::new(SequentialOnlyFido2TransportState::default()),
+            first_label: Fido2DeviceLabel {
+                manufacturer: Some("Mock".to_string()),
+                product: Some("First Device".to_string()),
+                vendor_id: Some(1),
+                product_id: Some(1),
+            },
+            second_label: Fido2DeviceLabel {
+                manufacturer: Some("Mock".to_string()),
+                product: Some("Second Device".to_string()),
+                vendor_id: Some(1),
+                product_id: Some(2),
+            },
+            first_credential: first_credential.to_vec(),
+            first_secret: first_secret.to_vec(),
+            second_credential: second_credential.to_vec(),
+            wrong_second_secret: wrong_second_secret.to_vec(),
+            correct_second_secret: correct_second_secret.to_vec(),
+            observed: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn observed(&self) -> Vec<(Vec<u8>, String)> {
+        self.observed
+            .lock()
+            .expect("misleading observed mutex poisoned")
+            .clone()
+    }
+}
+
+impl Fido2Transport for MisleadingMultiDeviceFido2Transport {
+    fn enroll_hmac_secret(
+        &self,
+        _rp_id: &str,
+        _user_name: &str,
+        _user_display_name: &str,
+        _pin: Option<&str>,
+        _salt: &[u8],
+    ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        Err(Fido2TransportError::Other(
+            "MisleadingMultiDeviceFido2Transport does not support enrollment.".to_string(),
+        ))
+    }
+
+    fn derive_hmac_secret(
+        &self,
+        _rp_id: &str,
+        credential_id: &[u8],
+        _pin: Option<&str>,
+        _salt: &[u8],
+        excluded_devices: &[Fido2DeviceLabel],
+    ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("misleading transport state mutex poisoned");
+        if state.poisoned {
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        state.active_calls += 1;
+        if state.active_calls > 1 {
+            state.poisoned = true;
+            state.active_calls -= 1;
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        drop(state);
+
+        let result = if credential_id == self.first_credential.as_slice() {
+            self.observed
+                .lock()
+                .expect("misleading observed mutex poisoned")
+                .push((credential_id.to_vec(), "First Device".to_string()));
+            Ok(Fido2AssertionOutput {
+                hmac_secret: self.first_secret.clone(),
+                device: Some(self.first_label.clone()),
+            })
+        } else if credential_id == self.second_credential.as_slice() {
+            if excluded_devices
+                .iter()
+                .any(|label| label == &self.first_label)
+            {
+                self.observed
+                    .lock()
+                    .expect("misleading observed mutex poisoned")
+                    .push((credential_id.to_vec(), "Second Device".to_string()));
+                Ok(Fido2AssertionOutput {
+                    hmac_secret: self.correct_second_secret.clone(),
+                    device: Some(self.second_label.clone()),
+                })
+            } else {
+                self.observed
+                    .lock()
+                    .expect("misleading observed mutex poisoned")
+                    .push((credential_id.to_vec(), "First Device".to_string()));
+                Ok(Fido2AssertionOutput {
+                    hmac_secret: self.wrong_second_secret.clone(),
+                    device: Some(self.first_label.clone()),
+                })
+            }
+        } else {
+            Err(Fido2TransportError::TokenNotPresent)
+        };
+
+        let mut state = self
+            .state
+            .lock()
+            .expect("misleading transport state mutex poisoned");
+        state.active_calls -= 1;
+        result
+    }
+}
+
+struct DelayedSecondKeyFido2Transport {
+    state: Mutex<SequentialOnlyFido2TransportState>,
+    first_credential: Vec<u8>,
+    first_secret: Vec<u8>,
+    second_credential: Vec<u8>,
+    second_secret: Vec<u8>,
+    second_attempts_before_present: usize,
+    second_attempts: Mutex<usize>,
+    observed_credentials: Mutex<Vec<Vec<u8>>>,
+}
+
+impl DelayedSecondKeyFido2Transport {
+    fn new(
+        first_credential: &[u8],
+        first_secret: &[u8],
+        second_credential: &[u8],
+        second_secret: &[u8],
+        second_attempts_before_present: usize,
+    ) -> Self {
+        Self {
+            state: Mutex::new(SequentialOnlyFido2TransportState::default()),
+            first_credential: first_credential.to_vec(),
+            first_secret: first_secret.to_vec(),
+            second_credential: second_credential.to_vec(),
+            second_secret: second_secret.to_vec(),
+            second_attempts_before_present,
+            second_attempts: Mutex::new(0),
+            observed_credentials: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn observed_credentials(&self) -> Vec<Vec<u8>> {
+        self.observed_credentials
+            .lock()
+            .expect("delayed second key observed mutex poisoned")
+            .clone()
+    }
+}
+
+impl Fido2Transport for DelayedSecondKeyFido2Transport {
+    fn enroll_hmac_secret(
+        &self,
+        _rp_id: &str,
+        _user_name: &str,
+        _user_display_name: &str,
+        _pin: Option<&str>,
+        _salt: &[u8],
+    ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        Err(Fido2TransportError::Other(
+            "DelayedSecondKeyFido2Transport does not support enrollment.".to_string(),
+        ))
+    }
+
+    fn derive_hmac_secret(
+        &self,
+        _rp_id: &str,
+        credential_id: &[u8],
+        _pin: Option<&str>,
+        _salt: &[u8],
+        _excluded_devices: &[Fido2DeviceLabel],
+    ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("delayed second key state mutex poisoned");
+        if state.poisoned {
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        state.active_calls += 1;
+        if state.active_calls > 1 {
+            state.poisoned = true;
+            state.active_calls -= 1;
+            return Err(Fido2TransportError::TokenRemoved);
+        }
+        drop(state);
+
+        self.observed_credentials
+            .lock()
+            .expect("delayed second key observed mutex poisoned")
+            .push(credential_id.to_vec());
+
+        let result = if credential_id == self.first_credential.as_slice() {
+            Ok(mock_fido2_assertion(&self.first_secret))
+        } else if credential_id == self.second_credential.as_slice() {
+            let mut attempts = self
+                .second_attempts
+                .lock()
+                .expect("delayed second key attempts mutex poisoned");
+            *attempts += 1;
+            if *attempts <= self.second_attempts_before_present {
+                Err(Fido2TransportError::TokenNotPresent)
+            } else {
+                Ok(mock_fido2_assertion(&self.second_secret))
+            }
+        } else {
+            Err(Fido2TransportError::TokenNotPresent)
+        };
+
+        let mut state = self
+            .state
+            .lock()
+            .expect("delayed second key state mutex poisoned");
+        state.active_calls -= 1;
+        result
     }
 }
 
@@ -240,6 +688,19 @@ impl Drop for Fido2TransportGuard {
 fn mock_fido2_enrollment(secret: &[u8]) -> Fido2Enrollment {
     Fido2Enrollment {
         credential_id: b"mock-credential-id".to_vec(),
+        device: Fido2DeviceLabel {
+            manufacturer: Some("Mock".to_string()),
+            product: Some("Security Key".to_string()),
+            vendor_id: Some(1),
+            product_id: Some(2),
+        },
+        hmac_secret: secret.to_vec(),
+    }
+}
+
+fn mock_fido2_enrollment_with_credential(credential_id: &[u8], secret: &[u8]) -> Fido2Enrollment {
+    Fido2Enrollment {
+        credential_id: credential_id.to_vec(),
         device: Fido2DeviceLabel {
             manufacturer: Some("Mock".to_string()),
             product: Some("Security Key".to_string()),
@@ -561,6 +1022,421 @@ fn pure_fido2_recipients_can_retry_after_pin_required() {
 }
 
 #[test]
+fn pure_fido2_store_reads_require_all_fido2_recipients_in_order() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"parallel-credential-1";
+    let second_credential = b"parallel-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _setup_guard =
+        Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+            (
+                first_credential.as_slice(),
+                b"first-parallel-secret".as_slice(),
+            ),
+            (
+                second_credential.as_slice(),
+                b"second-parallel-secret".as_slice(),
+            ),
+        ])));
+
+    let store = env.root_dir().join("fido2-parallel-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient.clone(), second_recipient.clone()],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    drop(_setup_guard);
+    let read_transport = Arc::new(RecordingSequentialFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"first-parallel-secret".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"second-parallel-secret".as_slice(),
+        ),
+    ]));
+    let _read_guard = Fido2TransportGuard::install(read_transport.clone());
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry that requires both FIDO2 recipients"),
+        "supersecret\nusername: alice"
+    );
+    assert_eq!(
+        read_transport.observed_credentials(),
+        vec![first_credential.to_vec(), second_credential.to_vec()]
+    );
+}
+
+#[test]
+fn pure_fido2_store_reads_can_fall_through_to_the_second_device_for_the_next_key() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"fallthrough-credential-1";
+    let second_credential = b"fallthrough-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _save_guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"fallthrough-secret-1".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"fallthrough-secret-2".as_slice(),
+        ),
+    ])));
+
+    let store = env.root_dir().join("fido2-fallthrough-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient, second_recipient],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    drop(_save_guard);
+    let read_transport = Arc::new(MisleadingMultiDeviceFido2Transport::new(
+        first_credential,
+        b"fallthrough-secret-1",
+        second_credential,
+        b"wrong-secret-from-first-device",
+        b"fallthrough-secret-2",
+    ));
+    let _read_guard = Fido2TransportGuard::install(read_transport.clone());
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry after excluding the wrong device"),
+        "supersecret\nusername: alice"
+    );
+    assert_eq!(
+        read_transport.observed(),
+        vec![
+            (first_credential.to_vec(), "First Device".to_string()),
+            (second_credential.to_vec(), "First Device".to_string()),
+            (second_credential.to_vec(), "Second Device".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn pure_fido2_store_reads_wait_briefly_for_the_next_security_key() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"delayed-credential-1";
+    let second_credential = b"delayed-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _save_guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+        (first_credential.as_slice(), b"delayed-secret-1".as_slice()),
+        (second_credential.as_slice(), b"delayed-secret-2".as_slice()),
+    ])));
+
+    let store = env.root_dir().join("fido2-delayed-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient, second_recipient],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    drop(_save_guard);
+    let read_transport = Arc::new(DelayedSecondKeyFido2Transport::new(
+        first_credential,
+        b"delayed-secret-1",
+        second_credential,
+        b"delayed-secret-2",
+        2,
+    ));
+    let _read_guard = Fido2TransportGuard::install(read_transport.clone());
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry after retrying for the second key"),
+        "supersecret\nusername: alice"
+    );
+    assert_eq!(
+        read_transport.observed_credentials(),
+        vec![
+            first_credential.to_vec(),
+            second_credential.to_vec(),
+            second_credential.to_vec(),
+            second_credential.to_vec(),
+        ]
+    );
+}
+
+#[test]
+fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"compat-credential-1";
+    let second_credential = b"compat-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let store = env.root_dir().join("fido2-compat-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient.clone(), second_recipient.clone()],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 recipients");
+
+    let first_binding = direct_binding_from_store_recipient(&first_recipient)
+        .expect("parse first binding")
+        .expect("first binding");
+    let second_binding = direct_binding_from_store_recipient(&second_recipient)
+        .expect("parse second binding")
+        .expect("second binding");
+
+    let _write_guard =
+        Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+            (first_credential.as_slice(), b"compat-secret-1".as_slice()),
+            (second_credential.as_slice(), b"compat-secret-2".as_slice()),
+        ])));
+    let ciphertext = encrypt_fido2_any_managed_bundle_with_progress(
+        &[first_binding, second_binding],
+        &[7u8; 32],
+        b"supersecret\nusername: alice",
+        None,
+        None,
+    )
+    .expect("build legacy any-managed FIDO2 entry");
+    let entry_path = store.join("team/service.gpg");
+    fs::create_dir_all(entry_path.parent().expect("entry parent")).expect("create entry parent");
+    fs::write(&entry_path, ciphertext).expect("write legacy entry");
+    drop(_write_guard);
+
+    let read_transport = Arc::new(RecordingSequentialFido2Transport::new(&[
+        (first_credential.as_slice(), b"compat-secret-1".as_slice()),
+        (second_credential.as_slice(), b"compat-secret-2".as_slice()),
+    ]));
+    let _read_guard = Fido2TransportGuard::install(read_transport.clone());
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read legacy entry with all FIDO2 recipients"),
+        "supersecret\nusername: alice"
+    );
+    assert_eq!(
+        read_transport.observed_credentials(),
+        vec![first_credential.to_vec(), second_credential.to_vec()]
+    );
+}
+
+#[test]
+fn pure_fido2_store_can_add_a_second_recipient_without_parallel_reencrypt_access() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"save-credential-1";
+    let second_credential = b"save-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+        (first_credential.as_slice(), b"first-save-secret".as_slice()),
+        (
+            second_credential.as_slice(),
+            b"second-save-secret".as_slice(),
+        ),
+    ])));
+
+    let store = env.root_dir().join("fido2-save-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&first_recipient),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save first FIDO2 recipient");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient.clone(), second_recipient.clone()],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save both FIDO2 recipients");
+
+    let recipients = fs::read_to_string(store.join(".gpg-id")).expect("read recipients file");
+    assert_eq!(recipients, "\n");
+
+    let fido2_recipients =
+        fs::read_to_string(store.join(FIDO2_RECIPIENTS_FILE_NAME)).expect("read FIDO2 sidecar");
+    let fido2_lines = fido2_recipients.lines().collect::<HashSet<_>>();
+    assert_eq!(fido2_lines.len(), 2);
+    assert!(fido2_lines.contains(first_recipient.as_str()));
+    assert!(fido2_lines.contains(second_recipient.as_str()));
+}
+
+#[test]
+fn pure_fido2_store_keeps_a_newly_enrolled_second_recipient_after_save() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"persist-credential-1";
+    let second_credential = b"persist-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+
+    let _setup_guard =
+        Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[(
+            first_credential.as_slice(),
+            b"first-persist-secret".as_slice(),
+        )])));
+
+    let store = env.root_dir().join("fido2-persist-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&first_recipient),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save first FIDO2 recipient");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    drop(_setup_guard);
+    let _enrollment_guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default().with_enrollment_result(Ok(
+            mock_fido2_enrollment_with_credential(second_credential, b"second-persist-secret"),
+        )),
+    ));
+    let second_recipient = create_fido2_store_recipient(None).expect("create second FIDO2 key");
+
+    drop(_enrollment_guard);
+    let _save_guard =
+        Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[(
+            first_credential.as_slice(),
+            b"first-persist-secret".as_slice(),
+        )])));
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient.clone(), second_recipient.clone()],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save both FIDO2 recipients with the original key only");
+
+    let fido2_recipients =
+        fs::read_to_string(store.join(FIDO2_RECIPIENTS_FILE_NAME)).expect("read FIDO2 sidecar");
+    let fido2_lines = fido2_recipients.lines().collect::<HashSet<_>>();
+    assert_eq!(fido2_lines.len(), 2);
+    assert!(fido2_lines.contains(first_recipient.as_str()));
+    assert!(fido2_lines.contains(second_recipient.as_str()));
+
+    drop(_save_guard);
+    let read_transport = Arc::new(RecordingSequentialFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"first-persist-secret".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"second-persist-secret".as_slice(),
+        ),
+    ]));
+    let _read_guard = Fido2TransportGuard::install(read_transport.clone());
+
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read entry with both saved FIDO2 recipients"),
+        "supersecret\nusername: alice"
+    );
+    assert_eq!(
+        read_transport.observed_credentials(),
+        vec![first_credential.to_vec(), second_credential.to_vec()]
+    );
+}
+
+#[test]
 fn single_fido2_recipient_entries_use_the_security_key_directly() {
     let env = SystemBackendTestEnv::new();
     let _guard = Fido2TransportGuard::install(Arc::new(
@@ -581,6 +1457,14 @@ fn single_fido2_recipient_entries_use_the_security_key_directly() {
         StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     )
     .expect("save FIDO2-only recipients");
+    assert_eq!(
+        fs::read_to_string(store.join(".gpg-id")).expect("read recipients file"),
+        "\n"
+    );
+    assert_eq!(
+        fs::read_to_string(store.join(FIDO2_RECIPIENTS_FILE_NAME)).expect("read FIDO2 sidecar"),
+        format!("{recipient}\n")
+    );
 
     save_password_entry(
         store.to_string_lossy().as_ref(),
@@ -590,12 +1474,307 @@ fn single_fido2_recipient_entries_use_the_security_key_directly() {
     )
     .expect("save FIDO2 direct entry");
 
-    let ciphertext = fs::read(store.join("team/service.gpg")).expect("read direct entry bytes");
+    assert!(!store.join("team/service.gpg").exists());
+    let ciphertext = fs::read(store.join("team/service.keycord")).expect("read direct entry bytes");
     assert!(ciphertext.starts_with(b"keycord-fido2-any-managed-v1\n"));
     assert_eq!(
         read_password_entry(store.to_string_lossy().as_ref(), "team/service")
             .expect("read entry directly from the FIDO2 security key"),
         "supersecret\nusername: alice"
+    );
+}
+
+#[test]
+fn password_entry_fido2_usage_detection_matches_selected_recipients() {
+    let env = SystemBackendTestEnv::new();
+    let bytes = protected_cert_bytes("Key A <a@example.com>");
+    let key = import_ripasso_private_key_bytes(&bytes, Some("hunter2"))
+        .expect("import standard private key");
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"mixed-store-secret"))),
+    ));
+    let fido2_recipient = create_fido2_store_recipient(None).expect("create FIDO2 recipient");
+
+    let store = env.root_dir().join("mixed-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[key.fingerprint.clone(), fido2_recipient],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save mixed recipients");
+
+    assert_eq!(
+        password_entry_fido2_recipient_count(store.to_string_lossy().as_ref(), "team/service"),
+        1
+    );
+    assert!(
+        password_entry_fido2_recipient_count(store.to_string_lossy().as_ref(), "team/service") > 0
+    );
+}
+
+#[test]
+fn password_entry_fido2_recipient_count_matches_multiple_selected_security_keys() {
+    let env = SystemBackendTestEnv::new();
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        b"count-credential-1",
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        b"count-credential-2",
+    )
+    .expect("build second FIDO2 recipient");
+
+    let store = env.root_dir().join("fido2-count-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient, second_recipient],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save two FIDO2 recipients");
+
+    assert_eq!(
+        password_entry_fido2_recipient_count(store.to_string_lossy().as_ref(), "team/service"),
+        2
+    );
+    assert!(
+        password_entry_fido2_recipient_count(store.to_string_lossy().as_ref(), "team/service") > 0
+    );
+}
+
+#[test]
+fn multi_fido2_password_saves_report_step_progress() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"progress-credential-1";
+    let second_credential = b"progress-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+        (first_credential.as_slice(), b"progress-secret-1".as_slice()),
+        (
+            second_credential.as_slice(),
+            b"progress-secret-2".as_slice(),
+        ),
+    ])));
+
+    let store = env.root_dir().join("fido2-progress-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient, second_recipient],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 recipients");
+
+    let mut progress = Vec::new();
+    save_password_entry_with_progress(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+        &mut |step| progress.push(step),
+    )
+    .expect("save password entry with progress");
+
+    assert_eq!(
+        progress,
+        vec![
+            PasswordEntryWriteProgress {
+                current_step: 1,
+                total_steps: 2,
+            },
+            PasswordEntryWriteProgress {
+                current_step: 2,
+                total_steps: 2,
+            },
+        ]
+    );
+}
+
+#[test]
+fn multi_fido2_password_reads_report_step_progress() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"read-progress-credential-1";
+    let second_credential = b"read-progress-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _save_guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"read-progress-secret-1".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"read-progress-secret-2".as_slice(),
+        ),
+    ])));
+
+    let store = env.root_dir().join("fido2-read-progress-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient, second_recipient],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    let read_transport = Arc::new(RecordingSequentialFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"read-progress-secret-1".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"read-progress-secret-2".as_slice(),
+        ),
+    ]));
+    let _read_guard = Fido2TransportGuard::install(read_transport.clone());
+
+    let mut progress = Vec::new();
+    let contents = read_password_entry_with_progress(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        &mut |step| progress.push(step),
+    )
+    .expect("read password entry with progress");
+
+    assert_eq!(contents, "supersecret\nusername: alice");
+    assert_eq!(
+        progress,
+        vec![
+            PasswordEntryReadProgress {
+                current_step: 1,
+                total_steps: 2,
+            },
+            PasswordEntryReadProgress {
+                current_step: 2,
+                total_steps: 2,
+            },
+        ]
+    );
+    assert_eq!(
+        read_transport.observed_credentials(),
+        vec![first_credential.to_vec(), second_credential.to_vec()]
+    );
+}
+
+#[test]
+fn store_recipients_fido2_rewrites_report_progress() {
+    let env = SystemBackendTestEnv::new();
+    let first_credential = b"rewrite-progress-credential-1";
+    let second_credential = b"rewrite-progress-credential-2";
+    let first_recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "First Key",
+        first_credential,
+    )
+    .expect("build first FIDO2 recipient");
+    let second_recipient = build_fido2_recipient_string(
+        "89abcdef0123456789abcdef0123456789abcdef",
+        "Second Key",
+        second_credential,
+    )
+    .expect("build second FIDO2 recipient");
+
+    let _save_guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"rewrite-progress-secret-1".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"rewrite-progress-secret-2".as_slice(),
+        ),
+    ])));
+
+    let store = env.root_dir().join("fido2-store-rewrite-progress");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[first_recipient.clone(), second_recipient.clone()],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save initial FIDO2 recipients");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save password entry");
+
+    let read_transport = Arc::new(RecordingSequentialFido2Transport::new(&[
+        (
+            first_credential.as_slice(),
+            b"rewrite-progress-secret-1".as_slice(),
+        ),
+        (
+            second_credential.as_slice(),
+            b"rewrite-progress-secret-2".as_slice(),
+        ),
+    ]));
+    let _rewrite_guard = Fido2TransportGuard::install(read_transport);
+
+    let mut progress = Vec::new();
+    save_store_recipients_with_progress(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&first_recipient),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        &mut |step| progress.push(step),
+    )
+    .expect("rewrite store recipients");
+
+    assert!(progress.iter().any(|step| {
+        matches!(step.stage, StoreRecipientsSaveStage::ReadingExistingItems)
+            && step.total_items == 1
+    }));
+    assert!(progress.iter().any(|step| {
+        matches!(step.stage, StoreRecipientsSaveStage::WritingUpdatedItems) && step.total_items == 1
+    }));
+    assert!(progress.iter().any(|step| {
+        matches!(step.stage, StoreRecipientsSaveStage::ReadingExistingItems)
+            && step.current_touch > 0
+            && step.total_touches > 0
+    }));
+    assert!(progress.iter().any(|step| {
+        matches!(step.stage, StoreRecipientsSaveStage::WritingUpdatedItems)
+            && step.current_touch > 0
+            && step.total_touches > 0
+    }));
+    assert_eq!(
+        fs::read_to_string(store.join(FIDO2_RECIPIENTS_FILE_NAME)).expect("read saved recipients"),
+        format!("{first_recipient}\n")
     );
 }
 
@@ -630,9 +1809,10 @@ fn all_keys_mode_can_layer_a_fido2_security_key() {
     )
     .expect("save layered entry");
 
+    assert!(!store.join("team/service.gpg").exists());
     let outer_layer = IntegratedCryptoContext::load_for_fingerprint(&key_a.fingerprint)
         .expect("load first-layer decrypt context")
-        .decrypt_entry(&store.join("team/service.gpg"))
+        .decrypt_entry_with_progress(&store.join("team/service.keycord"), None)
         .expect("decrypt only the first layer");
     let (_, encoded_inner) = outer_layer
         .split_once('\n')
@@ -655,6 +1835,129 @@ fn all_keys_mode_can_layer_a_fido2_security_key() {
         read_password_entry(store.to_string_lossy().as_ref(), "team/service")
             .expect("read entry that requires both a password key and a FIDO2 key"),
         "supersecret\nusername: alice"
+    );
+}
+
+#[test]
+fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnecting_them() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+    let first_credential = b"mock-credential-id-1";
+    let second_credential = b"mock-credential-id-2";
+
+    let _first_guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment_with_credential(
+                first_credential,
+                b"first-fido-secret",
+            )))
+            .with_enrollment_result(Ok(mock_fido2_enrollment_with_credential(
+                second_credential,
+                b"second-fido-secret",
+            )))
+            .with_assertion_results(vec![Ok(mock_fido2_assertion(b"first-fido-secret"))]),
+    ));
+    let first_fido = create_fido2_store_recipient(None).expect("create first FIDO2 recipient");
+    let second_fido = create_fido2_store_recipient(None).expect("create second FIDO2 recipient");
+
+    let store = env.root_dir().join("secondary-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[key_a.fingerprint.clone(), first_fido.clone()],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save first FIDO2 recipient");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry protected by the first FIDO2 recipient");
+
+    drop(_first_guard);
+    let _second_guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_assertion_results(vec![Ok(mock_fido2_assertion(b"second-fido-secret"))]),
+    ));
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[
+            key_a.fingerprint.clone(),
+            first_fido.clone(),
+            second_fido.clone(),
+        ],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save both FIDO2 recipients without reconnecting the first one");
+
+    let recipients = fs::read_to_string(store.join(".gpg-id")).expect("read recipients");
+    assert!(!recipients.contains("keycord-fido2-recipient-v1="));
+
+    let fido2_recipients =
+        fs::read_to_string(store.join(FIDO2_RECIPIENTS_FILE_NAME)).expect("read FIDO2 recipients");
+    let fido2_lines = fido2_recipients
+        .lines()
+        .filter(|line| line.contains("keycord-fido2-recipient-v1="))
+        .collect::<HashSet<_>>();
+    assert_eq!(fido2_lines.len(), 2);
+    assert!(fido2_lines
+        .iter()
+        .any(|line| line.contains(first_fido.as_str())));
+    assert!(fido2_lines
+        .iter()
+        .any(|line| line.contains(second_fido.as_str())));
+}
+
+#[test]
+fn save_password_entry_preserves_existing_fido2_recipients_without_reconnecting_them() {
+    let env = SystemBackendTestEnv::new();
+    let bytes_a = protected_cert_bytes("Key A <a@example.com>");
+    let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
+        .expect("import first private key");
+
+    let _first_guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment_with_credential(
+                b"mock-credential-id-1",
+                b"first-fido-secret",
+            )))
+            .with_assertion_results(vec![Ok(mock_fido2_assertion(b"first-fido-secret"))]),
+    ));
+    let first_fido = create_fido2_store_recipient(None).expect("create first FIDO2 recipient");
+
+    let store = env.root_dir().join("secondary-store");
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[key_a.fingerprint.clone(), first_fido],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save first FIDO2 recipient");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry protected by the first FIDO2 recipient");
+
+    drop(_first_guard);
+    let _second_guard = Fido2TransportGuard::install(Arc::new(MockFido2Transport::default()));
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "newsecret\nusername: alice",
+        true,
+    )
+    .expect("save entry without reconnecting the existing FIDO2 recipient");
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read updated entry"),
+        "newsecret\nusername: alice"
     );
 }
 
@@ -900,7 +2203,7 @@ fn all_keys_mode_uses_a_nonstandard_layered_entry_format() {
 
     let outer_layer = IntegratedCryptoContext::load_for_fingerprint(&key_a.fingerprint)
         .expect("load first-layer decrypt context")
-        .decrypt_entry(&store.join("team/service.gpg"))
+        .decrypt_entry_with_progress(&store.join("team/service.gpg"), None)
         .expect("decrypt only the first layer");
 
     assert!(outer_layer.starts_with("keycord-require-all-private-keys-v1\n"));
@@ -1390,6 +2693,59 @@ fn integrated_backend_commits_without_signature_when_private_key_is_locked() {
 }
 
 #[test]
+fn integrated_backend_commits_pure_fido2_store_changes_without_signature() {
+    let env = SystemBackendTestEnv::new();
+    let credential = b"git-fido2-credential";
+    let recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "Git FIDO2 Key",
+        credential,
+    )
+    .expect("build FIDO2 recipient");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+    let store_root = env.store_root().to_string_lossy().to_string();
+
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&recipient),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save FIDO2 store recipients");
+
+    let _guard = Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[(
+        credential.as_slice(),
+        b"git-fido2-secret".as_slice(),
+    )])));
+    save_password_entry(
+        &store_root,
+        "team/service",
+        "secret-value\nusername: alice",
+        true,
+    )
+    .expect("save FIDO2 password entry");
+    assert_eq!(
+        git_commit_private_key_requiring_unlock_for_entry(&store_root, "team/service")
+            .expect("skip FIDO2 entry signing"),
+        None
+    );
+
+    let subjects = env
+        .store_git_commit_subjects()
+        .expect("read commit subjects");
+    assert_eq!(subjects.len(), 2);
+    assert_eq!(subjects[0], "Add password for team/service");
+    assert_eq!(subjects[1], "Update password store recipients");
+    assert_eq!(
+        env.store_git_head_author().expect("read head author"),
+        "Keycord <git@keycord.invalid>"
+    );
+    assert!(!env
+        .store_head_commit_has_signature()
+        .expect("inspect commit headers"));
+}
+
+#[test]
 fn unreadable_entry_rename_commits_without_a_signature() {
     let env = SystemBackendTestEnv::new();
     let bytes_a = protected_cert_bytes("Entry Key <entry-unreadable@example.com>");
@@ -1608,6 +2964,30 @@ fn git_commit_unlock_helper_detects_a_locked_recipients_signing_key() {
         )
         .expect("resolve locked signing key"),
         Some(imported.fingerprint)
+    );
+}
+
+#[test]
+fn git_commit_unlock_helper_skips_pure_fido2_store_signing() {
+    let env = SystemBackendTestEnv::new();
+    let store_root = env.store_root().to_string_lossy().to_string();
+    let recipient = build_fido2_recipient_string(
+        "0123456789abcdef0123456789abcdef01234567",
+        "FIDO2 Key",
+        b"unlock-helper-credential",
+    )
+    .expect("build FIDO2 recipient");
+    env.init_store_git_repository()
+        .expect("initialize git repository");
+
+    assert_eq!(
+        git_commit_private_key_requiring_unlock_for_store_recipients(
+            &store_root,
+            std::slice::from_ref(&recipient),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        )
+        .expect("skip FIDO2 store signing"),
+        None
     );
 }
 

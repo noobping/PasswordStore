@@ -1,4 +1,4 @@
-use crate::backend::{ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest};
+use crate::backend::{PrivateKeyUnlockKind, PrivateKeyUnlockRequest};
 use crate::i18n::gettext;
 use crate::support::ui::dialog_content_shell;
 use adw::gtk::{Align, Box as GtkBox, Button, Label, Orientation, Spinner};
@@ -34,7 +34,10 @@ pub fn build_private_key_progress_dialog(
     description: &str,
 ) -> Dialog {
     let status = StatusPage::builder().build();
-    status.set_description(Some(description).filter(|description| !description.trim().is_empty()));
+    let translated_description = gettext(description);
+    status.set_description(
+        Some(translated_description.as_str()).filter(|description| !description.trim().is_empty()),
+    );
     status.set_child(Some(&Spinner::builder().spinning(true).build()));
 
     let dialog = Dialog::builder()
@@ -56,28 +59,26 @@ fn private_key_password_dialog_error_message(passphrase: &str) -> Option<&'stati
 
 const HARDWARE_EXTERNAL_BUTTON_LABEL: &str = "Or use a hardware key.";
 
-fn private_key_unlock_row_title(protection: ManagedRipassoPrivateKeyProtection) -> &'static str {
-    match protection {
-        ManagedRipassoPrivateKeyProtection::Password => "Key password",
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Hardware key PIN",
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => "Security key PIN",
+fn private_key_unlock_row_title(kind: PrivateKeyUnlockKind) -> &'static str {
+    match kind {
+        PrivateKeyUnlockKind::Password => "Key password",
+        PrivateKeyUnlockKind::HardwareOpenPgpCard => "Hardware key PIN",
+        PrivateKeyUnlockKind::Fido2SecurityKey => "Security key PIN",
     }
 }
 
 fn private_key_unlock_dialog_error_message(
-    protection: ManagedRipassoPrivateKeyProtection,
+    kind: PrivateKeyUnlockKind,
     input: &str,
 ) -> Option<&'static str> {
     if !input.trim().is_empty() {
         return None;
     }
 
-    match protection {
-        ManagedRipassoPrivateKeyProtection::Password => Some("Enter the key password."),
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            Some("Enter the hardware key PIN.")
-        }
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => Some("Enter the security key PIN."),
+    match kind {
+        PrivateKeyUnlockKind::Password => Some("Enter the key password."),
+        PrivateKeyUnlockKind::HardwareOpenPgpCard => Some("Enter the hardware key PIN."),
+        PrivateKeyUnlockKind::Fido2SecurityKey => Some("Enter the security key PIN."),
     }
 }
 
@@ -184,7 +185,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     _overlay: &ToastOverlay,
     title: &str,
     subtitle: Option<&str>,
-    protection: ManagedRipassoPrivateKeyProtection,
+    kind: PrivateKeyUnlockKind,
     on_submit: F,
     on_close: G,
 ) where
@@ -193,7 +194,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
 {
     let on_submit = Rc::new(on_submit);
     let password_row = PasswordEntryRow::new();
-    password_row.set_title(&gettext(private_key_unlock_row_title(protection)));
+    password_row.set_title(&gettext(private_key_unlock_row_title(kind)));
     password_row.set_show_apply_button(true);
 
     let password_group = PreferencesGroup::builder().build();
@@ -202,10 +203,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     let page = PreferencesPage::new();
     page.add(&password_group);
 
-    let hardware_button = if matches!(
-        protection,
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
-    ) {
+    let hardware_button = if matches!(kind, PrivateKeyUnlockKind::HardwareOpenPgpCard) {
         let button = Button::with_label(&gettext(HARDWARE_EXTERNAL_BUTTON_LABEL));
         button.add_css_class("flat");
         button.add_css_class("caption");
@@ -252,7 +250,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     let on_submit_for_apply = on_submit.clone();
     password_row.connect_apply(move |row| {
         let input = row.text().to_string();
-        if let Some(message) = private_key_unlock_dialog_error_message(protection, &input) {
+        if let Some(message) = private_key_unlock_dialog_error_message(kind, &input) {
             error_label_for_apply.set_label(&gettext(message));
             error_label_for_apply.set_visible(true);
             return;
@@ -261,16 +259,12 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
 
         submitted_for_apply.set(true);
         dialog_handle_for_apply.force_close();
-        let request = match protection {
-            ManagedRipassoPrivateKeyProtection::Password => {
-                PrivateKeyUnlockRequest::Password(input)
-            }
-            ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
+        let request = match kind {
+            PrivateKeyUnlockKind::Password => PrivateKeyUnlockRequest::Password(input),
+            PrivateKeyUnlockKind::HardwareOpenPgpCard => {
                 PrivateKeyUnlockRequest::HardwarePin(input)
             }
-            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-                PrivateKeyUnlockRequest::Fido2(Some(input))
-            }
+            PrivateKeyUnlockKind::Fido2SecurityKey => PrivateKeyUnlockRequest::Fido2(Some(input)),
         };
         on_submit_for_apply(request);
     });
@@ -308,7 +302,7 @@ mod tests {
         private_key_password_dialog_error_message, private_key_unlock_dialog_error_message,
         private_key_unlock_row_title, HARDWARE_EXTERNAL_BUTTON_LABEL,
     };
-    use crate::backend::ManagedRipassoPrivateKeyProtection;
+    use crate::backend::PrivateKeyUnlockKind;
 
     #[test]
     fn private_key_password_dialog_requires_a_non_empty_passphrase() {
@@ -326,15 +320,15 @@ mod tests {
     #[test]
     fn private_key_unlock_dialog_matches_the_protection_mode() {
         assert_eq!(
-            private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::Password),
+            private_key_unlock_row_title(PrivateKeyUnlockKind::Password),
             "Key password"
         );
         assert_eq!(
-            private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,),
+            private_key_unlock_row_title(PrivateKeyUnlockKind::HardwareOpenPgpCard,),
             "Hardware key PIN"
         );
         assert_eq!(
-            private_key_unlock_row_title(ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,),
+            private_key_unlock_row_title(PrivateKeyUnlockKind::Fido2SecurityKey,),
             "Security key PIN"
         );
         assert_eq!(HARDWARE_EXTERNAL_BUTTON_LABEL, "Or use a hardware key.");
@@ -343,29 +337,20 @@ mod tests {
     #[test]
     fn private_key_unlock_dialog_requires_the_expected_secret_input() {
         assert_eq!(
-            private_key_unlock_dialog_error_message(
-                ManagedRipassoPrivateKeyProtection::Password,
-                "   ",
-            ),
+            private_key_unlock_dialog_error_message(PrivateKeyUnlockKind::Password, "   ",),
             Some("Enter the key password.")
         );
         assert_eq!(
-            private_key_unlock_dialog_error_message(
-                ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
-                "",
-            ),
+            private_key_unlock_dialog_error_message(PrivateKeyUnlockKind::HardwareOpenPgpCard, "",),
             Some("Enter the hardware key PIN.")
         );
         assert_eq!(
-            private_key_unlock_dialog_error_message(
-                ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
-                "",
-            ),
+            private_key_unlock_dialog_error_message(PrivateKeyUnlockKind::Fido2SecurityKey, "",),
             Some("Enter the security key PIN.")
         );
         assert_eq!(
             private_key_unlock_dialog_error_message(
-                ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
+                PrivateKeyUnlockKind::HardwareOpenPgpCard,
                 "123456",
             ),
             None

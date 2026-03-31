@@ -7,7 +7,13 @@ use sequoia_openpgp::{
 pub enum ManagedRipassoPrivateKeyProtection {
     Password,
     HardwareOpenPgpCard,
-    Fido2HmacSecret,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrivateKeyUnlockKind {
+    Password,
+    HardwareOpenPgpCard,
+    Fido2SecurityKey,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,6 +54,15 @@ impl ManagedRipassoPrivateKey {
             self.protection,
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
         )
+    }
+}
+
+impl From<ManagedRipassoPrivateKeyProtection> for PrivateKeyUnlockKind {
+    fn from(value: ManagedRipassoPrivateKeyProtection) -> Self {
+        match value {
+            ManagedRipassoPrivateKeyProtection::Password => Self::Password,
+            ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => Self::HardwareOpenPgpCard,
+        }
     }
 }
 

@@ -1,26 +1,48 @@
-use crate::backend::StoreRecipientsPrivateKeyRequirement;
-use crate::fido2_recipient::{is_fido2_recipient_string, parse_fido2_recipient_metadata_line};
+use crate::backend::{StoreRecipients, StoreRecipientsPrivateKeyRequirement};
+use crate::fido2_recipient::{
+    build_fido2_recipient_string, is_fido2_recipient_string, parse_fido2_recipient_metadata_line,
+    parse_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME,
+};
 use crate::i18n::gettext;
-use crate::preferences::Preferences;
 use std::fs;
+use std::path::Path;
 #[cfg(test)]
 use std::{cell::RefCell, rc::Rc};
 
 const REQUIRE_ALL_PRIVATE_KEYS_METADATA: &str = "keycord-private-key-requirement=all";
 
-pub fn read_store_gpg_recipients(store_root: &str) -> Vec<String> {
-    let path = std::path::Path::new(store_root).join(".gpg-id");
+pub fn read_store_standard_recipients(store_root: &str) -> Vec<String> {
+    let path = Path::new(store_root).join(".gpg-id");
     let Ok(contents) = fs::read_to_string(path) else {
         return Vec::new();
     };
 
-    parse_gpg_recipients(&contents)
+    parse_standard_recipients(&contents)
+}
+
+pub fn read_store_fido2_recipients(store_root: &str) -> Vec<String> {
+    let path = Path::new(store_root).join(FIDO2_RECIPIENTS_FILE_NAME);
+    let Ok(contents) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+
+    parse_fido2_recipients(&contents)
+}
+
+pub fn read_store_recipients(store_root: &str) -> Vec<String> {
+    let mut recipients = read_store_standard_recipients(store_root);
+    recipients.extend(read_store_fido2_recipients(store_root));
+    recipients
+}
+
+pub fn store_uses_fido2_recipients(store_root: &str) -> bool {
+    !read_store_fido2_recipients(store_root).is_empty()
 }
 
 pub fn read_store_private_key_requirement(
     store_root: &str,
 ) -> StoreRecipientsPrivateKeyRequirement {
-    let path = std::path::Path::new(store_root).join(".gpg-id");
+    let path = Path::new(store_root).join(".gpg-id");
     let Ok(contents) = fs::read_to_string(path) else {
         return StoreRecipientsPrivateKeyRequirement::AnyManagedKey;
     };
@@ -39,8 +61,8 @@ pub fn read_store_private_key_requirement(
     StoreRecipientsPrivateKeyRequirement::AnyManagedKey
 }
 
-pub fn store_gpg_recipients_subtitle(store_root: &str) -> String {
-    let recipients = read_store_gpg_recipients(store_root);
+pub fn store_recipients_subtitle(store_root: &str) -> String {
+    let recipients = read_store_recipients(store_root);
     match recipients.len() {
         0 => gettext("No recipients set"),
         1 => gettext("1 recipient"),
@@ -48,20 +70,32 @@ pub fn store_gpg_recipients_subtitle(store_root: &str) -> String {
     }
 }
 
-pub fn suggested_gpg_recipients(settings: &Preferences) -> Vec<String> {
-    for root in settings.paths() {
-        let recipients = read_store_gpg_recipients(root.to_string_lossy().as_ref());
-        if !recipients.is_empty() {
-            return recipients;
+fn push_unique_recipient(recipients: &mut Vec<String>, recipient: String) {
+    if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
+        return;
+    }
+
+    recipients.push(recipient);
+}
+
+pub fn split_store_recipients(recipients: &[String]) -> StoreRecipients {
+    let mut standard = Vec::new();
+    let mut fido2 = Vec::new();
+
+    for recipient in recipients {
+        if is_fido2_recipient_string(recipient) {
+            push_unique_recipient(&mut fido2, recipient.clone());
+        } else {
+            push_unique_recipient(&mut standard, recipient.clone());
         }
     }
 
-    Vec::new()
+    StoreRecipients::new(standard, fido2)
 }
 
 #[cfg(test)]
-pub fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
-    let parsed = parse_gpg_recipients(input);
+pub fn append_standard_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str) -> bool {
+    let parsed = parse_standard_recipients(input);
     if parsed.is_empty() {
         return false;
     }
@@ -69,46 +103,62 @@ pub fn append_gpg_recipients(recipients: &Rc<RefCell<Vec<String>>>, input: &str)
     let mut values = recipients.borrow_mut();
     let original_len = values.len();
     for recipient in parsed {
-        if !values.iter().any(|existing| existing == &recipient) {
-            values.push(recipient);
-        }
+        push_unique_recipient(&mut values, recipient);
     }
 
     values.len() > original_len
 }
 
-pub fn parse_gpg_recipients(value: &str) -> Vec<String> {
+pub fn parse_standard_recipients(value: &str) -> Vec<String> {
     let mut recipients = Vec::new();
 
     for line in value.lines() {
-        if let Ok(Some(recipient)) = parse_fido2_recipient_metadata_line(line) {
-            if !recipients.iter().any(|existing| existing == &recipient) {
-                recipients.push(recipient);
-            }
-            continue;
-        }
-
         for recipient in line.split([',', ';']) {
             let recipient = recipient
                 .split_once('#')
                 .map_or(recipient, |(value, _)| value);
-            let recipient = normalize_gpg_recipient(recipient);
-            if recipient.is_empty() || recipients.iter().any(|existing| existing == &recipient) {
+            let recipient = recipient.trim();
+            if is_fido2_recipient_string(recipient) {
                 continue;
             }
-            recipients.push(recipient);
+            let recipient = normalize_standard_recipient(recipient);
+            push_unique_recipient(&mut recipients, recipient);
         }
     }
+
     recipients
 }
 
-pub fn normalize_gpg_recipient(value: &str) -> String {
+pub fn parse_fido2_recipients(value: &str) -> Vec<String> {
+    let mut recipients = Vec::new();
+
+    for raw_line in value.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Ok(Some(recipient)) = parse_fido2_recipient_metadata_line(line) {
+            push_unique_recipient(&mut recipients, recipient);
+            continue;
+        }
+
+        if let Ok(Some(parsed)) = parse_fido2_recipient_string(line) {
+            if let Ok(normalized) =
+                build_fido2_recipient_string(&parsed.id, &parsed.label, &parsed.credential_id)
+            {
+                push_unique_recipient(&mut recipients, normalized);
+            }
+        }
+    }
+
+    recipients
+}
+
+pub fn normalize_standard_recipient(value: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return String::new();
-    }
-    if is_fido2_recipient_string(trimmed) {
-        return trimmed.to_string();
     }
 
     let compact = trimmed
@@ -135,15 +185,22 @@ pub fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<St
 #[cfg(test)]
 mod tests {
     use super::{
-        append_gpg_recipients, normalize_gpg_recipient, parse_gpg_recipients,
+        append_standard_recipients, normalize_standard_recipient, parse_fido2_recipients,
+        parse_standard_recipients, split_store_recipients, store_uses_fido2_recipients,
         stores_with_preferred_first,
     };
-    use std::{cell::RefCell, rc::Rc};
+    use crate::backend::StoreRecipients;
+    use std::{
+        cell::RefCell,
+        fs,
+        rc::Rc,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
-    fn gpg_recipients_are_trimmed_and_deduplicated() {
+    fn standard_recipients_are_trimmed_and_deduplicated() {
         assert_eq!(
-            parse_gpg_recipients("alice@example.com; bob@example.com,\nalice@example.com"),
+            parse_standard_recipients("alice@example.com; bob@example.com,\nalice@example.com"),
             vec![
                 "alice@example.com".to_string(),
                 "bob@example.com".to_string()
@@ -152,25 +209,25 @@ mod tests {
     }
 
     #[test]
-    fn gpg_fingerprints_drop_internal_spaces() {
+    fn standard_fingerprints_drop_internal_spaces() {
         assert_eq!(
-            normalize_gpg_recipient("7D FF 03 8D EE 12 AB 34"),
+            normalize_standard_recipient("7D FF 03 8D EE 12 AB 34"),
             "7DFF038DEE12AB34".to_string()
         );
     }
 
     #[test]
-    fn gpg_user_ids_keep_internal_spaces() {
+    fn standard_user_ids_keep_internal_spaces() {
         assert_eq!(
-            normalize_gpg_recipient("Alice Example <alice@example.com>"),
+            normalize_standard_recipient("Alice Example <alice@example.com>"),
             "Alice Example <alice@example.com>".to_string()
         );
     }
 
     #[test]
-    fn gpg_recipient_comments_are_ignored() {
+    fn standard_recipient_comments_are_ignored() {
         assert_eq!(
-            parse_gpg_recipients(
+            parse_standard_recipients(
                 "# keycord-private-key-requirement=all\nalice@example.com # preferred\nbob@example.com"
             ),
             vec![
@@ -184,16 +241,16 @@ mod tests {
     fn fido2_recipient_metadata_lines_are_preserved() {
         let value = "# keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564";
         assert_eq!(
-            parse_gpg_recipients(value),
+            parse_fido2_recipients(value),
             vec![value.trim_start_matches("# ").to_string()]
         );
     }
 
     #[test]
-    fn gpg_recipient_input_appends_unique_values() {
+    fn standard_recipient_input_appends_unique_values() {
         let recipients = Rc::new(RefCell::new(vec!["alice@example.com".to_string()]));
 
-        assert!(append_gpg_recipients(
+        assert!(append_standard_recipients(
             &recipients,
             "alice@example.com; bob@example.com, carol@example.com"
         ));
@@ -204,6 +261,24 @@ mod tests {
                 "bob@example.com".to_string(),
                 "carol@example.com".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn store_recipients_are_split_by_type() {
+        let recipients = vec![
+            "alice@example.com".to_string(),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564".to_string(),
+        ];
+
+        assert_eq!(
+            split_store_recipients(&recipients),
+            StoreRecipients::new(
+                vec!["alice@example.com".to_string()],
+                vec![
+                    "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564".to_string()
+                ]
+            )
         );
     }
 
@@ -222,5 +297,31 @@ mod tests {
                 "/tmp/three".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn store_fido2_usage_detection_follows_the_sidecar_file() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let store_root = std::env::temp_dir().join(format!("keycord-store-recipients-{unique}"));
+        fs::create_dir_all(&store_root).expect("store root should be created");
+
+        assert!(!store_uses_fido2_recipients(
+            store_root.to_str().expect("utf8 temp path")
+        ));
+
+        fs::write(
+            store_root.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+        )
+        .expect("fido2 recipients file should be written");
+
+        assert!(store_uses_fido2_recipients(
+            store_root.to_str().expect("utf8 temp path")
+        ));
+
+        let _ = fs::remove_dir_all(store_root);
     }
 }

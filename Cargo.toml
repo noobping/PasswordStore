@@ -2,15 +2,17 @@
 name = "keycord"
 description = "Browse and edit password stores"
 authors = ["noobping"]
-version = "0.9.6"
+version = "0.9.7"
 edition = "2021"
 license = "GPL-3.0-only"
 homepage = "https://github.com/noobping/keycord"
 repository = "https://github.com/noobping/keycord"
 
 [features]
+default = ["fido"]
 setup = []
 flatpak = []
+fido = ["dep:base64", "dep:fido2-rs", "dep:hmac", "dep:openssl", "dep:sha2"]
 
 [dependencies]
 thiserror = "2.0"
@@ -27,11 +29,12 @@ rand = "0.10.0"
 regex = "1.12.2"
 zeroize = { version = "1.8.1", features = ["alloc"] }
 pulldown-cmark = "0.13.0"
-fido2-rs = { version = "0.4.0" }
-base64 = "0.22.1"
-hmac = "0.12.1"
-openssl = "0.10.76"
-sha2 = "0.10.9"
+fido2-rs = { version = "0.4.0", optional = true }
+base64 = { version = "0.22.1", optional = true }
+hmac = { version = "0.12.1", optional = true }
+openssl = { version = "0.10.76", optional = true }
+sha2 = { version = "0.10.9", optional = true }
+url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 anyhow = "1.0"

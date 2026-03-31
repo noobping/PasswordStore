@@ -5,7 +5,10 @@ mod tests;
 mod unlock;
 mod weak_passwords;
 
+use crate::i18n::gettext;
 use crate::password::page::PasswordPageState;
+use crate::preferences::Preferences;
+use crate::store::recipients::store_uses_fido2_recipients;
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
 use crate::support::ui::{
@@ -15,10 +18,12 @@ use crate::support::ui::{
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
 };
+use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, NavigationPage, ToastOverlay};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use self::field_values::FieldValueBrowserState;
@@ -35,6 +40,8 @@ const FIELD_VALUES_FIELDS_SUBTITLE: &str = "Pick a field from the current list."
 const FIELD_VALUES_VALUES_SUBTITLE: &str = "Pick a value from the current list.";
 const FIELD_VALUES_ROW_TITLE: &str = "Browse field values";
 const FIELD_VALUES_ROW_SUBTITLE: &str = "Browse unique field values from the current list.";
+const FIELD_VALUES_ROW_DISABLED_SUBTITLE: &str =
+    "Unavailable because all configured stores use FIDO2 security keys.";
 const FIELD_VALUES_LOADING_TITLE: &str = "Loading field values";
 const FIELD_VALUES_LOADING_SUBTITLE: &str = "Reading searchable pass fields from the current list.";
 const FIELD_VALUES_EMPTY_TITLE: &str = "No searchable fields";
@@ -51,6 +58,8 @@ const WEAK_PASSWORDS_SUBTITLE: &str = "Scan the current list for passwords that 
 const WEAK_PASSWORDS_ROW_TITLE: &str = "Find weak passwords";
 const WEAK_PASSWORDS_ROW_SUBTITLE: &str =
     "Scan the current list for passwords that fail basic checks.";
+const WEAK_PASSWORDS_ROW_DISABLED_SUBTITLE: &str =
+    "Unavailable because all configured stores use FIDO2 security keys.";
 const WEAK_PASSWORDS_LOADING_TITLE: &str = "Scanning passwords";
 const WEAK_PASSWORDS_LOADING_SUBTITLE: &str = "Reading password lines from the current list.";
 const WEAK_PASSWORDS_EMPTY_TITLE: &str = "No weak passwords found";
@@ -58,7 +67,6 @@ const WEAK_PASSWORDS_EMPTY_SUBTITLE: &str =
     "No loaded pass files matched the current weak-password checks.";
 const WEAK_PASSWORDS_FILTER_EMPTY_TITLE: &str = "No matching results";
 const WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE: &str = "Try a different search term.";
-
 #[derive(Clone)]
 pub struct ToolsPageState {
     pub window: ApplicationWindow,
@@ -148,6 +156,7 @@ impl ToolsPageState {
     }
 
     pub fn rebuild(&self) {
+        self.sync_action_availability();
         clear_list_box(&self.list);
         clear_list_box(&self.logs_list);
         *self.field_values_tool_row.borrow_mut() = None;
@@ -262,12 +271,35 @@ impl ToolsPageState {
     }
 
     fn sync_tool_rows(&self) {
-        let enabled = tool_rows_enabled(
-            self.browser.tool_busy.get(),
-            self.weak_passwords.tool_busy.get(),
+        let available =
+            password_read_tools_available_for_store_roots(&Preferences::new().store_roots());
+        let enabled = available
+            && tool_rows_enabled(
+                self.browser.tool_busy.get(),
+                self.weak_passwords.tool_busy.get(),
+            );
+        set_password_tool_row_state(
+            self.field_values_tool_row.borrow().as_ref(),
+            enabled,
+            if available {
+                FIELD_VALUES_ROW_SUBTITLE
+            } else {
+                FIELD_VALUES_ROW_DISABLED_SUBTITLE
+            },
         );
-        set_tool_row_enabled(self.field_values_tool_row.borrow().as_ref(), enabled);
-        set_tool_row_enabled(self.weak_passwords_tool_row.borrow().as_ref(), enabled);
+        set_password_tool_row_state(
+            self.weak_passwords_tool_row.borrow().as_ref(),
+            enabled,
+            if available {
+                WEAK_PASSWORDS_ROW_SUBTITLE
+            } else {
+                WEAK_PASSWORDS_ROW_DISABLED_SUBTITLE
+            },
+        );
+    }
+
+    pub fn sync_action_availability(&self) {
+        sync_tools_action_availability(&self.window);
     }
 }
 
@@ -292,7 +324,46 @@ fn collect_loaded_entry_requests(list: &ListBox) -> Vec<FieldValueRequest> {
         child = next;
     }
 
+    let mut tool_compatible_stores = HashMap::<String, bool>::new();
+    filter_tool_requests(requests, |store_path| {
+        tool_store_is_compatible(store_path, &mut tool_compatible_stores)
+    })
+}
+
+fn filter_tool_requests(
+    requests: Vec<FieldValueRequest>,
+    mut store_is_compatible: impl FnMut(&str) -> bool,
+) -> Vec<FieldValueRequest> {
     requests
+        .into_iter()
+        .filter(|request| store_is_compatible(&request.root))
+        .collect()
+}
+
+fn tool_store_is_compatible(store_path: &str, cache: &mut HashMap<String, bool>) -> bool {
+    if let Some(compatible) = cache.get(store_path) {
+        return *compatible;
+    }
+
+    let compatible = !store_uses_fido2_recipients(store_path);
+    cache.insert(store_path.to_string(), compatible);
+    compatible
+}
+
+fn password_read_tools_available_for_store_roots(stores: &[String]) -> bool {
+    password_read_tools_available_for_store_roots_with(stores, |store_path| {
+        !store_uses_fido2_recipients(store_path)
+    })
+}
+
+fn password_read_tools_available_for_store_roots_with(
+    stores: &[String],
+    mut store_is_compatible: impl FnMut(&str) -> bool,
+) -> bool {
+    stores.is_empty()
+        || stores
+            .iter()
+            .any(|store_path| store_is_compatible(store_path))
 }
 
 fn next_generation(current: u64) -> u64 {
@@ -332,6 +403,28 @@ fn set_tool_row_enabled(row: Option<&ActionRow>, enabled: bool) {
     row.set_activatable(enabled);
 }
 
+fn set_password_tool_row_state(row: Option<&ActionRow>, enabled: bool, subtitle: &str) {
+    let Some(row) = row else {
+        return;
+    };
+    row.set_subtitle(&gettext(subtitle));
+    set_tool_row_enabled(Some(row), enabled);
+}
+
+fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
+    let Some(action) = window.lookup_action(name) else {
+        return;
+    };
+    let Ok(action) = action.downcast::<SimpleAction>() else {
+        return;
+    };
+    action.set_enabled(enabled);
+}
+
+pub fn sync_tools_action_availability(window: &ApplicationWindow) {
+    set_window_action_enabled(window, "open-tools", true);
+}
+
 pub fn register_open_tools_action(window: &ApplicationWindow, state: &ToolsPageState) {
     let state = state.clone();
     register_window_action(window, "open-tools", move || {
@@ -340,4 +433,5 @@ pub fn register_open_tools_action(window: &ApplicationWindow, state: &ToolsPageS
         state.rebuild();
         reveal_navigation_page(&state.navigation.nav, &state.page);
     });
+    sync_tools_action_availability(window);
 }

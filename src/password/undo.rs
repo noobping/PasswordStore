@@ -1,6 +1,6 @@
 use crate::backend::{
-    delete_password_entry, read_password_entry, rename_password_entry, save_password_entry,
-    PasswordEntryError, PasswordEntryWriteError,
+    delete_password_entry, password_entry_fido2_recipient_count, read_password_entry,
+    rename_password_entry, save_password_entry, PasswordEntryError, PasswordEntryWriteError,
 };
 use crate::password::model::PassEntry;
 use crate::window::session::window_session_for_widget;
@@ -166,6 +166,11 @@ pub fn move_entry_between_stores_action(entry: &PassEntry, target_store: &str) -
 }
 
 pub fn delete_entry_with_optional_undo(entry: &PassEntry) -> Result<Option<UndoAction>, UndoError> {
+    if should_delete_without_undo_snapshot(entry) {
+        delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
+        return Ok(Some(unavailable_undo_action()));
+    }
+
     match read_password_entry(&entry.store_path, &entry.label()) {
         Ok(contents) => {
             delete_password_entry(&entry.store_path, &entry.label()).map_err(UndoError::Delete)?;
@@ -179,13 +184,25 @@ pub fn delete_entry_with_optional_undo(entry: &PassEntry) -> Result<Option<UndoA
     }
 }
 
-const fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
+fn should_delete_without_undo_snapshot(entry: &PassEntry) -> bool {
+    password_entry_fido2_recipient_count(&entry.store_path, &entry.label()) > 0
+}
+
+fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
     matches!(
         error,
         PasswordEntryError::MissingPrivateKey(_)
             | PasswordEntryError::LockedPrivateKey(_)
             | PasswordEntryError::IncompatiblePrivateKey(_)
-    )
+    ) || matches!(error, PasswordEntryError::Other(message) if can_delete_without_undo_after_fido_read_error(message))
+}
+
+fn can_delete_without_undo_after_fido_read_error(message: &str) -> bool {
+    let lowered = message.to_ascii_lowercase();
+    lowered.contains("fido2")
+        || lowered.contains("security key")
+        || lowered.contains("libfido2")
+        || lowered.contains("operation denied")
 }
 
 pub fn move_entry_to_store(entry: &PassEntry, target_store: &str) -> Result<PassEntry, UndoError> {
@@ -401,6 +418,14 @@ mod tests {
 
         assert!(!can_delete_without_undo_after_read_error(
             &PasswordEntryError::other("other"),
+        ));
+        assert!(can_delete_without_undo_after_read_error(
+            &PasswordEntryError::other("Connect the matching FIDO2 security key."),
+        ));
+        assert!(can_delete_without_undo_after_read_error(
+            &PasswordEntryError::other(
+                "libfido2: Error { code: 39, message: \"FIDO_ERR_OPERATION_DENIED\" }",
+            ),
         ));
     }
 }

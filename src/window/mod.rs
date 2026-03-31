@@ -2,7 +2,7 @@ mod build;
 mod controls;
 mod docs;
 mod git;
-mod host_access;
+pub(crate) mod host_access;
 mod logs;
 pub mod navigation;
 mod preferences;
@@ -12,6 +12,7 @@ mod tools;
 pub use self::build::create_main_window;
 pub use self::git::clone_store_repository;
 pub(crate) use self::host_access::append_optional_host_access_row;
+pub(crate) use self::tools::sync_tools_action_availability;
 
 #[cfg(test)]
 mod tests {

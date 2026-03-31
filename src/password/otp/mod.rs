@@ -318,7 +318,7 @@ fn otp_secret_is_blank(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::url::{otp_period, otp_secret_from_url, replace_otp_secret};
+    use super::url::{otp_display, otp_period, otp_secret_from_url, replace_otp_secret};
     use super::{otp_secret_is_blank, EMPTY_OTP_URL};
     use totp_rs::TOTP;
 
@@ -331,6 +331,14 @@ mod tests {
     }
 
     #[test]
+    fn otp_secret_is_normalized_when_read_from_otpauth_url() {
+        assert_eq!(
+            otp_secret_from_url("otpauth://totp/Test?secret=%20jbswy3dpehpk3pxp%3D%3D%20"),
+            Some("JBSWY3DPEHPK3PXP".to_string())
+        );
+    }
+
+    #[test]
     fn otp_secret_is_replaced_without_touching_other_query_values() {
         assert_eq!(
             replace_otp_secret(
@@ -338,6 +346,17 @@ mod tests {
                 "NEW"
             ),
             "otpauth://totp/Test?issuer=Example&secret=NEW&period=45".to_string()
+        );
+    }
+
+    #[test]
+    fn otp_secret_replacement_normalizes_padded_google_style_values() {
+        assert_eq!(
+            replace_otp_secret(
+                "otpauth://totp/Test?issuer=Example&secret=OLD&period=45",
+                " jbswy3dpehpk3pxp== "
+            ),
+            "otpauth://totp/Test?issuer=Example&secret=JBSWY3DPEHPK3PXP&period=45".to_string()
         );
     }
 
@@ -359,5 +378,15 @@ mod tests {
     fn placeholder_url_becomes_a_valid_totp_url_after_filling_in_the_secret() {
         let url = replace_otp_secret(EMPTY_OTP_URL, "JBSWY3DPEHPK3PXP");
         assert!(TOTP::from_url_unchecked(&url).is_ok());
+    }
+
+    #[test]
+    fn otp_display_accepts_normalized_padded_google_style_secrets() {
+        let url = "otpauth://totp/Test?issuer=Example&secret=%20jbswy3dpehpk3pxp%3D%3D%20";
+        let (code, remaining, period) = otp_display(url).expect("render normalized OTP");
+
+        assert_eq!(code.len(), 6);
+        assert!(remaining > 0);
+        assert_eq!(period, 30);
     }
 }

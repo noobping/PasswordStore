@@ -48,10 +48,7 @@ use super::git::GitActionState;
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
 };
-use super::host_access::{
-    append_optional_fido2_access_row, append_optional_host_access_group_row,
-    append_optional_smartcard_access_row,
-};
+use super::host_access::append_optional_host_access_group_row;
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::{set_save_button_for_password, WindowNavigationState};
 use super::preferences::{
@@ -63,12 +60,12 @@ use super::preferences::{
     connect_password_generation_autosave, connect_password_list_sort_autosave,
     connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
-use super::tools::{register_open_tools_action, ToolsPageState};
+use super::tools::{register_open_tools_action, sync_tools_action_availability, ToolsPageState};
 use crate::logging::{log_error, log_info};
 use crate::support::actions::activate_widget_action;
 use crate::support::runtime::{
-    has_host_permission, log_runtime_capabilities_once, supports_fido2_features,
-    supports_host_command_features, supports_logging_features, supports_smartcard_features,
+    has_host_permission, log_runtime_capabilities_once, supports_host_command_features,
+    supports_logging_features,
 };
 use crate::window::session::initialize_window_session;
 use adw::glib::Propagation;
@@ -159,54 +156,6 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
     );
 }
 
-fn sync_store_recipients_fido2_permissions(
-    list: &adw::gtk::ListBox,
-    overlay: &adw::ToastOverlay,
-    add_fido2_key_row: &adw::ActionRow,
-    preferences: &Preferences,
-) {
-    let fido2_features_supported = supports_fido2_features();
-    add_fido2_key_row.set_visible(fido2_features_supported);
-    if !fido2_features_supported {
-        return;
-    }
-
-    append_optional_fido2_access_row(
-        list,
-        overlay,
-        &[add_fido2_key_row],
-        preferences.uses_integrated_backend(),
-    );
-}
-
-fn initialize_store_recipients_permissions(widgets: &WindowWidgets, preferences: &Preferences) {
-    let smartcard_features_supported = supports_smartcard_features();
-    widgets
-        .store_recipients_add_hardware_key_row
-        .set_visible(smartcard_features_supported);
-    widgets
-        .store_recipients_import_hardware_key_row
-        .set_visible(smartcard_features_supported);
-
-    if smartcard_features_supported {
-        append_optional_smartcard_access_row(
-            &widgets.store_recipients_add_list,
-            &widgets.toast_overlay,
-            &[
-                &widgets.store_recipients_add_hardware_key_row,
-                &widgets.store_recipients_import_hardware_key_row,
-            ],
-        );
-    }
-
-    sync_store_recipients_fido2_permissions(
-        &widgets.store_recipients_add_list,
-        &widgets.toast_overlay,
-        &widgets.store_recipients_add_fido2_key_row,
-        preferences,
-    );
-}
-
 fn connect_backend_preferences(
     widgets: &WindowWidgets,
     preferences: &Preferences,
@@ -228,18 +177,8 @@ fn connect_backend_preferences(
             let preferences = preferences.clone();
             let preferences_action_state = preferences_action_state.clone();
             let tools_page_state = tools_page_state.clone();
-            let store_recipients_add_list = widgets.store_recipients_add_list.clone();
-            let store_recipients_add_fido2_key_row =
-                widgets.store_recipients_add_fido2_key_row.clone();
-            let toast_overlay = widgets.toast_overlay.clone();
             let window = widgets.window.clone();
             move || {
-                sync_store_recipients_fido2_permissions(
-                    &store_recipients_add_list,
-                    &toast_overlay,
-                    &store_recipients_add_fido2_key_row,
-                    &preferences,
-                );
                 tools_page_state.rebuild();
                 rebuild_store_actions_list(
                     &preferences_action_state.store_actions_list,
@@ -362,6 +301,7 @@ fn initialize_password_list(widgets: &WindowWidgets) {
         false,
         false,
     );
+    sync_tools_action_availability(&widgets.window);
 }
 
 fn restore_window_size(window: &ApplicationWindow, preferences: &Preferences) {
@@ -421,7 +361,6 @@ pub fn create_main_window(
     let store_git_page_state = store_git_page_state(&widgets);
     let store_recipients_page_state =
         build_store_recipients_page_state(&widgets, &store_git_page_state);
-    initialize_store_recipients_permissions(&widgets, &preferences);
     let window_navigation_state = window_navigation_state(&widgets);
     let docs_page_state = DocumentationPageState::new(
         &window_navigation_state,

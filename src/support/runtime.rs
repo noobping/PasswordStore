@@ -15,7 +15,7 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: debug={}, setup={}, flatpak={}, host-access={}, smartcard={}, fido2={}.",
+            "App runtime: debug={}, setup={}, flatpak={}, host-access={}, smartcard={}, fido={}.",
             feature_status(cfg!(debug_assertions)),
             feature_status(cfg!(feature = "setup")),
             feature_status(cfg!(feature = "flatpak")),
@@ -51,7 +51,7 @@ pub const fn supports_smartcard_features() -> bool {
 }
 
 pub const fn supports_fido2_features() -> bool {
-    cfg!(any(target_os = "linux", target_os = "windows"))
+    cfg!(feature = "fido") && cfg!(any(target_os = "linux", target_os = "windows"))
 }
 
 pub fn require_host_command_features() -> Result<(), String> {

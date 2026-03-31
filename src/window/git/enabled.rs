@@ -17,6 +17,7 @@ use crate::window::navigation::{
     finish_git_busy_page, restore_window_for_current_page, show_git_busy_page,
     WindowNavigationState,
 };
+use crate::window::tools::sync_tools_action_availability;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, NavigationPage, StatusPage, Toast, ToastOverlay};
@@ -143,6 +144,7 @@ fn reload_password_list(state: &GitActionState) {
         state.visibility.show_hidden(),
         state.visibility.show_duplicates(),
     );
+    sync_tools_action_availability(&state.window);
 }
 
 fn register_cloned_store(

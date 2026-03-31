@@ -1,4 +1,4 @@
-use super::recipients::{read_store_gpg_recipients, read_store_private_key_requirement};
+use super::recipients::{read_store_private_key_requirement, read_store_recipients};
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
@@ -10,18 +10,22 @@ use crate::window::navigation::{
 use adw::gtk::{Button, CheckButton, ListBox, ScrolledWindow, Stack};
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
-    PreferencesGroup, StatusPage, ToastOverlay, WindowTitle,
+    ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
+    PasswordEntryRow, PreferencesGroup, StatusPage, ToastOverlay, WindowTitle,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 mod export;
 mod generate;
+mod guide;
 mod import;
 mod list;
+mod mode;
+mod progress;
 mod save;
 mod sync;
+use self::progress::StoreRecipientsSaveProgressDialogHandle;
 pub use self::save::{queue_store_recipients_autosave, register_store_recipients_save_action};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,6 +106,9 @@ pub struct StoreRecipientsPageState {
     pub saved_private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
     pub save_in_flight: Rc<Cell<bool>>,
     pub save_queued: Rc<Cell<bool>>,
+    pub additional_fido2_save_guide_dialog: Rc<RefCell<Option<Dialog>>>,
+    pub(crate) fido2_save_progress_dialog:
+        Rc<RefCell<Option<StoreRecipientsSaveProgressDialogHandle>>>,
 }
 
 #[derive(Clone)]
@@ -109,8 +116,11 @@ pub struct StoreRecipientsPlatformState {
     pub overlay: ToastOverlay,
     pub host_gpg_warning_group: PreferencesGroup,
     pub host_gpg_warning_row: ActionRow,
+    pub fido2_info_group: PreferencesGroup,
     pub add_group: PreferencesGroup,
+    pub add_list: ListBox,
     pub create_group: PreferencesGroup,
+    pub create_list: ListBox,
     pub options_group: PreferencesGroup,
     pub git_group: PreferencesGroup,
     pub git_list: ListBox,
@@ -122,6 +132,7 @@ pub struct StoreRecipientsPlatformState {
     pub import_file_row: ActionRow,
     pub generate_key_row: ActionRow,
     pub require_all_row: ActionRow,
+    pub all_fido2_keys_required_row: ActionRow,
     pub require_all_check: CheckButton,
     pub private_key_generation_page: NavigationPage,
     pub private_key_generation_stack: Stack,
@@ -191,7 +202,7 @@ fn show_store_recipients_page(
     initial_recipients: Vec<String>,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) {
-    let saved_recipients = read_store_gpg_recipients(&request.store);
+    let saved_recipients = read_store_recipients(&request.store);
     let mode = request.mode;
     *state.request.borrow_mut() = Some(request);
     *state.recipients.borrow_mut() = initial_recipients;
@@ -235,7 +246,7 @@ pub fn show_store_recipients_edit_page(state: &StoreRecipientsPageState, store: 
     show_store_recipients_page(
         state,
         StoreRecipientsRequest::edit(store.clone()),
-        read_store_gpg_recipients(&store),
+        read_store_recipients(&store),
         read_store_private_key_requirement(&store),
     );
 }

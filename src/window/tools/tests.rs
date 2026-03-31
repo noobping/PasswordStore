@@ -2,7 +2,10 @@ use super::field_values::{
     field_value_catalog_from_entries, format_exact_field_query, matching_items_subtitle,
     unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
 };
-use super::{tool_browser_flow_is_visible, tool_rows_enabled};
+use super::{
+    filter_tool_requests, password_read_tools_available_for_store_roots_with,
+    tool_browser_flow_is_visible, tool_rows_enabled, FieldValueRequest,
+};
 use crate::i18n::gettext;
 use crate::password::file::SearchablePassField;
 use std::collections::BTreeMap;
@@ -140,4 +143,45 @@ fn tool_browser_flow_stays_visible_while_a_password_entry_is_open() {
     assert!(!tool_browser_flow_is_visible(
         false, false, false, false, false, false
     ));
+}
+
+#[test]
+fn password_read_tools_are_disabled_when_every_store_is_fido_only() {
+    assert!(password_read_tools_available_for_store_roots_with(
+        &[],
+        |_| false
+    ));
+
+    let stores = vec!["/stores/fido".to_string(), "/stores/backup".to_string()];
+
+    assert!(!password_read_tools_available_for_store_roots_with(
+        &stores,
+        |_| false,
+    ));
+    assert!(password_read_tools_available_for_store_roots_with(
+        &stores,
+        |store| { store == "/stores/backup" }
+    ));
+}
+
+#[test]
+fn tool_requests_skip_fido_only_stores() {
+    let requests = vec![
+        FieldValueRequest {
+            root: "/stores/fido".to_string(),
+            label: "mail".to_string(),
+        },
+        FieldValueRequest {
+            root: "/stores/standard".to_string(),
+            label: "chat".to_string(),
+        },
+    ];
+
+    assert_eq!(
+        filter_tool_requests(requests, |store| store == "/stores/standard"),
+        vec![FieldValueRequest {
+            root: "/stores/standard".to_string(),
+            label: "chat".to_string(),
+        }]
+    );
 }

@@ -2,7 +2,7 @@
 use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
     command::{ensure_success, run_store_command_output, run_store_command_with_input},
-    PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError,
+    PasswordEntryError, PasswordEntryWriteError, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::CommandLogOptions;
@@ -40,6 +40,13 @@ pub(super) fn read_password_entry(
     store_root: &str,
     label: &str,
 ) -> Result<String, PasswordEntryError> {
+    read_password_entry_with_progress(store_root, label)
+}
+
+pub(super) fn read_password_entry_with_progress(
+    store_root: &str,
+    label: &str,
+) -> Result<String, PasswordEntryError> {
     let output = read_entry_output(store_root, label, "Read password entry")
         .map_err(PasswordEntryError::from_store_message)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -62,7 +69,20 @@ pub(super) const fn password_entry_is_readable(_store_root: &str, _label: &str) 
     true
 }
 
+pub(super) const fn password_entry_fido2_recipient_count(_store_root: &str, _label: &str) -> usize {
+    0
+}
+
 pub(super) fn save_password_entry(
+    store_root: &str,
+    label: &str,
+    contents: &str,
+    overwrite: bool,
+) -> Result<(), PasswordEntryWriteError> {
+    save_password_entry_with_progress(store_root, label, contents, overwrite)
+}
+
+pub(super) fn save_password_entry_with_progress(
     store_root: &str,
     label: &str,
     contents: &str,
@@ -126,9 +146,23 @@ pub(super) fn delete_password_entry(
 
 pub(super) fn save_store_recipients(
     store_root: &str,
-    recipients: &[String],
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
+    save_store_recipients_with_progress(store_root, recipients, private_key_requirement)
+}
+
+pub(super) fn save_store_recipients_with_progress(
+    store_root: &str,
+    recipients: &StoreRecipients,
     _private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
+    if !recipients.fido2().is_empty() {
+        return Err(StoreRecipientsError::other(
+            "FIDO2 recipients require the Integrated backend.",
+        ));
+    }
+
     let should_initialize_git =
         !Path::new(store_root).join(".gpg-id").exists() && !has_git_repository(store_root);
     let output = run_store_command_output(
@@ -136,7 +170,7 @@ pub(super) fn save_store_recipients(
         "Save password store recipients",
         CommandLogOptions::DEFAULT,
         |cmd| {
-            cmd.arg("init").args(recipients);
+            cmd.arg("init").args(recipients.standard());
         },
     )
     .map_err(StoreRecipientsError::from_store_message)?;
@@ -326,7 +360,9 @@ mod tests {
     };
     use crate::backend::test_support::assert_entry_is_encrypted_for_each_recipient;
     use crate::backend::test_support::SystemBackendTestEnv;
-    use crate::backend::StoreRecipientsPrivateKeyRequirement;
+    use crate::backend::{
+        StoreRecipients, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
+    };
     use crate::support::git::has_git_repository;
     use sequoia_openpgp::serialize::Serialize;
     use std::io::Write;
@@ -367,7 +403,7 @@ mod tests {
             |store_root, recipients| {
                 save_store_recipients(
                     store_root,
-                    recipients,
+                    &StoreRecipients::new(recipients.to_vec(), Vec::new()),
                     StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
                 )
                 .map_err(|err| err.to_string())
@@ -377,6 +413,23 @@ mod tests {
                     .map_err(|err| err.to_string())
             },
         );
+    }
+
+    #[test]
+    fn host_backend_rejects_fido2_store_recipients() {
+        let err = save_store_recipients(
+            "/tmp/unused",
+            &StoreRecipients::new(
+                Vec::new(),
+                vec![String::from(
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564",
+                )],
+            ),
+            StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+        )
+        .expect_err("host backend should reject FIDO2 recipients");
+
+        assert!(matches!(err, StoreRecipientsError::Other(_)));
     }
 
     #[test]
@@ -397,7 +450,7 @@ mod tests {
         let store_root = env.store_root().to_string_lossy().to_string();
         save_store_recipients(
             &store_root,
-            std::slice::from_ref(&key.fingerprint_hex),
+            &StoreRecipients::new(vec![key.fingerprint_hex.clone()], Vec::new()),
             StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
         )
         .expect("save store recipients");
@@ -429,7 +482,7 @@ mod tests {
         let store_root = env.store_root().to_string_lossy().to_string();
         save_store_recipients(
             &store_root,
-            std::slice::from_ref(&key.fingerprint_hex),
+            &StoreRecipients::new(vec![key.fingerprint_hex.clone()], Vec::new()),
             StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
         )
         .expect("save store recipients");
@@ -474,7 +527,7 @@ mod tests {
         let store_root = env.store_root().to_string_lossy().to_string();
         save_store_recipients(
             &store_root,
-            std::slice::from_ref(&key.fingerprint_hex),
+            &StoreRecipients::new(vec![key.fingerprint_hex.clone()], Vec::new()),
             StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
         )
         .expect("save store recipients");

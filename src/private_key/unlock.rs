@@ -1,7 +1,7 @@
 use crate::backend::{
     list_ripasso_private_keys, ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
-    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
-    ManagedRipassoPrivateKeyProtection, PrivateKeyError, PrivateKeyUnlockRequest,
+    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey, PrivateKeyError,
+    PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
 };
 use crate::fido2_recipient::{fido2_recipient_title, is_fido2_recipient_string};
 use crate::i18n::gettext;
@@ -22,22 +22,22 @@ fn show_unlock_failure_toast(overlay: &ToastOverlay) {
     overlay.add_toast(Toast::new(&gettext("Couldn't unlock the key.")));
 }
 
-fn private_key_unlock_protection(fingerprint: &str) -> ManagedRipassoPrivateKeyProtection {
+fn private_key_unlock_kind(fingerprint: &str) -> PrivateKeyUnlockKind {
     if is_fido2_recipient_string(fingerprint) {
-        return ManagedRipassoPrivateKeyProtection::Fido2HmacSecret;
+        return PrivateKeyUnlockKind::Fido2SecurityKey;
     }
 
     match list_ripasso_private_keys() {
         Ok(keys) => keys
             .into_iter()
             .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
-            .map(|key| key.protection)
-            .unwrap_or(ManagedRipassoPrivateKeyProtection::Password),
+            .map(|key| key.protection.into())
+            .unwrap_or(PrivateKeyUnlockKind::Password),
         Err(err) => {
             log_error(format!(
                 "Failed to read private key protection for '{fingerprint}': {err}"
             ));
-            ManagedRipassoPrivateKeyProtection::Password
+            PrivateKeyUnlockKind::Password
         }
     }
 }
@@ -65,11 +65,9 @@ fn start_private_key_unlock_for_action(
     let overlay = overlay.clone();
     let overlay_for_disconnect = overlay.clone();
     let window_for_result = window.clone();
-    let window_for_retry = window.clone();
     let after_unlock = after_unlock.clone();
     let on_finish_for_result = on_finish.clone();
     let on_finish_for_disconnect = on_finish.clone();
-    let fingerprint_for_result = fingerprint.clone();
     let request_for_worker = request.clone();
     spawn_result_task(
         move || unlock_ripasso_private_key_for_session(&fingerprint, request_for_worker.clone()),
@@ -79,35 +77,6 @@ fn start_private_key_unlock_for_action(
                 activate_widget_action(&window_for_result, "win.reload-store-recipients-list");
                 activate_widget_action(&window_for_result, "win.reload-password-list");
                 on_finish_for_result(true);
-            }
-            Err(PrivateKeyError::Fido2PinRequired(_))
-                if matches!(request, PrivateKeyUnlockRequest::Fido2(None)) =>
-            {
-                let key_title = ripasso_private_key_title(&fingerprint_for_result).ok();
-                let on_finish_for_close = on_finish_for_result.clone();
-                let overlay_for_submit = overlay.clone();
-                let fingerprint_for_submit = fingerprint_for_result.clone();
-                let after_unlock_for_submit = after_unlock.clone();
-                let window_for_dialog = window_for_retry.clone();
-                let window_for_submit = window_for_retry.clone();
-                present_private_key_unlock_dialog_with_close_handler(
-                    &window_for_dialog,
-                    &overlay,
-                    "Unlock key",
-                    key_title.as_deref(),
-                    ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
-                    move |request| {
-                        start_private_key_unlock_for_action(
-                            &window_for_submit,
-                            &overlay_for_submit,
-                            fingerprint_for_submit.clone(),
-                            request,
-                            &after_unlock_for_submit,
-                            &on_finish_for_result,
-                        );
-                    },
-                    move || on_finish_for_close(false),
-                );
             }
             Err(err) => {
                 log_error(format!("Failed to unlock ripasso private key: {err}"));
@@ -169,7 +138,7 @@ fn start_fido2_recipient_unlock_for_action(
                     &overlay,
                     "Unlock key",
                     key_title.as_deref(),
-                    ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
+                    PrivateKeyUnlockKind::Fido2SecurityKey,
                     move |request| {
                         start_fido2_recipient_unlock_for_action(
                             &window_for_submit,
@@ -224,11 +193,8 @@ pub fn prompt_private_key_unlock_for_action(
             }
         }
     };
-    let protection = private_key_unlock_protection(&fingerprint);
-    if matches!(
-        protection,
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret
-    ) {
+    let kind = private_key_unlock_kind(&fingerprint);
+    if matches!(kind, PrivateKeyUnlockKind::Fido2SecurityKey) {
         start_private_key_unlock_for_action(
             &window,
             overlay,
@@ -248,7 +214,7 @@ pub fn prompt_private_key_unlock_for_action(
         overlay,
         "Unlock key",
         key_title.as_deref(),
-        protection,
+        kind,
         move |request| {
             start_private_key_unlock_for_action(
                 &window_for_submit,

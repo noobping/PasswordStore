@@ -1,4 +1,8 @@
 use super::export::copy_managed_key_material;
+use super::mode::{
+    current_selection_mode, show_standard_private_key_choice, sync_store_recipients_mode_controls,
+    StoreRecipientsSelectionMode,
+};
 use super::sync::{sync_private_keys_from_host_if_enabled, sync_private_keys_to_host_if_enabled};
 use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
 use crate::backend::{
@@ -60,9 +64,6 @@ enum PrivateKeyVerificationWarning {
     HostInspectionFailed,
     SyncDisabled,
 }
-
-const FIDO2_BACKEND_REQUIRED_MESSAGE: &str =
-    "Switch to the Integrated backend to use this FIDO2 security key.";
 
 impl PrivateKeyVerificationWarning {
     const fn title(self) -> &'static str {
@@ -289,6 +290,12 @@ fn sync_private_key_delete_button(delete_button: &adw::gtk::Button, blocked_mess
     delete_button.set_tooltip_text(Some(&tooltip));
 }
 
+fn sync_recipient_remove_button(button: &adw::gtk::Button, blocked_message: Option<&str>) {
+    button.set_sensitive(blocked_message.is_none());
+    let tooltip = gettext(blocked_message.unwrap_or("Remove recipient"));
+    button.set_tooltip_text(Some(&tooltip));
+}
+
 fn sync_private_key_toggle_button(toggle: &adw::gtk::CheckButton, blocked_message: Option<&str>) {
     toggle.set_sensitive(blocked_message.is_none());
     let tooltip = blocked_message.map(gettext);
@@ -354,18 +361,49 @@ fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipien
     }
 }
 
-fn sync_private_key_requirement_row(state: &StoreRecipientsPageState, has_keys: bool) {
+fn show_require_all_private_keys_option(
+    selection_mode: StoreRecipientsSelectionMode,
+    has_keys: bool,
+) -> bool {
+    has_keys && !matches!(selection_mode, StoreRecipientsSelectionMode::Fido2Only)
+}
+
+fn show_all_fido2_keys_required_info(
+    selection_mode: StoreRecipientsSelectionMode,
+    selected_fido2_keys: usize,
+) -> bool {
+    matches!(selection_mode, StoreRecipientsSelectionMode::Fido2Only) && selected_fido2_keys > 1
+}
+
+fn sync_private_key_requirement_row(
+    state: &StoreRecipientsPageState,
+    selection_mode: StoreRecipientsSelectionMode,
+    has_keys: bool,
+    selected_fido2_keys: usize,
+) {
     let uses_integrated_backend = Preferences::new().uses_integrated_backend();
-    state.platform.options_group.set_visible(has_keys);
-    state.platform.require_all_row.set_visible(has_keys);
+    let show_require_all = show_require_all_private_keys_option(selection_mode, has_keys);
+    let show_all_fido2_required =
+        show_all_fido2_keys_required_info(selection_mode, selected_fido2_keys);
+
+    state.platform.options_group.set_visible(show_require_all);
+    state
+        .platform
+        .fido2_info_group
+        .set_visible(show_all_fido2_required);
+    state.platform.require_all_row.set_visible(show_require_all);
+    state
+        .platform
+        .all_fido2_keys_required_row
+        .set_visible(show_all_fido2_required);
     state
         .platform
         .require_all_row
-        .set_sensitive(uses_integrated_backend);
+        .set_sensitive(show_require_all && uses_integrated_backend);
     state
         .platform
         .require_all_check
-        .set_sensitive(uses_integrated_backend);
+        .set_sensitive(show_require_all && uses_integrated_backend);
     state.platform.require_all_check.set_active(matches!(
         state.private_key_requirement.get(),
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys
@@ -380,18 +418,17 @@ fn selected_fido2_recipients(recipients: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn fido2_recipient_toggle_block_message(
+fn fido2_recipient_remove_block_message(
     uses_integrated_backend: bool,
-    active: bool,
     require_all_selected_keys: bool,
     selected_available_keys: usize,
     selected_usable_keys: usize,
 ) -> Option<&'static str> {
     if !uses_integrated_backend {
-        Some(FIDO2_BACKEND_REQUIRED_MESSAGE)
+        None
     } else {
         private_key_toggle_block_message(
-            active,
+            true,
             true,
             require_all_selected_keys,
             selected_available_keys,
@@ -400,23 +437,24 @@ fn fido2_recipient_toggle_block_message(
     }
 }
 
-fn fido2_recipient_delete_block_message(
-    uses_integrated_backend: bool,
-    active: bool,
-    require_all_selected_keys: bool,
-    selected_available_keys: usize,
-) -> Option<&'static str> {
-    if !uses_integrated_backend {
+fn effective_private_key_verification_warning(
+    selection_mode: StoreRecipientsSelectionMode,
+    warning: Option<PrivateKeyVerificationWarning>,
+) -> Option<PrivateKeyVerificationWarning> {
+    if matches!(selection_mode, StoreRecipientsSelectionMode::Fido2Only) {
         None
     } else {
-        private_key_delete_block_message(active, require_all_selected_keys, selected_available_keys)
+        warning
     }
 }
 
 fn sync_private_key_verification_warning(
     state: &StoreRecipientsPageState,
+    selection_mode: StoreRecipientsSelectionMode,
     warning: Option<PrivateKeyVerificationWarning>,
 ) {
+    let warning = effective_private_key_verification_warning(selection_mode, warning);
+
     if let Some(warning) = warning {
         state
             .platform
@@ -536,14 +574,22 @@ fn load_available_private_keys(
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
     rebuild_store_recipients_git_row(state);
-    sync_private_key_verification_warning(state, None);
+    sync_private_key_verification_warning(state, StoreRecipientsSelectionMode::Empty, None);
     let _ = sync_private_keys_from_host_if_enabled(state);
+    let current_recipients = state.recipients.borrow().clone();
+
+    let preferences = Preferences::new();
+    let uses_host_backend = preferences.uses_host_command_backend();
+    let uses_integrated_backend = preferences.uses_integrated_backend();
+    let sync_enabled = preferences.sync_private_keys_with_host();
+    let selection_mode = current_selection_mode(state);
+    sync_store_recipients_mode_controls(state, selection_mode, uses_integrated_backend);
 
     let managed_keys = match list_ripasso_private_keys() {
         Ok(keys) => keys,
         Err(err) => {
             log_error(format!("Failed to load private keys for recipients: {err}"));
-            sync_private_key_requirement_row(state, false);
+            sync_private_key_requirement_row(state, selection_mode, false, 0);
             append_info_row(
                 &state.list,
                 "Couldn't load private keys",
@@ -553,14 +599,9 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         }
     };
 
-    let preferences = Preferences::new();
-    let uses_host_backend = preferences.uses_host_command_backend();
-    let uses_integrated_backend = preferences.uses_integrated_backend();
-    let sync_enabled = preferences.sync_private_keys_with_host();
     let managed_key_count = managed_keys.len();
     let (keys, host_key_inspection_failed) =
         load_available_private_keys(managed_keys, uses_host_backend);
-    let current_recipients = state.recipients.borrow().clone();
     let fido2_recipients = selected_fido2_recipients(&current_recipients);
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
     let selected_available_keys =
@@ -569,10 +610,13 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         selected_usable_private_key_count(&current_recipients, &keys, uses_integrated_backend);
     sync_private_key_requirement_row(
         state,
+        selection_mode,
         managed_key_count > 0 || (uses_integrated_backend && !fido2_recipients.is_empty()),
+        fido2_recipients.len(),
     );
     sync_private_key_verification_warning(
         state,
+        selection_mode,
         private_key_verification_warning(
             uses_host_backend,
             sync_enabled,
@@ -609,6 +653,13 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     }
 
     for key in keys {
+        let active = current_recipients
+            .iter()
+            .any(|recipient| recipient_matches_available_private_key(recipient, &key));
+        if !show_standard_private_key_choice(selection_mode, active) {
+            continue;
+        }
+
         match key {
             AvailablePrivateKey::Managed(key) => append_managed_private_key_row(
                 state,
@@ -633,66 +684,38 @@ fn append_fido2_recipient_row(
     selected_available_keys: usize,
     selected_usable_keys: usize,
 ) {
-    let active = state
-        .recipients
-        .borrow()
-        .iter()
-        .any(|value| value == recipient);
     let require_all_selected_keys = matches!(
         state.private_key_requirement.get(),
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys
     );
-    let toggle_blocked_message = fido2_recipient_toggle_block_message(
+    let remove_blocked_message = fido2_recipient_remove_block_message(
         uses_integrated_backend,
-        active,
         require_all_selected_keys,
         selected_available_keys,
         selected_usable_keys,
     );
-    let delete_blocked_message = fido2_recipient_delete_block_message(
-        uses_integrated_backend,
-        active,
-        require_all_selected_keys,
-        selected_available_keys,
-    );
     let title = fido2_recipient_title(recipient).unwrap_or_else(|| gettext("FIDO2 security key"));
     let subtitle =
         fido2_recipient_subtitle(recipient).unwrap_or_else(|| gettext("FIDO2 recipient"));
-    let (row, toggle) =
-        append_private_key_row_shell(&title, &subtitle, active, toggle_blocked_message);
-    let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove recipient");
-    sync_private_key_delete_button(&delete_button, delete_blocked_message);
-    row.add_suffix(&delete_button);
+    let row = ActionRow::builder().title(title).subtitle(subtitle).build();
+    row.set_activatable(false);
+    row.add_prefix(&dim_label_icon("dialog-password-symbolic"));
+    let remove_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove recipient");
+    sync_recipient_remove_button(&remove_button, remove_blocked_message);
+    row.add_suffix(&remove_button);
     state.list.append(&row);
 
-    let state_for_toggle = state.clone();
-    let recipient_for_toggle = recipient.to_string();
-    toggle.connect_toggled(move |button| {
-        let before = state_for_toggle.recipients.borrow().clone();
-        {
-            let mut recipients = state_for_toggle.recipients.borrow_mut();
-            recipients.retain(|value| value != &recipient_for_toggle);
-            if button.is_active() {
-                recipients.push(recipient_for_toggle.clone());
-            }
-        }
-        super::rebuild_store_recipients_list(&state_for_toggle);
-        if *state_for_toggle.recipients.borrow() != before {
-            queue_store_recipients_autosave(&state_for_toggle);
-        }
-    });
-
-    let state_for_delete = state.clone();
-    let recipient_for_delete = recipient.to_string();
-    delete_button.connect_clicked(move |_| {
-        let before = state_for_delete.recipients.borrow().clone();
-        state_for_delete
+    let state_for_remove = state.clone();
+    let recipient_for_remove = recipient.to_string();
+    remove_button.connect_clicked(move |_| {
+        let before = state_for_remove.recipients.borrow().clone();
+        state_for_remove
             .recipients
             .borrow_mut()
-            .retain(|value| value != &recipient_for_delete);
-        super::rebuild_store_recipients_list(&state_for_delete);
-        if *state_for_delete.recipients.borrow() != before {
-            queue_store_recipients_autosave(&state_for_delete);
+            .retain(|value| value != &recipient_for_remove);
+        super::rebuild_store_recipients_list(&state_for_remove);
+        if *state_for_remove.recipients.borrow() != before {
+            queue_store_recipients_autosave(&state_for_remove);
         }
     });
 }
@@ -755,9 +778,6 @@ fn append_managed_private_key_row(
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             gettext("{fingerprint} - Hardware key").replace("{fingerprint}", &key.fingerprint)
         }
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            gettext("{fingerprint} - FIDO2 protected").replace("{fingerprint}", &key.fingerprint)
-        }
     };
     let (row, toggle) =
         append_private_key_row_shell(&key.title(), &subtitle, active, toggle_blocked_message);
@@ -768,7 +788,6 @@ fn append_managed_private_key_row(
         match key.protection {
             ManagedRipassoPrivateKeyProtection::Password => "Copy armored private key",
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Copy armored public key",
-            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => "Copy armored private key",
         },
     );
     row.add_suffix(&copy_button);
@@ -941,14 +960,15 @@ fn connect_managed_private_key_row_actions(
 #[cfg(test)]
 mod tests {
     use super::{
-        fido2_recipient_delete_block_message, fido2_recipient_toggle_block_message,
+        effective_private_key_verification_warning, fido2_recipient_remove_block_message,
         merge_available_private_keys, private_key_delete_block_message,
         private_key_toggle_block_message, private_key_verification_warning,
-        selected_available_private_key_count, unresolved_private_key_recipients,
+        selected_available_private_key_count, show_all_fido2_keys_required_info,
+        show_require_all_private_keys_option, unresolved_private_key_recipients,
         AvailablePrivateKey, HostGpgPrivateKeySummary, PrivateKeyVerificationWarning,
-        FIDO2_BACKEND_REQUIRED_MESSAGE,
     };
     use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
+    use crate::store::recipients_page::mode::StoreRecipientsSelectionMode;
 
     #[test]
     fn merged_private_keys_prefer_managed_duplicates() {
@@ -1023,6 +1043,52 @@ mod tests {
             assert_eq!(private_key_verification_warning(true, false, false), None);
             assert_eq!(private_key_verification_warning(false, true, false), None);
         }
+    }
+
+    #[test]
+    fn fido_only_stores_hide_private_key_verification_warnings() {
+        assert_eq!(
+            effective_private_key_verification_warning(
+                StoreRecipientsSelectionMode::Fido2Only,
+                Some(PrivateKeyVerificationWarning::SyncDisabled),
+            ),
+            None
+        );
+        assert_eq!(
+            effective_private_key_verification_warning(
+                StoreRecipientsSelectionMode::StandardOnly,
+                Some(PrivateKeyVerificationWarning::SyncDisabled),
+            ),
+            Some(PrivateKeyVerificationWarning::SyncDisabled)
+        );
+    }
+
+    #[test]
+    fn fido_only_stores_show_info_instead_of_require_all_toggle() {
+        assert!(!show_require_all_private_keys_option(
+            StoreRecipientsSelectionMode::Fido2Only,
+            true
+        ));
+        assert!(show_require_all_private_keys_option(
+            StoreRecipientsSelectionMode::StandardOnly,
+            true
+        ));
+        assert!(show_require_all_private_keys_option(
+            StoreRecipientsSelectionMode::Mixed,
+            true
+        ));
+        assert!(!show_all_fido2_keys_required_info(
+            StoreRecipientsSelectionMode::Fido2Only,
+            1
+        ));
+        assert!(show_all_fido2_keys_required_info(
+            StoreRecipientsSelectionMode::Fido2Only,
+            2
+        ));
+        assert!(!show_all_fido2_keys_required_info(
+            StoreRecipientsSelectionMode::StandardOnly,
+            2
+        ));
     }
 
     #[test]
@@ -1118,13 +1184,9 @@ mod tests {
     }
 
     #[test]
-    fn host_backend_blocks_fido2_toggles_but_still_allows_removal() {
+    fn host_backend_still_allows_removing_selected_fido2_recipients() {
         assert_eq!(
-            fido2_recipient_toggle_block_message(false, true, false, 0, 0),
-            Some(FIDO2_BACKEND_REQUIRED_MESSAGE)
-        );
-        assert_eq!(
-            fido2_recipient_delete_block_message(false, true, true, 0),
+            fido2_recipient_remove_block_message(false, false, 0, 0),
             None
         );
     }

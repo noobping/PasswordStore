@@ -11,8 +11,9 @@ use super::file::{
 use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
-    read_password_entry, rename_password_entry, save_password_entry, PasswordEntryError,
-    PasswordEntryWriteError,
+    password_entry_fido2_recipient_count, read_password_entry_with_progress, rename_password_entry,
+    save_password_entry, save_password_entry_with_progress, PasswordEntryError,
+    PasswordEntryReadProgress, PasswordEntryWriteError, PasswordEntryWriteProgress,
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
@@ -24,12 +25,13 @@ use crate::password::opened::{
 use crate::password::undo::{push_undo_action, restore_saved_entry_action};
 use crate::preferences::Preferences;
 use crate::support::actions::activate_widget_action;
-use crate::support::background::spawn_result_task;
+use crate::support::background::spawn_progress_result_task;
 use crate::support::ui::{
     pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use crate::support::validation::validate_pass_file_email_fields;
 use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
+use crate::window::sync_tools_action_availability;
 use adw::prelude::*;
 use adw::{Dialog, Toast};
 use std::string::ToString;
@@ -43,7 +45,7 @@ use self::platform::handle_open_password_entry_error;
 pub use self::state::PasswordPageState;
 use self::state::{
     reset_password_editor, show_password_editor_chrome, show_password_editor_fields,
-    show_password_loading_state, sync_saved_password_state,
+    show_password_loading_state, show_password_status_message, sync_saved_password_state,
 };
 
 fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static str {
@@ -52,12 +54,75 @@ fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static
         .unwrap_or("Couldn't open the item.")
 }
 
-const fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
+fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
     error.save_toast_message()
 }
 
 const fn username_fallback_failure_message(error: UsernameFallbackError) -> &'static str {
     error.toast_message()
+}
+
+const fn password_save_status_copy(fido2_recipient_count: usize) -> (&'static str, &'static str) {
+    if fido2_recipient_count > 1 {
+        ("Saving item", "Security keys will be checked one by one.")
+    } else if fido2_recipient_count == 1 {
+        (
+            "Saving item",
+            "Touch the security key if it starts blinking.",
+        )
+    } else {
+        ("Saving item", "Please wait.")
+    }
+}
+
+fn password_save_progress_description(progress: &PasswordEntryWriteProgress) -> String {
+    password_entry_progress_description(progress)
+}
+
+fn password_open_progress_description(progress: &PasswordEntryReadProgress) -> String {
+    password_entry_progress_description(progress)
+}
+
+fn password_entry_progress_description(progress: &PasswordEntryReadProgress) -> String {
+    gettext("Step {current} of {total}: touch the security key if it starts blinking.")
+        .replace("{current}", &progress.current_step.to_string())
+        .replace("{total}", &progress.total_steps.to_string())
+}
+
+pub(super) const fn password_open_status_copy(
+    fido2_recipient_count: usize,
+) -> (&'static str, &'static str) {
+    if fido2_recipient_count > 1 {
+        (
+            "Opening item",
+            "Touch each security key when it starts blinking.",
+        )
+    } else if fido2_recipient_count == 1 {
+        (
+            "Opening item",
+            "Touch the security key if it starts blinking.",
+        )
+    } else {
+        ("Opening item", "Please wait.")
+    }
+}
+
+pub(super) const fn password_unlock_status_copy(
+    fido2_recipient_count: usize,
+) -> (&'static str, &'static str) {
+    if fido2_recipient_count > 1 {
+        (
+            "Unlock key",
+            "Touch each security key when it starts blinking.",
+        )
+    } else if fido2_recipient_count == 1 {
+        (
+            "Unlock key",
+            "Touch the security key if it starts blinking.",
+        )
+    } else {
+        ("Unlock key", "Unlock your key to continue.")
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -216,6 +281,94 @@ fn finish_password_save(
     state.overlay.add_toast(Toast::new(&gettext("Saved.")));
 }
 
+fn handle_password_save_result(
+    state: &PasswordPageState,
+    save_context: &PasswordSaveContext,
+    result: Result<(), PasswordEntryWriteError>,
+) {
+    let label = save_context.pass_file.label();
+    match result {
+        Ok(()) => match renamed_pass_file_after_save(state, save_context, &label) {
+            Ok(active_pass_file) => finish_password_save(state, save_context, &active_pass_file),
+            Err(err) => {
+                show_password_editor_fields(state);
+                log_error(format!("Failed to move password entry after save: {err}"));
+                state
+                    .overlay
+                    .add_toast(Toast::new(&gettext(err.rename_toast_message())));
+            }
+        },
+        Err(err) => {
+            show_password_editor_fields(state);
+            log_error(format!("Failed to save password entry: {err}"));
+            state
+                .overlay
+                .add_toast(Toast::new(&gettext(password_save_failure_message(&err))));
+        }
+    }
+}
+
+fn start_password_save_with_progress(
+    state: &PasswordPageState,
+    save_context: PasswordSaveContext,
+    fido2_recipient_count: usize,
+) {
+    let (status_title, status_description) = password_save_status_copy(fido2_recipient_count);
+    show_password_status_message(state, status_title, status_description);
+    state.save.set_sensitive(false);
+
+    let store_root = save_context.pass_file.store_path().to_string();
+    let label = save_context.pass_file.label();
+    let contents = save_context.contents.clone();
+    let state_for_result = state.clone();
+    let state_for_disconnect = state.clone();
+    let pass_file_for_result = save_context.pass_file.clone();
+    let pass_file_for_disconnect = save_context.pass_file.clone();
+    let state_for_progress = state.clone();
+    let pass_file_for_progress = save_context.pass_file.clone();
+    spawn_progress_result_task(
+        move |progress_tx| {
+            let mut report_progress = move |progress: PasswordEntryWriteProgress| {
+                let _ = progress_tx.send(progress);
+            };
+            save_password_entry_with_progress(
+                &store_root,
+                &label,
+                &contents,
+                true,
+                &mut report_progress,
+            )
+        },
+        move |progress| {
+            if !is_opened_pass_file(&state_for_progress.nav, &pass_file_for_progress) {
+                return;
+            }
+            show_password_status_message(
+                &state_for_progress,
+                "Saving item",
+                &password_save_progress_description(&progress),
+            );
+        },
+        move |result| {
+            state_for_result.save.set_sensitive(true);
+            if !is_opened_pass_file(&state_for_result.nav, &pass_file_for_result) {
+                return;
+            }
+            handle_password_save_result(&state_for_result, &save_context, result);
+        },
+        move || {
+            state_for_disconnect.save.set_sensitive(true);
+            if is_opened_pass_file(&state_for_disconnect.nav, &pass_file_for_disconnect) {
+                show_password_editor_fields(&state_for_disconnect);
+            }
+            log_error("Password save worker disconnected unexpectedly.".to_string());
+            state_for_disconnect
+                .overlay
+                .add_toast(Toast::new(&gettext("Couldn't save changes.")));
+        },
+    );
+}
+
 pub fn open_password_entry_page(
     state: &PasswordPageState,
     opened_pass_file: OpenPassFile,
@@ -223,9 +376,16 @@ pub fn open_password_entry_page(
 ) {
     let pass_label = opened_pass_file.label();
     let store_for_thread = opened_pass_file.store_path().to_string();
+    let fido2_recipient_count =
+        password_entry_fido2_recipient_count(opened_pass_file.store_path(), &pass_label);
     set_opened_pass_file(&state.nav, opened_pass_file.clone());
 
-    show_password_loading_state(state, opened_pass_file.title(), &pass_label);
+    show_password_loading_state(
+        state,
+        opened_pass_file.title(),
+        &pass_label,
+        fido2_recipient_count,
+    );
     if push_page {
         push_navigation_page_if_needed(&state.nav, &state.page);
     }
@@ -234,9 +394,30 @@ pub fn open_password_entry_page(
     let state_for_result = state.clone();
     let opened_pass_file_for_result = opened_pass_file.clone();
     let state_for_disconnect = state.clone();
-    let opened_pass_file_for_disconnect = opened_pass_file;
-    spawn_result_task(
-        move || read_password_entry(&store_for_thread, &label_for_thread),
+    let opened_pass_file_for_disconnect = opened_pass_file.clone();
+    let state_for_progress = state.clone();
+    let opened_pass_file_for_progress = opened_pass_file;
+    spawn_progress_result_task(
+        move |progress_tx| {
+            let mut report_progress = move |progress: PasswordEntryReadProgress| {
+                let _ = progress_tx.send(progress);
+            };
+            read_password_entry_with_progress(
+                &store_for_thread,
+                &label_for_thread,
+                &mut report_progress,
+            )
+        },
+        move |progress| {
+            if !is_opened_pass_file(&state_for_progress.nav, &opened_pass_file_for_progress) {
+                return;
+            }
+            show_password_status_message(
+                &state_for_progress,
+                "Opening item",
+                &password_open_progress_description(&progress),
+            );
+        },
         move |result| {
             if !is_opened_pass_file(&state_for_result.nav, &opened_pass_file_for_result) {
                 return;
@@ -462,29 +643,22 @@ fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_
     {
         return;
     }
-    let label = save_context.pass_file.label();
-    match save_password_entry(
+    let fido2_recipient_count = password_entry_fido2_recipient_count(
         save_context.pass_file.store_path(),
-        &label,
+        &save_context.pass_file.label(),
+    );
+    if fido2_recipient_count > 0 {
+        start_password_save_with_progress(state, save_context, fido2_recipient_count);
+        return;
+    }
+
+    let result = save_password_entry(
+        save_context.pass_file.store_path(),
+        &save_context.pass_file.label(),
         &save_context.contents,
         true,
-    ) {
-        Ok(()) => match renamed_pass_file_after_save(state, &save_context, &label) {
-            Ok(active_pass_file) => finish_password_save(state, &save_context, &active_pass_file),
-            Err(err) => {
-                log_error(format!("Failed to move password entry after save: {err}"));
-                state
-                    .overlay
-                    .add_toast(Toast::new(&gettext(err.rename_toast_message())));
-            }
-        },
-        Err(err) => {
-            log_error(format!("Failed to save password entry: {err}"));
-            state
-                .overlay
-                .add_toast(Toast::new(&gettext(password_save_failure_message(&err))));
-        }
-    }
+    );
+    handle_password_save_result(state, &save_context, result);
 }
 
 pub fn save_current_password_entry(state: &PasswordPageState) {
@@ -523,6 +697,11 @@ pub fn show_password_list_page(
         show_hidden,
         show_duplicates,
     );
+    if let Some(root) = state.list.root() {
+        if let Ok(window) = root.downcast::<adw::ApplicationWindow>() {
+            sync_tools_action_availability(&window);
+        }
+    }
 }
 
 pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
@@ -542,11 +721,16 @@ pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        password_open_failure_message, password_save_failure_message,
+        password_open_failure_message, password_open_progress_description,
+        password_open_status_copy, password_save_failure_message,
+        password_save_progress_description, password_save_status_copy, password_unlock_status_copy,
         prepared_password_save_contents, should_retry_open_password_entry,
         validate_password_save_contents, PasswordPageDisplay,
     };
-    use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+    use crate::backend::{
+        PasswordEntryError, PasswordEntryReadProgress, PasswordEntryWriteError,
+        PasswordEntryWriteProgress,
+    };
     use crate::password::model::{OpenPassFile, UsernameFallbackError};
     use crate::preferences::UsernameFallbackMode;
 
@@ -613,6 +797,91 @@ mod tests {
                 "locked".to_string(),
             )),
             "Unlock the key in Preferences."
+        );
+    }
+
+    #[test]
+    fn password_save_status_copy_mentions_touch_for_fido2_saves() {
+        assert_eq!(
+            password_save_status_copy(1),
+            (
+                "Saving item",
+                "Touch the security key if it starts blinking.",
+            )
+        );
+        assert_eq!(
+            password_save_status_copy(2),
+            ("Saving item", "Security keys will be checked one by one.",)
+        );
+        assert_eq!(
+            password_save_status_copy(0),
+            ("Saving item", "Please wait.")
+        );
+    }
+
+    #[test]
+    fn password_save_progress_description_shows_step_counts() {
+        assert_eq!(
+            password_save_progress_description(&PasswordEntryWriteProgress {
+                current_step: 2,
+                total_steps: 3,
+            }),
+            "Step 2 of 3: touch the security key if it starts blinking."
+        );
+    }
+
+    #[test]
+    fn password_open_progress_description_shows_step_counts() {
+        assert_eq!(
+            password_open_progress_description(&PasswordEntryReadProgress {
+                current_step: 1,
+                total_steps: 2,
+            }),
+            "Step 1 of 2: touch the security key if it starts blinking."
+        );
+    }
+
+    #[test]
+    fn password_open_status_copy_mentions_touch_for_fido2_entries() {
+        assert_eq!(
+            password_open_status_copy(2),
+            (
+                "Opening item",
+                "Touch each security key when it starts blinking.",
+            )
+        );
+        assert_eq!(
+            password_open_status_copy(1),
+            (
+                "Opening item",
+                "Touch the security key if it starts blinking.",
+            )
+        );
+        assert_eq!(
+            password_open_status_copy(0),
+            ("Opening item", "Please wait.")
+        );
+    }
+
+    #[test]
+    fn password_unlock_status_copy_mentions_touch_for_fido2_entries() {
+        assert_eq!(
+            password_unlock_status_copy(2),
+            (
+                "Unlock key",
+                "Touch each security key when it starts blinking."
+            )
+        );
+        assert_eq!(
+            password_unlock_status_copy(1),
+            (
+                "Unlock key",
+                "Touch the security key if it starts blinking."
+            )
+        );
+        assert_eq!(
+            password_unlock_status_copy(0),
+            ("Unlock key", "Unlock your key to continue.")
         );
     }
 

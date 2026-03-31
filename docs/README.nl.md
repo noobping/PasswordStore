@@ -8,6 +8,7 @@ Keycord is een GUI voor standaard [`pass`](https://www.passwordstore.org/) -opsl
 - [Zoekgids](search.md): gewoon zoeken, `reg` en `find`
 - [Werkstromen](workflows.md): bewerken, OTP, hulpmiddelen, sneltoetsen en onderhoud
 - [Machtigingen en backends](permissions-and-backends.md): Integrated vs Host, Flatpak-machtigingen, Git en sleutelsynchronisatie
+- [Het verhaal van geheimen](story-of-secrets.md): codegerichte rondgang door het maken van opslagen, versleuteling van items, ontgrendelpaden en kopieren naar het klembord
 - [Teams, werkgroepen en organisaties](teams-and-organizations.md): gedeelde opslagen, ontvangers, onboarding, offboarding en bootstrap-patronen
 - [Gebruiksscenario's](use-cases.md): veelvoorkomende opstellingen, van persoonlijk gebruik tot gedeelde opslagen en beheerwerk
 

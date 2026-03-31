@@ -23,12 +23,13 @@ const DOCS_EMPTY_TITLE: &str = "No matching docs";
 const DOCS_EMPTY_SUBTITLE: &str = "Try a different search term.";
 const INTERNAL_DOC_URI_SCHEME: &str = "keycord-doc:";
 
-const DOC_PATHS: [&str; 7] = [
+const DOC_PATHS: [&str; 8] = [
     "README.md",
     "getting-started.md",
     "search.md",
     "workflows.md",
     "permissions-and-backends.md",
+    "story-of-secrets.md",
     "teams-and-organizations.md",
     "use-cases.md",
 ];

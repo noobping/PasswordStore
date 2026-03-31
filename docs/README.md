@@ -8,6 +8,7 @@ Keycord is a GUI for standard [`pass`](https://www.passwordstore.org/) stores. I
 - [Search Guide](search.md): plain search, `reg`, and `find`
 - [Workflows](workflows.md): editing, OTP, tools, shortcuts, and maintenance
 - [Permissions and Backends](permissions-and-backends.md): Integrated vs Host, Flatpak permissions, Git, and key sync
+- [Story of Secrets](story-of-secrets.md): code-oriented walkthrough of store creation, entry encryption, unlock paths, and clipboard copy
 - [Teams and Organizations](teams-and-organizations.md): shared stores, recipients, onboarding, offboarding, and bootstrap patterns
 - [Use Cases](use-cases.md): common setups from personal use to shared stores and admin work
 

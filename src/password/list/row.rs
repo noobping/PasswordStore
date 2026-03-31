@@ -18,8 +18,8 @@ use crate::preferences::Preferences;
 use crate::store::labels::{shortened_store_label_for_path, shortened_store_labels};
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, set_cloned_data, set_string_data};
-use crate::support::uri::launch_default_uri;
 use crate::support::ui::{dim_label_icon, flat_icon_button, flat_icon_button_with_tooltip};
+use crate::support::uri::launch_default_uri;
 use crate::window::create_main_window;
 use adw::gio::{Menu, SimpleAction, SimpleActionGroup};
 use adw::gtk::{

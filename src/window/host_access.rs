@@ -180,7 +180,7 @@ fn ensure_optional_fido2_access_row(list: &ListBox, overlay: &ToastOverlay) -> A
         FLATPAK_FIDO2_OVERRIDE_COMMAND,
     );
     row.set_widget_name(OPTIONAL_FIDO2_ACCESS_ROW_NAME);
-    list.prepend(&row);
+    list.append(&row);
     row
 }
 

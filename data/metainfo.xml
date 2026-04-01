@@ -37,7 +37,7 @@
       <li>Optionally sync with Git</li>
       <li>Optionally sync with the system keyring</li>
       <li>Optionally use layered encryption</li>
-      <li>Use password-protected or hardware-backed OpenPGP private keys, plus FIDO2 recipients</li>
+      <li>Use password-protected or hardware-backed OpenPGP private keys</li>
       <li>Manage recipients and private keys</li>
       <li>Sign commits and manage Git remotes</li>
     </ul>
@@ -75,6 +75,14 @@
   </screenshots>
 
   <releases>
+    <release version="0.9.8" date="2026-04-01">
+      <description>
+        <ul>
+          <li>Removed the FIDO2 backed password stores feature from the flatpak app. Contact me if you want it back.</li>
+          <li>Added FIDO2-protected OpenPGP keys.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.9.7" date="2026-03-31">
       <description>
         <ul>
@@ -94,7 +102,7 @@
     <release version="0.9.5" date="2026-03-29">
       <description>
         <p>
-          Add FIDO2 recipient support
+          Add experimental FIDO2 support
         </p>
       </description>
     </release>

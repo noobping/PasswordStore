@@ -1,8 +1,8 @@
 [package]
 name = "keycord"
 description = "Browse and edit password stores"
-authors = ["noobping"]
-version = "0.9.7"
+authors = ["noobping <hello@noobping.dev>"]
+version = "0.9.8"
 edition = "2021"
 license = "GPL-3.0-only"
 homepage = "https://github.com/noobping/keycord"

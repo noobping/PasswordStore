@@ -128,5 +128,13 @@
         Keep app-managed private keys aligned with the host GPG keyring when host access is available.
       </description>
     </key>
+
+    <key name="hidden-notices" type="as">
+      <default>[]</default>
+      <summary>Hidden notices</summary>
+      <description>
+        Notice identifiers that should stay hidden after being dismissed.
+      </description>
+    </key>
   </schema>
 </schemalist>

@@ -1,4 +1,6 @@
 use crate::i18n::gettext;
+use crate::logging::log_error;
+use crate::preferences::Preferences;
 use adw::glib::object::IsA;
 use adw::gtk::{
     Align, Box as GtkBox, Button, Image, ListBox, ListBoxRow, Orientation, PolicyType,
@@ -96,6 +98,22 @@ pub fn flat_icon_button_with_tooltip(icon_name: &str, tooltip: &str) -> Button {
     let tooltip = gettext(tooltip);
     button.set_tooltip_text(Some(&tooltip));
     button
+}
+
+pub fn add_persistent_hide_button(row: &ActionRow, notice_id: &str, on_hide: impl Fn() + 'static) {
+    let button = flat_icon_button_with_tooltip("window-close-symbolic", "Hide permanently");
+    row.add_suffix(&button);
+
+    let row = row.clone();
+    let notice_id = notice_id.to_string();
+    let on_hide = Rc::new(on_hide);
+    button.connect_clicked(move |_| {
+        if let Err(err) = Preferences::new().hide_notice(&notice_id) {
+            log_error(format!("Failed to hide notice '{notice_id}': {err}"));
+        }
+        row.set_visible(false);
+        on_hide();
+    });
 }
 
 pub fn dim_label_icon(icon_name: &str) -> Image {

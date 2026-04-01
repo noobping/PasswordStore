@@ -24,7 +24,8 @@ use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::store::git_page::rebuild_store_recipients_git_row;
 use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
-    append_info_row, clear_list_box, dim_label_icon, flat_icon_button_with_tooltip,
+    add_persistent_hide_button, append_info_row, clear_list_box, dim_label_icon,
+    flat_icon_button_with_tooltip,
 };
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
@@ -65,6 +66,9 @@ enum PrivateKeyVerificationWarning {
     HostInspectionFailed,
     SyncDisabled,
 }
+
+const HOST_GPG_WARNING_NOTICE_ID: &str = "store-recipients-host-gpg-warning";
+const ALL_FIDO2_KEYS_REQUIRED_NOTICE_ID: &str = "store-recipients-all-fido2-keys-required";
 
 impl PrivateKeyVerificationWarning {
     const fn title(self) -> &'static str {
@@ -399,10 +403,12 @@ fn sync_private_key_requirement_row(
     has_keys: bool,
     selected_fido2_keys: usize,
 ) {
-    let uses_integrated_backend = Preferences::new().uses_integrated_backend();
+    let preferences = Preferences::new();
+    let uses_integrated_backend = preferences.uses_integrated_backend();
     let show_require_all = show_require_all_private_keys_option(selection_mode, has_keys);
     let show_all_fido2_required =
-        show_all_fido2_keys_required_info(selection_mode, selected_fido2_keys);
+        show_all_fido2_keys_required_info(selection_mode, selected_fido2_keys)
+            && !preferences.is_notice_hidden(ALL_FIDO2_KEYS_REQUIRED_NOTICE_ID);
     let show_store_options_title = show_store_options_title_above_git_row(
         show_require_all,
         state.platform.git_group.is_visible(),
@@ -518,6 +524,8 @@ fn sync_private_key_verification_warning(
     warning: Option<PrivateKeyVerificationWarning>,
 ) {
     let warning = effective_private_key_verification_warning(selection_mode, warning);
+    let show_warning =
+        warning.is_some() && !Preferences::new().is_notice_hidden(HOST_GPG_WARNING_NOTICE_ID);
 
     if let Some(warning) = warning {
         state
@@ -532,7 +540,7 @@ fn sync_private_key_verification_warning(
     state
         .platform
         .host_gpg_warning_group
-        .set_visible(warning.is_some());
+        .set_visible(show_warning);
 }
 
 pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPageState) {
@@ -555,6 +563,22 @@ pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPag
             queue_store_recipients_autosave(&page_state);
         }
     });
+}
+
+pub(super) fn connect_dismissible_notice_controls(state: &StoreRecipientsPageState) {
+    let host_warning_group = state.platform.host_gpg_warning_group.clone();
+    add_persistent_hide_button(
+        &state.platform.host_gpg_warning_row,
+        HOST_GPG_WARNING_NOTICE_ID,
+        move || host_warning_group.set_visible(false),
+    );
+
+    let fido2_info_group = state.platform.fido2_info_group.clone();
+    add_persistent_hide_button(
+        &state.platform.all_fido2_keys_required_row,
+        ALL_FIDO2_KEYS_REQUIRED_NOTICE_ID,
+        move || fido2_info_group.set_visible(false),
+    );
 }
 
 fn merge_available_private_keys(

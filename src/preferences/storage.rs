@@ -19,6 +19,7 @@ pub(super) struct PreferenceFile {
     pub(super) password_list_sort_mode: Option<PasswordListSortMode>,
     pub(super) ripasso_own_fingerprint: Option<String>,
     pub(super) sync_private_keys_with_host: Option<bool>,
+    pub(super) hidden_notices: Option<Vec<String>>,
 }
 
 fn config_path() -> PathBuf {

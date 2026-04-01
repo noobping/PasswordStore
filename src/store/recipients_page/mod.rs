@@ -160,6 +160,7 @@ pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
     import::connect_private_key_import_controls(state);
     generate::connect_private_key_generate_controls(state);
     list::connect_private_key_requirement_control(state);
+    list::connect_dismissible_notice_controls(state);
     generate::connect_private_key_generation_autofill(state);
     generate::connect_private_key_generation_submit(state);
 }

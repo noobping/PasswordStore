@@ -162,6 +162,17 @@ impl Preferences {
         value.filter(|value| *value > 0).unwrap_or(default)
     }
 
+    fn normalized_hidden_notices(notices: Vec<String>) -> Vec<String> {
+        let mut notices = notices
+            .into_iter()
+            .map(|notice| notice.trim().to_string())
+            .filter(|notice| !notice.is_empty())
+            .collect::<Vec<_>>();
+        notices.sort();
+        notices.dedup();
+        notices
+    }
+
     pub fn store_roots(&self) -> Vec<String> {
         self.stores()
             .into_iter()
@@ -382,6 +393,44 @@ impl Preferences {
             |cfg| cfg.sync_private_keys_with_host = Some(enabled),
         )
     }
+
+    pub fn hidden_notices(&self) -> Vec<String> {
+        Self::normalized_hidden_notices(self.read_preference(
+            |settings| {
+                settings
+                    .strv("hidden-notices")
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect()
+            },
+            |cfg| cfg.hidden_notices.clone().unwrap_or_default(),
+        ))
+    }
+
+    pub fn is_notice_hidden(&self, notice_id: &str) -> bool {
+        let notice_id = notice_id.trim();
+        !notice_id.is_empty()
+            && self
+                .hidden_notices()
+                .iter()
+                .any(|hidden| hidden == notice_id)
+    }
+
+    pub fn hide_notice(&self, notice_id: &str) -> Result<(), BoolError> {
+        let notice_id = notice_id.trim();
+        if notice_id.is_empty() {
+            return Ok(());
+        }
+
+        let mut hidden_notices = self.hidden_notices();
+        hidden_notices.push(notice_id.to_string());
+        let hidden_notices = Self::normalized_hidden_notices(hidden_notices);
+        let settings_hidden_notices = hidden_notices.clone();
+        self.write_preference(
+            |settings| settings.set_strv("hidden-notices", settings_hidden_notices.clone()),
+            |cfg| cfg.hidden_notices = Some(hidden_notices),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -514,6 +563,19 @@ mod tests {
         assert_eq!(
             PasswordListSortMode::from_stored("store-path"),
             PasswordListSortMode::StorePath
+        );
+    }
+
+    #[test]
+    fn hidden_notice_ids_are_normalized() {
+        assert_eq!(
+            Preferences::normalized_hidden_notices(vec![
+                " store-warning ".to_string(),
+                "".to_string(),
+                "store-warning".to_string(),
+                "usb-permission".to_string(),
+            ]),
+            vec!["store-warning".to_string(), "usb-permission".to_string()]
         );
     }
 

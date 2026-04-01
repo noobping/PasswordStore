@@ -2,11 +2,13 @@
 use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
+use crate::preferences::Preferences;
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::{
     has_fido2_permission, has_host_permission, has_smartcard_permission,
 };
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
-use crate::support::ui::flat_icon_button_with_tooltip;
+use crate::support::ui::{add_persistent_hide_button, flat_icon_button_with_tooltip};
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use adw::gtk::ListBox;
 use adw::prelude::*;
@@ -36,6 +38,12 @@ const FIDO2_PERMISSION_REQUIRED_TOOLTIP: &str = "Grant USB security key access f
 const OPTIONAL_FIDO2_ACCESS_ROW_NAME: &str = "keycord-optional-fido2-access-row";
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 const OPTIONAL_SMARTCARD_ACCESS_ROW_NAME: &str = "keycord-optional-smartcard-access-row";
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+const OPTIONAL_HOST_ACCESS_NOTICE_ID: &str = "optional-host-access";
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+const OPTIONAL_SMARTCARD_ACCESS_NOTICE_ID: &str = "optional-smartcard-access";
+#[cfg(all(target_os = "linux", feature = "flatpak"))]
+const OPTIONAL_FIDO2_ACCESS_NOTICE_ID: &str = "optional-fido2-access";
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn build_optional_permission_row(
@@ -69,7 +77,8 @@ fn build_optional_permission_row(
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 fn build_optional_host_access_row(overlay: &ToastOverlay) -> Option<ActionRow> {
-    if has_host_permission() {
+    if has_host_permission() || Preferences::new().is_notice_hidden(OPTIONAL_HOST_ACCESS_NOTICE_ID)
+    {
         return None;
     }
 
@@ -85,6 +94,10 @@ fn build_optional_host_access_row(overlay: &ToastOverlay) -> Option<ActionRow> {
 pub fn append_optional_host_access_group_row(group: &PreferencesGroup, overlay: &ToastOverlay) {
     group.set_visible(false);
     if let Some(row) = build_optional_host_access_row(overlay) {
+        let group_for_hide = group.clone();
+        add_persistent_hide_button(&row, OPTIONAL_HOST_ACCESS_NOTICE_ID, move || {
+            group_for_hide.set_visible(false);
+        });
         group.add(&row);
         group.set_visible(true);
     }
@@ -93,6 +106,7 @@ pub fn append_optional_host_access_group_row(group: &PreferencesGroup, overlay: 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 pub fn append_optional_host_access_row(list: &ListBox, overlay: &ToastOverlay) {
     if let Some(row) = build_optional_host_access_row(overlay) {
+        add_persistent_hide_button(&row, OPTIONAL_HOST_ACCESS_NOTICE_ID, || {});
         list.prepend(&row);
     }
 }
@@ -111,7 +125,9 @@ pub fn append_optional_smartcard_access_row(
         row.set_tooltip_text((enabled && !granted).then_some(blocked_tooltip.as_str()));
     }
 
-    let show_permission_row = enabled && !granted;
+    let show_permission_row = enabled
+        && !granted
+        && !Preferences::new().is_notice_hidden(OPTIONAL_SMARTCARD_ACCESS_NOTICE_ID);
     if let Some(row) = find_optional_permission_row(list, OPTIONAL_SMARTCARD_ACCESS_ROW_NAME) {
         row.set_visible(show_permission_row);
     }
@@ -141,7 +157,9 @@ pub fn append_optional_fido2_access_row(
         row.set_tooltip_text((!enabled || !granted).then_some(blocked_tooltip.as_str()));
     }
 
-    let show_permission_row = enabled && !granted;
+    let show_permission_row = enabled
+        && !granted
+        && !Preferences::new().is_notice_hidden(OPTIONAL_FIDO2_ACCESS_NOTICE_ID);
     if let Some(row) = find_optional_permission_row(list, OPTIONAL_FIDO2_ACCESS_ROW_NAME) {
         row.set_visible(show_permission_row);
     }
@@ -180,6 +198,7 @@ fn ensure_optional_fido2_access_row(list: &ListBox, overlay: &ToastOverlay) -> A
         FLATPAK_FIDO2_OVERRIDE_COMMAND,
     );
     row.set_widget_name(OPTIONAL_FIDO2_ACCESS_ROW_NAME);
+    add_persistent_hide_button(&row, OPTIONAL_FIDO2_ACCESS_NOTICE_ID, || {});
     list.append(&row);
     row
 }
@@ -197,6 +216,7 @@ fn ensure_optional_smartcard_access_row(list: &ListBox, overlay: &ToastOverlay) 
         FLATPAK_SMARTCARD_OVERRIDE_COMMAND,
     );
     row.set_widget_name(OPTIONAL_SMARTCARD_ACCESS_ROW_NAME);
+    add_persistent_hide_button(&row, OPTIONAL_SMARTCARD_ACCESS_NOTICE_ID, || {});
     list.prepend(&row);
     row
 }

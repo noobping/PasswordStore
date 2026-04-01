@@ -8,7 +8,9 @@ pub use self::clone::prompt_store_clone;
 pub use self::import::{
     initialize_store_import_page, schedule_store_import_row, StoreImportPageState,
 };
-use super::recipients::{read_store_recipients, store_recipients_subtitle};
+use super::recipients::{
+    read_store_recipients, store_is_supported_in_current_build, store_recipients_subtitle,
+};
 pub use super::recipients_page::{
     connect_store_recipients_controls, register_store_recipients_reload_action,
     register_store_recipients_save_action, show_store_recipients_create_page,
@@ -181,13 +183,19 @@ fn append_store_row(
     store: &str,
     recipients_page: &StoreRecipientsPageState,
 ) {
+    let store_supported = store_is_supported_in_current_build(store);
     let row = ActionRow::builder()
         .title(store)
         .subtitle(store_recipients_subtitle(store))
         .build();
-    row.set_activatable(true);
+    row.set_activatable(store_supported);
 
-    row.add_suffix(&dim_label_icon("go-next-symbolic"));
+    if store_supported {
+        row.add_suffix(&dim_label_icon("go-next-symbolic"));
+    }
+    if !store_supported {
+        row.add_prefix(&dim_label_icon("dialog-warning-symbolic"));
+    }
 
     let delete_button = flat_icon_button("window-close-symbolic");
     row.add_suffix(&delete_button);

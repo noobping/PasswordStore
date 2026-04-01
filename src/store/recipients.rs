@@ -4,12 +4,14 @@ use crate::fido2_recipient::{
     parse_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME,
 };
 use crate::i18n::gettext;
+use crate::support::runtime::supports_fidostore_features;
 use std::fs;
 use std::path::Path;
 #[cfg(test)]
 use std::{cell::RefCell, rc::Rc};
 
 const REQUIRE_ALL_PRIVATE_KEYS_METADATA: &str = "keycord-private-key-requirement=all";
+pub const UNSUPPORTED_FIDOSTORE_MESSAGE: &str = "This build doesn't support FIDO-backed stores.";
 
 pub fn read_store_standard_recipients(store_root: &str) -> Vec<String> {
     let path = Path::new(store_root).join(".gpg-id");
@@ -39,6 +41,10 @@ pub fn store_uses_fido2_recipients(store_root: &str) -> bool {
     !read_store_fido2_recipients(store_root).is_empty()
 }
 
+pub fn store_is_supported_in_current_build(store_root: &str) -> bool {
+    supports_fidostore_features() || !store_uses_fido2_recipients(store_root)
+}
+
 pub fn read_store_private_key_requirement(
     store_root: &str,
 ) -> StoreRecipientsPrivateKeyRequirement {
@@ -62,6 +68,10 @@ pub fn read_store_private_key_requirement(
 }
 
 pub fn store_recipients_subtitle(store_root: &str) -> String {
+    if !store_is_supported_in_current_build(store_root) {
+        return gettext(UNSUPPORTED_FIDOSTORE_MESSAGE);
+    }
+
     let recipients = read_store_recipients(store_root);
     match recipients.len() {
         0 => gettext("No recipients set"),
@@ -186,10 +196,12 @@ pub fn stores_with_preferred_first(stores: &[String], preferred: &str) -> Vec<St
 mod tests {
     use super::{
         append_standard_recipients, normalize_standard_recipient, parse_fido2_recipients,
-        parse_standard_recipients, split_store_recipients, store_uses_fido2_recipients,
-        stores_with_preferred_first,
+        parse_standard_recipients, split_store_recipients, store_is_supported_in_current_build,
+        store_recipients_subtitle, store_uses_fido2_recipients, stores_with_preferred_first,
+        UNSUPPORTED_FIDOSTORE_MESSAGE,
     };
     use crate::backend::StoreRecipients;
+    use crate::i18n::gettext;
     use std::{
         cell::RefCell,
         fs,
@@ -321,6 +333,58 @@ mod tests {
         assert!(store_uses_fido2_recipients(
             store_root.to_str().expect("utf8 temp path")
         ));
+
+        let _ = fs::remove_dir_all(store_root);
+    }
+
+    #[test]
+    fn store_support_matches_the_fidostore_feature_flag() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let store_root = std::env::temp_dir().join(format!("keycord-store-support-{unique}"));
+        fs::create_dir_all(&store_root).expect("store root should be created");
+        fs::write(
+            store_root.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+        )
+        .expect("fido2 recipients file should be written");
+
+        assert_eq!(
+            store_is_supported_in_current_build(store_root.to_str().expect("utf8 temp path")),
+            crate::support::runtime::supports_fidostore_features()
+        );
+
+        let _ = fs::remove_dir_all(store_root);
+    }
+
+    #[test]
+    fn unsupported_fido_store_subtitle_explains_the_build_limit() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let store_root =
+            std::env::temp_dir().join(format!("keycord-store-subtitle-unsupported-{unique}"));
+        fs::create_dir_all(&store_root).expect("store root should be created");
+        fs::write(
+            store_root.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+        )
+        .expect("fido2 recipients file should be written");
+
+        if crate::support::runtime::supports_fidostore_features() {
+            assert_ne!(
+                store_recipients_subtitle(store_root.to_str().expect("utf8 temp path")),
+                gettext(UNSUPPORTED_FIDOSTORE_MESSAGE)
+            );
+        } else {
+            assert_eq!(
+                store_recipients_subtitle(store_root.to_str().expect("utf8 temp path")),
+                gettext(UNSUPPORTED_FIDOSTORE_MESSAGE)
+            );
+        }
 
         let _ = fs::remove_dir_all(store_root);
     }

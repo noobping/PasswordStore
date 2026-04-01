@@ -1,5 +1,6 @@
 use crate::password::entry_files::label_from_password_entry_path;
 use crate::preferences::{PasswordListSortMode, Preferences, UsernameFallbackMode};
+use crate::store::recipients::store_is_supported_in_current_build;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -261,6 +262,10 @@ pub fn collect_all_password_items_with_options(options: CollectItemsOptions) -> 
     let len = roots.len();
     while i < len {
         let base = &roots[i];
+        if !store_is_supported_in_current_build(&base.to_string_lossy()) {
+            i += 1;
+            continue;
+        }
         let _ = collect_items_in_dir(base.as_path(), base.as_path(), &mut result, options);
         i += 1;
     }

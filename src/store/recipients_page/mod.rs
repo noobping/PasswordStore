@@ -1,4 +1,7 @@
-use super::recipients::{read_store_private_key_requirement, read_store_recipients};
+use super::recipients::{
+    read_store_private_key_requirement, read_store_recipients, store_is_supported_in_current_build,
+    UNSUPPORTED_FIDOSTORE_MESSAGE,
+};
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
@@ -11,7 +14,7 @@ use adw::gtk::{Button, CheckButton, ListBox, ScrolledWindow, Stack};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
-    PasswordEntryRow, PreferencesGroup, StatusPage, ToastOverlay, WindowTitle,
+    PasswordEntryRow, PreferencesGroup, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -244,6 +247,14 @@ pub fn show_store_recipients_create_page(
 
 pub fn show_store_recipients_edit_page(state: &StoreRecipientsPageState, store: impl Into<String>) {
     let store = store.into();
+    if !store_is_supported_in_current_build(&store) {
+        state
+            .platform
+            .overlay
+            .add_toast(Toast::new(&gettext(UNSUPPORTED_FIDOSTORE_MESSAGE)));
+        return;
+    }
+
     show_store_recipients_page(
         state,
         StoreRecipientsRequest::edit(store.clone()),

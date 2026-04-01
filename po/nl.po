@@ -10,7 +10,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/store/recipients.rs:68
+#: src/store/recipients.rs:78
 msgid "1 recipient"
 msgstr "1 ontvanger"
 
@@ -22,7 +22,7 @@ msgstr "1 remote geconfigureerd."
 msgid "<a href=\"{}\">{}</a>"
 msgstr "<a href=\"{}\">{}</a>"
 
-#: src/backend/integrated/keys/fido2.rs:822
+#: src/backend/integrated/keys/fido2.rs:1037
 msgid "A FIDO2 security key for this item is locked. Unlock it in Preferences."
 msgstr ""
 "Een FIDO2-beveiligingssleutel voor dit item is vergrendeld. Ontgrendel die "
@@ -41,7 +41,7 @@ msgid "A private key for this item is locked."
 msgstr "Een privésleutel voor dit item is vergrendeld."
 
 #: src/backend/integrated/entries.rs:112
-#: src/backend/integrated/keys/store.rs:38
+#: src/backend/integrated/keys/store.rs:43
 msgid "A private key for this item is locked. Unlock it in Preferences."
 msgstr ""
 "Een privésleutel voor dit item is vergrendeld. Ontgrendel die in Voorkeuren."
@@ -66,11 +66,7 @@ msgstr "ActivateResult"
 msgid "Add"
 msgstr "Toevoegen"
 
-#: data/metainfo.xml:88
-msgid "Add FIDO2 recipient support"
-msgstr "Voeg ondersteuning voor FIDO2-ontvangers toe"
-
-#: data/window.ui:1284 src/store/recipients_page/import.rs:406
+#: data/window.ui:1290 src/store/recipients_page/import.rs:398
 msgid "Add FIDO2 security key"
 msgstr "FIDO2-beveiligingssleutel toevoegen"
 
@@ -82,7 +78,7 @@ msgstr "OTP toevoegen"
 msgid "Add OTP field"
 msgstr "OTP-veld toevoegen"
 
-#: data/metainfo.xml:110
+#: data/metainfo.xml:126
 msgid "Add OpenPGP hardware key support for private keys"
 msgstr "Voeg OpenPGP-hardwaresleutelondersteuning voor privésleutels toe"
 
@@ -115,7 +111,7 @@ msgstr "Voeg eerst een opslagmap toe."
 msgid "Add a store to use pass import."
 msgstr "Voeg een opslag toe om pass import te gebruiken."
 
-#: data/metainfo.xml:130
+#: data/metainfo.xml:146
 msgid "Add advanced search"
 msgstr "Voeg geavanceerd zoeken toe"
 
@@ -123,7 +119,7 @@ msgstr "Voeg geavanceerd zoeken toe"
 msgid "Add an OTP secret field"
 msgstr "Voeg een OTP-geheimveld toe"
 
-#: src/store/management.rs:146
+#: src/store/management.rs:148
 msgid "Add an existing folder or create a new store."
 msgstr "Voeg een bestaande map toe of maak een nieuwe opslag."
 
@@ -139,15 +135,19 @@ msgstr "Voeg ontbrekende velden uit het opgeslagen sjabloon toe"
 msgid "Add at least one remote before syncing."
 msgstr "Voeg minstens één remote toe voordat je synchroniseert."
 
-#: data/metainfo.xml:101
+#: data/metainfo.xml:117
 msgid "Add documentation"
 msgstr "Voeg documentatie toe"
+
+#: data/metainfo.xml:104
+msgid "Add experimental FIDO2 support"
+msgstr "Experimentele FIDO2-ondersteuning toevoegen"
 
 #: data/window.ui:426
 msgid "Add field"
 msgstr "Veld toevoegen"
 
-#: data/window.ui:1312
+#: data/window.ui:1332
 msgid "Add hardware key"
 msgstr "Hardwaresleutel toevoegen"
 
@@ -155,7 +155,7 @@ msgstr "Hardwaresleutel toevoegen"
 msgid "Add new item"
 msgstr "Nieuw item toevoegen"
 
-#: data/metainfo.xml:131
+#: data/metainfo.xml:147
 msgid "Add optional GPG synchronization"
 msgstr "Voeg optionele GPG-synchronisatie toe"
 
@@ -163,11 +163,11 @@ msgstr "Voeg optionele GPG-synchronisatie toe"
 msgid "Add or create password store"
 msgstr "Wachtwoordopslag toevoegen of maken"
 
-#: data/shortcuts.ui:129 src/store/management.rs:234
+#: data/shortcuts.ui:129 src/store/management.rs:242
 msgid "Add or create store"
 msgstr "Opslag toevoegen of maken"
 
-#: src/window/tools/menu.rs:87
+#: src/window/tools/menu.rs:93
 msgid "Add or remove this build from the local app menu."
 msgstr "Voeg deze build toe aan het lokale appmenu of verwijder hem daaruit."
 
@@ -183,11 +183,11 @@ msgstr "Git-remote voor wachtwoordopslag toevoegen"
 msgid "Add remote"
 msgstr "Remote toevoegen"
 
-#: data/metainfo.xml:102
+#: data/metainfo.xml:118
 msgid "Add search profider"
 msgstr "Voeg zoekprovider toe"
 
-#: data/metainfo.xml:119
+#: data/metainfo.xml:135
 msgid "Add the option to copy the logs"
 msgstr "Voeg de optie toe om de logboeken te kopiëren"
 
@@ -195,9 +195,17 @@ msgstr "Voeg de optie toe om de logboeken te kopiëren"
 msgid "Add to app menu"
 msgstr "Aan appmenu toevoegen"
 
-#: data/metainfo.xml:129
+#: data/metainfo.xml:145
 msgid "Add tools page"
 msgstr "Voeg een hulpmiddelenpagina toe"
+
+#: data/metainfo.xml:90
+msgid "Added FIDO2 guides and progress indicators."
+msgstr "FIDO2-handleidingen en voortgangsindicatoren toegevoegd."
+
+#: data/metainfo.xml:82
+msgid "Added FIDO2-protected OpenPGP keys."
+msgstr "Met FIDO2 beveiligde OpenPGP-sleutels toegevoegd."
 
 #: src/password/page/mod.rs:563
 msgid "Added missing template fields."
@@ -219,19 +227,19 @@ msgstr "Hardwaresleutel toevoegen"
 msgid "Alice Work <alice@work.example>"
 msgstr "Alice Work <alice@work.example>"
 
-#: data/window.ui:1228
+#: data/window.ui:1234
 msgid "All security keys are required"
 msgstr "Alle beveiligingssleutels zijn vereist"
 
-#: src/window/host_access.rs:178
+#: src/window/host_access.rs:196
 msgid "Allow USB security key access"
 msgstr "Sta toegang tot USB-beveiligingssleutels toe"
 
-#: src/window/host_access.rs:78
+#: src/window/host_access.rs:87
 msgid "Allow access to apps on this device"
 msgstr "Toegang tot apps op dit apparaat toestaan"
 
-#: src/window/host_access.rs:195
+#: src/window/host_access.rs:214
 msgid "Allow smartcard access"
 msgstr "Smartcardtoegang toestaan"
 
@@ -241,11 +249,11 @@ msgstr "Er bestaat al een item met die naam."
 
 #: src/support/runtime.rs:18
 msgid ""
-"App runtime: debug={}, setup={}, flatpak={}, host-access={}, smartcard={}, "
-"fido={}."
+"App runtime: debug={}, setup={}, flatpak={}, docs={}, host-access={}, "
+"smartcard={}, fidostore={}, fidokey={}."
 msgstr ""
-"App-runtime: debug={}, setup={}, flatpak={}, host-toegang={}, smartcard={}, "
-"fido={}."
+"App-runtime: debug={}, setup={}, flatpak={}, docs={}, host-toegang={}, "
+"smartcard={}, fidostore={}, fidokey={}."
 
 #: data/window.ui:447
 msgid "Apply template"
@@ -275,7 +283,7 @@ msgstr "Backend"
 msgid "Bad locale path"
 msgstr "Ongeldig localepad"
 
-#: data/window.ui:1326
+#: data/window.ui:1346
 msgid "Bind a public key file to the connected hardware key."
 msgstr ""
 "Koppel een bestand met een publieke sleutel aan de verbonden hardwaresleutel."
@@ -290,11 +298,11 @@ msgid "Browse and edit password stores"
 msgstr "Wachtwoordopslagen bekijken en bewerken"
 
 #: src/window/navigation/restore.rs:122 src/window/navigation/restore.rs:129
-#: src/window/tools.rs:37 src/window/tools.rs:40
+#: src/window/tools.rs:38 src/window/tools.rs:41
 msgid "Browse field values"
 msgstr "Veldwaarden bekijken"
 
-#: src/window/tools.rs:41
+#: src/window/tools.rs:42
 msgid "Browse unique field values from the current list."
 msgstr "Bekijk unieke veldwaarden uit de huidige lijst."
 
@@ -308,15 +316,15 @@ msgstr "Lijst met pass-bestanden opbouwen vanuit je opslagen."
 msgid "Cancel"
 msgstr "Annuleren"
 
-#: data/metainfo.xml:81
+#: data/metainfo.xml:97
 msgid "Change the default to use the filename as the username."
 msgstr "Gebruik standaard de naam van het pass-bestand als gebruikersnaam."
 
-#: data/metainfo.xml:121
+#: data/metainfo.xml:137
 msgid "Changed the app icon to a keycord"
 msgstr "App-pictogram gewijzigd naar een sleutelkoord"
 
-#: data/window.ui:1628
+#: data/window.ui:1649
 msgid "Check for _Updates"
 msgstr "Controleren op _updates"
 
@@ -360,7 +368,7 @@ msgstr "Kies een bestand of map als de importeur er één nodig heeft."
 msgid "Choose a folder and restore it from a Git repository."
 msgstr "Kies een map en herstel die vanuit een Git-repository."
 
-#: src/store/management.rs:235
+#: src/store/management.rs:243
 msgid "Choose a folder. Empty folders become new stores."
 msgstr "Kies een map. Lege mappen worden nieuwe opslagen."
 
@@ -372,15 +380,15 @@ msgstr "Kies een lokaal bestand."
 msgid "Choose a local folder."
 msgstr "Kies een lokale map."
 
-#: data/window.ui:1353
-msgid "Choose a private key file."
-msgstr "Kies een privésleutelbestand."
+#: data/window.ui:1373
+msgid "Choose a private key file or FIDO2-protected private key file."
+msgstr "Kies een privésleutelbestand of een met FIDO2 beveiligd privésleutelbestand."
 
-#: src/password/list/row.rs:446 src/store/management/import.rs:377
+#: src/password/list/row.rs:446 src/store/management/import.rs:381
 msgid "Choose a store."
 msgstr "Kies een opslag."
 
-#: src/store/management/import.rs:388
+#: src/store/management/import.rs:392
 msgid "Choose an importer."
 msgstr "Kies een importeur."
 
@@ -396,15 +404,15 @@ msgstr ""
 msgid "Choose how pass files are ordered on the home page."
 msgstr "Kies hoe pass-bestanden op de startpagina worden geordend."
 
-#: src/store/management/import.rs:327
+#: src/store/management/import.rs:331
 msgid "Choose import source file"
 msgstr "Kies importbronbestand"
 
-#: src/store/management/import.rs:345
+#: src/store/management/import.rs:349
 msgid "Choose import source folder"
 msgstr "Kies importbronmap"
 
-#: src/store/management.rs:264
+#: src/store/management.rs:272
 msgid "Choose password store folder"
 msgstr "Kies map voor wachtwoordopslag"
 
@@ -442,11 +450,11 @@ msgstr "Lege velden wissen voor opslaan"
 msgid "Clear source path"
 msgstr "Bronpad wissen"
 
-#: src/store/recipients_page/import.rs:387
+#: src/store/recipients_page/import.rs:379
 msgid "Clipboard does not contain a key."
 msgstr "Het klembord bevat geen sleutel."
 
-#: src/clipboard.rs:22 src/store/recipients_page/import.rs:373
+#: src/clipboard.rs:22 src/store/recipients_page/import.rs:365
 msgid "Clipboard unavailable."
 msgstr "Klembord niet beschikbaar."
 
@@ -519,7 +527,7 @@ msgstr ""
 "Commit of verwerp lokale wijzigingen voordat je synchroniseert. Externe "
 "commits wachten ook op synchronisatie."
 
-#: data/window.ui:1506
+#: data/window.ui:1526
 msgid "Confirm password"
 msgstr "Wachtwoord bevestigen"
 
@@ -527,7 +535,7 @@ msgstr "Wachtwoord bevestigen"
 msgid "Connect a hardware key first."
 msgstr "Verbind eerst een hardwaresleutel."
 
-#: src/backend/errors.rs:61 src/backend/integrated/keys/fido2.rs:1262
+#: src/backend/errors.rs:61 src/backend/integrated/keys/fido2.rs:1542
 msgid "Connect only one FIDO2 security key before continuing."
 msgstr "Verbind slechts één FIDO2-beveiligingssleutel voordat je doorgaat."
 
@@ -551,47 +559,51 @@ msgstr "Verbind de hardwaresleutel en probeer het opnieuw."
 msgid "Connect the hardware key first."
 msgstr "Verbind eerst de hardwaresleutel."
 
-#: src/backend/integrated/keys/fido2.rs:752
+#: src/backend/integrated/keys/fido2.rs:817
 msgid "Connect the matching FIDO2 security key"
 msgstr "Verbind de bijpassende FIDO2-beveiligingssleutel"
 
 #: src/backend/errors.rs:49 src/backend/errors.rs:50
-#: src/backend/integrated/keys/fido2.rs:234
-#: src/backend/integrated/keys/fido2.rs:825
-#: src/backend/integrated/keys/fido2.rs:96
+#: src/backend/integrated/keys/fido2.rs:102
+#: src/backend/integrated/keys/fido2.rs:1040
+#: src/backend/integrated/keys/fido2.rs:243
 msgid "Connect the matching FIDO2 security key."
 msgstr "Verbind de bijpassende FIDO2-beveiligingssleutel."
 
-#: src/backend/integrated/keys/store.rs:704
+#: src/backend/integrated/keys/store.rs:1077
 msgid "Connect the matching hardware key before importing it."
 msgstr "the matching hardwaresleutel before importing it. verbinden"
 
-#: src/support/runtime.rs:150
+#: src/support/runtime.rs:161
 msgid "Context"
 msgstr "Context"
 
-#: src/clipboard.rs:164 src/window/host_access.rs:62
-#: src/window/tools/menu.rs:64
+#: src/clipboard.rs:164 src/window/host_access.rs:70
+#: src/window/tools/menu.rs:70
 msgid "Copied."
 msgstr "Gekopieerd."
+
+#: src/store/recipients_page/list.rs:909
+msgid "Copy FIDO2-protected private key"
+msgstr "Met FIDO2 beveiligde privésleutel kopiëren"
 
 #: data/window.ui:409
 msgid "Copy OTP"
 msgstr "OTP kopiëren"
 
-#: src/store/recipients_page/list.rs:789
+#: src/store/recipients_page/list.rs:905
 msgid "Copy armored private key"
 msgstr "Ge-armorde privésleutel kopiëren"
 
-#: src/store/recipients_page/list.rs:790
+#: src/store/recipients_page/list.rs:906
 msgid "Copy armored public key"
 msgstr "Ge-armorde publieke sleutel kopiëren"
 
-#: src/store/recipients_page/list.rs:831
+#: src/store/recipients_page/list.rs:951
 msgid "Copy fingerprint"
 msgstr "Vingerafdruk kopiëren"
 
-#: src/window/tools/menu.rs:47 src/window/tools/menu.rs:55
+#: src/window/tools/menu.rs:53 src/window/tools/menu.rs:61
 msgid "Copy logs"
 msgstr "Loguitvoer kopiëren"
 
@@ -603,11 +615,11 @@ msgstr "Wachtwoord kopiëren"
 msgid "Copy password to clipboard"
 msgstr "Wachtwoord naar klembord kopiëren"
 
-#: src/window/host_access.rs:55
+#: src/window/host_access.rs:63
 msgid "Copy permission command"
 msgstr "Machtigingsopdracht kopiëren"
 
-#: src/window/tools/menu.rs:48
+#: src/window/tools/menu.rs:54
 msgid "Copy recent app and command output to the clipboard."
 msgstr "Kopieer recente app- en opdrachtuitvoer naar het klembord."
 
@@ -623,16 +635,17 @@ msgstr "Gebruikersnaam kopiëren"
 msgid "Copy value"
 msgstr "Waarde kopiëren"
 
-#: src/backend/integrated/keys/store.rs:105
-#: src/backend/integrated/keys/store.rs:99
+#: src/backend/integrated/keys/store.rs:125
+#: src/backend/integrated/keys/store.rs:131
+#: src/backend/integrated/keys/store.rs:138
 msgid "Could not determine the data folder."
 msgstr "Kon de gegevensmap niet bepalen."
 
-#: src/backend/integrated/keys/store.rs:295
+#: src/backend/integrated/keys/store.rs:420
 msgid "Could not determine the home folder."
 msgstr "Kon de thuismap niet bepalen."
 
-#: src/store/management.rs:285 src/store/management/clone.rs:235
+#: src/store/management.rs:293 src/store/management/clone.rs:235
 #: src/window/git/enabled.rs:188
 msgid "Couldn't add that folder."
 msgstr "Kon add that map niet."
@@ -657,7 +670,7 @@ msgstr ""
 msgid "Couldn't check for updates."
 msgstr "Kon niet op updates controleren."
 
-#: src/store/recipients_page/export.rs:38
+#: src/store/recipients_page/export.rs:46
 msgid "Couldn't copy that key."
 msgstr "Kon die sleutel niet kopiëren."
 
@@ -665,12 +678,12 @@ msgstr "Kon die sleutel niet kopiëren."
 msgid "Couldn't copy the password."
 msgstr "Kon het wachtwoord niet kopiëren."
 
-#: src/store/recipients_page/mod.rs:55
+#: src/store/recipients_page/mod.rs:58
 msgid "Couldn't create the store."
 msgstr "Kon de opslag niet aanmaken."
 
-#: src/backend/integrated/keys/fido2.rs:1082
-#: src/backend/integrated/keys/fido2.rs:1085
+#: src/backend/integrated/keys/fido2.rs:1300
+#: src/backend/integrated/keys/fido2.rs:1303
 msgid "Couldn't decrypt the FIDO2-encrypted data."
 msgstr "Kon de met FIDO2 versleutelde gegevens niet ontsleutelen."
 
@@ -692,7 +705,7 @@ msgstr ""
 "Kon het applicatievenster voor de ontgrendeldialoog voor Git-ondertekening "
 "niet vinden."
 
-#: src/private_key/unlock.rs:177
+#: src/private_key/unlock.rs:309
 msgid "Couldn't find the application window for the private key unlock dialog."
 msgstr ""
 "Kon het applicatievenster voor de ontgrendeldialoog van de privésleutel niet "
@@ -702,12 +715,13 @@ msgstr ""
 msgid "Couldn't find the current window to open a new one."
 msgstr "Kon het huidige venster niet vinden om een nieuw venster te openen."
 
-#: src/store/recipients_page/generate.rs:114
-#: src/store/recipients_page/generate.rs:137
+#: src/store/recipients_page/generate.rs:115
+#: src/store/recipients_page/generate.rs:148
+#: src/store/recipients_page/generate.rs:204
 msgid "Couldn't generate the key."
 msgstr "Kon de sleutel niet genereren."
 
-#: src/store/management/import.rs:425 src/store/management/import.rs:449
+#: src/store/management/import.rs:430 src/store/management/import.rs:454
 msgid "Couldn't import passwords."
 msgstr "Kon wachtwoorden niet importeren."
 
@@ -724,7 +738,7 @@ msgstr "Kon Git-remotes niet inspecteren."
 msgid "Couldn't inspect Git state"
 msgstr "Kon Git-status niet inspecteren"
 
-#: data/window.ui:1202 src/store/recipients_page/list.rs:71
+#: data/window.ui:1208 src/store/recipients_page/list.rs:76
 msgid "Couldn't inspect host GPG keys"
 msgstr "Kon host-GPG-sleutels niet inspecteren"
 
@@ -737,7 +751,7 @@ msgid "Couldn't keep private keys synced. Sync was turned off."
 msgstr ""
 "Kon privésleutels niet synchroon houden. Synchronisatie is uitgeschakeld."
 
-#: src/store/recipients_page/list.rs:595
+#: src/store/recipients_page/list.rs:705
 msgid "Couldn't load private keys"
 msgstr "Kon privésleutels niet laden"
 
@@ -770,7 +784,7 @@ msgstr "Kon de mapkiezer niet openen."
 msgid "Couldn't open the folder."
 msgstr "Kon de map niet openen."
 
-#: src/store/management/import.rs:298
+#: src/store/management/import.rs:302
 msgid "Couldn't open the import page."
 msgstr "Kon de importpagina niet openen."
 
@@ -786,7 +800,7 @@ msgstr "Kon de link niet openen."
 msgid "Couldn't open the shortcuts window."
 msgstr "Kon het sneltoetsvenster niet openen."
 
-#: src/window/tools/unlock.rs:55
+#: src/window/tools/unlock.rs:56
 msgid "Couldn't prepare tool access."
 msgstr "Kon toegang tot hulpmiddelen niet voorbereiden."
 
@@ -799,11 +813,11 @@ msgstr ""
 "verdergegaan zonder handtekening."
 
 #: src/store/recipients_page/import.rs:303
-#: src/store/recipients_page/import.rs:357
+#: src/store/recipients_page/import.rs:353
 msgid "Couldn't read that file."
 msgstr "Kon dat bestand niet lezen."
 
-#: src/store/management.rs:274
+#: src/store/management.rs:282
 msgid "Couldn't read that folder."
 msgstr "Kon die map niet lezen."
 
@@ -811,11 +825,11 @@ msgstr "Kon die map niet lezen."
 msgid "Couldn't read that key."
 msgstr "Kon die sleutel niet lezen."
 
-#: src/store/recipients_page/import.rs:394
+#: src/store/recipients_page/import.rs:386
 msgid "Couldn't read the clipboard."
 msgstr "Kon het klembord niet lezen."
 
-#: src/store/recipients_page/list.rs:946
+#: src/store/recipients_page/list.rs:1066
 msgid "Couldn't remove that key."
 msgstr "Kon die sleutel niet verwijderen."
 
@@ -836,7 +850,7 @@ msgstr "Kon de opslag niet herstellen."
 msgid "Couldn't save changes."
 msgstr "Kon wijzigingen niet opslaan."
 
-#: src/store/recipients_page/mod.rs:56
+#: src/store/recipients_page/mod.rs:59
 msgid "Couldn't save store keys."
 msgstr "Kon opslagsleutels niet opslaan."
 
@@ -864,7 +878,7 @@ msgstr "Kon de opslag niet synchroniseren."
 msgid "Couldn't sync stores."
 msgstr "Kon opslagen niet synchroniseren."
 
-#: src/password/undo.rs:60 src/password/undo.rs:87 src/window/controls.rs:342
+#: src/password/undo.rs:60 src/password/undo.rs:87 src/window/controls.rs:344
 msgid "Couldn't undo the last change."
 msgstr "Kon de laatste wijziging niet ongedaan maken."
 
@@ -885,17 +899,21 @@ msgid "Couldn't unlock the hardware key."
 msgstr "Kon de hardwaresleutel niet ontgrendelen."
 
 #: src/backend/errors.rs:422 src/backend/errors.rs:446
-#: src/private_key/unlock.rs:22
+#: src/private_key/unlock.rs:25
 msgid "Couldn't unlock the key."
 msgstr "Kon de sleutel niet ontgrendelen."
 
-#: src/window/tools/menu.rs:101
+#: src/window/tools/menu.rs:107
 msgid "Couldn't update the app menu."
 msgstr "Kon het appmenu niet bijwerken."
 
 #: src/password/otp/mod.rs:145
 msgid "Couldn't update the code."
 msgstr "Kon de code niet bijwerken."
+
+#: data/window.ui:1319
+msgid "Create a new FIDO2-protected key."
+msgstr "Maak een nieuwe met FIDO2 beveiligde sleutel."
 
 #: src/password/list/placeholder.rs:170 src/password/list/placeholder.rs:37
 msgid "Create a new item to get started."
@@ -905,11 +923,11 @@ msgstr "Maak een nieuw item om te beginnen."
 msgid "Create a new pass file."
 msgstr "Maak een nieuw pass-bestand."
 
-#: data/window.ui:1271
+#: data/window.ui:1277
 msgid "Create a new password-protected key."
 msgstr "Maak een nieuwe met wachtwoord beveiligde sleutel."
 
-#: src/store/recipients_page/generate.rs:22 src/window/navigation/restore.rs:70
+#: src/store/recipients_page/generate.rs:29 src/window/navigation/restore.rs:70
 msgid "Create a password-protected private key for password stores."
 msgstr ""
 "Maak een met wachtwoord beveiligde privésleutel voor wachtwoordopslagen."
@@ -942,7 +960,7 @@ msgstr "Geselecteerd pass-bestand verwijderen"
 msgid "Detached HEAD"
 msgstr "Losgekoppelde HEAD"
 
-#: src/window/navigation/pages.rs:27 src/window/navigation/restore.rs:146
+#: src/window/navigation/pages.rs:29 src/window/navigation/restore.rs:146
 msgid "Details"
 msgstr "Details"
 
@@ -955,7 +973,8 @@ msgstr ""
 "gesloten. Er wordt verdergegaan zonder handtekening."
 
 #: data/window.ui:872 data/window.ui:912 src/window/docs.rs:19
-#: src/window/navigation/pages.rs:34 src/window/tools/menu.rs:26
+#: src/window/docs_disabled.rs:4 src/window/navigation/pages.rs:41
+#: src/window/tools/menu.rs:32
 msgid "Documentation"
 msgstr "Documentatie"
 
@@ -971,7 +990,7 @@ msgstr "Bewerk een wachtwoordinvoer"
 msgid "Edit remote"
 msgstr "Remote bewerken"
 
-#: data/window.ui:1494
+#: data/window.ui:1514
 msgid "Email"
 msgstr "E-mail"
 
@@ -991,16 +1010,16 @@ msgstr "Voer een opdracht in."
 msgid "Enter a field name."
 msgstr "Voer een veldnaam in."
 
-#: src/store/recipients_page/generate.rs:51
+#: src/store/recipients_page/generate.rs:58
 msgid "Enter a key password."
 msgstr "Voer een sleutelwachtwoord in."
 
-#: src/backend/integrated/keys/store.rs:775
+#: src/backend/integrated/keys/store.rs:1173
 msgid "Enter a name for the private key."
 msgstr "Voer een naam in voor de privésleutel."
 
 #: src/password/list/row.rs:559 src/password/page/mod.rs:468
-#: src/store/recipients_page/generate.rs:34
+#: src/store/recipients_page/generate.rs:41
 msgid "Enter a name."
 msgstr "Voer een naam in."
 
@@ -1016,7 +1035,7 @@ msgstr "Voer een remotenaam in."
 msgid "Enter a repository URL."
 msgstr "Voer een repository-URL in."
 
-#: src/password/model.rs:116
+#: src/password/model.rs:117
 msgid "Enter a username."
 msgstr "Voer een gebruikersnaam in."
 
@@ -1028,7 +1047,7 @@ msgstr "Voer een geldig e-mailadres in."
 msgid "Enter an OTP secret."
 msgstr "Voer een OTP-geheim in."
 
-#: src/backend/integrated/keys/store.rs:781
+#: src/backend/integrated/keys/store.rs:1179
 msgid "Enter an email address for the private key."
 msgstr "Voer een e-mailadres in voor de privésleutel."
 
@@ -1036,34 +1055,36 @@ msgstr "Voer een e-mailadres in voor de privésleutel."
 msgid "Enter an email address."
 msgstr "Voer een e-mailadres in."
 
-#: src/backend/integrated/keys/fido2.rs:745
+#: src/backend/integrated/keys/fido2.rs:810
 msgid "Enter the FIDO2 security key PIN"
 msgstr "Voer de PIN van de FIDO2-beveiligingssleutel in"
 
 #: src/backend/errors.rs:43 src/backend/errors.rs:44
-#: src/backend/integrated/keys/fido2.rs:228
-#: src/backend/integrated/keys/fido2.rs:94
+#: src/backend/integrated/keys/fido2.rs:100
+#: src/backend/integrated/keys/fido2.rs:237
+#: src/backend/integrated/keys/fido2.rs:982
+#: src/backend/integrated/keys/store.rs:681
 msgid "Enter the FIDO2 security key PIN."
 msgstr "Voer de PIN van de FIDO2-beveiligingssleutel in."
 
-#: src/backend/integrated/keys/store.rs:484 src/private_key/dialog.rs:80
+#: src/backend/integrated/keys/store.rs:660 src/private_key/dialog.rs:111
 msgid "Enter the hardware key PIN."
 msgstr "Voer de PIN van de hardwaresleutel in."
 
-#: src/private_key/dialog.rs:57 src/private_key/dialog.rs:79
+#: src/private_key/dialog.rs:110 src/private_key/dialog.rs:88
 msgid "Enter the key password."
 msgstr "Voer het sleutelwachtwoord in."
 
-#: src/backend/integrated/keys/cert.rs:176
-#: src/backend/integrated/keys/store.rs:788
+#: src/backend/integrated/keys/cert.rs:187
+#: src/backend/integrated/keys/store.rs:1186
 msgid "Enter the private key password."
 msgstr "Voer het wachtwoord van de privésleutel in."
 
-#: src/private_key/dialog.rs:81
+#: src/private_key/dialog.rs:112
 msgid "Enter the security key PIN."
 msgstr "Voer de PIN van de beveiligingssleutel in."
 
-#: src/window/controls.rs:438
+#: src/window/controls.rs:440
 msgid "Escape"
 msgstr "Escape"
 
@@ -1074,7 +1095,7 @@ msgstr ""
 "Elke gesynchroniseerde hostsleutel moet met een wachtwoord zijn beveiligd "
 "voordat Keycord die kan opslaan."
 
-#: data/metainfo.xml:111
+#: data/metainfo.xml:127
 msgid "Expand the password editor with cleanup actions"
 msgstr "Breid de wachtwoordeditor uit met opschoonacties"
 
@@ -1082,17 +1103,26 @@ msgstr "Breid de wachtwoordeditor uit met opschoonacties"
 msgid "Export host GPG private key"
 msgstr "Host-GPG-privésleutel exporteren"
 
-#: src/store/recipients_page/list.rs:699
+#: src/backend/integrated/keys/fido2.rs:38
+msgid "FIDO store support is disabled in this build of Keycord."
+msgstr "Ondersteuning voor FIDO-opslagen is uitgeschakeld in deze build van Keycord."
+
+#: src/backend/integrated/keys/store.rs:47
+msgid "FIDO2 private-key support is disabled in this build of Keycord."
+msgstr ""
+"Ondersteuning voor met FIDO2 beveiligde privésleutels is uitgeschakeld in "
+"deze build van Keycord."
+
+#: src/store/recipients_page/list.rs:810
 msgid "FIDO2 recipient"
 msgstr "FIDO2-ontvanger"
 
-#: src/backend/integrated/keys/fido2_disabled.rs:181
+#: src/backend/integrated/keys/fido2_disabled.rs:190
 msgid "FIDO2 recipient '{}' requires a build with FIDO2 support enabled."
 msgstr ""
-"FIDO2-ontvanger '{}' vereist een build met ingeschakelde "
-"FIDO2-ondersteuning."
+"FIDO2-ontvanger '{}' vereist een build met ingeschakelde FIDO2-ondersteuning."
 
-#: src/private_key/unlock.rs:162
+#: src/private_key/unlock.rs:293
 msgid "FIDO2 recipient unlock worker disconnected unexpectedly."
 msgstr "Worker voor ontgrendeling van FIDO2-ontvangers onverwacht verbroken."
 
@@ -1104,7 +1134,7 @@ msgstr "Worker voor FIDO2-ontvanger onverwacht verbroken."
 msgid "FIDO2 recipients are only available on Linux and Windows."
 msgstr "FIDO2-ontvangers zijn alleen beschikbaar op Linux en Windows."
 
-#: src/window/host_access.rs:179
+#: src/window/host_access.rs:197
 msgid ""
 "FIDO2 recipients are optional. Grant USB device access if you want Keycord "
 "to use a connected FIDO2 security key directly for Keycord-only encryption, "
@@ -1118,18 +1148,18 @@ msgstr ""
 msgid "FIDO2 recipients require the Integrated backend."
 msgstr "FIDO2-ontvangers vereisen de Integrated-backend."
 
-#: src/backend/integrated/keys/fido2.rs:876 src/fido2_recipient.rs:2
-#: src/store/recipients_page/list.rs:697
+#: src/backend/integrated/keys/fido2.rs:1094 src/fido2_recipient.rs:2
+#: src/store/recipients_page/list.rs:808
 msgid "FIDO2 security key"
 msgstr "FIDO2-beveiligingssleutel"
-
-#: src/backend/integrated/keys/store.rs:505
-msgid "FIDO2 store recipients must be unlocked separately."
-msgstr "FIDO2-opslagontvangers moeten apart worden ontgrendeld."
 
 #: src/backend/integrated/keys/fido2_disabled.rs:6
 msgid "FIDO2 support is disabled in this build of Keycord."
 msgstr "FIDO2-ondersteuning is uitgeschakeld in deze build van Keycord."
+
+#: src/store/recipients_page/generate.rs:199
+msgid "FIDO2-protected key generation worker disconnected unexpectedly."
+msgstr "Worker voor genereren van met FIDO2 beveiligde sleutels onverwacht verbroken."
 
 #: src/support/git.rs:626
 msgid "Failed to abort password store merge for {root}: {err}"
@@ -1167,13 +1197,14 @@ msgstr "Kon niet op updates controleren: {error}"
 
 #: src/backend/integrated/store.rs:70
 msgid "Failed to clear the pending FIDO2 enrollment cache for '{}': {err}"
-msgstr "Kon de tijdelijke FIDO2-inschrijvingscache voor '{}' niet wissen: {err}"
+msgstr ""
+"Kon de tijdelijke FIDO2-inschrijvingscache voor '{}' niet wissen: {err}"
 
 #: src/support/file_picker.rs:136
 msgid "Failed to configure Windows file picker options: {err}"
 msgstr "Kon opties voor de Windows-bestandskiezer niet configureren: {err}"
 
-#: src/store/recipients_page/export.rs:32
+#: src/store/recipients_page/export.rs:40
 msgid "Failed to copy key material '{}': {err}"
 msgstr "Kon sleutelmateriaal '{}' niet kopiëren: {err}"
 
@@ -1181,7 +1212,7 @@ msgstr "Kon sleutelmateriaal '{}' niet kopiëren: {err}"
 msgid "Failed to copy password entry: {err}"
 msgstr "Kon wachtwoordinvoer niet kopiëren: {err}"
 
-#: src/preferences/storage.rs:43
+#: src/preferences/storage.rs:44
 msgid "Failed to create config dir: {e}"
 msgstr "Kon de configuratiemap niet maken: {e}"
 
@@ -1197,7 +1228,7 @@ msgstr "Kon de gepantserde handtekening niet decoderen"
 msgid "Failed to decode decrypted UTF-8 data"
 msgstr "Kon ontsleutelde UTF-8-gegevens niet decoderen"
 
-#: src/backend/integrated/keys/fido2.rs:1008
+#: src/backend/integrated/keys/fido2.rs:1226
 msgid "Failed to derive enough HKDF output."
 msgstr "Kon niet genoeg HKDF-uitvoer afleiden."
 
@@ -1217,19 +1248,27 @@ msgstr "Kon privésleutelsynchronisatie niet inschakelen: {err}"
 msgid "Failed to export search provider object: {err}"
 msgstr "Kon het zoekproviderobject niet exporteren: {err}"
 
-#: src/store/recipients_page/generate.rs:110
+#: src/store/recipients_page/generate.rs:160
+msgid "Failed to generate FIDO2-protected key: {err}"
+msgstr "Kon met FIDO2 beveiligde sleutel niet genereren: {err}"
+
+#: src/store/recipients_page/generate.rs:111
 msgid "Failed to generate private key: {err}"
 msgstr "Kon privésleutel niet genereren: {err}"
 
-#: src/window/build/widgets.rs:325
+#: src/window/build/widgets.rs:329
 msgid "Failed to get {id}"
 msgstr "Kon {id} niet ophalen"
+
+#: src/support/ui.rs:112
+msgid "Failed to hide notice '{notice_id}': {err}"
+msgstr "Kon melding '{notice_id}' niet verbergen: {err}"
 
 #: src/store/recipients_page/import.rs:105
 msgid "Failed to import hardware key: {err}"
 msgstr "Kon de hardwaresleutel niet importeren: {err}"
 
-#: src/store/management/import.rs:420
+#: src/store/management/import.rs:425
 msgid "Failed to import passwords into '{}' from '{}': {err}"
 msgstr "Kon wachtwoorden uit '{}' niet in '{}' importeren: {err}"
 
@@ -1255,7 +1294,7 @@ msgstr ""
 msgid "Failed to inspect Git state for '{store}': {err}"
 msgstr "Kon de Git-status voor '{store}' niet inspecteren: {err}"
 
-#: src/store/recipients_page/list.rs:561
+#: src/store/recipients_page/list.rs:649
 msgid "Failed to inspect host GPG private keys for recipients: {err}"
 msgstr "Kon host-GPG-privésleutels voor ontvangers niet inspecteren: {err}"
 
@@ -1271,13 +1310,13 @@ msgstr ""
 msgid "Failed to inspect private key: {err}"
 msgstr "Kon privésleutel niet inspecteren: {err}"
 
-#: src/store/recipients_page/list.rs:114
+#: src/store/recipients_page/list.rs:119
 msgid ""
 "Failed to inspect whether private key '{fingerprint}' is unlocked: {err}"
 msgstr ""
 "Kon niet controleren of privésleutel '{fingerprint}' ontgrendeld is: {err}"
 
-#: src/store/recipients_page/list.rs:123
+#: src/store/recipients_page/list.rs:128
 msgid ""
 "Failed to inspect whether private key '{fingerprint}' requires unlocking: "
 "{err}"
@@ -1293,15 +1332,19 @@ msgstr "Kon het Keycord-zoekresultaat niet openen: {err}"
 msgid "Failed to launch Keycord search window: {err}"
 msgstr "Kon het Keycord-zoekvenster niet openen: {err}"
 
-#: src/backend/integrated/keys/store.rs:609
+#: src/backend/integrated/keys/store.rs:967
+msgid "Failed to load managed FIDO2 key '{}': {err}"
+msgstr "Kon beheerde FIDO2-sleutel '{}' niet laden: {err}"
+
+#: src/backend/integrated/keys/store.rs:947
 msgid "Failed to load managed hardware key '{}': {err}"
 msgstr "Kon beheerde hardwaresleutel '{}' niet laden: {err}"
 
-#: src/backend/integrated/keys/store.rs:590
+#: src/backend/integrated/keys/store.rs:928
 msgid "Failed to load managed private key '{}': {err}"
 msgstr "Kon beheerde privésleutel '{}' niet laden: {err}"
 
-#: src/store/recipients_page/list.rs:591
+#: src/store/recipients_page/list.rs:701
 msgid "Failed to load private keys for recipients: {err}"
 msgstr "Kon privésleutels voor ontvangers niet laden: {err}"
 
@@ -1367,19 +1410,20 @@ msgstr "Kon stderr van opdracht niet lezen: {err}"
 msgid "Failed to read command stdout: {err}"
 msgstr "Kon stdout van opdracht niet lezen: {err}"
 
-#: src/store/management.rs:272
+#: src/store/management.rs:280
 msgid "Failed to read password store folder: {err}"
 msgstr "Kon de map van de wachtwoordopslag niet lezen: {err}"
 
-#: src/store/recipients_page/import.rs:390
+#: src/store/recipients_page/import.rs:382
 msgid "Failed to read private key from clipboard: {err}"
 msgstr "Kon privésleutel niet van het klembord lezen: {err}"
 
-#: src/private_key/git.rs:36 src/private_key/unlock.rs:38
+#: src/private_key/git.rs:36 src/private_key/unlock.rs:136
 msgid "Failed to read private key protection for '{fingerprint}': {err}"
 msgstr "Kon de beveiliging van privésleutel '{fingerprint}' niet lezen: {err}"
 
-#: src/private_key/git.rs:117 src/private_key/unlock.rs:190
+#: src/private_key/git.rs:117 src/private_key/unlock.rs:155
+#: src/private_key/unlock.rs:322 src/private_key/unlock.rs:78
 msgid "Failed to read private key title for '{fingerprint}': {err}"
 msgstr "Kon de titel van privésleutel '{fingerprint}' niet lezen: {err}"
 
@@ -1391,7 +1435,7 @@ msgstr "Kon het geselecteerde Windows-pad niet lezen: {err}"
 msgid "Failed to read the selected hardware public key file"
 msgstr "Kon het geselecteerde bestand met publieke hardwaresleutel niet lezen"
 
-#: src/store/recipients_page/import.rs:356
+#: src/store/recipients_page/import.rs:352
 msgid "Failed to read the selected private key file"
 msgstr "Kon het geselecteerde privésleutelbestand niet lezen"
 
@@ -1411,11 +1455,11 @@ msgstr ""
 "Kon Git-remote '{name_for_delete}' niet uit '{store_for_delete}' "
 "verwijderen: {err}"
 
-#: src/password/list/mod.rs:698 src/store/management.rs:106
+#: src/password/list/mod.rs:698 src/store/management.rs:108
 msgid "Failed to remove missing password stores: {err}"
 msgstr "Kon ontbrekende wachtwoordopslagen niet verwijderen: {err}"
 
-#: src/store/recipients_page/list.rs:940
+#: src/store/recipients_page/list.rs:1060
 msgid "Failed to remove private key '{}': {err}"
 msgstr "Kon privésleutel '{}' niet verwijderen: {err}"
 
@@ -1481,8 +1525,8 @@ msgstr "Kon externe Git-opdracht niet uitvoeren: {err}"
 msgid "Failed to run remote work-tree git command: {err}"
 msgstr "Kon externe work-tree-Git-opdracht niet uitvoeren: {err}"
 
-#: src/backend/command.rs:34 src/support/pass_import.rs:35
-#: src/support/pass_import.rs:47
+#: src/backend/command.rs:34 src/support/pass_import.rs:36
+#: src/support/pass_import.rs:56
 msgid "Failed to run the host backend command: {err}"
 msgstr "Kon de host-backendopdracht niet uitvoeren: {err}"
 
@@ -1502,13 +1546,13 @@ msgstr "Kon voorkeur ({context}) niet opslaan: {}"
 msgid "Failed to save store recipients for '{}': {err}"
 msgstr "Kon de opslagontvangers voor '{}' niet opslaan: {err}"
 
-#: src/store/management.rs:211 src/store/management.rs:283
+#: src/store/management.rs:219 src/store/management.rs:291
 #: src/store/management/clone.rs:234 src/store/recipients_page/save.rs:203
 #: src/store/recipients_page/save.rs:283 src/window/git/enabled.rs:185
 msgid "Failed to save stores: {err}"
 msgstr "Kon opslagen niet opslaan: {err}"
 
-#: src/preferences/storage.rs:47
+#: src/preferences/storage.rs:48
 msgid "Failed to serialize config: {e}"
 msgstr "Kon de configuratie niet serialiseren: {e}"
 
@@ -1552,7 +1596,7 @@ msgstr "Kon wachtwoordopslag '{root}' niet synchroniseren: {err}"
 msgid "Failed to sync password store '{store_for_result}': {err}"
 msgstr "Kon wachtwoordopslag '{store_for_result}' niet synchroniseren: {err}"
 
-#: src/window/build/mod.rs:337
+#: src/window/build/mod.rs:338
 msgid "Failed to sync private keys during startup: {err}"
 msgstr "Kon privésleutels niet synchroniseren tijdens het opstarten: {err}"
 
@@ -1564,15 +1608,15 @@ msgstr "Kon privésleutels niet met de host synchroniseren: {err}"
 msgid "Failed to turn off private-key sync after an error: {}"
 msgstr "Kon privésleutelsynchronisatie na een fout niet uitschakelen: {}"
 
-#: src/private_key/unlock.rs:156
+#: src/private_key/unlock.rs:286
 msgid "Failed to unlock FIDO2 recipient: {err}"
 msgstr "Kon FIDO2-ontvanger niet ontgrendelen: {err}"
 
-#: src/private_key/git.rs:68 src/private_key/unlock.rs:82
+#: src/private_key/git.rs:68 src/private_key/unlock.rs:200
 msgid "Failed to unlock ripasso private key: {err}"
 msgstr "Kon ripasso-privésleutel niet ontgrendelen: {err}"
 
-#: src/window/tools/menu.rs:100
+#: src/window/tools/menu.rs:106
 msgid "Failed to update local app menu entry: {err}"
 msgstr "Kon het lokale appmenu-item niet bijwerken: {err}"
 
@@ -1588,7 +1632,7 @@ msgstr "Kon niet wachten op de import van de geheime GPG-sleutel: {err}"
 msgid "Failed to write command input: {err}"
 msgstr "Kon opdrachtsinvoer niet schrijven: {err}"
 
-#: src/preferences/storage.rs:49
+#: src/preferences/storage.rs:50
 msgid "Failed to write config file: {e}"
 msgstr "Kon het configuratiebestand niet schrijven: {e}"
 
@@ -1655,22 +1699,26 @@ msgstr "Een item vinden"
 msgid "Find item"
 msgstr "Item zoeken"
 
-#: src/window/navigation/restore.rs:136 src/window/tools.rs:53
-#: src/window/tools.rs:55
+#: src/window/navigation/restore.rs:136 src/window/tools.rs:56
+#: src/window/tools.rs:58
 msgid "Find weak passwords"
 msgstr "Zwakke wachtwoorden vinden"
 
-#: data/metainfo.xml:143
+#: data/metainfo.xml:159
 msgid "First release"
 msgstr "Eerste release"
 
-#: data/metainfo.xml:95
+#: data/metainfo.xml:111
 msgid "Fix back icon"
 msgstr "Pictogram voor teruggaan herstellen"
 
-#: data/metainfo.xml:120
+#: data/metainfo.xml:136
 msgid "Fix optional Git synchronization"
 msgstr "Herstel optionele Git-synchronisatie"
+
+#: data/metainfo.xml:89
+msgid "Fixed OTP bug where valid secrets were incorrectly invalidated."
+msgstr "OTP-fout opgelost waarbij geldige geheimen onterecht ongeldig werden gemaakt."
 
 #: src/backend/integrated/git.rs:196
 msgid "GIT_{env_prefix}_EMAIL"
@@ -1688,13 +1736,17 @@ msgstr "GIT_{env_prefix}_NAME"
 msgid "General"
 msgstr "Algemeen"
 
-#: src/store/recipients_page/list.rs:633
+#: data/window.ui:1318 src/store/recipients_page/generate.rs:216
+msgid "Generate FIDO2-protected key"
+msgstr "Met FIDO2 beveiligde sleutel genereren"
+
+#: src/store/recipients_page/list.rs:744
 msgid "Generate or import a private key, or add a FIDO2 security key."
 msgstr ""
 "Genereer of importeer een privésleutel, of voeg een FIDO2-"
 "beveiligingssleutel toe."
 
-#: src/store/recipients_page/list.rs:635
+#: src/store/recipients_page/list.rs:746
 msgid "Generate or import a private key."
 msgstr "Genereer of importeer een privésleutel."
 
@@ -1707,12 +1759,16 @@ msgid "Generate passwords and copy usernames, secrets, and one-time codes"
 msgstr ""
 "Genereer wachtwoorden en kopieer gebruikersnamen, geheimen en eenmalige codes"
 
-#: data/window.ui:1270 data/window.ui:1472
-#: src/store/recipients_page/generate.rs:20 src/window/navigation/restore.rs:69
+#: data/window.ui:1276 data/window.ui:1492
+#: src/store/recipients_page/generate.rs:27 src/window/navigation/restore.rs:69
 msgid "Generate private key"
 msgstr "Privésleutel genereren"
 
-#: data/window.ui:1518
+#: src/store/recipients_page/generate.rs:177
+msgid "Generating FIDO2-protected key"
+msgstr "Met FIDO2 beveiligde sleutel genereren"
+
+#: data/window.ui:1538
 msgid "Generating key"
 msgstr "Sleutel genereren"
 
@@ -1744,9 +1800,9 @@ msgstr ""
 msgid "Git remote dialog failed: {err}"
 msgstr "Git-remotedialoog mislukt: {err}"
 
-#: data/window.ui:1418 src/store/git_page.rs:825 src/store/git_page.rs:827
+#: data/window.ui:1438 src/store/git_page.rs:825 src/store/git_page.rs:827
 #: src/store/git_page.rs:832 src/store/git_page.rs:833
-#: src/store/git_page.rs:869
+#: src/store/git_page.rs:872
 msgid "Git remotes"
 msgstr "Git-remotes"
 
@@ -1768,7 +1824,7 @@ msgstr "Teruggaan"
 msgid "Go home"
 msgstr "Naar start"
 
-#: src/window/host_access.rs:33
+#: src/window/host_access.rs:35
 msgid "Grant USB security key access first."
 msgstr "Geef eerst toegang tot USB-beveiligingssleutels."
 
@@ -1788,11 +1844,12 @@ msgstr "Geef eerst hosttoegang."
 msgid "Grant host access to fetch, merge, and push."
 msgstr "Geef hosttoegang om op te halen, samen te voegen en te pushen."
 
-#: src/window/host_access.rs:108
+#: src/window/host_access.rs:122
 msgid "Grant smartcard access first."
 msgstr "Geef eerst smartcardtoegang."
 
-#: src/window/docs.rs:20 src/window/navigation/pages.rs:34
+#: src/window/docs.rs:20 src/window/docs_disabled.rs:5
+#: src/window/navigation/pages.rs:41
 msgid "Guides and reference"
 msgstr "Handleidingen en referentie"
 
@@ -1807,7 +1864,7 @@ msgstr "HEAD^{commit}"
 msgid "Hardware OpenPGP keys are not supported on this platform."
 msgstr "Hardware-OpenPGP-sleutels worden op dit platform niet ondersteund."
 
-#: src/private_key/dialog.rs:65
+#: src/private_key/dialog.rs:96
 msgid "Hardware key PIN"
 msgstr "PIN van hardwaresleutel"
 
@@ -1819,7 +1876,7 @@ msgstr "Hardwaresleutel toegevoegd."
 msgid "Hardware key import worker disconnected unexpectedly."
 msgstr "De importwerker voor hardwaresleutels is onverwacht verbroken."
 
-#: src/window/host_access.rs:196
+#: src/window/host_access.rs:215
 msgid ""
 "Hardware keys are optional. Grant PC/SC access if you want Keycord to use "
 "connected OpenPGP smartcards or YubiKeys, then restart Keycord. Password-"
@@ -1829,7 +1886,11 @@ msgstr ""
 "verbonden OpenPGP-smartcards of YubiKeys gebruikt en start Keycord daarna "
 "opnieuw. Met wachtwoord beveiligde sleutels blijven zonder dit beschikbaar."
 
-#: src/window/controls.rs:439
+#: src/support/ui.rs:104
+msgid "Hide permanently"
+msgstr "Permanent verbergen"
+
+#: src/window/controls.rs:441
 msgid "Home"
 msgstr "Start"
 
@@ -1837,7 +1898,7 @@ msgstr "Start"
 msgid "Host"
 msgstr "Host"
 
-#: src/support/runtime.rs:30 src/window/git/disabled.rs:30
+#: src/support/runtime.rs:32 src/window/git/disabled.rs:30
 msgid "Host command features are only available on Linux."
 msgstr "Functies met hostopdrachten zijn alleen beschikbaar op Linux."
 
@@ -1845,8 +1906,8 @@ msgstr "Functies met hostopdrachten zijn alleen beschikbaar op Linux."
 msgid "Identify outdated accounts and weak passwords"
 msgstr "Identificeer verouderde accounts en zwakke wachtwoorden"
 
-#: data/window.ui:1144 src/store/recipients_page/import.rs:300
-#: src/store/recipients_page/import.rs:354
+#: data/window.ui:1150 src/store/recipients_page/import.rs:300
+#: src/store/recipients_page/import.rs:350
 msgid "Import"
 msgstr "Importeren"
 
@@ -1855,17 +1916,17 @@ msgid "Import a private key in Preferences"
 msgstr "Een privésleutel importeren in Voorkeuren"
 
 #: src/backend/integrated/entries.rs:123 src/backend/integrated/entries.rs:39
-#: src/backend/integrated/keys/store.rs:36
+#: src/backend/integrated/keys/store.rs:41
 msgid "Import a private key in Preferences before using the password store."
 msgstr ""
 "Importeer een privésleutel in Voorkeuren voordat je de wachtwoordopslag "
 "gebruikt."
 
-#: data/window.ui:1302
+#: data/window.ui:1308
 msgid "Import an existing private key or connect a hardware token."
 msgstr "Importeer een bestaande privésleutel of verbind een hardwaretoken."
 
-#: data/window.ui:1325 src/store/recipients_page/import.rs:327
+#: data/window.ui:1345 src/store/recipients_page/import.rs:327
 #: src/store/recipients_page/import.rs:341
 msgid "Import hardware public key"
 msgstr "Publieke hardwaresleutel importeren"
@@ -1874,22 +1935,30 @@ msgstr "Publieke hardwaresleutel importeren"
 msgid "Import host GPG private key"
 msgstr "Host-GPG-privésleutel importeren"
 
+#: data/window.ui:1372
+msgid "Import key"
+msgstr "Sleutel importeren"
+
+#: data/window.ui:1358
+msgid "Import key from clipboard"
+msgstr "Sleutel van klembord importeren"
+
+#: data/window.ui:1127
+msgid "Import password (optional)"
+msgstr "Importwachtwoord (optioneel)"
+
 #: data/window.ui:1062 src/store/management/import.rs:32
 #: src/store/management/import.rs:74 src/window/navigation/restore.rs:59
 msgid "Import passwords"
 msgstr "Wachtwoorden importeren"
 
-#: src/support/pass_import.rs:112
+#: src/support/pass_import.rs:125
 msgid "Import passwords with pass import"
 msgstr "Wachtwoorden importeren met pass import"
 
-#: data/window.ui:1352 src/store/recipients_page/import.rs:353
+#: src/store/recipients_page/import.rs:349
 msgid "Import private key"
 msgstr "Privésleutel importeren"
-
-#: data/window.ui:1338
-msgid "Import private key from clipboard"
-msgstr "Privésleutel vanuit klembord importeren"
 
 #: data/window.ui:1091
 msgid "Import source"
@@ -1903,7 +1972,7 @@ msgstr "Importeur"
 msgid "Importing key"
 msgstr "Sleutel importeren"
 
-#: data/window.ui:1160
+#: data/window.ui:1166
 msgid "Importing passwords"
 msgstr "Wachtwoorden importeren"
 
@@ -1947,7 +2016,7 @@ msgstr "Bijgehouden Git-wijzigingen van wachtwoordopslag inspecteren"
 msgid "Inspect password store Git untracked files"
 msgstr "Niet-bijgehouden Git-bestanden van wachtwoordopslag inspecteren"
 
-#: src/window/tools/menu.rs:42
+#: src/window/tools/menu.rs:48
 msgid "Inspect recent app and command output."
 msgstr "Recente app- en opdrachtsuitvoer inspecteren."
 
@@ -1981,15 +2050,15 @@ msgid "Integrated backend Git commit failed for {store_root}: {err}"
 msgstr ""
 "Git-commit van de backend 'Integrated' voor {store_root} is mislukt: {err}"
 
-#: src/backend/integrated/keys/fido2.rs:382
-#: src/backend/integrated/keys/fido2.rs:453
-#: src/backend/integrated/keys/fido2.rs:470
-#: src/backend/integrated/keys/fido2.rs:601
+#: src/backend/integrated/keys/fido2.rs:443
+#: src/backend/integrated/keys/fido2.rs:514
+#: src/backend/integrated/keys/fido2.rs:531
+#: src/backend/integrated/keys/fido2.rs:664
 #: src/backend/integrated/shared/crypto.rs:567
 msgid "Invalid FIDO2 any-managed password entry."
 msgstr "Ongeldige FIDO2-any-managed-wachtwoordinvoer."
 
-#: src/backend/integrated/keys/fido2.rs:1065
+#: src/backend/integrated/keys/fido2.rs:1283
 msgid "Invalid FIDO2 encrypted data."
 msgstr "Ongeldige met FIDO2 versleutelde gegevens."
 
@@ -2001,14 +2070,14 @@ msgstr "Ongeldig bestand met FIDO2-ontvangers."
 msgid "Invalid FIDO2 recipient label: {err}"
 msgstr "Ongeldig FIDO2-ontvangerlabel: {err}"
 
-#: src/backend/integrated/keys/fido2.rs:543
+#: src/backend/integrated/keys/fido2.rs:604
 msgid "Invalid FIDO2 required password-entry layer."
 msgstr "Ongeldige vereiste laag voor FIDO2-wachtwoordinvoer."
 
-#: src/fido2_recipient.rs:123 src/fido2_recipient.rs:130
-#: src/fido2_recipient.rs:41 src/fido2_recipient.rs:44
-#: src/fido2_recipient.rs:47 src/fido2_recipient.rs:59
-#: src/fido2_recipient.rs:97
+#: src/fido2_recipient.rs:106 src/fido2_recipient.rs:132
+#: src/fido2_recipient.rs:139 src/fido2_recipient.rs:41
+#: src/fido2_recipient.rs:44 src/fido2_recipient.rs:47
+#: src/fido2_recipient.rs:59
 msgid "Invalid FIDO2 store recipient."
 msgstr "Ongeldige FIDO2-opslagontvanger."
 
@@ -2037,8 +2106,8 @@ msgstr "Ongeldige all-keys-versleutelde wachtwoordinvoer."
 msgid "Invalid password entry path."
 msgstr "Ongeldig pad voor wachtwoordinvoer."
 
-#: src/backend/integrated/keys/cert.rs:107
-#: src/backend/integrated/keys/cert.rs:90
+#: src/backend/integrated/keys/cert.rs:104
+#: src/backend/integrated/keys/cert.rs:87
 msgid "Invalid private key fingerprint '{value}': {err}"
 msgstr "Ongeldige vingerafdruk van privésleutel '{value}': {err}"
 
@@ -2050,13 +2119,13 @@ msgstr ""
 "Houd de privésleutels van Keycord en de GPG-privésleutels van je computer "
 "synchroon wanneer hosttoegang beschikbaar is."
 
-#: src/store/recipients_page/list.rs:261
+#: src/store/recipients_page/list.rs:279
 msgid "Keep another selected private key available before removing this key."
 msgstr ""
 "Zorg dat er nog een andere geselecteerde privésleutel beschikbaar is voordat "
 "je deze sleutel verwijdert."
 
-#: src/store/recipients_page/list.rs:279
+#: src/store/recipients_page/list.rs:297
 msgid "Keep at least one selected private key available."
 msgstr "Houd minstens één geselecteerde privésleutel beschikbaar."
 
@@ -2064,17 +2133,17 @@ msgstr "Houd minstens één geselecteerde privésleutel beschikbaar."
 msgid "Keep entries grouped by store and folder before the file name."
 msgstr "Houd items gegroepeerd op opslag en map vóór de bestandsnaam."
 
-#: src/store/recipients_page/list.rs:277
+#: src/store/recipients_page/list.rs:295
 msgid "Keep this key selected while all selected private keys are required."
 msgstr ""
 "Houd deze sleutel geselecteerd zolang alle geselecteerde privésleutels "
 "vereist zijn."
 
-#: src/store/recipients_page/list.rs:956
+#: src/store/recipients_page/list.rs:1076
 msgid "Key file removed."
 msgstr "Sleutelbestand verwijderd."
 
-#: src/store/recipients_page/generate.rs:107
+#: src/store/recipients_page/generate.rs:127
 msgid "Key generated."
 msgstr "Sleutel gegenereerd."
 
@@ -2082,8 +2151,8 @@ msgstr "Sleutel gegenereerd."
 msgid "Key imported."
 msgstr "Sleutel geïmporteerd."
 
-#: data/window.ui:1500 src/private_key/dialog.rs:116
-#: src/private_key/dialog.rs:64
+#: data/window.ui:1520 src/private_key/dialog.rs:147
+#: src/private_key/dialog.rs:95
 msgid "Key password"
 msgstr "Sleutelwachtwoord"
 
@@ -2096,7 +2165,7 @@ msgstr "Sneltoetsen"
 msgid "Keycord"
 msgstr "Sleutelkoord"
 
-#: src/backend/integrated/keys/fido2.rs:256
+#: src/backend/integrated/keys/fido2.rs:265
 msgid "Keycord FIDO2 recipient"
 msgstr "Keycord-FIDO2-ontvanger"
 
@@ -2108,7 +2177,7 @@ msgstr "Keycord-update"
 msgid "Keycord is already up to date."
 msgstr "Keycord is al up-to-date."
 
-#: src/window/host_access.rs:79
+#: src/window/host_access.rs:88
 msgid ""
 "Keycord is running in a protected space, so some optional features stay off "
 "until you allow this. If you allow it, Keycord can use tools from your "
@@ -2146,8 +2215,8 @@ msgstr ""
 "Keycord werkt elk opgeslagen item bij zodat de verwijderde "
 "beveiligingssleutel deze opslag niet langer kan ontgrendelen.\n"
 "\n"
-"Houd de beveiligingssleutels die je wilt blijven gebruiken aangesloten. "
-"Raak een sleutel aan wanneer die begint te knipperen."
+"Houd de beveiligingssleutels die je wilt blijven gebruiken aangesloten. Raak "
+"een sleutel aan wanneer die begint te knipperen."
 
 #: src/store/recipients_page/progress.rs:90
 msgid ""
@@ -2176,7 +2245,7 @@ msgstr ""
 "alleen in Keycord bestaan, kunnen tijdens de eerste synchronisatie worden "
 "verwijderd."
 
-#: data/window.ui:1245
+#: data/window.ui:1251
 msgid "Keys for this store"
 msgstr "Sleutels voor deze opslag"
 
@@ -2187,6 +2256,14 @@ msgstr "Later"
 #: src/search_provider.rs:134
 msgid "LaunchSearch"
 msgstr "LaunchSearch"
+
+#: data/window.ui:1128
+msgid ""
+"Leave this empty if the source does not use a password, for example a Chrome "
+"CSV."
+msgstr ""
+"Laat dit leeg als de bron geen wachtwoord gebruikt, bijvoorbeeld een "
+"Chrome-CSV."
 
 #: data/window.ui:265 data/window.ui:699
 msgid "Length"
@@ -2204,7 +2281,7 @@ msgstr "Git-remotes van wachtwoordopslag weergeven"
 msgid "Loading"
 msgstr "Laden"
 
-#: src/window/tools.rs:42
+#: src/window/tools.rs:45
 msgid "Loading field values"
 msgstr "Veldwaarden laden"
 
@@ -2252,7 +2329,7 @@ msgstr "Lokale commits zijn klaar om op '{branch}' te worden gepusht."
 msgid "Local commits are waiting to sync."
 msgstr "Lokale commits wachten op synchronisatie."
 
-#: data/window.ui:1540 src/window/navigation/pages.rs:27
+#: data/window.ui:1560 src/window/navigation/pages.rs:29
 #: src/window/navigation/restore.rs:146
 msgid "Logs"
 msgstr "Loguitvoer"
@@ -2316,6 +2393,14 @@ msgstr "Git-branch {target} van wachtwoordopslag samenvoegen"
 msgid "Minimum count, 0 disables"
 msgstr "Minimumaantal, 0 schakelt uit"
 
+#: src/backend/integrated/keys/store.rs:444
+msgid "Missing OpenPGP certificate for stored hardware key."
+msgstr "OpenPGP-certificaat voor opgeslagen hardwaresleutel ontbreekt."
+
+#: src/backend/integrated/keys/store.rs:433
+msgid "Missing OpenPGP certificate for stored private key."
+msgstr "OpenPGP-certificaat voor opgeslagen privésleutel ontbreekt."
+
 #: src/updater/windows.rs:983
 msgid "Missing owner in repository URL: {repository}"
 msgstr "Eigenaar ontbreekt in repository-URL: {repository}"
@@ -2344,7 +2429,7 @@ msgstr "Naar opslag verplaatsen"
 msgid "Moved."
 msgstr "Verplaatst."
 
-#: data/window.ui:1488
+#: data/window.ui:1508
 msgid "Name"
 msgstr "Naam"
 
@@ -2356,7 +2441,7 @@ msgstr "Navigatie"
 msgid "New Password Template"
 msgstr "Nieuw wachtwoordsjabloon"
 
-#: src/store/recipients_page/mod.rs:40
+#: src/store/recipients_page/mod.rs:43
 msgid "New Store"
 msgstr "Nieuwe opslag"
 
@@ -2397,7 +2482,7 @@ msgstr "Geen mappen toegevoegd"
 msgid "No items yet"
 msgstr "Nog geen items"
 
-#: src/window/tools.rs:62
+#: src/window/tools.rs:67
 msgid "No loaded pass files matched the current weak-password checks."
 msgstr ""
 "Geen geladen pass-bestanden voldeden aan de huidige controles op zwakke "
@@ -2411,15 +2496,15 @@ msgstr "Geen overeenkomsten"
 msgid "No matching docs"
 msgstr "Geen overeenkomende documentatie"
 
-#: src/window/tools.rs:47
+#: src/window/tools.rs:50
 msgid "No matching fields"
 msgstr "Geen overeenkomende velden"
 
-#: src/window/tools.rs:63
+#: src/window/tools.rs:68
 msgid "No matching results"
 msgstr "Geen overeenkomende resultaten"
 
-#: src/window/tools.rs:51
+#: src/window/tools.rs:54
 msgid "No matching values"
 msgstr "Geen overeenkomende waarden"
 
@@ -2427,11 +2512,11 @@ msgstr "Geen overeenkomende waarden"
 msgid "No password store"
 msgstr "Geen wachtwoordopslag"
 
-#: src/store/management.rs:145
+#: src/store/management.rs:147
 msgid "No password stores"
 msgstr "Geen wachtwoordopslagen"
 
-#: src/store/recipients.rs:67
+#: src/store/recipients.rs:77
 msgid "No recipients set"
 msgstr "Geen ontvangers ingesteld"
 
@@ -2439,8 +2524,8 @@ msgstr "Geen ontvangers ingesteld"
 msgid "No recipients were found"
 msgstr "Geen ontvangers gevonden"
 
-#: src/backend/integrated/keys/fido2.rs:333
-#: src/backend/integrated/keys/fido2.rs:374
+#: src/backend/integrated/keys/fido2.rs:394
+#: src/backend/integrated/keys/fido2.rs:435
 #: src/backend/integrated/shared/crypto.rs:530
 #: src/backend/integrated/shared/crypto.rs:575
 #: src/backend/integrated/shared/crypto.rs:621
@@ -2449,7 +2534,7 @@ msgstr "Geen ontvangers gevonden"
 msgid "No recipients were found for this password entry."
 msgstr "Geen ontvangers gevonden voor dit wachtwoordinvoer."
 
-#: src/store/recipients_page/list.rs:631
+#: src/store/recipients_page/list.rs:742
 msgid "No recipients yet"
 msgstr "Nog geen ontvangers"
 
@@ -2457,7 +2542,7 @@ msgstr "Nog geen ontvangers"
 msgid "No remotes configured."
 msgstr "Geen remotes geconfigureerd."
 
-#: src/window/tools.rs:44
+#: src/window/tools.rs:47
 msgid "No searchable fields"
 msgstr "Geen doorzoekbare velden"
 
@@ -2467,11 +2552,11 @@ msgstr ""
 "Er zijn geen standaard OpenPGP-ontvangers gevonden voor deze "
 "wachtwoordinvoer."
 
-#: src/window/tools.rs:49
+#: src/window/tools.rs:52
 msgid "No values"
 msgstr "Geen waarden"
 
-#: src/window/tools.rs:60
+#: src/window/tools.rs:65
 msgid "No weak passwords found"
 msgstr "Geen zwakke wachtwoorden gevonden"
 
@@ -2495,7 +2580,7 @@ msgstr "OTP-code"
 msgid "OTP secret"
 msgstr "OTP-geheim"
 
-#: data/metainfo.xml:82
+#: data/metainfo.xml:98
 msgid "Only enable FIDO2 features if the integrated backend is used."
 msgstr "Schakel FIDO2-functies alleen in met de geïntegreerde backend."
 
@@ -2527,7 +2612,7 @@ msgstr "Open eerst een item."
 msgid "Open docs"
 msgstr "Documentatie openen"
 
-#: src/window/tools/menu.rs:27
+#: src/window/tools/menu.rs:33
 msgid "Open guides and reference."
 msgstr "Handleidingen en referentie openen."
 
@@ -2539,7 +2624,7 @@ msgstr "In bestandsbeheer openen"
 msgid "Open in New Window"
 msgstr "In nieuw venster openen"
 
-#: data/shortcuts.ui:158 src/window/tools/menu.rs:41
+#: data/shortcuts.ui:158 src/window/tools/menu.rs:47
 msgid "Open logs"
 msgstr "Loguitvoer openen"
 
@@ -2576,11 +2661,11 @@ msgstr "Synchroniseer optioneel met de systeemsleutelbos"
 msgid "Optionally use layered encryption"
 msgstr "Gebruik optioneel gelaagde versleuteling"
 
-#: src/private_key/dialog.rs:60
+#: src/private_key/dialog.rs:91
 msgid "Or use a hardware key."
 msgstr "Of gebruik een hardwaresleutel."
 
-#: data/window.ui:1301
+#: data/window.ui:1307
 msgid "Other ways to add a key"
 msgstr "Andere manieren om een sleutel toe te voegen"
 
@@ -2592,7 +2677,7 @@ msgstr "Pass-bestand"
 msgid "Pass files"
 msgstr "Pass-bestanden"
 
-#: src/store/management/import.rs:445
+#: src/store/management/import.rs:450
 msgid ""
 "Pass import worker disconnected unexpectedly while importing into "
 "'{store_for_error}' from '{source_for_error}'."
@@ -2710,7 +2795,7 @@ msgstr ""
 msgid "Password store configuration: {} configured store(s)."
 msgstr "Configuratie van wachtwoordopslag: {} geconfigureerde opslag(en)."
 
-#: src/store/management/import.rs:416
+#: src/store/management/import.rs:421
 msgid "Passwords imported."
 msgstr "Wachtwoorden geïmporteerd."
 
@@ -2718,15 +2803,15 @@ msgstr "Wachtwoorden geïmporteerd."
 msgid "Path or name"
 msgstr "Pad of naam"
 
-#: src/window/navigation/restore.rs:123 src/window/tools.rs:38
+#: src/window/navigation/restore.rs:123 src/window/tools.rs:39
 msgid "Pick a field from the current list."
 msgstr "Kies een veld uit de huidige lijst."
 
-#: src/window/navigation/restore.rs:130 src/window/tools.rs:39
+#: src/window/navigation/restore.rs:130 src/window/tools.rs:40
 msgid "Pick a value from the current list."
 msgstr "Kies een waarde uit de huidige lijst."
 
-#: data/window.ui:1570 src/password/page/mod.rs:106 src/password/page/mod.rs:74
+#: data/window.ui:1590 src/password/page/mod.rs:106 src/password/page/mod.rs:74
 #: src/store/management/clone.rs:25 src/store/recipients_page/import.rs:124
 #: src/store/recipients_page/import.rs:238
 msgid "Please wait."
@@ -2789,12 +2874,12 @@ msgstr ""
 msgid "Preparing saved items"
 msgstr "Opgeslagen items voorbereiden"
 
-#: src/backend/integrated/keys/cert.rs:94
+#: src/backend/integrated/keys/cert.rs:91
 msgid "Private key fingerprint '{value}' does not have the expected length."
 msgstr ""
 "Vingerafdruk van privésleutel '{value}' heeft niet de verwachte lengte."
 
-#: src/store/recipients_page/generate.rs:133
+#: src/store/recipients_page/generate.rs:144
 msgid "Private key generation worker disconnected unexpectedly."
 msgstr "Worker voor privésleutelgeneratie onverwacht verbroken."
 
@@ -2802,7 +2887,7 @@ msgstr "Worker voor privésleutelgeneratie onverwacht verbroken."
 msgid "Private key import worker disconnected unexpectedly."
 msgstr "De importwerker voor privésleutels is onverwacht verbroken."
 
-#: src/private_key/git.rs:79 src/private_key/unlock.rs:88
+#: src/private_key/git.rs:79 src/private_key/unlock.rs:207
 msgid "Private key unlock worker disconnected unexpectedly."
 msgstr "Worker voor ontgrendeling van privésleutels onverwacht verbroken."
 
@@ -2814,7 +2899,7 @@ msgstr ""
 "Worker voor ontgrendeling van privésleutels werd verbroken tijdens het "
 "voorbereiden van een Git-handtekening voor {fingerprint}."
 
-#: src/store/recipients_page/list.rs:72
+#: src/store/recipients_page/list.rs:77
 msgid "Private keys can't be verified"
 msgstr "Privésleutels kunnen niet worden geverifieerd"
 
@@ -2838,11 +2923,15 @@ msgstr "Git-branch {branch} van wachtwoordopslag naar {remote} pushen"
 msgid "Raw Pass File"
 msgstr "Ruw pass-bestand"
 
-#: data/window.ui:1339
-msgid "Read an armored private key from the clipboard."
-msgstr "Lees een ge-armorde privésleutel van het klembord."
+#: data/window.ui:1359
+msgid ""
+"Read an armored private key or FIDO2-protected private key from the "
+"clipboard."
+msgstr ""
+"Lees een gepantserde privésleutel of met FIDO2 beveiligde privésleutel van "
+"het klembord."
 
-#: src/support/pass_import.rs:93
+#: src/support/pass_import.rs:106
 msgid "Read pass import sources"
 msgstr "Bronnen voor pass import lezen"
 
@@ -2866,11 +2955,11 @@ msgstr "wachtwoordopslag Git HEAD lezen"
 msgid "Read password store Git remote URL for {name}"
 msgstr "Git-remote-URL van de wachtwoordopslag voor {name} lezen"
 
-#: src/window/tools.rs:59
+#: src/window/tools.rs:64
 msgid "Reading password lines from the current list."
 msgstr "Wachtwoordregels uit de huidige lijst lezen."
 
-#: src/window/tools.rs:43
+#: src/window/tools.rs:46
 msgid "Reading searchable pass fields from the current list."
 msgstr "Doorzoekbare pass-velden uit de huidige lijst lezen."
 
@@ -2879,18 +2968,18 @@ msgstr "Doorzoekbare pass-velden uit de huidige lijst lezen."
 msgid "Recipient '{recipient_id}' is not available in the app."
 msgstr "Ontvanger '{recipient_id}' is niet beschikbaar in de app."
 
-#: data/window.ui:1260
+#: data/window.ui:1266
 msgid "Recommended for new stores"
 msgstr "Aanbevolen voor nieuwe opslagen"
 
-#: src/backend/integrated/keys/fido2.rs:750
+#: src/backend/integrated/keys/fido2.rs:815
 msgid "Reconnect the FIDO2 security key"
 msgstr "Verbind de FIDO2-beveiligingssleutel opnieuw"
 
 #: src/backend/errors.rs:421 src/backend/errors.rs:444 src/backend/errors.rs:47
-#: src/backend/errors.rs:48 src/backend/integrated/keys/fido2.rs:240
-#: src/backend/integrated/keys/fido2.rs:831
-#: src/backend/integrated/keys/fido2.rs:98
+#: src/backend/errors.rs:48 src/backend/integrated/keys/fido2.rs:104
+#: src/backend/integrated/keys/fido2.rs:1046
+#: src/backend/integrated/keys/fido2.rs:249
 msgid "Reconnect the FIDO2 security key and try again."
 msgstr "Verbind de FIDO2-beveiligingssleutel opnieuw en probeer het opnieuw."
 
@@ -2942,11 +3031,11 @@ msgstr "Lege gestructureerde velden verwijderen"
 msgid "Remove from app menu"
 msgstr "Uit appmenu verwijderen"
 
-#: src/store/recipients_page/list.rs:795
+#: src/store/recipients_page/list.rs:915
 msgid "Remove key"
 msgstr "Sleutel verwijderen"
 
-#: src/store/recipients_page/list.rs:289
+#: src/store/recipients_page/list.rs:307
 msgid "Remove key file"
 msgstr "Sleutelbestand verwijderen"
 
@@ -2958,8 +3047,8 @@ msgstr "Wachtwoord voor {label} verwijderen"
 msgid "Remove password store Git remote"
 msgstr "wachtwoordopslag Git-remote verwijderen"
 
-#: src/store/recipients_page/list.rs:295 src/store/recipients_page/list.rs:344
-#: src/store/recipients_page/list.rs:703
+#: src/store/recipients_page/list.rs:313 src/store/recipients_page/list.rs:362
+#: src/store/recipients_page/list.rs:814
 msgid "Remove recipient"
 msgstr "ontvanger verwijderen"
 
@@ -2970,6 +3059,14 @@ msgstr "Remote verwijderen"
 #: src/password/page/mod.rs:598
 msgid "Removed empty fields."
 msgstr "Lege velden verwijderd."
+
+#: data/metainfo.xml:81
+msgid ""
+"Removed the FIDO2 backed password stores feature from the flatpak app. "
+"Contact me if you want it back."
+msgstr ""
+"Functie voor met FIDO2 ondersteunde wachtwoordopslagen verwijderd uit de "
+"Flatpak-app. Neem contact op als je die terug wilt."
 
 #: src/store/recipients_page/progress.rs:10
 msgid "Removing Security Key"
@@ -3068,7 +3165,7 @@ msgstr "Repository gevonden. Lokale commits wachten op synchronisatie."
 msgid "Repository found. Remote commits are waiting to sync."
 msgstr "Repository gevonden. Externe commits wachten op synchronisatie."
 
-#: data/window.ui:1380
+#: data/window.ui:1400
 msgid "Require all selected private keys"
 msgstr "Alle geselecteerde privésleutels vereisen"
 
@@ -3156,13 +3253,13 @@ msgstr "Item {current} van {total} opslaan"
 msgid "Saving without a Git signature."
 msgstr "Opslaan zonder Git-handtekening."
 
-#: src/window/navigation/restore.rs:137 src/window/tools.rs:54
-#: src/window/tools.rs:57
+#: src/window/navigation/restore.rs:137 src/window/tools.rs:57
+#: src/window/tools.rs:60
 msgid "Scan the current list for passwords that fail basic checks."
 msgstr ""
 "Scan de huidige lijst op wachtwoorden die niet voldoen aan de basiscontroles."
 
-#: src/window/tools.rs:58
+#: src/window/tools.rs:63
 msgid "Scanning passwords"
 msgstr "Wachtwoorden scannen"
 
@@ -3230,7 +3327,7 @@ msgstr "Waarden doorzoeken"
 msgid "Search weak passwords"
 msgstr "Zwakke wachtwoorden zoeken"
 
-#: src/private_key/dialog.rs:66
+#: src/private_key/dialog.rs:97
 msgid "Security key PIN"
 msgstr "PIN van beveiligingssleutel"
 
@@ -3238,12 +3335,12 @@ msgstr "PIN van beveiligingssleutel"
 msgid "Security keys will be checked one by one."
 msgstr "Beveiligingssleutels worden een voor een gecontroleerd."
 
-#: src/store/management.rs:265 src/store/management/clone.rs:111
-#: src/store/management/import.rs:328 src/store/management/import.rs:346
+#: src/store/management.rs:273 src/store/management/clone.rs:111
+#: src/store/management/import.rs:332 src/store/management/import.rs:350
 msgid "Select"
 msgstr "Selecteren"
 
-#: data/window.ui:1246
+#: data/window.ui:1252
 msgid "Select the private keys that can unlock passwords in this store."
 msgstr ""
 "Selecteer de privésleutels die wachtwoorden in deze opslag kunnen "
@@ -3257,11 +3354,11 @@ msgstr "Opeenvolgende tekens"
 msgid "Short with limited character variety"
 msgstr "Kort met beperkte tekenvariatie"
 
-#: data/window.ui:1586
+#: data/window.ui:1606
 msgid "Show Logs"
 msgstr "Loguitvoer tonen"
 
-#: data/metainfo.xml:128
+#: data/metainfo.xml:144
 msgid "Show disabled options instead of hiding them"
 msgstr "Toon uitgeschakelde opties in plaats van ze te verbergen"
 
@@ -3371,16 +3468,16 @@ msgstr "Opslag"
 msgid "Store created, but it wasn't added."
 msgstr "Opslag gemaakt, maar niet toegevoegd."
 
-#: src/store/management/import.rs:297
+#: src/store/management/import.rs:301
 msgid "Store import page state was not initialized."
 msgstr "Status van de pagina voor opslagimport is niet geïnitialiseerd."
 
-#: data/window.ui:1182 src/store/recipients_page/mod.rs:189
-#: src/store/recipients_page/mod.rs:41
+#: data/window.ui:1188 src/store/recipients_page/mod.rs:193
+#: src/store/recipients_page/mod.rs:44
 msgid "Store keys"
 msgstr "Opslagsleutels"
 
-#: data/window.ui:1370
+#: data/window.ui:1390 src/store/recipients_page/list.rs:417
 msgid "Store options"
 msgstr "Opslagopties"
 
@@ -3388,7 +3485,7 @@ msgstr "Opslagopties"
 msgid "Store restored."
 msgstr "Opslag hersteld."
 
-#: data/window.ui:1127
+#: data/window.ui:1133
 msgid "Store subfolder"
 msgstr "Opslagsubmap"
 
@@ -3400,13 +3497,9 @@ msgstr "Synchronisatie van opslag is onverwacht gestopt."
 msgid "Store synced."
 msgstr "Opslag gesynchroniseerd."
 
-#: src/backend/integrated/keys/fido2.rs:814
+#: src/backend/integrated/keys/fido2.rs:958
 msgid "Stored FIDO2 PIN is not valid UTF-8: {err}"
 msgstr "Opgeslagen FIDO2-PIN is geen geldige UTF-8: {err}"
-
-#: src/window/tools.rs:44 src/window/tools.rs:62
-msgid "Unavailable because all configured stores use FIDO2 security keys."
-msgstr "Niet beschikbaar omdat alle ingestelde opslagen FIDO2-beveiligingssleutels gebruiken."
 
 #: src/store/management/clone.rs:141
 msgid "Switch Backend to Host to restore a store from a Git repository."
@@ -3424,7 +3517,7 @@ msgstr ""
 "Schakel over naar de geïntegreerde backend om een FIDO2-beveiligingssleutel "
 "toe te voegen."
 
-#: src/window/host_access.rs:31
+#: src/window/host_access.rs:33
 msgid "Switch to the Integrated backend to use FIDO2 security keys."
 msgstr ""
 "Schakel over naar de geïntegreerde backend om FIDO2-beveiligingssleutels te "
@@ -3475,18 +3568,38 @@ msgid "Text Editor"
 msgstr "Teksteditor"
 
 #: src/backend/errors.rs:52 src/backend/errors.rs:54
-#: src/backend/integrated/keys/fido2.rs:101
-#: src/backend/integrated/keys/fido2.rs:243
-#: src/backend/integrated/keys/fido2.rs:834
+#: src/backend/integrated/keys/fido2.rs:1049
+#: src/backend/integrated/keys/fido2.rs:107
+#: src/backend/integrated/keys/fido2.rs:252
 msgid "That FIDO2 security key does not support the hmac-secret extension."
 msgstr ""
 "Die FIDO2-beveiligingssleutel ondersteunt de hmac-secret-extensie niet."
 
-#: src/backend/integrated/keys/fido2.rs:291
+#: src/backend/integrated/keys/store.rs:1148
+#: src/backend/integrated/keys/store.rs:878
+msgid "That FIDO2 security key is invalid."
+msgstr "Die FIDO2-beveiligingssleutel is ongeldig."
+
+#: src/backend/integrated/keys/fido2.rs:319
 msgid "That FIDO2 store recipient is invalid."
 msgstr "Die FIDO2-opslagontvanger is ongeldig."
 
-#: src/backend/integrated/keys/cert.rs:117
+#: src/backend/integrated/keys/store.rs:1238
+msgid "That FIDO2-protected key could not be exported."
+msgstr "Die met FIDO2 beveiligde sleutel kon niet worden geëxporteerd."
+
+#: src/backend/integrated/keys/fido2.rs:972
+msgid "That FIDO2-protected key data is invalid."
+msgstr "Die gegevens van de met FIDO2 beveiligde sleutel zijn ongeldig."
+
+#: src/backend/integrated/keys/store.rs:321
+#: src/backend/integrated/keys/store.rs:337
+#: src/backend/integrated/keys/store.rs:718
+#: src/backend/integrated/keys/store.rs:844
+msgid "That FIDO2-protected key is invalid."
+msgstr "Die met FIDO2 beveiligde sleutel is ongeldig."
+
+#: src/backend/integrated/keys/cert.rs:114
 msgid "That OpenPGP key file does not include a private key."
 msgstr "Dat OpenPGP-sleutelbestand bevat geen privésleutel."
 
@@ -3498,13 +3611,13 @@ msgstr "Die gegevens bevatten geen privésleutel."
 msgid "That file does not contain a private key."
 msgstr "Dat bestand bevat geen privésleutel."
 
-#: src/backend/integrated/keys/store.rs:542
-#: src/backend/integrated/keys/store.rs:666
+#: src/backend/integrated/keys/store.rs:1039
+#: src/backend/integrated/keys/store.rs:769
 msgid "That hardware key cannot decrypt password store entries."
 msgstr ""
 "Die hardwaresleutel kan items in de wachtwoordopslag niet ontsleutelen."
 
-#: src/backend/integrated/keys/store.rs:828
+#: src/backend/integrated/keys/store.rs:1233
 msgid "That hardware-backed key does not have an exportable private key."
 msgstr ""
 "Die door hardware ondersteunde sleutel heeft geen exporteerbare privésleutel."
@@ -3517,12 +3630,18 @@ msgstr "Dat item mist zijn opslag."
 msgid "That item no longer exists."
 msgstr "Dat item bestaat niet meer."
 
+#: src/backend/integrated/keys/store.rs:1210
+msgid "That key does not have an exportable public key."
+msgstr "Die sleutel heeft geen exporteerbare publieke sleutel."
+
 #: src/backend/integrated/entries.rs:168 src/backend/integrated/entries.rs:241
 msgid "That password entry already exists."
 msgstr "Dat wachtwoordinvoer bestaat al."
 
-#: src/backend/integrated/keys/cert.rs:224
-#: src/backend/integrated/keys/store.rs:532
+#: src/backend/integrated/keys/cert.rs:235
+#: src/backend/integrated/keys/store.rs:759
+#: src/backend/integrated/keys/store.rs:849
+#: src/backend/integrated/keys/store.rs:872
 msgid "That private key cannot decrypt password store entries."
 msgstr "Die privésleutel kan items in de wachtwoordopslag niet ontsleutelen."
 
@@ -3530,22 +3649,22 @@ msgstr "Die privésleutel kan items in de wachtwoordopslag niet ontsleutelen."
 msgid "That private key cannot sign Git commits."
 msgstr "Die privésleutel kan geen Git-commits ondertekenen."
 
-#: src/backend/integrated/keys/store.rs:34
+#: src/backend/integrated/keys/store.rs:39
 msgid "That private key is not stored in the app."
 msgstr "Die privésleutel is niet in de app opgeslagen."
 
-#: src/backend/integrated/keys/store.rs:647
+#: src/backend/integrated/keys/store.rs:1020
 msgid "That private key must be password protected before you can import it."
 msgstr ""
 "Die privésleutel moet met een wachtwoord beveiligd zijn voordat je hem kunt "
 "importeren."
 
-#: src/backend/integrated/keys/store.rs:679
+#: src/backend/integrated/keys/store.rs:1052
 msgid "That public key does not match the hardware decryption key."
 msgstr ""
 "Die publieke sleutel komt niet overeen met de hardware-ontsleutelingssleutel."
 
-#: src/backend/integrated/keys/store.rs:693
+#: src/backend/integrated/keys/store.rs:1066
 msgid "That public key does not match the hardware signing key."
 msgstr ""
 "Die publieke sleutel komt niet overeen met de hardware-ondertekeningssleutel."
@@ -3558,38 +3677,38 @@ msgstr "Die remote-URL bestaat al."
 msgid "That remote name already exists."
 msgstr "Die remotenaam bestaat al."
 
-#: src/backend/integrated/keys/fido2.rs:231
-#: src/backend/integrated/keys/fido2.rs:95
+#: src/backend/integrated/keys/fido2.rs:101
+#: src/backend/integrated/keys/fido2.rs:240
 msgid "The FIDO2 security key PIN is incorrect."
 msgstr "De PIN van de FIDO2-beveiligingssleutel is onjuist."
 
-#: src/backend/integrated/keys/fido2.rs:1339
+#: src/backend/integrated/keys/fido2.rs:1624
 msgid "The FIDO2 security key did not return a credential identifier."
 msgstr "De FIDO2-beveiligingssleutel retourneerde geen credential-ID."
 
 #: src/backend/integrated/entries.rs:117
-#: src/backend/integrated/keys/fido2.rs:53
-#: src/backend/integrated/keys/fido2.rs:550
-#: src/backend/integrated/keys/store.rs:39
+#: src/backend/integrated/keys/fido2.rs:57
+#: src/backend/integrated/keys/fido2.rs:611
+#: src/backend/integrated/keys/store.rs:44
 #: src/backend/integrated/shared/crypto.rs:31
 msgid "The available private keys cannot decrypt this item."
 msgstr "De beschikbare privésleutels kunnen dit item niet ontsleutelen."
 
 #: src/backend/integrated/keys/hardware.rs:176
-#: src/backend/integrated/keys/store.rs:722
+#: src/backend/integrated/keys/store.rs:1095
 msgid "The connected hardware key does not match the stored decryption key."
 msgstr ""
 "De verbonden hardwaresleutel komt niet overeen met de opgeslagen "
 "ontsleutelingssleutel."
 
 #: src/backend/integrated/keys/hardware.rs:166
-#: src/backend/integrated/keys/store.rs:713
+#: src/backend/integrated/keys/store.rs:1086
 msgid "The connected hardware key does not match the stored signing key."
 msgstr ""
 "De verbonden hardwaresleutel komt niet overeen met de opgeslagen "
 "ondertekeningssleutel."
 
-#: src/window/tools.rs:46
+#: src/window/tools.rs:49
 msgid "The current list doesn't have any searchable pass fields."
 msgstr "De huidige lijst heeft geen doorzoekbare pass-velden."
 
@@ -3597,11 +3716,11 @@ msgstr "De huidige lijst heeft geen doorzoekbare pass-velden."
 msgid "The installer is ready to run."
 msgstr "Het installatieprogramma is klaar om te worden uitgevoerd."
 
-#: src/store/recipients_page/generate.rs:54
+#: src/store/recipients_page/generate.rs:61
 msgid "The passwords do not match."
 msgstr "De wachtwoorden komen niet overeen."
 
-#: src/backend/integrated/keys/cert.rs:192
+#: src/backend/integrated/keys/cert.rs:203
 msgid "The private key password is incorrect."
 msgstr "Het wachtwoord van de privésleutel is onjuist."
 
@@ -3656,6 +3775,10 @@ msgstr ""
 msgid "This FIDO2 security key can't open your items."
 msgstr "Deze FIDO2-beveiligingssleutel kan je items niet openen."
 
+#: src/store/recipients.rs:14
+msgid "This build doesn't support FIDO2-backed stores."
+msgstr "Deze build ondersteunt geen FIDO2-opslagen."
+
 #: src/store/recipients_page/progress.rs:175
 msgid ""
 "This can take a while because every saved item has to be opened and saved "
@@ -3664,7 +3787,7 @@ msgstr ""
 "Dit kan even duren omdat elk opgeslagen item opnieuw moet worden geopend en "
 "opgeslagen."
 
-#: src/window/tools.rs:50
+#: src/window/tools.rs:53
 msgid "This field has no searchable values."
 msgstr "Dit veld heeft geen doorzoekbare waarden."
 
@@ -3672,7 +3795,7 @@ msgstr "Dit veld heeft geen doorzoekbare waarden."
 msgid "This hardware key can't open your items."
 msgstr "Deze hardwaresleutel kan je items niet openen."
 
-#: src/window/build/widgets.rs:147
+#: src/window/build/widgets.rs:148
 msgid ""
 "This is a flat builder-to-widget registry; splitting it further would add "
 "indirection without reducing logic."
@@ -3697,27 +3820,35 @@ msgstr ""
 msgid "This key can't open your items."
 msgstr "Deze sleutel kan je items niet openen."
 
-#: src/backend/integrated/keys/cert.rs:215
-#: src/backend/integrated/keys/store.rs:471
+#: src/backend/integrated/keys/cert.rs:226
+#: src/backend/integrated/keys/store.rs:647
 msgid "This private key is password protected."
 msgstr "Deze privésleutel is met een wachtwoord beveiligd."
 
-#: src/backend/integrated/keys/store.rs:493
+#: src/backend/integrated/keys/store.rs:690
+msgid "This private key requires a FIDO2 security key."
+msgstr "Deze privésleutel vereist een FIDO2-beveiligingssleutel."
+
+#: src/backend/integrated/keys/store.rs:711
+msgid "This private key requires a different unlock method."
+msgstr "Deze privésleutel vereist een andere ontgrendelingsmethode."
+
+#: src/backend/integrated/keys/store.rs:669
 msgid "This private key requires a hardware key."
 msgstr "Deze privésleutel vereist een hardwaresleutel."
 
-#: src/store/recipients_page/list.rs:338
+#: src/store/recipients_page/list.rs:356
 msgid "This recipient is not available in the app."
 msgstr "Deze ontvanger is niet beschikbaar in de app."
 
-#: src/store/recipients_page/list.rs:259
+#: src/store/recipients_page/list.rs:277
 msgid ""
 "This selected key is required while all selected private keys are required."
 msgstr ""
 "Deze geselecteerde sleutel is vereist zolang alle geselecteerde "
 "privésleutels vereist zijn."
 
-#: src/store/recipients_page/mode.rs:38 src/store/recipients_page/mode.rs:50
+#: src/store/recipients_page/mode.rs:40 src/store/recipients_page/mode.rs:52
 msgid ""
 "This store already mixes FIDO2 and normal keys. Remove one type before "
 "adding more."
@@ -3725,23 +3856,23 @@ msgstr ""
 "Deze opslag combineert al FIDO2- en normale sleutels. Verwijder een type "
 "voordat je meer toevoegt."
 
-#: src/store/recipients_page/mode.rs:35
+#: src/store/recipients_page/mode.rs:37
 msgid ""
 "This store already uses a FIDO2 security key. Remove it before adding normal "
 "keys."
 msgstr ""
-"Deze opslag gebruikt al een FIDO2-beveiligingssleutel. Verwijder die "
-"voordat je normale sleutels toevoegt."
+"Deze opslag gebruikt al een FIDO2-beveiligingssleutel. Verwijder die voordat "
+"je normale sleutels toevoegt."
 
-#: src/store/recipients_page/mode.rs:47
+#: src/store/recipients_page/mode.rs:49
 msgid ""
 "This store already uses normal keys. Remove them before adding a FIDO2 "
 "security key."
 msgstr ""
-"Deze opslag gebruikt al normale sleutels. Verwijder die voordat je een "
-"FIDO2-beveiligingssleutel toevoegt."
+"Deze opslag gebruikt al normale sleutels. Verwijder die voordat je een FIDO2-"
+"beveiligingssleutel toevoegt."
 
-#: data/window.ui:1229
+#: data/window.ui:1235
 msgid ""
 "This store uses more than one security key. Saving a password will ask each "
 "selected security key one by one."
@@ -3755,8 +3886,8 @@ msgid "Too short ({length} characters)"
 msgstr "Te kort ({length} tekens)"
 
 #: data/shortcuts.ui:143 data/window.ui:828 data/window.ui:839
-#: src/store/management/import.rs:256 src/window/navigation/restore.rs:109
-#: src/window/tools.rs:35
+#: src/store/management/import.rs:259 src/window/navigation/restore.rs:109
+#: src/window/tools.rs:36
 msgid "Tools"
 msgstr "Hulpmiddelen"
 
@@ -3768,18 +3899,19 @@ msgstr "Totaal aantal tekens"
 msgid "Touch each security key when it starts blinking."
 msgstr "Raak elke beveiligingssleutel aan wanneer die begint te knipperen."
 
+#: src/store/recipients_page/generate.rs:179
 #: src/store/recipients_page/import.rs:162
 msgid "Touch it if it starts blinking."
 msgstr "Raak die aan als die begint te knipperen."
 
-#: src/backend/integrated/keys/fido2.rs:743
+#: src/backend/integrated/keys/fido2.rs:808
 msgid "Touch the FIDO2 security key"
 msgstr "Raak de FIDO2-beveiligingssleutel aan"
 
 #: src/backend/errors.rs:420 src/backend/errors.rs:443 src/backend/errors.rs:45
-#: src/backend/errors.rs:46 src/backend/integrated/keys/fido2.rs:237
-#: src/backend/integrated/keys/fido2.rs:828
-#: src/backend/integrated/keys/fido2.rs:97
+#: src/backend/errors.rs:46 src/backend/integrated/keys/fido2.rs:103
+#: src/backend/integrated/keys/fido2.rs:1043
+#: src/backend/integrated/keys/fido2.rs:246
 msgid "Touch the FIDO2 security key and try again."
 msgstr "Raak de FIDO2-beveiligingssleutel aan en probeer het opnieuw."
 
@@ -3788,7 +3920,7 @@ msgid "Touch the FIDO2 security key when it starts blinking."
 msgstr "Raak de FIDO2-beveiligingssleutel aan wanneer die begint te knipperen."
 
 #: src/password/page/mod.rs:103 src/password/page/mod.rs:121
-#: src/password/page/mod.rs:71
+#: src/password/page/mod.rs:71 src/private_key/unlock.rs:47
 msgid "Touch the security key if it starts blinking."
 msgstr "Raak de beveiligingssleutel aan als die begint te knipperen."
 
@@ -3802,19 +3934,19 @@ msgstr ""
 msgid "Translated by Nick."
 msgstr "Vertaald door Nick."
 
-#: src/window/tools.rs:48
+#: src/window/tools.rs:51
 msgid "Try a different field filter."
 msgstr "Probeer een ander veldfilter."
 
-#: src/window/docs.rs:23 src/window/tools.rs:64
+#: src/window/docs.rs:23 src/window/tools.rs:69
 msgid "Try a different search term."
 msgstr "Probeer een andere zoekterm."
 
-#: src/window/tools.rs:52
+#: src/window/tools.rs:55
 msgid "Try a different value filter."
 msgstr "Probeer een ander waardefilter."
 
-#: src/store/recipients_page/list.rs:596
+#: src/store/recipients_page/list.rs:706
 msgid "Try again from Preferences."
 msgstr "Probeer het opnieuw vanuit Voorkeuren."
 
@@ -3830,6 +3962,12 @@ msgstr "Inschakelen"
 msgid "Turn on private-key sync?"
 msgstr "Privésleutelsynchronisatie inschakelen?"
 
+#: src/window/tools.rs:44 src/window/tools.rs:62
+msgid "Unavailable because all configured stores use FIDO2 security keys."
+msgstr ""
+"Niet beschikbaar omdat alle ingestelde opslagen FIDO2-beveiligingssleutels "
+"gebruiken."
+
 #: data/shortcuts.ui:53
 msgid "Undo or revert changes"
 msgstr "Wijzigingen ongedaan maken of terugzetten"
@@ -3838,7 +3976,7 @@ msgstr "Wijzigingen ongedaan maken of terugzetten"
 msgid "Undo unavailable for that change."
 msgstr "Ongedaan maken is niet beschikbaar voor die wijziging."
 
-#: src/window/controls.rs:330
+#: src/window/controls.rs:332
 msgid "Undone."
 msgstr "Ongedaan gemaakt."
 
@@ -3862,15 +4000,16 @@ msgstr "Onbekende zoekprovidermethode: {method_name}."
 msgid "Unlock a pass file"
 msgstr "Ontgrendel een pass-bestand"
 
-#: src/store/recipients_page/list.rs:281
+#: src/store/recipients_page/list.rs:299
 msgid "Unlock another selected private key before clearing this one."
 msgstr "Ontgrendel een andere geselecteerde privésleutel voordat je deze wist."
 
 #: src/password/page/mod.rs:115 src/password/page/mod.rs:120
 #: src/password/page/mod.rs:124 src/private_key/git.rs:132
-#: src/private_key/unlock.rs:139 src/private_key/unlock.rs:215
+#: src/private_key/unlock.rs:268 src/private_key/unlock.rs:359
+#: src/private_key/unlock.rs:45 src/private_key/unlock.rs:93
 #: src/store/recipients_page/import.rs:264
-#: src/store/recipients_page/list.rs:874
+#: src/store/recipients_page/list.rs:994
 msgid "Unlock key"
 msgstr "Sleutel ontgrendelen"
 
@@ -3882,11 +4021,11 @@ msgstr "Ontgrendel de sleutel in Voorkeuren."
 msgid "Unlock your key to continue."
 msgstr "Ontgrendel je sleutel om door te gaan."
 
-#: src/backend/host.rs:27 src/store/recipients_page/list.rs:47
+#: src/backend/host.rs:27 src/store/recipients_page/list.rs:49
 msgid "Unnamed host private key"
 msgstr "Naamloze host-privésleutel"
 
-#: src/backend/integrated/keys/cert.rs:49
+#: src/backend/integrated/keys/cert.rs:51
 msgid "Unnamed private key"
 msgstr "Naamloze privésleutel"
 
@@ -3896,28 +4035,45 @@ msgstr "Koppel de nieuwe beveiligingssleutel los."
 
 #: src/backend/errors.rs:62
 msgid "Unplug the other security keys, then try again."
-msgstr "Koppel de andere beveiligingssleutels los en probeer het daarna opnieuw."
+msgstr ""
+"Koppel de andere beveiligingssleutels los en probeer het daarna opnieuw."
 
-#: src/backend/integrated/keys/fido2.rs:908
-#: src/backend/integrated/keys/fido2.rs:935
+#: src/backend/integrated/keys/fido2.rs:1126
+#: src/backend/integrated/keys/fido2.rs:1153
 msgid "Unsupported FIDO2 password-entry format {}."
 msgstr "Niet-ondersteund formaat voor FIDO2-wachtwoordinvoer {}."
 
-#: src/backend/integrated/keys/fido2.rs:914
-#: src/backend/integrated/keys/fido2.rs:941
+#: src/backend/integrated/keys/fido2.rs:1132
+#: src/backend/integrated/keys/fido2.rs:1159
 msgid "Unsupported FIDO2 password-entry protection '{}'."
 msgstr "Niet-ondersteunde beveiliging '{}' voor FIDO2-wachtwoordinvoer."
+
+#: src/backend/integrated/keys/store.rs:306
+msgid "Unsupported FIDO2 private key format {}."
+msgstr "Niet-ondersteund formaat voor FIDO2-privésleutel {}."
+
+#: src/backend/integrated/keys/store.rs:312
+msgid "Unsupported FIDO2 private key protection '{}'."
+msgstr "Niet-ondersteunde beveiliging '{}' voor FIDO2-privésleutel."
+
+#: src/backend/integrated/keys/store.rs:830
+msgid "Unsupported FIDO2-protected key format {}."
+msgstr "Niet-ondersteund formaat voor met FIDO2 beveiligde sleutel {}."
+
+#: src/backend/integrated/keys/store.rs:836
+msgid "Unsupported FIDO2-protected key protection '{}'."
+msgstr "Niet-ondersteunde beveiliging '{}' voor met FIDO2 beveiligde sleutel."
 
 #: src/backend/integrated/keys/hardware_crypto.rs:178
 msgid "Unsupported combination of ciphertext {:?} and public key {:?}"
 msgstr ""
 "Niet-ondersteunde combinatie van cijfertekst {:?} en publieke sleutel {:?}"
 
-#: src/backend/integrated/keys/store.rs:190
+#: src/backend/integrated/keys/store.rs:223
 msgid "Unsupported hardware key manifest format {}."
 msgstr "Niet-ondersteund manifestformaat voor hardwaresleutels {}."
 
-#: src/backend/integrated/keys/store.rs:196
+#: src/backend/integrated/keys/store.rs:229
 msgid "Unsupported hardware key protection '{}'."
 msgstr "Niet-ondersteunde beveiliging '{}' voor hardwaresleutels."
 
@@ -3969,11 +4125,11 @@ msgstr "Hoofdletters"
 msgid "Use Add OTP secret instead."
 msgstr "Gebruik in plaats daarvan 'OTP-geheim toevoegen'."
 
-#: data/window.ui:1313
+#: data/window.ui:1333
 msgid "Use a connected OpenPGP smartcard or YubiKey."
 msgstr "Gebruik een aangesloten OpenPGP-smartcard of YubiKey."
 
-#: data/window.ui:1285
+#: data/window.ui:1291
 msgid ""
 "Use a connected security key for Keycord-only encryption. This option is "
 "incompatible with advanced search, Keycord tools, and other pass apps."
@@ -3982,7 +4138,7 @@ msgstr ""
 "versleuteling. Deze optie is onverenigbaar met geavanceerd zoeken, Keycord-"
 "hulpmiddelen en andere pass-apps."
 
-#: src/password/model.rs:117
+#: src/password/model.rs:118
 msgid "Use a single file name for the username."
 msgstr "Gebruik één bestandsnaam voor de gebruikersnaam."
 
@@ -4022,12 +4178,10 @@ msgid "Use pass import with your custom pass command."
 msgstr "Gebruik 'pass import' met je aangepaste pass-opdracht."
 
 #: data/metainfo.xml:40
-msgid ""
-"Use password-protected or hardware-backed OpenPGP private keys, plus FIDO2 "
-"recipients"
+msgid "Use password-protected or hardware-backed OpenPGP private keys"
 msgstr ""
-"Gebruik met wachtwoord beveiligde of door hardware ondersteunde OpenPGP-"
-"privésleutels, plus FIDO2-ontvangers"
+"Gebruik met een wachtwoord beveiligde of door hardware ondersteunde OpenPGP-"
+"privésleutels"
 
 #: data/window.ui:637
 msgid "Use store, folders, and file name"
@@ -4055,19 +4209,19 @@ msgstr "Gebruikersnaam"
 msgid "Using Integrated instead."
 msgstr "'Integrated' wordt in plaats daarvan gebruikt."
 
-#: src/store/management/import.rs:256 src/window/navigation/restore.rs:109
-#: src/window/tools.rs:36
+#: src/store/management/import.rs:259 src/window/navigation/restore.rs:109
+#: src/window/tools.rs:37
 msgid "Utilities and maintenance"
 msgstr "Hulpprogramma's en onderhoud"
 
-#: src/store/recipients_page/list.rs:80
+#: src/store/recipients_page/list.rs:85
 msgid ""
 "Valid host keys may appear unavailable here while private-key sync is off."
 msgstr ""
 "Geldige hostsleutels kunnen hier onbeschikbaar lijken terwijl "
 "privésleutelsynchronisatie uit staat."
 
-#: data/window.ui:1203 src/store/recipients_page/list.rs:78
+#: data/window.ui:1209 src/store/recipients_page/list.rs:83
 msgid "Valid host keys may appear unavailable here."
 msgstr "Geldige hostsleutels kunnen hier onbeschikbaar lijken."
 
@@ -4079,7 +4233,7 @@ msgstr "Zeer lage tekenvariatie"
 msgid "Weak passwords"
 msgstr "Zwakke wachtwoorden"
 
-#: data/window.ui:1381
+#: data/window.ui:1401
 msgid ""
 "When off, any selected key can unlock an item. When on, every selected key "
 "must be unlocked. Other pass apps will not be able to read these items."
@@ -4113,8 +4267,8 @@ msgid "Work with both structured fields and raw pass file text"
 msgstr ""
 "Werk met zowel gestructureerde velden als onbewerkte pass-bestandstekst"
 
-#: data/window.ui:1566 data/window.ui:1569 src/store/git_page.rs:90
-#: src/window/navigation/pages.rs:47
+#: data/window.ui:1586 data/window.ui:1589 src/store/git_page.rs:90
+#: src/window/navigation/pages.rs:54
 msgid "Working"
 msgstr "Bezig"
 
@@ -4139,51 +4293,51 @@ msgstr "Git-tree van wachtwoordopslag schrijven"
 msgid "X-GitHub-Api-Version"
 msgstr "X-GitHub-Api-Version"
 
-#: data/metainfo.xml:138
+#: data/metainfo.xml:154
 msgid "You can now generate new private keys."
 msgstr "Je kunt nu nieuwe privésleutels genereren."
 
-#: data/metainfo.xml:132
+#: data/metainfo.xml:148
 msgid "You can now manage Git remotes"
 msgstr "Je kunt nu Git-remotes beheren"
 
-#: data/metainfo.xml:103
+#: data/metainfo.xml:119
 msgid "You can now open pass files in a new window"
 msgstr "Je kunt pass-bestanden nu in een nieuw venster openen"
 
-#: data/metainfo.xml:112
+#: data/metainfo.xml:128
 msgid "You can now use the field values as variables in search"
 msgstr "Je kunt veldwaarden nu als variabelen in zoeken gebruiken"
 
-#: data/window.ui:1637
+#: data/window.ui:1658
 msgid "_About Keycord"
 msgstr "_Over Sleutelkoord"
 
-#: data/window.ui:1620
+#: data/window.ui:1640
 msgid "_Documentation"
 msgstr "_Documentatie"
 
-#: data/window.ui:1607
+#: data/window.ui:1627
 msgid "_Find item"
 msgstr "_Item zoeken"
 
-#: data/window.ui:1633
+#: data/window.ui:1654
 msgid "_Keyboard Shortcuts"
 msgstr "_Sneltoetsen"
 
-#: data/window.ui:1624
+#: data/window.ui:1645
 msgid "_Preferences"
 msgstr "_Voorkeuren"
 
-#: data/window.ui:1611
+#: data/window.ui:1631
 msgid "_Synchronize with remote"
 msgstr "_Met remote synchroniseren"
 
-#: data/window.ui:1616
+#: data/window.ui:1636
 msgid "_Tools"
 msgstr "_Hulpmiddelen"
 
-#: src/backend/integrated/keys/fido2.rs:1169
+#: src/backend/integrated/keys/fido2.rs:1388
 msgid "action timeout"
 msgstr "time-out van actie"
 
@@ -4191,7 +4345,7 @@ msgstr "time-out van actie"
 msgid "already exists"
 msgstr "bestaat al"
 
-#: src/backend/integrated/keys/store.rs:151
+#: src/backend/integrated/keys/store.rs:184
 msgid "authentication method blocked"
 msgstr "authenticatiemethode geblokkeerd"
 
@@ -4215,13 +4369,18 @@ msgstr "GitHub-client bouwen"
 msgid "build download client"
 msgstr "downloadclient bouwen"
 
-#: src/backend/errors.rs:32 src/backend/integrated/keys/store.rs:161
+#: src/backend/errors.rs:32 src/backend/integrated/keys/store.rs:194
 msgid "cannot decrypt password store entries"
 msgstr "kan items in de wachtwoordopslag niet ontsleutelen"
 
-#: src/backend/integrated/keys/store.rs:162
+#: src/backend/integrated/keys/store.rs:195
 msgid "cannot sign git commits"
 msgstr "kan git-commits niet ondertekenen"
+
+#: src/backend/integrated/keys/fido2.rs:1022
+#: src/backend/integrated/keys/fido2.rs:891
+msgid "checked above"
+msgstr "hierboven gecontroleerd"
 
 #: src/window/preferences.rs:406
 msgid "clear empty fields before save"
@@ -4231,15 +4390,15 @@ msgstr "lege velden wissen voor opslaan"
 msgid "compiled.gresource"
 msgstr "compiled.gresource"
 
-#: src/backend/integrated/keys/store.rs:145
+#: src/backend/integrated/keys/store.rs:178
 msgid "connect the matching hardware key"
 msgstr "verbind de bijpassende hardwaresleutel"
 
-#: src/backend/integrated/keys/store.rs:140
+#: src/backend/integrated/keys/store.rs:173
 msgid "context error"
 msgstr "contextfout"
 
-#: src/backend/integrated/keys/store.rs:137
+#: src/backend/integrated/keys/store.rs:170
 msgid "couldn't find card"
 msgstr "kon kaart niet vinden"
 
@@ -4259,26 +4418,29 @@ msgstr "GitHub-releaseantwoord decoderen"
 msgid "delete password entry"
 msgstr "wachtwoordinvoer verwijderen"
 
-#: src/backend/integrated/keys/fido2.rs:1164
+#: src/backend/integrated/keys/fido2.rs:1383
 msgid "device not found"
 msgstr "apparaat niet gevonden"
 
-#: src/backend/integrated/keys/store.rs:144
+#: src/window/mod.rs:6
+msgid "docs_disabled.rs"
+msgstr "docs_disabled.rs"
+
+#: src/backend/integrated/keys/store.rs:177
 msgid "does not match the hardware"
 msgstr "komt niet overeen met de hardware"
 
-#: src/backend/integrated/keys/store.rs:143
+#: src/backend/integrated/keys/store.rs:176
 msgid "does not match the stored"
 msgstr "komt niet overeen met de opgeslagen"
 
-#: src/backend/integrated/keys/store.rs:160
+#: src/backend/integrated/keys/store.rs:193
 msgid "does not support"
 msgstr "ondersteunt niet"
 
-#: src/backend/integrated/keys/fido2.rs:754
+#: src/backend/integrated/keys/fido2.rs:819
 msgid "does not support the hmac-secret extension"
-msgstr ""
-"ondersteunt de hmac-secret-extensie niet"
+msgstr "ondersteunt de hmac-secret-extensie niet"
 
 #: src/updater/windows.rs:855
 msgid "download release asset"
@@ -4292,7 +4454,7 @@ msgstr "e-mailvalidatieregex moet compileren"
 msgid "empty password file"
 msgstr "leeg wachtwoordbestand"
 
-#: src/backend/integrated/keys/store.rs:148
+#: src/backend/integrated/keys/store.rs:181
 msgid "enter the hardware key pin"
 msgstr "voer de pincode van de hardwaresleutel in"
 
@@ -4336,15 +4498,15 @@ msgstr "find \"{}\" is \"{}\""
 msgid "find store work and email is $username or reg (?i)store: .+/work/.+"
 msgstr "find store work and email is $username or reg (?i)store: .+/work/.+"
 
-#: src/window/host_access.rs:28
+#: src/window/host_access.rs:30
 msgid "flatpak override --user --device=all io.github.noobping.keycord"
 msgstr "flatpak override --user --device=all io.github.noobping.keycord"
 
-#: src/window/host_access.rs:24
+#: src/window/host_access.rs:26
 msgid "flatpak override --user --socket=pcsc io.github.noobping.keycord"
 msgstr "flatpak override --user --socket=pcsc io.github.noobping.keycord"
 
-#: src/window/host_access.rs:20
+#: src/window/host_access.rs:22
 msgid ""
 "flatpak override --user --talk-name=org.freedesktop.Flatpak "
 "io.github.noobping.keycord"
@@ -4460,7 +4622,7 @@ msgstr "git var"
 msgid "git write-tree"
 msgstr "git write-tree"
 
-#: data/metainfo.xml:162
+#: data/metainfo.xml:178
 msgid "gpg"
 msgstr "gpg"
 
@@ -4484,7 +4646,7 @@ msgstr "`gpg --list-secret-keys` mislukt"
 msgid "gpg secret-key import did not provide stdin"
 msgstr "de import van de geheime GPG-sleutel leverde geen stdin op"
 
-#: src/fido2_recipient.rs:115 src/fido2_recipient.rs:116
+#: src/fido2_recipient.rs:124 src/fido2_recipient.rs:125
 msgid "hex digit"
 msgstr "hexcijfer"
 
@@ -4508,7 +4670,7 @@ msgstr "hostgeheimsleutel importeren"
 msgid "initialize store git repository"
 msgstr "Git-repository voor opslag initialiseren"
 
-#: src/backend/integrated/keys/fido2.rs:1167
+#: src/backend/integrated/keys/fido2.rs:1386
 msgid "invalid option"
 msgstr "ongeldige optie"
 
@@ -4532,7 +4694,7 @@ msgstr ""
 msgid "list host gpg private keys"
 msgstr "host-gpg-privésleutels weergeven"
 
-#: src/backend/integrated/keys/store.rs:110
+#: src/backend/integrated/keys/store.rs:143
 msgid "manifest.toml"
 msgstr "manifest.toml"
 
@@ -4548,7 +4710,7 @@ msgstr "wachtwoordinvoer naar een andere opslag verplaatsen"
 msgid "new item template"
 msgstr "sjabloon voor nieuw item"
 
-#: src/backend/integrated/keys/fido2.rs:1161
+#: src/backend/integrated/keys/fido2.rs:1380
 msgid "no credentials"
 msgstr "geen credentials"
 
@@ -4560,7 +4722,7 @@ msgstr "geen pkesk kon de cijfertekst ontsleutelen"
 msgid "no pkesks managed to decrypt the ciphertext"
 msgstr "geen pkesks konden de cijfertekst ontsleutelen"
 
-#: src/backend/integrated/keys/store.rs:138
+#: src/backend/integrated/keys/store.rs:171
 msgid "no smartcard"
 msgstr "geen smartcard"
 
@@ -4568,7 +4730,7 @@ msgstr "geen smartcard"
 msgid "no such file or directory"
 msgstr "bestand of map bestaat niet"
 
-#: src/backend/integrated/keys/fido2.rs:1162
+#: src/backend/integrated/keys/fido2.rs:1381
 msgid "not found"
 msgstr "niet gevonden"
 
@@ -4576,19 +4738,23 @@ msgstr "niet gevonden"
 msgid "not in the password store"
 msgstr "niet in de wachtwoordopslag"
 
-#: src/backend/integrated/keys/store.rs:155
+#: src/backend/integrated/keys/store.rs:188
 msgid "not transacted"
 msgstr "niet verwerkt"
+
+#: src/backend/integrated/keys/fido2.rs:1390 src/password/undo.rs:205
+msgid "operation denied"
+msgstr "bewerking geweigerd"
 
 #: src/window/git/enabled.rs:1
 msgid "operations.rs"
 msgstr "operations.rs"
 
-#: data/metainfo.xml:163
+#: data/metainfo.xml:179
 msgid "otp"
 msgstr "otp"
 
-#: data/metainfo.xml:161
+#: data/metainfo.xml:177
 msgid "pass"
 msgstr "pass"
 
@@ -4600,15 +4766,15 @@ msgstr "pass-opdracht"
 msgid "pass failed"
 msgstr "`pass` mislukt"
 
-#: src/support/pass_import.rs:97
+#: src/support/pass_import.rs:110
 msgid "pass import --list failed"
 msgstr "pass import --list failed"
 
-#: src/support/pass_import.rs:128
+#: src/support/pass_import.rs:142
 msgid "pass import failed"
 msgstr "pass import failed"
 
-#: src/store/management/import.rs:150 src/support/pass_import.rs:102
+#: src/store/management/import.rs:150 src/support/pass_import.rs:115
 msgid "pass import is not available."
 msgstr "pass import is niet beschikbaar."
 
@@ -4628,7 +4794,7 @@ msgstr "pass mv failed"
 msgid "pass rm failed"
 msgstr "pass rm failed"
 
-#: data/metainfo.xml:160
+#: data/metainfo.xml:176
 msgid "password"
 msgstr "wachtwoord"
 
@@ -4640,27 +4806,27 @@ msgstr "wachtwoordgeneratie"
 msgid "password list sort"
 msgstr "sortering van wachtwoordlijst"
 
-#: src/backend/integrated/keys/store.rs:150
+#: src/backend/integrated/keys/store.rs:183
 msgid "password not checked"
 msgstr "wachtwoord niet gecontroleerd"
 
-#: src/backend/integrated/keys/fido2.rs:1158
+#: src/backend/integrated/keys/fido2.rs:1377
 msgid "pin auth blocked"
 msgstr "PIN-authenticatie geblokkeerd"
 
-#: src/backend/integrated/keys/fido2.rs:1157
+#: src/backend/integrated/keys/fido2.rs:1376
 msgid "pin auth invalid"
 msgstr "PIN-authenticatie ongeldig"
 
-#: src/backend/integrated/keys/fido2.rs:1156
+#: src/backend/integrated/keys/fido2.rs:1375
 msgid "pin invalid"
 msgstr "PIN ongeldig"
 
-#: src/backend/integrated/keys/fido2.rs:1152
+#: src/backend/integrated/keys/fido2.rs:1371
 msgid "pin not set"
 msgstr "PIN niet ingesteld"
 
-#: src/backend/integrated/keys/fido2.rs:1151
+#: src/backend/integrated/keys/fido2.rs:1370
 msgid "pin required"
 msgstr "PIN vereist"
 
@@ -4668,7 +4834,7 @@ msgstr "PIN vereist"
 msgid "private-key sync"
 msgstr "privésleutelsynchronisatie"
 
-#: src/backend/integrated/keys/store.rs:114
+#: src/backend/integrated/keys/store.rs:147
 msgid "public.asc"
 msgstr "public.asc"
 
@@ -4688,7 +4854,7 @@ msgstr "bytes van installatiebestand lezen"
 msgid "read store git status after host save"
 msgstr "Git-status van opslag lezen na host-opslag"
 
-#: src/backend/integrated/keys/store.rs:139
+#: src/backend/integrated/keys/store.rs:172
 msgid "reader error"
 msgstr "leesfout"
 
@@ -4720,7 +4886,11 @@ msgstr ""
 "secret\n"
 "gebruikersnaam: alice"
 
-#: src/backend/integrated/keys/store.rs:152
+#: src/password/undo.rs:203
+msgid "security key"
+msgstr "beveiligingssleutel"
+
+#: src/backend/integrated/keys/store.rs:185
 msgid "security status not satisfied"
 msgstr "beveiligingsstatus niet voldaan"
 
@@ -4764,7 +4934,7 @@ msgstr "opslagpad"
 msgid "stream logger panicked while reading {label}"
 msgstr "streamlogger kreeg een panic tijdens het lezen van {label}"
 
-#: data/metainfo.xml:164
+#: data/metainfo.xml:180
 msgid "totp"
 msgstr "totp"
 
@@ -4790,7 +4960,7 @@ msgstr ""
 msgid "username: alice"
 msgstr "gebruikersnaam: alice"
 
-#: src/backend/integrated/keys/fido2.rs:1153
+#: src/backend/integrated/keys/fido2.rs:1372
 msgid "uv invalid"
 msgstr "uv ongeldig"
 
@@ -4802,7 +4972,7 @@ msgstr "werd niet gevonden"
 msgid "write installer bytes"
 msgstr "bytes van installatiebestand schrijven"
 
-#: src/backend/integrated/keys/fido2.rs:862
+#: src/backend/integrated/keys/fido2.rs:1079
 #: src/backend/integrated/shared/crypto.rs:711
 msgid "writing hex into a string should not fail"
 msgstr "het schrijven van hex naar een string mag niet mislukken"
@@ -4873,7 +5043,7 @@ msgstr "{base}?{}"
 msgid "{branch} (no commits yet)"
 msgstr "{branch} (nog geen commits)"
 
-#: src/backend/integrated/keys/fido2.rs:862
+#: src/backend/integrated/keys/fido2.rs:1079
 msgid "{byte:02X}"
 msgstr "{byte:02X}"
 
@@ -4981,7 +5151,7 @@ msgstr "{count} overeenkomend item"
 msgid "{count} matching items"
 msgstr "{count} overeenkomende items"
 
-#: src/store/recipients.rs:69
+#: src/store/recipients.rs:79
 msgid "{count} recipients"
 msgstr "{count} ontvangers"
 
@@ -5001,13 +5171,17 @@ msgstr "{count} unieke waarden"
 msgid "{file_name}.{}"
 msgstr "{file_name}.{}"
 
-#: src/store/recipients_page/list.rs:779
+#: src/store/recipients_page/list.rs:890
 msgid "{fingerprint} - Hardware key"
 msgstr "{fingerprint} - Hardwaresleutel"
 
-#: src/store/recipients_page/list.rs:776
+#: src/store/recipients_page/list.rs:887
 msgid "{fingerprint} - Password protected"
 msgstr "{fingerprint} - Met wachtwoord beveiligd"
+
+#: src/store/recipients_page/list.rs:894
+msgid "{fingerprint} - Security key protected"
+msgstr "{fingerprint} - Beveiligd met beveiligingssleutel"
 
 #: src/support/git.rs:473
 msgid "{from}..{to}"
@@ -5017,15 +5191,15 @@ msgstr "{from}..{to}"
 msgid "{log_context}: {err}"
 msgstr "{log_context}: {err}"
 
-#: src/backend/integrated/keys/fido2.rs:872
+#: src/backend/integrated/keys/fido2.rs:1090
 msgid "{manufacturer} {product}"
 msgstr "{manufacturer} {product}"
 
-#: src/backend/integrated/keys/store.rs:793
+#: src/backend/integrated/keys/store.rs:1191
 msgid "{name} <{email}>"
 msgstr "{name} <{email}>"
 
-#: src/backend/command.rs:9 src/support/pass_import.rs:22
+#: src/backend/command.rs:9 src/support/pass_import.rs:23
 msgid "{prefix}: {}"
 msgstr "{prefix}: {}"
 
@@ -5059,6 +5233,10 @@ msgstr ""
 "{}\n"
 "{version}"
 
+#: src/backend/integrated/keys/store.rs:1150
+msgid "{} ({short_id})"
+msgstr "{} ({short_id})"
+
 #: src/fido2_recipient.rs:91
 msgid "{} - FIDO2 recipient"
 msgstr "{} - FIDO2-ontvanger"
@@ -5087,9 +5265,38 @@ msgstr "{}.search-provider.ini"
 msgid "{}.svg"
 msgstr "{}.svg"
 
-#: src/preferences/storage.rs:26 src/preferences/storage.rs:27
+#: src/preferences/storage.rs:27 src/preferences/storage.rs:28
 msgid "{}.toml"
 msgstr "{}.toml"
+
+#~ msgid "Add FIDO2 recipient support"
+#~ msgstr "Voeg ondersteuning voor FIDO2-ontvangers toe"
+
+#~ msgid ""
+#~ "App runtime: debug={}, setup={}, flatpak={}, host-access={}, "
+#~ "smartcard={}, fido={}."
+#~ msgstr ""
+#~ "App-runtime: debug={}, setup={}, flatpak={}, host-toegang={}, "
+#~ "smartcard={}, fido={}."
+
+#~ msgid "Choose a private key file."
+#~ msgstr "Kies een privésleutelbestand."
+
+#~ msgid "FIDO2 store recipients must be unlocked separately."
+#~ msgstr "FIDO2-opslagontvangers moeten apart worden ontgrendeld."
+
+#~ msgid "Import private key from clipboard"
+#~ msgstr "Privésleutel vanuit klembord importeren"
+
+#~ msgid "Read an armored private key from the clipboard."
+#~ msgstr "Lees een ge-armorde privésleutel van het klembord."
+
+#~ msgid ""
+#~ "Use password-protected or hardware-backed OpenPGP private keys, plus "
+#~ "FIDO2 recipients"
+#~ msgstr ""
+#~ "Gebruik met wachtwoord beveiligde of door hardware ondersteunde OpenPGP-"
+#~ "privésleutels, plus FIDO2-ontvangers"
 
 #~ msgid ""
 #~ "App runtime: debug={}, setup={}, flatpak={}, host-access={}, smartcard={}."
@@ -5217,11 +5424,6 @@ msgstr "{}.toml"
 #~ msgid "{}.gpg"
 #~ msgstr "{}.gpg"
 
-#~ msgid "Use password-protected or hardware-backed OpenPGP private keys"
-#~ msgstr ""
-#~ "Gebruik met een wachtwoord beveiligde of door hardware ondersteunde "
-#~ "OpenPGP-privésleutels"
-
 #~ msgid "Dismissed the FIDO2 PIN prompt. Continuing without a signature."
 #~ msgstr "FIDO2-PIN-prompt afgewezen. Doorgaan zonder handtekening."
 
@@ -5240,9 +5442,6 @@ msgstr "{}.toml"
 
 #~ msgid "Install the latest Windows release"
 #~ msgstr "Installeer de nieuwste Windows-release"
-
-#~ msgid "This private key requires a FIDO2 security key."
-#~ msgstr "Deze privésleutel vereist een FIDO2-beveiligingssleutel."
 
 #~ msgid "Unlock the FIDO2 security key before exporting its private key."
 #~ msgstr ""

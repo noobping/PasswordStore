@@ -1,6 +1,7 @@
 use super::StoreRecipientsPageState;
 use crate::backend::{
     armored_ripasso_private_key, armored_ripasso_public_key, ManagedRipassoPrivateKey,
+    ManagedRipassoPrivateKeyProtection,
 };
 use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
@@ -13,10 +14,17 @@ fn copy_key_material_to_clipboard(
     key: &ManagedRipassoPrivateKey,
     button: Option<&Button>,
 ) -> Result<(), String> {
-    let armored = if key.uses_hardware() {
-        armored_ripasso_public_key(&key.fingerprint)?
-    } else {
-        armored_ripasso_private_key(&key.fingerprint)?
+    let armored = match key.protection {
+        ManagedRipassoPrivateKeyProtection::Password => {
+            armored_ripasso_private_key(&key.fingerprint)?
+        }
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
+            armored_ripasso_public_key(&key.fingerprint)?
+        }
+        #[cfg(feature = "fidokey")]
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+            armored_ripasso_private_key(&key.fingerprint)?
+        }
     };
     set_clipboard_text(&armored, overlay, button);
     Ok(())

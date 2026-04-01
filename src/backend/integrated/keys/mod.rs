@@ -1,8 +1,8 @@
 mod cache;
 mod cert;
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 mod fido2;
-#[cfg(not(feature = "fido"))]
+#[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
 #[path = "fido2_disabled.rs"]
 mod fido2;
 mod hardware;
@@ -55,7 +55,7 @@ pub(in crate::backend::integrated) use self::store::ripasso_keys_dir;
 pub use self::store::store_ripasso_hardware_key_bytes;
 pub use self::store::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
-    discover_ripasso_hardware_keys, generate_ripasso_private_key,
+    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_private_key,
     import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,

@@ -343,10 +343,6 @@ fn import_hardware_key_from_file(state: &StoreRecipientsPageState) {
 }
 
 fn open_private_key_picker(state: &StoreRecipientsPageState) {
-    if !ensure_standard_recipient_actions_allowed(state) {
-        return;
-    }
-
     let state_for_response = state.clone();
     choose_file_bytes(
         &state.window,
@@ -362,10 +358,6 @@ fn open_private_key_picker(state: &StoreRecipientsPageState) {
 }
 
 fn import_private_key_from_clipboard(state: &StoreRecipientsPageState) {
-    if !ensure_standard_recipient_actions_allowed(state) {
-        return;
-    }
-
     let Some(display) = Display::default() else {
         state
             .platform

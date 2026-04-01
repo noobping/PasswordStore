@@ -91,6 +91,15 @@ pub fn fido2_recipient_subtitle(value: &str) -> Option<String> {
         .map(|recipient| format!("{} - FIDO2 recipient", recipient.id))
 }
 
+pub fn same_fido2_recipient(left: &str, right: &str) -> bool {
+    let left = parse_fido2_recipient_string(left).ok().flatten();
+    let right = parse_fido2_recipient_string(right).ok().flatten();
+    match (left, right) {
+        (Some(left), Some(right)) => left.id.eq_ignore_ascii_case(&right.id),
+        _ => false,
+    }
+}
+
 fn normalize_fido2_recipient_id(value: &str) -> Result<String, String> {
     let trimmed = value.trim();
     if trimmed.len() != 40 || !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -139,7 +148,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
 mod tests {
     use super::{
         build_fido2_recipient_string, fido2_recipient_subtitle, fido2_recipient_title,
-        parse_fido2_recipient_metadata_line, parse_fido2_recipient_string,
+        parse_fido2_recipient_metadata_line, parse_fido2_recipient_string, same_fido2_recipient,
     };
 
     #[test]
@@ -175,5 +184,23 @@ mod tests {
                 .expect("parse metadata line"),
             Some(encoded)
         );
+    }
+
+    #[test]
+    fn same_fido2_recipient_matches_on_id() {
+        let left = build_fido2_recipient_string(
+            "0123456789abcdef0123456789abcdef01234567",
+            "Desk Key",
+            b"cred",
+        )
+        .expect("build left recipient");
+        let right = build_fido2_recipient_string(
+            "0123456789abcdef0123456789abcdef01234567",
+            "Travel Key",
+            b"cred",
+        )
+        .expect("build right recipient");
+
+        assert!(same_fido2_recipient(&left, &right));
     }
 }

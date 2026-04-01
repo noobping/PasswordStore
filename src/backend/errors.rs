@@ -281,7 +281,7 @@ impl StoreRecipientsError {
     }
 }
 
-#[cfg_attr(not(feature = "fido"), allow(dead_code))]
+#[cfg_attr(not(any(feature = "fidostore", feature = "fidokey")), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum PrivateKeyError {
     #[error("{0}")]
@@ -324,7 +324,7 @@ pub enum PrivateKeyError {
     Other(String),
 }
 
-#[cfg_attr(not(feature = "fido"), allow(dead_code))]
+#[cfg_attr(not(any(feature = "fidostore", feature = "fidokey")), allow(dead_code))]
 impl PrivateKeyError {
     pub fn not_stored(message: impl Into<String>) -> Self {
         Self::NotStored(message.into())

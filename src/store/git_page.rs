@@ -855,7 +855,10 @@ pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
         return;
     };
 
-    let visible = request.mode == StoreRecipientsMode::Edit;
+    let visible = matches!(
+        request.mode,
+        StoreRecipientsMode::Edit | StoreRecipientsMode::Create
+    );
     state.platform.git_group.set_visible(visible);
     if !visible {
         return;

@@ -17,7 +17,7 @@ use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
     create_fido2_store_recipient, direct_binding_from_store_recipient,
     discover_ripasso_hardware_keys, encrypt_fido2_any_managed_bundle_with_progress,
-    ensure_ripasso_private_key_is_ready, generate_ripasso_private_key,
+    ensure_ripasso_private_key_is_ready, generate_fido2_private_key, generate_ripasso_private_key,
     import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, parse_managed_private_key_bytes,
     prepare_managed_private_key_bytes, remove_ripasso_private_key, reset_fido2_transport_for_tests,
@@ -41,7 +41,9 @@ use crate::backend::{
     PasswordEntryWriteError, PasswordEntryWriteProgress, PrivateKeyError, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement, StoreRecipientsSaveProgress, StoreRecipientsSaveStage,
 };
-use crate::fido2_recipient::{build_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME};
+use crate::fido2_recipient::{
+    build_fido2_recipient_string, is_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME,
+};
 use crate::preferences::Preferences;
 use crate::store::recipients::split_store_recipients;
 use crate::support::git::has_git_repository;
@@ -231,6 +233,7 @@ impl MockFido2Transport {
         self
     }
 
+    #[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
     fn next_enrollment(&self) -> Result<Fido2Enrollment, Fido2TransportError> {
         self.enrollments
             .lock()
@@ -997,6 +1000,141 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
     .expect("unlock private key for session");
     assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
     assert!(ensure_ripasso_private_key_is_ready(&imported.fingerprint).is_ok());
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
+fn fido2_private_key_unlocks_via_the_fidokey_feature() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"fidokey-secret")))
+            .with_assertion_results(vec![
+                Err(Fido2TransportError::PinRequired),
+                Ok(mock_fido2_assertion(b"fidokey-secret")),
+            ]),
+    ));
+    let generated = generate_fido2_private_key(None).expect("generate FIDO-protected key");
+    clear_cached_unlocked_ripasso_private_keys();
+
+    let err = unlock_ripasso_private_key_for_session(
+        &generated.fingerprint,
+        PrivateKeyUnlockRequest::Fido2(None),
+    )
+    .expect_err("missing PIN should be reported");
+    assert!(matches!(err, PrivateKeyError::Fido2PinRequired(_)));
+
+    let unlocked = unlock_ripasso_private_key_for_session(
+        &generated.fingerprint,
+        PrivateKeyUnlockRequest::Fido2(Some("123456".to_string())),
+    )
+    .expect("unlock FIDO2-backed private key");
+
+    assert_eq!(
+        unlocked.protection,
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret
+    );
+    assert_eq!(unlocked.fingerprint, generated.fingerprint);
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
+fn exported_fido2_private_keys_import_as_managed_keys() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"travel-key-secret"))),
+    ));
+    let generated =
+        generate_fido2_private_key(Some("123456")).expect("generate FIDO-protected key");
+    let exported =
+        armored_ripasso_private_key(&generated.fingerprint).expect("export FIDO-protected key");
+    remove_ripasso_private_key(&generated.fingerprint).expect("remove generated FIDO key");
+
+    let imported = import_ripasso_private_key_bytes(exported.as_bytes(), None)
+        .expect("import FIDO-protected key");
+
+    assert_eq!(
+        imported.protection,
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret
+    );
+    assert_eq!(imported.fingerprint, generated.fingerprint);
+    assert!(!ripasso_private_key_requires_passphrase(exported.as_bytes()).unwrap());
+    assert!(list_ripasso_private_keys()
+        .expect("list private keys")
+        .into_iter()
+        .any(|key| key.fingerprint == imported.fingerprint));
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
+fn generated_fido2_private_keys_are_listed_and_start_unlocked_when_a_pin_is_cached() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"generated-fidokey-secret"))),
+    ));
+
+    let generated =
+        generate_fido2_private_key(Some("123456")).expect("generate FIDO-protected key");
+
+    assert_eq!(
+        generated.protection,
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret
+    );
+    assert!(!is_fido2_recipient_string(&generated.fingerprint));
+    assert!(is_ripasso_private_key_unlocked(&generated.fingerprint).unwrap());
+    assert!(list_ripasso_private_keys()
+        .expect("list private keys")
+        .into_iter()
+        .any(|key| key.fingerprint == generated.fingerprint));
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
+fn generated_fido2_private_keys_can_be_combined_with_password_keys() {
+    let env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"mixed-fidokey-secret"))),
+    ));
+    let password_key = generate_ripasso_private_key("Alice", "alice@example.com", "hunter2")
+        .expect("generate password-protected key");
+    let fido_key = generate_fido2_private_key(Some("123456")).expect("generate FIDO-protected key");
+    let store = env.root_dir().join("mixed-managed-store");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        &[
+            password_key.fingerprint.clone(),
+            fido_key.fingerprint.clone(),
+        ],
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save mixed recipients");
+
+    let gpg_id = fs::read_to_string(store.join(".gpg-id")).expect("read .gpg-id");
+    assert!(gpg_id.contains(&password_key.fingerprint));
+    assert!(gpg_id.contains(&fido_key.fingerprint));
+    assert!(!store.join(FIDO2_RECIPIENTS_FILE_NAME).exists());
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
+fn removing_fido2_private_keys_removes_the_stored_key() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"backup-key-secret"))),
+    ));
+    let imported = generate_fido2_private_key(Some("123456")).expect("generate FIDO-protected key");
+
+    remove_ripasso_private_key(&imported.fingerprint).expect("remove FIDO2 private key");
+
+    assert!(!list_ripasso_private_keys()
+        .expect("list private keys")
+        .into_iter()
+        .any(|key| key.fingerprint == imported.fingerprint));
 }
 
 #[test]

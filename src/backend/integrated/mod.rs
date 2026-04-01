@@ -21,7 +21,7 @@ pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_key
 pub use self::keys::store_ripasso_private_key_bytes;
 pub use self::keys::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
-    discover_ripasso_hardware_keys, generate_ripasso_private_key,
+    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_private_key,
     import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
     is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,

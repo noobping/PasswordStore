@@ -81,6 +81,15 @@ pub fn create_fido2_store_recipient(_pin: Option<&str>) -> Result<String, Privat
     ))
 }
 
+#[cfg_attr(not(feature = "fidokey"), allow(dead_code))]
+pub(in crate::backend::integrated) fn create_fido2_private_key_binding(
+    _pin: Option<&str>,
+) -> Result<String, PrivateKeyError> {
+    Err(PrivateKeyError::unsupported_fido2_key(
+        FIDO2_FEATURE_DISABLED_MESSAGE,
+    ))
+}
+
 pub fn unlock_fido2_store_recipient_for_session(
     _recipient: &str,
     _pin: Option<&str>,

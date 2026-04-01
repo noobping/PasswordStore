@@ -7,6 +7,8 @@ use sequoia_openpgp::{
 pub enum ManagedRipassoPrivateKeyProtection {
     Password,
     HardwareOpenPgpCard,
+    #[cfg(feature = "fidokey")]
+    Fido2HmacSecret,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,13 +50,6 @@ impl ManagedRipassoPrivateKey {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "Unnamed private key".to_string())
     }
-
-    pub fn uses_hardware(&self) -> bool {
-        matches!(
-            self.protection,
-            ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
-        )
-    }
 }
 
 impl From<ManagedRipassoPrivateKeyProtection> for PrivateKeyUnlockKind {
@@ -62,6 +57,8 @@ impl From<ManagedRipassoPrivateKeyProtection> for PrivateKeyUnlockKind {
         match value {
             ManagedRipassoPrivateKeyProtection::Password => Self::Password,
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => Self::HardwareOpenPgpCard,
+            #[cfg(feature = "fidokey")]
+            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => Self::Fido2SecurityKey,
         }
     }
 }
@@ -133,6 +130,20 @@ pub(in crate::backend::integrated) fn parse_hardware_public_key_bytes(
         &cert,
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
         Some(hardware),
+    );
+    Ok((cert, key))
+}
+
+#[cfg(feature = "fidokey")]
+pub(in crate::backend::integrated) fn parse_fido2_public_key_bytes(
+    bytes: &[u8],
+) -> Result<(Cert, ManagedRipassoPrivateKey), PrivateKeyError> {
+    let cert = Cert::from_bytes(bytes).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let cert = cert.strip_secret_key_material();
+    let key = managed_private_key_from_cert(
+        &cert,
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
+        None,
     );
     Ok((cert, key))
 }

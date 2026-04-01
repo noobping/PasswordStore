@@ -121,6 +121,7 @@ fn build_store_recipients_platform_state(
         import_clipboard_row: widgets.store_recipients_import_clipboard_row.clone(),
         import_file_row: widgets.store_recipients_import_file_row.clone(),
         generate_key_row: widgets.store_recipients_generate_key_row.clone(),
+        generate_fido2_key_row: widgets.store_recipients_generate_fido2_key_row.clone(),
         require_all_row: widgets.store_recipients_require_all_row.clone(),
         all_fido2_keys_required_row: widgets.store_recipients_all_fido2_keys_required_row.clone(),
         require_all_check: widgets.store_recipients_require_all_check.clone(),

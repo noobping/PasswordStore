@@ -2,9 +2,16 @@ use super::list::rebuild_store_recipients_list;
 use super::mode::ensure_standard_recipient_actions_allowed;
 use super::sync::sync_private_keys_to_host_if_enabled;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState};
-use crate::backend::{generate_ripasso_private_key, ManagedRipassoPrivateKey, PrivateKeyError};
+use crate::backend::{
+    generate_fido2_private_key, generate_ripasso_private_key, ManagedRipassoPrivateKey,
+    PrivateKeyError, PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
+};
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::private_key::dialog::{
+    build_private_key_progress_dialog, present_private_key_unlock_dialog_with_close_handler,
+    PrivateKeyDialogHandle,
+};
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{
@@ -98,13 +105,7 @@ fn finish_private_key_generation(
         Ok(_) => {
             clear_private_key_generation_form(state);
             pop_private_key_generation_page_if_visible(state);
-            let _ = sync_private_keys_to_host_if_enabled(state);
-            rebuild_store_recipients_list(state);
-            activate_widget_action(&state.window, "win.reload-password-list");
-            state
-                .platform
-                .overlay
-                .add_toast(Toast::new(&gettext("Key generated.")));
+            finish_generated_key(state);
         }
         Err(err) => {
             log_error(format!("Failed to generate private key: {err}"));
@@ -114,6 +115,16 @@ fn finish_private_key_generation(
                 .add_toast(Toast::new(&gettext("Couldn't generate the key.")));
         }
     }
+}
+
+fn finish_generated_key(state: &StoreRecipientsPageState) {
+    let _ = sync_private_keys_to_host_if_enabled(state);
+    rebuild_store_recipients_list(state);
+    activate_widget_action(&state.window, "win.reload-password-list");
+    state
+        .platform
+        .overlay
+        .add_toast(Toast::new(&gettext("Key generated.")));
 }
 
 fn start_private_key_generation(
@@ -136,6 +147,83 @@ fn start_private_key_generation(
                 .overlay
                 .add_toast(Toast::new(&gettext("Couldn't generate the key.")));
         },
+    );
+}
+
+fn finish_fido2_private_key_generation(
+    state: &StoreRecipientsPageState,
+    result: Result<ManagedRipassoPrivateKey, PrivateKeyError>,
+) {
+    match result {
+        Ok(_) => finish_generated_key(state),
+        Err(err) => {
+            log_error(format!("Failed to generate FIDO-protected key: {err}"));
+            state
+                .platform
+                .overlay
+                .add_toast(Toast::new(&gettext(err.import_message())));
+        }
+    }
+}
+
+fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Option<String>) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
+    let state = state.clone();
+    let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
+        &state.window,
+        "Generating FIDO-protected key",
+        None,
+        "Touch it if it starts blinking.",
+    ));
+    let progress_dialog_for_disconnect = progress_dialog.clone();
+    let state_for_disconnect = state.clone();
+    let pin_for_worker = pin.clone();
+    let pin_was_supplied = pin.is_some();
+    spawn_result_task(
+        move || generate_fido2_private_key(pin_for_worker.as_deref()),
+        move |result| {
+            progress_dialog.force_close();
+            match result {
+                Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
+                    prompt_fido2_private_key_pin(&state);
+                }
+                other => finish_fido2_private_key_generation(&state, other),
+            }
+        },
+        move || {
+            progress_dialog_for_disconnect.force_close();
+            log_error(
+                "FIDO-protected key generation worker disconnected unexpectedly.".to_string(),
+            );
+            state_for_disconnect
+                .platform
+                .overlay
+                .add_toast(Toast::new(&gettext("Couldn't generate the key.")));
+        },
+    );
+}
+
+fn prompt_fido2_private_key_pin(state: &StoreRecipientsPageState) {
+    let window = state.window.clone();
+    let overlay = state.platform.overlay.clone();
+    let state = state.clone();
+    present_private_key_unlock_dialog_with_close_handler(
+        &window,
+        &overlay,
+        "Generate FIDO-protected key",
+        None,
+        PrivateKeyUnlockKind::Fido2SecurityKey,
+        move |request| {
+            let pin = match request {
+                PrivateKeyUnlockRequest::Fido2(pin) => pin,
+                _ => None,
+            };
+            start_fido2_private_key_generation(&state, pin);
+        },
+        || {},
     );
 }
 
@@ -298,6 +386,12 @@ pub(super) fn connect_private_key_generate_controls(state: &StoreRecipientsPageS
     let state_for_password = state.clone();
     connect_row_action(&row, move || {
         show_private_key_generation_page(&state_for_password);
+    });
+
+    let fido2_row = state.platform.generate_fido2_key_row.clone();
+    let state_for_fido2 = state.clone();
+    connect_row_action(&fido2_row, move || {
+        start_fido2_private_key_generation(&state_for_fido2, None);
     });
 }
 

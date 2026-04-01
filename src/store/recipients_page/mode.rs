@@ -1,7 +1,9 @@
 use super::StoreRecipientsPageState;
 use crate::fido2_recipient::is_fido2_recipient_string;
 use crate::i18n::gettext;
-use crate::support::runtime::{supports_fido2_features, supports_smartcard_features};
+use crate::support::runtime::{
+    supports_fidokey_features, supports_fidostore_features, supports_smartcard_features,
+};
 use crate::window::host_access::{
     append_optional_fido2_access_row, append_optional_smartcard_access_row,
 };
@@ -85,7 +87,9 @@ pub(super) fn sync_store_recipients_mode_controls(
     let show_standard_rows = selection_mode.allows_standard_recipients();
     let show_fido2_rows = selection_mode.allows_fido2_recipients();
     let smartcard_supported = supports_smartcard_features();
-    let fido2_supported = supports_fido2_features();
+    let fidostore_supported = supports_fidostore_features();
+    let fidokey_supported = supports_fidokey_features();
+    let show_generic_import_rows = show_standard_rows;
 
     state
         .platform
@@ -93,12 +97,16 @@ pub(super) fn sync_store_recipients_mode_controls(
         .set_visible(show_standard_rows);
     state
         .platform
+        .generate_fido2_key_row
+        .set_visible(show_standard_rows && fidokey_supported);
+    state
+        .platform
         .import_clipboard_row
-        .set_visible(show_standard_rows);
+        .set_visible(show_generic_import_rows);
     state
         .platform
         .import_file_row
-        .set_visible(show_standard_rows);
+        .set_visible(show_generic_import_rows);
     state
         .platform
         .add_hardware_key_row
@@ -110,7 +118,7 @@ pub(super) fn sync_store_recipients_mode_controls(
     state
         .platform
         .add_fido2_key_row
-        .set_visible(show_fido2_rows && fido2_supported);
+        .set_visible(show_fido2_rows && fidostore_supported);
 
     append_optional_smartcard_access_row(
         &state.platform.add_list,
@@ -124,12 +132,18 @@ pub(super) fn sync_store_recipients_mode_controls(
     append_optional_fido2_access_row(
         &state.platform.create_list,
         &state.platform.overlay,
-        &[&state.platform.add_fido2_key_row],
-        show_fido2_rows && uses_integrated_backend,
+        &[
+            &state.platform.generate_fido2_key_row,
+            &state.platform.add_fido2_key_row,
+        ],
+        uses_integrated_backend
+            && (state.platform.generate_fido2_key_row.is_visible()
+                || state.platform.add_fido2_key_row.is_visible()),
     );
 
     state.platform.create_group.set_visible(
         state.platform.generate_key_row.is_visible()
+            || state.platform.generate_fido2_key_row.is_visible()
             || state.platform.add_fido2_key_row.is_visible(),
     );
     state.platform.add_group.set_visible(

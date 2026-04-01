@@ -131,6 +131,7 @@ pub struct StoreRecipientsPlatformState {
     pub import_clipboard_row: ActionRow,
     pub import_file_row: ActionRow,
     pub generate_key_row: ActionRow,
+    pub generate_fido2_key_row: ActionRow,
     pub require_all_row: ActionRow,
     pub all_fido2_keys_required_row: ActionRow,
     pub require_all_check: CheckButton,

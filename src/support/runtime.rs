@@ -15,13 +15,14 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: debug={}, setup={}, flatpak={}, host-access={}, smartcard={}, fido={}.",
+            "App runtime: debug={}, setup={}, flatpak={}, host-access={}, smartcard={}, fidostore={}, fidokey={}.",
             feature_status(cfg!(debug_assertions)),
             feature_status(cfg!(feature = "setup")),
             feature_status(cfg!(feature = "flatpak")),
             feature_status(has_host_permission()),
             feature_status(has_smartcard_permission()),
-            feature_status(has_fido2_permission()),
+            feature_status(supports_fidostore_features() && has_fido2_permission()),
+            feature_status(supports_fidokey_features() && has_fido2_permission()),
         ));
     });
 }
@@ -50,8 +51,17 @@ pub const fn supports_smartcard_features() -> bool {
     cfg!(target_os = "linux")
 }
 
-pub const fn supports_fido2_features() -> bool {
-    cfg!(feature = "fido") && cfg!(any(target_os = "linux", target_os = "windows"))
+pub const fn supports_fido_features() -> bool {
+    cfg!(any(feature = "fidostore", feature = "fidokey"))
+        && cfg!(any(target_os = "linux", target_os = "windows"))
+}
+
+pub const fn supports_fidostore_features() -> bool {
+    cfg!(feature = "fidostore") && cfg!(any(target_os = "linux", target_os = "windows"))
+}
+
+pub const fn supports_fidokey_features() -> bool {
+    cfg!(feature = "fidokey") && cfg!(any(target_os = "linux", target_os = "windows"))
 }
 
 pub fn require_host_command_features() -> Result<(), String> {
@@ -107,7 +117,7 @@ pub fn has_fido2_permission() -> bool {
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
 pub fn has_fido2_permission() -> bool {
-    supports_fido2_features()
+    supports_fido_features()
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]

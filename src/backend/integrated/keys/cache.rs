@@ -3,7 +3,7 @@ use super::hardware::HardwareSessionPolicy;
 use sequoia_openpgp::Cert;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use zeroize::Zeroizing;
 
 fn unlocked_ripasso_private_keys() -> &'static RwLock<HashMap<String, Arc<Cert>>> {
@@ -17,20 +17,20 @@ fn unlocked_hardware_private_keys() -> &'static RwLock<HashMap<String, HardwareS
     UNLOCKED_KEYS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn cached_fido2_pins() -> &'static RwLock<HashMap<String, Arc<Zeroizing<Vec<u8>>>>> {
     static FIDO2_PINS: OnceLock<RwLock<HashMap<String, Arc<Zeroizing<Vec<u8>>>>>> = OnceLock::new();
     FIDO2_PINS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn pending_fido2_enrollments() -> &'static RwLock<HashMap<String, PendingFido2Enrollment>> {
     static FIDO2_ENROLLMENTS: OnceLock<RwLock<HashMap<String, PendingFido2Enrollment>>> =
         OnceLock::new();
     FIDO2_ENROLLMENTS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[derive(Debug)]
 pub(in crate::backend::integrated) struct PendingFido2Enrollment {
     credential_id: Vec<u8>,
@@ -38,7 +38,7 @@ pub(in crate::backend::integrated) struct PendingFido2Enrollment {
     hmac_secret: Zeroizing<Vec<u8>>,
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl PendingFido2Enrollment {
     fn new(
         credential_id: impl AsRef<[u8]>,
@@ -68,7 +68,7 @@ impl PendingFido2Enrollment {
     }
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Clone for PendingFido2Enrollment {
     fn clone(&self) -> Self {
         Self::new(&self.credential_id, self.hmac_salt(), self.hmac_secret())
@@ -119,7 +119,7 @@ fn with_unlocked_hardware_keys_write<T>(
     }
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn with_cached_fido2_pins_read<T>(
     f: impl FnOnce(&HashMap<String, Arc<Zeroizing<Vec<u8>>>>) -> T,
 ) -> T {
@@ -132,7 +132,7 @@ fn with_cached_fido2_pins_read<T>(
     }
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn with_cached_fido2_pins_write<T>(
     f: impl FnOnce(&mut HashMap<String, Arc<Zeroizing<Vec<u8>>>>) -> T,
 ) -> T {
@@ -145,7 +145,7 @@ fn with_cached_fido2_pins_write<T>(
     }
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn with_pending_fido2_enrollments_read<T>(
     f: impl FnOnce(&HashMap<String, PendingFido2Enrollment>) -> T,
 ) -> T {
@@ -158,7 +158,7 @@ fn with_pending_fido2_enrollments_read<T>(
     }
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn with_pending_fido2_enrollments_write<T>(
     f: impl FnOnce(&mut HashMap<String, PendingFido2Enrollment>) -> T,
 ) -> T {
@@ -207,7 +207,7 @@ pub(in crate::backend::integrated) fn cache_unlocked_hardware_private_key(
     Ok(())
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn cached_fido2_pin(
     fingerprint: &str,
 ) -> Result<Option<Arc<Zeroizing<Vec<u8>>>>, String> {
@@ -217,7 +217,7 @@ pub(in crate::backend::integrated) fn cached_fido2_pin(
     }))
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn cache_fido2_pin(
     fingerprint: &str,
     pin: impl AsRef<[u8]>,
@@ -229,7 +229,7 @@ pub(in crate::backend::integrated) fn cache_fido2_pin(
     Ok(())
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn clear_cached_fido2_pin(
     fingerprint: &str,
 ) -> Result<(), String> {
@@ -240,7 +240,7 @@ pub(in crate::backend::integrated) fn clear_cached_fido2_pin(
     Ok(())
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn cached_pending_fido2_enrollment(
     fingerprint: &str,
 ) -> Result<Option<PendingFido2Enrollment>, String> {
@@ -250,7 +250,8 @@ pub(in crate::backend::integrated) fn cached_pending_fido2_enrollment(
     }))
 }
 
-#[cfg(feature = "fido")]
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn cache_pending_fido2_enrollment(
     fingerprint: &str,
     credential_id: impl AsRef<[u8]>,
@@ -265,7 +266,7 @@ pub(in crate::backend::integrated) fn cache_pending_fido2_enrollment(
     Ok(())
 }
 
-#[cfg(feature = "fido")]
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn clear_pending_fido2_enrollment(
     fingerprint: &str,
 ) -> Result<(), String> {
@@ -276,7 +277,7 @@ pub(in crate::backend::integrated) fn clear_pending_fido2_enrollment(
     Ok(())
 }
 
-#[cfg(not(feature = "fido"))]
+#[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
 pub(in crate::backend::integrated) fn clear_pending_fido2_enrollment(
     _fingerprint: &str,
 ) -> Result<(), String> {
@@ -293,11 +294,11 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
     with_unlocked_hardware_keys_write(|keys| {
         keys.remove(&fingerprint);
     });
-    #[cfg(feature = "fido")]
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     with_cached_fido2_pins_write(|pins| {
         pins.remove(&fingerprint);
     });
-    #[cfg(feature = "fido")]
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     with_pending_fido2_enrollments_write(|enrollments| {
         enrollments.remove(&fingerprint);
     });

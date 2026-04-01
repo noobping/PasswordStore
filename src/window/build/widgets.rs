@@ -69,6 +69,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_import_clipboard_row: ActionRow,
     pub(in crate::window) store_recipients_import_file_row: ActionRow,
     pub(in crate::window) store_recipients_generate_key_row: ActionRow,
+    pub(in crate::window) store_recipients_generate_fido2_key_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_row: ActionRow,
     pub(in crate::window) store_recipients_all_fido2_keys_required_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_check: CheckButton,
@@ -222,6 +223,9 @@ impl WindowWidgets {
             ),
             store_recipients_import_file_row: required!("store_recipients_import_file_row"),
             store_recipients_generate_key_row: required!("store_recipients_generate_key_row"),
+            store_recipients_generate_fido2_key_row: required!(
+                "store_recipients_generate_fido2_key_row"
+            ),
             store_recipients_require_all_row: required!("store_recipients_require_all_row"),
             store_recipients_all_fido2_keys_required_row: required!(
                 "store_recipients_all_fido2_keys_required_row"

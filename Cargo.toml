@@ -12,7 +12,9 @@ repository = "https://github.com/noobping/keycord"
 default = []
 setup = []
 flatpak = []
-fido = ["dep:base64", "dep:fido2-rs", "dep:hmac", "dep:openssl", "dep:sha2"]
+fido-common = ["dep:base64", "dep:fido2-rs", "dep:hmac", "dep:openssl", "dep:sha2"]
+fidostore = ["fido-common"]
+fidokey = ["fido-common"]
 
 [dependencies]
 thiserror = "2.0"

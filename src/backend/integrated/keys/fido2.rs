@@ -1,11 +1,10 @@
-use super::cache::{
-    cache_pending_fido2_enrollment, cached_fido2_pin, cached_pending_fido2_enrollment,
-    clear_cached_fido2_pin,
-};
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use super::cache::cache_pending_fido2_enrollment;
+use super::cache::{cached_fido2_pin, cached_pending_fido2_enrollment, clear_cached_fido2_pin};
 use crate::backend::PrivateKeyError;
-use crate::fido2_recipient::{
-    build_fido2_recipient_string, parse_fido2_recipient_string, Fido2StoreRecipient,
-};
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use crate::fido2_recipient::build_fido2_recipient_string;
+use crate::fido2_recipient::{parse_fido2_recipient_string, Fido2StoreRecipient};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -34,9 +33,13 @@ pub const FIDO2_RP_ID: &str = "io.github.noobping.keycord";
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 const FIDO2_PLATFORM_UNSUPPORTED_MESSAGE: &str =
     "FIDO2 recipients are only available on Linux and Windows.";
+#[cfg(not(feature = "fidostore"))]
+const FIDO2_STORE_FEATURE_DISABLED_MESSAGE: &str =
+    "FIDO store support is disabled in this build of Keycord.";
 
 const FIDO2_HMAC_SALT_LEN: usize = 32;
 const FIDO2_CLIENT_DATA_HASH_LEN: usize = 32;
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 const FIDO2_USER_ID_LEN: usize = 32;
 const FIDO2_DEK_LEN: usize = 32;
 const AES_GCM_NONCE_LEN: usize = 12;
@@ -110,6 +113,7 @@ impl Display for Fido2TransportError {
 
 impl std::error::Error for Fido2TransportError {}
 
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fido2Enrollment {
     pub credential_id: Vec<u8>,
@@ -166,6 +170,7 @@ struct DirectAnyRecipientCandidate {
 }
 
 pub trait Fido2Transport: Send + Sync {
+    #[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
     fn enroll_hmac_secret(
         &self,
         rp_id: &str,
@@ -251,7 +256,7 @@ pub(in crate::backend::integrated) fn private_key_error_from_fido2_error(
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub fn create_fido2_store_recipient(pin: Option<&str>) -> Result<String, PrivateKeyError> {
+fn create_fido2_binding(pin: Option<&str>) -> Result<String, PrivateKeyError> {
     let enrollment_salt = random_bytes::<FIDO2_HMAC_SALT_LEN>();
     let enrollment = with_fido2_transport_read(|transport| {
         transport.enroll_hmac_secret(
@@ -280,14 +285,33 @@ pub fn create_fido2_store_recipient(pin: Option<&str>) -> Result<String, Private
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-pub fn create_fido2_store_recipient(_pin: Option<&str>) -> Result<String, PrivateKeyError> {
+fn create_fido2_binding(_pin: Option<&str>) -> Result<String, PrivateKeyError> {
     Err(PrivateKeyError::unsupported_fido2_key(
         FIDO2_PLATFORM_UNSUPPORTED_MESSAGE,
     ))
 }
 
+#[cfg_attr(not(feature = "fidokey"), allow(dead_code))]
+pub(in crate::backend::integrated) fn create_fido2_private_key_binding(
+    pin: Option<&str>,
+) -> Result<String, PrivateKeyError> {
+    create_fido2_binding(pin)
+}
+
+#[cfg(feature = "fidostore")]
+pub fn create_fido2_store_recipient(pin: Option<&str>) -> Result<String, PrivateKeyError> {
+    create_fido2_binding(pin)
+}
+
+#[cfg(not(feature = "fidostore"))]
+pub fn create_fido2_store_recipient(_pin: Option<&str>) -> Result<String, PrivateKeyError> {
+    Err(PrivateKeyError::unsupported_fido2_key(
+        FIDO2_STORE_FEATURE_DISABLED_MESSAGE,
+    ))
+}
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub fn unlock_fido2_store_recipient_for_session(
+pub(in crate::backend::integrated) fn unlock_fido2_binding_for_session(
     recipient: &str,
     pin: Option<&str>,
 ) -> Result<(), PrivateKeyError> {
@@ -311,12 +335,41 @@ pub fn unlock_fido2_store_recipient_for_session(
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-pub fn unlock_fido2_store_recipient_for_session(
+pub(in crate::backend::integrated) fn unlock_fido2_binding_for_session(
     _recipient: &str,
     _pin: Option<&str>,
 ) -> Result<(), PrivateKeyError> {
     Err(PrivateKeyError::unsupported_fido2_key(
         FIDO2_PLATFORM_UNSUPPORTED_MESSAGE,
+    ))
+}
+
+#[cfg(all(feature = "fidostore", any(target_os = "linux", target_os = "windows")))]
+pub fn unlock_fido2_store_recipient_for_session(
+    recipient: &str,
+    pin: Option<&str>,
+) -> Result<(), PrivateKeyError> {
+    unlock_fido2_binding_for_session(recipient, pin)
+}
+
+#[cfg(all(
+    feature = "fidostore",
+    not(any(target_os = "linux", target_os = "windows"))
+))]
+pub fn unlock_fido2_store_recipient_for_session(
+    recipient: &str,
+    pin: Option<&str>,
+) -> Result<(), PrivateKeyError> {
+    unlock_fido2_binding_for_session(recipient, pin)
+}
+
+#[cfg(not(feature = "fidostore"))]
+pub fn unlock_fido2_store_recipient_for_session(
+    _recipient: &str,
+    _pin: Option<&str>,
+) -> Result<(), PrivateKeyError> {
+    Err(PrivateKeyError::unsupported_fido2_key(
+        FIDO2_STORE_FEATURE_DISABLED_MESSAGE,
     ))
 }
 
@@ -843,6 +896,29 @@ fn decrypt_with_direct_hmac_secret_candidates<T>(
     }
 }
 
+fn derive_direct_hmac_assertion_with_pin(
+    _fingerprint: &str,
+    rp_id: &str,
+    credential_id: &[u8],
+    salt: &[u8],
+    excluded_devices: &[Fido2DeviceLabel],
+    pin: Option<&str>,
+) -> Result<Fido2AssertionOutput, Fido2TransportError> {
+    let retry_deadline = Instant::now() + FIDO2_MATCHING_KEY_RETRY_WINDOW;
+
+    loop {
+        match with_fido2_transport_read(|transport| {
+            transport.derive_hmac_secret(rp_id, credential_id, pin, salt, excluded_devices)
+        }) {
+            Ok(assertion) => return Ok(assertion),
+            Err(err) if should_retry_direct_hmac_error(&err) && Instant::now() < retry_deadline => {
+                thread::sleep(FIDO2_MATCHING_KEY_RETRY_INTERVAL);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 fn derive_direct_hmac_assertion(
     fingerprint: &str,
     rp_id: &str,
@@ -851,25 +927,15 @@ fn derive_direct_hmac_assertion(
     excluded_devices: &[Fido2DeviceLabel],
 ) -> Result<Fido2AssertionOutput, String> {
     let cached_pin = cached_pin_string(fingerprint)?;
-    let retry_deadline = Instant::now() + FIDO2_MATCHING_KEY_RETRY_WINDOW;
-
-    loop {
-        match with_fido2_transport_read(|transport| {
-            transport.derive_hmac_secret(
-                rp_id,
-                credential_id,
-                cached_pin.as_deref(),
-                salt,
-                excluded_devices,
-            )
-        }) {
-            Ok(assertion) => return Ok(assertion),
-            Err(err) if should_retry_direct_hmac_error(&err) && Instant::now() < retry_deadline => {
-                thread::sleep(FIDO2_MATCHING_KEY_RETRY_INTERVAL);
-            }
-            Err(err) => return Err(direct_fido2_store_message(fingerprint, err)),
-        }
-    }
+    derive_direct_hmac_assertion_with_pin(
+        fingerprint,
+        rp_id,
+        credential_id,
+        salt,
+        excluded_devices,
+        cached_pin.as_deref(),
+    )
+    .map_err(|err| direct_fido2_store_message(fingerprint, err))
 }
 
 fn should_retry_direct_hmac_error(err: &Fido2TransportError) -> bool {
@@ -888,6 +954,77 @@ fn cached_pin_string(fingerprint: &str) -> Result<Option<String>, String> {
     let text = std::str::from_utf8(pin.as_slice())
         .map_err(|err| format!("Stored FIDO2 PIN is not valid UTF-8: {err}"))?;
     Ok(Some(text.to_string()))
+}
+
+#[cfg(feature = "fidokey")]
+pub(in crate::backend::integrated) fn unlock_fido2_private_key_material_for_session(
+    ciphertext: &[u8],
+    pin: Option<&str>,
+) -> Result<Vec<u8>, PrivateKeyError> {
+    let Some(envelope) =
+        parse_text_envelope::<Fido2DirectLayerEnvelope>(FIDO2_DIRECT_LAYER_HEADER, ciphertext)
+            .map_err(PrivateKeyError::other)?
+    else {
+        return Err(PrivateKeyError::other(
+            "That FIDO-protected key data is invalid.",
+        ));
+    };
+    validate_direct_layer_envelope(&envelope).map_err(PrivateKeyError::other)?;
+
+    let resolved_pin = match pin {
+        Some(pin) => {
+            let trimmed = pin.trim();
+            if trimmed.is_empty() {
+                return Err(PrivateKeyError::fido2_pin_required(
+                    "Enter the FIDO2 security key PIN.",
+                ));
+            }
+            Some(trimmed.to_string())
+        }
+        None => cached_pin_string(&envelope.fingerprint).map_err(PrivateKeyError::other)?,
+    };
+    let hmac_salt = decode_base64(&envelope.hmac_salt).map_err(PrivateKeyError::other)?;
+    let credential_id = decode_base64(&envelope.credential_id).map_err(PrivateKeyError::other)?;
+    let payload_nonce = decode_base64(&envelope.payload_nonce).map_err(PrivateKeyError::other)?;
+    let payload_ciphertext =
+        decode_base64(&envelope.payload_ciphertext).map_err(PrivateKeyError::other)?;
+    let mut excluded_devices = Vec::new();
+
+    loop {
+        let assertion = derive_direct_hmac_assertion_with_pin(
+            &envelope.fingerprint,
+            &envelope.rp_id,
+            &credential_id,
+            &hmac_salt,
+            &excluded_devices,
+            resolved_pin.as_deref(),
+        )
+        .map_err(private_key_error_from_fido2_error)?;
+        let kek = derive_kek(&assertion.hmac_secret, &envelope.fingerprint, &hmac_salt)?;
+
+        match decrypt_aes_256_gcm(
+            &kek,
+            &payload_nonce,
+            &direct_required_layer_aad(&envelope.fingerprint),
+            &payload_ciphertext,
+        ) {
+            Ok(plaintext) => {
+                if let Some(pin) = resolved_pin.as_deref() {
+                    super::cache::cache_fido2_pin(&envelope.fingerprint, pin)
+                        .map_err(PrivateKeyError::other)?;
+                }
+                return Ok(plaintext);
+            }
+            Err(err) if assertion.device.is_some() => {
+                let device = assertion.device.expect("checked above");
+                if excluded_devices.iter().any(|excluded| excluded == &device) {
+                    return Err(err);
+                }
+                excluded_devices.push(device);
+            }
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 fn direct_fido2_store_message(fingerprint: &str, err: Fido2TransportError) -> String {
@@ -928,6 +1065,7 @@ fn direct_binding_from_store_recipient_data(recipient: &Fido2StoreRecipient) -> 
     }
 }
 
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn direct_binding_id(credential_id: &[u8]) -> String {
     let digest = Sha256::digest(credential_id);
@@ -939,6 +1077,7 @@ fn direct_binding_id(credential_id: &[u8]) -> String {
     encoded
 }
 
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 fn direct_binding_label(device: &Fido2DeviceLabel) -> String {
     match (device.manufacturer.as_deref(), device.product.as_deref()) {
         (Some(manufacturer), Some(product))
@@ -1204,6 +1343,7 @@ fn random_bytes<const N: usize>() -> [u8; N] {
     random::<[u8; N]>()
 }
 
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn enroll_with_passkey_fallback(
     mut enroll: impl FnMut(bool) -> Result<Fido2Enrollment, Fido2TransportError>,
@@ -1291,6 +1431,7 @@ fn set_assert_client_data(
     }
 }
 
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn set_credential_client_data(
     device: &Device,
@@ -1308,6 +1449,7 @@ fn set_credential_client_data(
     }
 }
 
+#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn user_id() -> [u8; FIDO2_USER_ID_LEN] {
     random_bytes::<FIDO2_USER_ID_LEN>()
@@ -1329,6 +1471,7 @@ struct RealFido2Transport;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl RealFido2Transport {
+    #[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
     fn single_enrollment_device() -> Result<(Device, Fido2DeviceLabel), Fido2TransportError> {
         let mut devices = DeviceList::list_devices(16);
         let Some(info) = devices.next() else {
@@ -1380,6 +1523,7 @@ impl RealFido2Transport {
         Ok(secret.to_vec())
     }
 
+    #[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
     fn enroll_hmac_secret_on_device(
         device: &Device,
         label: &Fido2DeviceLabel,

@@ -15,6 +15,7 @@ use crate::backend::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
 use crate::clipboard::set_clipboard_text;
 use crate::fido2_recipient::{
     fido2_recipient_subtitle, fido2_recipient_title, is_fido2_recipient_string,
+    same_fido2_recipient,
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
@@ -131,6 +132,9 @@ fn inspect_private_key_lock_state(fingerprint: &str) -> (bool, bool) {
 
 fn recipient_matches_parts(recipient: &str, fingerprint: &str, user_ids: &[String]) -> bool {
     let recipient = recipient.trim();
+    if is_fido2_recipient_string(recipient) && is_fido2_recipient_string(fingerprint) {
+        return same_fido2_recipient(recipient, fingerprint);
+    }
     recipient.eq_ignore_ascii_case(fingerprint)
         || user_ids
             .iter()
@@ -204,6 +208,11 @@ fn selected_available_private_key_count(
         recipients
             .iter()
             .filter(|recipient| is_fido2_recipient_string(recipient))
+            .filter(|recipient| {
+                !keys
+                    .iter()
+                    .any(|key| recipient_matches_available_private_key(recipient, key))
+            })
             .count()
     } else {
         0
@@ -240,6 +249,11 @@ fn selected_usable_private_key_count(
         recipients
             .iter()
             .filter(|recipient| is_fido2_recipient_string(recipient))
+            .filter(|recipient| {
+                !keys
+                    .iter()
+                    .any(|key| recipient_matches_available_private_key(recipient, key))
+            })
             .count()
     } else {
         0
@@ -410,12 +424,48 @@ fn sync_private_key_requirement_row(
     ));
 }
 
-fn selected_fido2_recipients(recipients: &[String]) -> Vec<String> {
-    recipients
-        .iter()
-        .filter(|recipient| is_fido2_recipient_string(recipient))
-        .cloned()
-        .collect()
+fn selected_fido2_recipients(recipients: &[String], keys: &[AvailablePrivateKey]) -> Vec<String> {
+    let mut selected = Vec::<String>::new();
+
+    for recipient in recipients {
+        if !is_fido2_recipient_string(recipient) {
+            continue;
+        }
+        if keys
+            .iter()
+            .any(|key| recipient_matches_available_private_key(recipient, key))
+        {
+            continue;
+        }
+        if selected
+            .iter()
+            .any(|existing| same_fido2_recipient(existing, recipient))
+        {
+            continue;
+        }
+        selected.push(recipient.clone());
+    }
+
+    selected
+}
+
+fn selected_fido2_key_count(recipients: &[String]) -> usize {
+    let mut selected = Vec::<String>::new();
+
+    for recipient in recipients {
+        if !is_fido2_recipient_string(recipient) {
+            continue;
+        }
+        if selected
+            .iter()
+            .any(|existing| same_fido2_recipient(existing, recipient))
+        {
+            continue;
+        }
+        selected.push(recipient.clone());
+    }
+
+    selected.len()
 }
 
 fn fido2_recipient_remove_block_message(
@@ -571,6 +621,28 @@ fn load_available_private_keys(
     }
 }
 
+fn show_available_private_key_choice(
+    selection_mode: StoreRecipientsSelectionMode,
+    key: &AvailablePrivateKey,
+    active: bool,
+) -> bool {
+    match key {
+        AvailablePrivateKey::Managed(key) => match key.protection {
+            ManagedRipassoPrivateKeyProtection::Password
+            | ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
+                show_standard_private_key_choice(selection_mode, active)
+            }
+            #[cfg(feature = "fidokey")]
+            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+                show_standard_private_key_choice(selection_mode, active)
+            }
+        },
+        AvailablePrivateKey::HostOnly(_) => {
+            show_standard_private_key_choice(selection_mode, active)
+        }
+    }
+}
+
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     clear_list_box(&state.list);
     rebuild_store_recipients_git_row(state);
@@ -602,7 +674,8 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     let managed_key_count = managed_keys.len();
     let (keys, host_key_inspection_failed) =
         load_available_private_keys(managed_keys, uses_host_backend);
-    let fido2_recipients = selected_fido2_recipients(&current_recipients);
+    let fido2_recipients = selected_fido2_recipients(&current_recipients, &keys);
+    let selected_fido2_keys = selected_fido2_key_count(&current_recipients);
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
     let selected_available_keys =
         selected_available_private_key_count(&current_recipients, &keys, uses_integrated_backend);
@@ -611,8 +684,8 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     sync_private_key_requirement_row(
         state,
         selection_mode,
-        managed_key_count > 0 || (uses_integrated_backend && !fido2_recipients.is_empty()),
-        fido2_recipients.len(),
+        managed_key_count > 0 || (uses_integrated_backend && selected_fido2_keys > 0),
+        selected_fido2_keys,
     );
     sync_private_key_verification_warning(
         state,
@@ -656,7 +729,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         let active = current_recipients
             .iter()
             .any(|recipient| recipient_matches_available_private_key(recipient, &key));
-        if !show_standard_private_key_choice(selection_mode, active) {
+        if !show_available_private_key_choice(selection_mode, &key, active) {
             continue;
         }
 
@@ -712,7 +785,7 @@ fn append_fido2_recipient_row(
         state_for_remove
             .recipients
             .borrow_mut()
-            .retain(|value| value != &recipient_for_remove);
+            .retain(|value| !same_fido2_recipient(value, &recipient_for_remove));
         super::rebuild_store_recipients_list(&state_for_remove);
         if *state_for_remove.recipients.borrow() != before {
             queue_store_recipients_autosave(&state_for_remove);
@@ -778,6 +851,11 @@ fn append_managed_private_key_row(
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
             gettext("{fingerprint} - Hardware key").replace("{fingerprint}", &key.fingerprint)
         }
+        #[cfg(feature = "fidokey")]
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+            gettext("{fingerprint} - Security key protected")
+                .replace("{fingerprint}", &key.fingerprint)
+        }
     };
     let (row, toggle) =
         append_private_key_row_shell(&key.title(), &subtitle, active, toggle_blocked_message);
@@ -788,6 +866,10 @@ fn append_managed_private_key_row(
         match key.protection {
             ManagedRipassoPrivateKeyProtection::Password => "Copy armored private key",
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Copy armored public key",
+            #[cfg(feature = "fidokey")]
+            ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
+                "Copy FIDO-protected private key"
+            }
         },
     );
     row.add_suffix(&copy_button);
@@ -1136,6 +1218,26 @@ mod tests {
                     hardware: None,
                 })],
                 false,
+            ),
+            1
+        );
+    }
+
+    #[cfg(feature = "fidokey")]
+    #[test]
+    fn selected_available_private_key_count_does_not_double_count_managed_fido2_keys() {
+        let recipient = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB".to_string();
+
+        assert_eq!(
+            selected_available_private_key_count(
+                std::slice::from_ref(&recipient),
+                &[AvailablePrivateKey::Managed(ManagedRipassoPrivateKey {
+                    fingerprint: recipient.clone(),
+                    user_ids: vec!["Desk Key".to_string()],
+                    protection: ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
+                    hardware: None,
+                })],
+                true,
             ),
             1
         );

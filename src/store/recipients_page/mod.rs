@@ -120,7 +120,6 @@ pub struct StoreRecipientsPlatformState {
     pub add_group: PreferencesGroup,
     pub add_list: ListBox,
     pub create_group: PreferencesGroup,
-    pub create_list: ListBox,
     pub options_group: PreferencesGroup,
     pub git_group: PreferencesGroup,
     pub git_list: ListBox,

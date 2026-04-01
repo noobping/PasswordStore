@@ -110,7 +110,6 @@ fn build_store_recipients_platform_state(
         add_group: widgets.store_recipients_add_group.clone(),
         add_list: widgets.store_recipients_add_list.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
-        create_list: widgets.store_recipients_create_list.clone(),
         options_group: widgets.store_recipients_options_group.clone(),
         git_group: widgets.store_recipients_git_group.clone(),
         git_list: widgets.store_recipients_git_list.clone(),

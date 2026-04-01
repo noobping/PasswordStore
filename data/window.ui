@@ -1280,20 +1280,6 @@
                                     </child>
                                     <child>
                                       <object class="AdwActionRow"
-                                        id="store_recipients_generate_fido2_key_row">
-                                        <property name="title" translatable="yes">Generate FIDO2-protected key</property>
-                                        <property name="subtitle" translatable="yes">Create a new FIDO2-protected key.</property>
-                                        <property name="activatable">True</property>
-                                        <property name="visible">False</property>
-                                        <child type="suffix">
-                                          <object class="GtkImage">
-                                            <property name="icon-name">go-next-symbolic</property>
-                                          </object>
-                                        </child>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="AdwActionRow"
                                         id="store_recipients_add_fido2_key_row">
                                         <property name="title" translatable="yes">Add FIDO2 security key</property>
                                         <property name="subtitle" translatable="yes">Use a connected security key for Keycord-only encryption. This option is incompatible with advanced search, Keycord tools, and other pass apps.</property>
@@ -1313,13 +1299,27 @@
                               <object class="AdwPreferencesGroup" id="store_recipients_add_group">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Other ways to add a key</property>
-                                <property name="description" translatable="yes">Import an existing private key or connect a hardware token.</property>
+                                <property name="description" translatable="yes">Import an existing private key, generate a FIDO2-protected key, or connect a hardware token.</property>
                                 <child>
                                   <object class="GtkListBox" id="store_recipients_add_list">
                                     <property name="selection-mode">none</property>
                                     <style>
                                       <class name="boxed-list" />
                                     </style>
+                                    <child>
+                                      <object class="AdwActionRow"
+                                        id="store_recipients_generate_fido2_key_row">
+                                        <property name="title" translatable="yes">Generate FIDO2-protected key</property>
+                                        <property name="subtitle" translatable="yes">Create a new FIDO2-protected key.</property>
+                                        <property name="activatable">True</property>
+                                        <property name="visible">False</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                     <child>
                                       <object class="AdwActionRow"
                                         id="store_recipients_add_hardware_key_row">

@@ -12,3 +12,17 @@ option(
   value: '',
   description: 'Space- or comma-separated Cargo features to pass through the Meson wrapper.',
 )
+
+option(
+  'fidostore',
+  type: 'boolean',
+  value: false,
+  description: 'Enable FIDO-backed password store support.',
+)
+
+option(
+  'fidokey',
+  type: 'boolean',
+  value: false,
+  description: 'Enable FIDO-protected OpenPGP private key support.',
+)

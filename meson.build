@@ -11,16 +11,32 @@ gnome = import('gnome')
 
 cargo_variant = get_option('cargo_variant')
 cargo_features = get_option('cargo_features')
+fidostore = get_option('fidostore')
+fidokey = get_option('fidokey')
 project_binary = 'keycord'
 cargo_command = 'cargo build'
+
+effective_cargo_features = cargo_features
+foreach feature_name, enabled : {
+  'fidostore': fidostore,
+  'fidokey': fidokey,
+}
+  if enabled
+    if effective_cargo_features == ''
+      effective_cargo_features = feature_name
+    else
+      effective_cargo_features += ' ' + feature_name
+    endif
+  endif
+endforeach
 
 if cargo_variant == 'release' or cargo_variant == 'translation'
   cargo_command = 'cargo build --release'
 endif
 
 message('Configured Meson wrapper variant "@0@" -> @1@'.format(cargo_variant, cargo_command))
-if cargo_features != ''
-  message('Configured Meson wrapper features "@0@"'.format(cargo_features))
+if effective_cargo_features != ''
+  message('Configured Meson wrapper features "@0@"'.format(effective_cargo_features))
 endif
 
 native_cargo = ''
@@ -94,7 +110,7 @@ custom_target(
   output: project_binary,
   command: cargo_wrapper_args + [
     cargo_variant,
-    cargo_features,
+    effective_cargo_features,
     '@OUTPUT@',
   ],
   build_always_stale: true,
@@ -109,7 +125,7 @@ foreach variant : ['developer', 'release', 'translation']
     variant + '-build',
     command: cargo_wrapper_args + [
       variant,
-      cargo_features,
+      effective_cargo_features,
       join_paths(meson.project_build_root(), 'artifacts', variant, project_binary),
     ],
   )

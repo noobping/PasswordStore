@@ -157,7 +157,7 @@ fn finish_fido2_private_key_generation(
     match result {
         Ok(_) => finish_generated_key(state),
         Err(err) => {
-            log_error(format!("Failed to generate FIDO-protected key: {err}"));
+            log_error(format!("Failed to generate FIDO2-protected key: {err}"));
             state
                 .platform
                 .overlay
@@ -174,7 +174,7 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
     let state = state.clone();
     let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
         &state.window,
-        "Generating FIDO-protected key",
+        "Generating FIDO2-protected key",
         None,
         "Touch it if it starts blinking.",
     ));
@@ -196,7 +196,7 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
         move || {
             progress_dialog_for_disconnect.force_close();
             log_error(
-                "FIDO-protected key generation worker disconnected unexpectedly.".to_string(),
+                "FIDO2-protected key generation worker disconnected unexpectedly.".to_string(),
             );
             state_for_disconnect
                 .platform
@@ -213,7 +213,7 @@ fn prompt_fido2_private_key_pin(state: &StoreRecipientsPageState) {
     present_private_key_unlock_dialog_with_close_handler(
         &window,
         &overlay,
-        "Generate FIDO-protected key",
+        "Generate FIDO2-protected key",
         None,
         PrivateKeyUnlockKind::Fido2SecurityKey,
         move |request| {

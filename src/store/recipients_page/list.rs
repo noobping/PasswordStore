@@ -906,7 +906,7 @@ fn append_managed_private_key_row(
             ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => "Copy armored public key",
             #[cfg(feature = "fidokey")]
             ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-                "Copy FIDO-protected private key"
+                "Copy FIDO2-protected private key"
             }
         },
     );

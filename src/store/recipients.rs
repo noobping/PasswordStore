@@ -11,7 +11,7 @@ use std::path::Path;
 use std::{cell::RefCell, rc::Rc};
 
 const REQUIRE_ALL_PRIVATE_KEYS_METADATA: &str = "keycord-private-key-requirement=all";
-pub const UNSUPPORTED_FIDOSTORE_MESSAGE: &str = "This build doesn't support FIDO-backed stores.";
+pub const UNSUPPORTED_FIDOSTORE_MESSAGE: &str = "This build doesn't support FIDO2-backed stores.";
 
 pub fn read_store_standard_recipients(store_root: &str) -> Vec<String> {
     let path = Path::new(store_root).join(".gpg-id");

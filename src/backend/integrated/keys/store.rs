@@ -318,7 +318,7 @@ fn read_fido2_private_key_manifest_entry(
         .map_err(|err| err.to_string())?;
     let expected = normalized_fingerprint(&manifest.fingerprint)?;
     if !key.fingerprint.eq_ignore_ascii_case(&expected) {
-        return Err("That FIDO-protected key is invalid.".to_string());
+        return Err("That FIDO2-protected key is invalid.".to_string());
     }
 
     Ok(StoredPrivateKeyEntry {
@@ -334,7 +334,7 @@ fn read_fido2_private_key_manifest_entry(
 fn read_fido2_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
     let manifest = parse_fido2_private_key_manifest(&contents)?
-        .ok_or_else(|| "That FIDO-protected key is invalid.".to_string())?;
+        .ok_or_else(|| "That FIDO2-protected key is invalid.".to_string())?;
     read_fido2_private_key_manifest_entry(path, manifest)
 }
 
@@ -715,7 +715,7 @@ fn unlock_fido2_private_key_for_session(
         &fs::read_to_string(&path).map_err(|err| PrivateKeyError::other(err.to_string()))?,
     )
     .map_err(PrivateKeyError::other)?
-    .ok_or_else(|| PrivateKeyError::other("That FIDO-protected key is invalid."))?;
+    .ok_or_else(|| PrivateKeyError::other("That FIDO2-protected key is invalid."))?;
     let unlocked_bytes = super::fido2::unlock_fido2_private_key_material_for_session(
         manifest.encrypted_private_key.as_bytes(),
         pin.as_deref(),
@@ -827,13 +827,13 @@ fn store_fido2_private_key_manifest(
     fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
     if manifest.format != FIDO2_PRIVATE_KEY_MANIFEST_FORMAT {
         return Err(PrivateKeyError::other(format!(
-            "Unsupported FIDO-protected key format {}.",
+            "Unsupported FIDO2-protected key format {}.",
             manifest.format
         )));
     }
     if manifest.protection != FIDO2_PRIVATE_KEY_PROTECTION_KIND {
         return Err(PrivateKeyError::other(format!(
-            "Unsupported FIDO-protected key protection '{}'.",
+            "Unsupported FIDO2-protected key protection '{}'.",
             manifest.protection
         )));
     }
@@ -841,7 +841,7 @@ fn store_fido2_private_key_manifest(
     let expected = normalized_fingerprint(&manifest.fingerprint).map_err(PrivateKeyError::other)?;
     if !key.fingerprint.eq_ignore_ascii_case(&expected) {
         return Err(PrivateKeyError::other(
-            "That FIDO-protected key is invalid.",
+            "That FIDO2-protected key is invalid.",
         ));
     }
     if !cert_has_transport_encryption_key(&cert) {
@@ -1235,7 +1235,7 @@ pub fn armored_ripasso_private_key(fingerprint: &str) -> Result<String, String> 
             }
             #[cfg(feature = "fidokey")]
             ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-                return Err("That FIDO-protected key could not be exported.".to_string());
+                return Err("That FIDO2-protected key could not be exported.".to_string());
             }
         },
     };

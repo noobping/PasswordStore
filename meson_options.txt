@@ -17,7 +17,7 @@ option(
   'fidostore',
   type: 'boolean',
   value: false,
-  description: 'Enable FIDO-backed password store support.',
+  description: 'Enable FIDO2-backed password store support.',
 )
 
 option(
@@ -31,5 +31,5 @@ option(
   'fidokey',
   type: 'boolean',
   value: false,
-  description: 'Enable FIDO-protected OpenPGP private key support.',
+  description: 'Enable FIDO2-protected OpenPGP private key support.',
 )

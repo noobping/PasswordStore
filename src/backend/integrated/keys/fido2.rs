@@ -969,7 +969,7 @@ pub(in crate::backend::integrated) fn unlock_fido2_private_key_material_for_sess
             .map_err(PrivateKeyError::other)?
     else {
         return Err(PrivateKeyError::other(
-            "That FIDO-protected key data is invalid.",
+            "That FIDO2-protected key data is invalid.",
         ));
     };
     validate_direct_layer_envelope(&envelope).map_err(PrivateKeyError::other)?;

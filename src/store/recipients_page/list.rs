@@ -389,6 +389,10 @@ fn show_all_fido2_keys_required_info(
     matches!(selection_mode, StoreRecipientsSelectionMode::Fido2Only) && selected_fido2_keys > 1
 }
 
+fn show_store_options_title_above_git_row(show_require_all: bool, show_git: bool) -> bool {
+    show_git && !show_require_all
+}
+
 fn sync_private_key_requirement_row(
     state: &StoreRecipientsPageState,
     selection_mode: StoreRecipientsSelectionMode,
@@ -399,8 +403,18 @@ fn sync_private_key_requirement_row(
     let show_require_all = show_require_all_private_keys_option(selection_mode, has_keys);
     let show_all_fido2_required =
         show_all_fido2_keys_required_info(selection_mode, selected_fido2_keys);
+    let show_store_options_title = show_store_options_title_above_git_row(
+        show_require_all,
+        state.platform.git_group.is_visible(),
+    );
+    let git_group_title = if show_store_options_title {
+        gettext("Store options")
+    } else {
+        String::new()
+    };
 
     state.platform.options_group.set_visible(show_require_all);
+    state.platform.git_group.set_title(&git_group_title);
     state
         .platform
         .fido2_info_group
@@ -1046,8 +1060,9 @@ mod tests {
         merge_available_private_keys, private_key_delete_block_message,
         private_key_toggle_block_message, private_key_verification_warning,
         selected_available_private_key_count, show_all_fido2_keys_required_info,
-        show_require_all_private_keys_option, unresolved_private_key_recipients,
-        AvailablePrivateKey, HostGpgPrivateKeySummary, PrivateKeyVerificationWarning,
+        show_require_all_private_keys_option, show_store_options_title_above_git_row,
+        unresolved_private_key_recipients, AvailablePrivateKey, HostGpgPrivateKeySummary,
+        PrivateKeyVerificationWarning,
     };
     use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
     use crate::store::recipients_page::mode::StoreRecipientsSelectionMode;
@@ -1171,6 +1186,13 @@ mod tests {
             StoreRecipientsSelectionMode::StandardOnly,
             2
         ));
+    }
+
+    #[test]
+    fn git_row_shows_store_options_title_when_it_is_the_only_option() {
+        assert!(show_store_options_title_above_git_row(false, true));
+        assert!(!show_store_options_title_above_git_row(true, true));
+        assert!(!show_store_options_title_above_git_row(false, false));
     }
 
     #[test]

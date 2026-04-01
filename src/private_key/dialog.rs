@@ -1,11 +1,10 @@
 use crate::backend::{PrivateKeyUnlockKind, PrivateKeyUnlockRequest};
 use crate::i18n::gettext;
-use crate::support::ui::dialog_content_shell;
+use crate::support::ui::{dialog_content_shell, wrapped_dialog_body};
 use adw::gtk::{Align, Box as GtkBox, Button, Label, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{
-    ApplicationWindow, Dialog, PasswordEntryRow, PreferencesGroup, PreferencesPage, StatusPage,
-    ToastOverlay,
+    ApplicationWindow, Dialog, PasswordEntryRow, PreferencesGroup, PreferencesPage, ToastOverlay,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -33,17 +32,49 @@ pub fn build_private_key_progress_dialog(
     subtitle: Option<&str>,
     description: &str,
 ) -> Dialog {
-    let status = StatusPage::builder().build();
-    let translated_description = gettext(description);
-    status.set_description(
-        Some(translated_description.as_str()).filter(|description| !description.trim().is_empty()),
-    );
-    status.set_child(Some(&Spinner::builder().spinning(true).build()));
+    let heading = Label::new(Some(&gettext(title)));
+    heading.set_xalign(0.0);
+    heading.set_wrap(true);
+    heading.add_css_class("title-2");
+
+    let subtitle_label = subtitle
+        .filter(|subtitle| !subtitle.trim().is_empty())
+        .map(|subtitle| {
+            let label = Label::new(Some(&gettext(subtitle)));
+            label.set_xalign(0.0);
+            label.set_wrap(true);
+            label.add_css_class("dim-label");
+            label
+        });
+
+    let description_label = Label::new(Some(&gettext(description)));
+    description_label.set_xalign(0.0);
+    description_label.set_wrap(true);
+
+    let spinner = Spinner::builder()
+        .spinning(true)
+        .halign(Align::Center)
+        .margin_top(6)
+        .build();
+
+    let content = GtkBox::new(Orientation::Vertical, 12);
+    content.set_margin_top(18);
+    content.set_margin_bottom(18);
+    content.set_margin_start(18);
+    content.set_margin_end(18);
+    content.append(&heading);
+    if let Some(label) = subtitle_label.as_ref() {
+        content.append(label);
+    }
+    content.append(&description_label);
+    content.append(&spinner);
 
     let dialog = Dialog::builder()
         .title(&gettext(title))
-        .content_width(460)
-        .child(&dialog_content_shell(title, subtitle, &status))
+        .content_width(520)
+        .content_height(260)
+        .follows_content_size(true)
+        .child(&wrapped_dialog_body(&content))
         .build();
     dialog.set_can_close(false);
     dialog.present(Some(window));

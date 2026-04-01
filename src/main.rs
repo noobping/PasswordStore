@@ -206,7 +206,7 @@ fn build_about_dialog() -> adw::AboutDialog {
     let authors: Vec<_> = env!("CARGO_PKG_AUTHORS").split(':').collect();
     let developer_name = authors
         .first()
-        .copied()
+        .map(|author| author_display_name(author.trim()))
         .unwrap_or(application_name.as_str());
     let about = adw::AboutDialog::builder()
         .application_name(&application_name)
@@ -223,6 +223,10 @@ fn build_about_dialog() -> adw::AboutDialog {
         .build();
     about.add_link(&gettext("Repository"), env!("CARGO_PKG_REPOSITORY"));
     about
+}
+
+fn author_display_name(author: &str) -> &str {
+    author.split_once(" <").map_or(author, |(name, _)| name)
 }
 
 fn about_comments(project: &str) -> String {

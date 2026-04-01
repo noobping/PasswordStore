@@ -59,7 +59,7 @@ const fn managed_fido2_unlock_enabled(_kind: PrivateKeyUnlockKind) -> bool {
 }
 
 #[cfg(feature = "fidokey")]
-fn handle_managed_fido2_pin_required(
+fn handle_managed_fido2_unlock_retry(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     fingerprint: &str,
@@ -109,7 +109,7 @@ fn handle_managed_fido2_pin_required(
 }
 
 #[cfg(not(feature = "fidokey"))]
-fn handle_managed_fido2_pin_required(
+fn handle_managed_fido2_unlock_retry(
     _window: &ApplicationWindow,
     _overlay: &ToastOverlay,
     _fingerprint: &str,
@@ -182,15 +182,16 @@ fn start_private_key_unlock_for_action(
                     progress_dialog_for_result.force_close();
                     finish_unlock_success(&window_for_result, &after_unlock, &on_finish_for_result);
                 }
-                Err(PrivateKeyError::Fido2PinRequired(_))
-                    if handle_managed_fido2_pin_required(
-                        &window_for_result,
-                        &overlay,
-                        &fingerprint,
-                        &request,
-                        &after_unlock,
-                        &on_finish_for_result,
-                    ) =>
+                Err(
+                    PrivateKeyError::Fido2PinRequired(_) | PrivateKeyError::Fido2TokenNotPresent(_),
+                ) if handle_managed_fido2_unlock_retry(
+                    &window_for_result,
+                    &overlay,
+                    &fingerprint,
+                    &request,
+                    &after_unlock,
+                    &on_finish_for_result,
+                ) =>
                 {
                     progress_dialog_for_result.force_close();
                 }

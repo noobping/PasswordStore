@@ -1400,6 +1400,62 @@ fn map_fido2_error_message(message: &str) -> Fido2TransportError {
     }
 }
 
+fn transport_error_rank(err: &Fido2TransportError) -> usize {
+    match err {
+        Fido2TransportError::PinRequired => 0,
+        Fido2TransportError::IncorrectPin => 1,
+        Fido2TransportError::UserActionTimeout => 2,
+        Fido2TransportError::TokenRemoved => 3,
+        Fido2TransportError::Unsupported => 4,
+        Fido2TransportError::Other(_) => 5,
+        Fido2TransportError::TokenNotPresent => 6,
+    }
+}
+
+fn prefer_transport_error(
+    current: Option<Fido2TransportError>,
+    candidate: Fido2TransportError,
+) -> Option<Fido2TransportError> {
+    match current {
+        None => Some(candidate),
+        Some(current) => {
+            if transport_error_rank(&candidate) < transport_error_rank(&current) {
+                Some(candidate)
+            } else {
+                Some(current)
+            }
+        }
+    }
+}
+
+fn select_matching_hmac_secret<'a>(
+    assertions: impl IntoIterator<Item = (&'a [u8], &'a [u8])>,
+    assertion_count: usize,
+    credential_id: &[u8],
+) -> Result<Vec<u8>, Fido2TransportError> {
+    let mut unnamed_secret = None;
+
+    for (assertion_id, secret) in assertions {
+        if assertion_id == credential_id {
+            if secret.is_empty() {
+                return Err(Fido2TransportError::Unsupported);
+            }
+            return Ok(secret.to_vec());
+        }
+
+        // Some authenticators omit the credential id when only one allowed credential exists.
+        if assertion_count == 1 && assertion_id.is_empty() {
+            unnamed_secret = Some(secret.to_vec());
+        }
+    }
+
+    match unnamed_secret {
+        Some(secret) if secret.is_empty() => Err(Fido2TransportError::Unsupported),
+        Some(secret) => Ok(secret),
+        None => Err(Fido2TransportError::TokenNotPresent),
+    }
+}
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn client_data_hash(label: &str) -> [u8; FIDO2_CLIENT_DATA_HASH_LEN] {
     let mut hasher = Sha256::new();
@@ -1514,17 +1570,18 @@ impl RealFido2Transport {
         let assertions = device
             .get_assertion(request, pin)
             .map_err(map_fido2_library_error)?;
-        let Some(assertion) = assertions
+        let assertion_count = assertions.count();
+        let candidates: Vec<(Vec<u8>, Vec<u8>)> = assertions
             .iter()
-            .find(|assertion| assertion.id() == credential_id)
-        else {
-            return Err(Fido2TransportError::TokenNotPresent);
-        };
-        let secret = assertion.hmac_secret();
-        if secret.is_empty() {
-            return Err(Fido2TransportError::Unsupported);
-        }
-        Ok(secret.to_vec())
+            .map(|assertion| (assertion.id().to_vec(), assertion.hmac_secret().to_vec()))
+            .collect();
+        select_matching_hmac_secret(
+            candidates
+                .iter()
+                .map(|(assertion_id, secret)| (assertion_id.as_slice(), secret.as_slice())),
+            assertion_count,
+            credential_id,
+        )
     }
 
     #[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
@@ -1620,7 +1677,7 @@ impl Fido2Transport for RealFido2Transport {
             let device = match info.open() {
                 Ok(device) => device,
                 Err(err) => {
-                    last_error = Some(map_fido2_library_error(err));
+                    last_error = prefer_transport_error(last_error, map_fido2_library_error(err));
                     continue;
                 }
             };
@@ -1632,7 +1689,7 @@ impl Fido2Transport for RealFido2Transport {
                     });
                 }
                 Err(err) => {
-                    last_error = Some(err);
+                    last_error = prefer_transport_error(last_error, err);
                 }
             }
         }
@@ -1674,8 +1731,9 @@ impl Fido2Transport for RealFido2Transport {
 mod tests {
     use super::{
         decode_base64, encode_base64, enroll_with_passkey_fallback, hkdf_sha256,
-        map_fido2_error_message, map_fido2_library_error, Fido2DeviceLabel, Fido2Enrollment,
-        Fido2TransportError, FIDO2_RP_ID,
+        map_fido2_error_message, map_fido2_library_error, prefer_transport_error,
+        select_matching_hmac_secret, Fido2DeviceLabel, Fido2Enrollment, Fido2TransportError,
+        FIDO2_RP_ID,
     };
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     use fido2_rs::error::Error as Fido2LibraryError;
@@ -1726,6 +1784,48 @@ mod tests {
             "libfido2: Error { code: 39, message: \"FIDO_ERR_OPERATION_DENIED\" }",
         );
         assert!(matches!(err, Fido2TransportError::UserActionTimeout));
+    }
+
+    #[test]
+    fn transport_error_preference_keeps_pin_required_over_token_not_present() {
+        let preferred = prefer_transport_error(
+            Some(Fido2TransportError::PinRequired),
+            Fido2TransportError::TokenNotPresent,
+        )
+        .expect("preferred error");
+        assert!(matches!(preferred, Fido2TransportError::PinRequired));
+    }
+
+    #[test]
+    fn transport_error_preference_keeps_touch_timeout_over_token_not_present() {
+        let preferred = prefer_transport_error(
+            Some(Fido2TransportError::UserActionTimeout),
+            Fido2TransportError::TokenNotPresent,
+        )
+        .expect("preferred error");
+        assert!(matches!(preferred, Fido2TransportError::UserActionTimeout));
+    }
+
+    #[test]
+    fn select_matching_hmac_secret_accepts_a_single_unnamed_assertion() {
+        let secret = select_matching_hmac_secret(
+            [(b"".as_slice(), b"derived-secret".as_slice())],
+            1,
+            b"expected-credential",
+        )
+        .expect("selected secret");
+        assert_eq!(secret, b"derived-secret");
+    }
+
+    #[test]
+    fn select_matching_hmac_secret_rejects_non_matching_named_assertions() {
+        let err = select_matching_hmac_secret(
+            [(b"other-credential".as_slice(), b"derived-secret".as_slice())],
+            1,
+            b"expected-credential",
+        )
+        .expect_err("non-matching assertion should fail");
+        assert!(matches!(err, Fido2TransportError::TokenNotPresent));
     }
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]

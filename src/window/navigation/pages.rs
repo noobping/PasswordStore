@@ -8,6 +8,8 @@ use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
 #[cfg(target_os = "linux")]
 use crate::store::management::StoreRecipientsPageState;
+#[cfg(feature = "docs")]
+use crate::support::runtime::supports_docs_features;
 use crate::support::runtime::supports_logging_features;
 #[cfg(not(target_os = "linux"))]
 use crate::support::ui::push_navigation_page_if_needed;
@@ -29,7 +31,12 @@ pub fn show_log_page(state: &WindowNavigationState) {
     push_navigation_page_if_needed(&state.nav, &state.log_page);
 }
 
+#[cfg(feature = "docs")]
 pub fn show_docs_page(state: &WindowNavigationState) {
+    if !supports_docs_features() {
+        return;
+    }
+
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Documentation", "Guides and reference", false);
 

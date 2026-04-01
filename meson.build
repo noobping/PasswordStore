@@ -11,6 +11,7 @@ gnome = import('gnome')
 
 cargo_variant = get_option('cargo_variant')
 cargo_features = get_option('cargo_features')
+docs = get_option('docs')
 fidostore = get_option('fidostore')
 fidokey = get_option('fidokey')
 project_binary = 'keycord'
@@ -18,6 +19,7 @@ cargo_command = 'cargo build'
 
 effective_cargo_features = cargo_features
 foreach feature_name, enabled : {
+  'docs': docs,
   'fidostore': fidostore,
   'fidokey': fidokey,
 }

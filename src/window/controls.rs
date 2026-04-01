@@ -14,7 +14,9 @@ use crate::store::git_page::StoreGitPageState;
 use crate::store::management::StoreRecipientsPageState;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
-use crate::support::runtime::{has_host_permission, supports_logging_features};
+use crate::support::runtime::{
+    has_host_permission, supports_docs_features, supports_logging_features,
+};
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::git::{handle_git_busy_back, GitActionState};
 use crate::window::navigation::{restore_window_for_current_page, WindowNavigationState};
@@ -452,7 +454,9 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-git", &["<primary>g"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>comma"]);
     app.set_accels_for_action("win.open-tools", &["<primary>t"]);
-    app.set_accels_for_action("win.open-docs", &["<primary><shift>d"]);
+    if supports_docs_features() {
+        app.set_accels_for_action("win.open-docs", &["<primary><shift>d"]);
+    }
     app.set_accels_for_action("app.shortcuts", &["<primary>question"]);
     configure_platform_shortcuts(app);
 }

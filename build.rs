@@ -35,6 +35,8 @@ enum ActivePoField {
 }
 
 fn main() {
+    let docs_enabled = env::var_os("CARGO_FEATURE_DOCS").is_some();
+
     println!("cargo:rustc-env=APP_ID={}", app_id());
     println!("cargo:rustc-env=RESOURCE_ID={}", resource_id());
     println!("cargo:rustc-env=GETTEXT_DOMAIN={}", gettext_domain());
@@ -55,7 +57,9 @@ fn main() {
     let data_dir = Path::new("data");
     let docs_dir = Path::new("docs");
     let po_dir = Path::new("po");
-    write_docs_manifest(docs_dir, &out_dir);
+    if docs_enabled {
+        write_docs_manifest(docs_dir, &out_dir);
+    }
 
     fs::create_dir_all(data_dir).expect("Failed to create data directory");
     fs::create_dir_all(po_dir).expect("Failed to create po directory");
@@ -88,9 +92,12 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=Cargo.lock");
     println!("cargo:rerun-if-changed=data");
-    println!("cargo:rerun-if-changed=docs");
+    if docs_enabled {
+        println!("cargo:rerun-if-changed=docs");
+    }
     println!("cargo:rerun-if-changed=po");
     println!("cargo:rerun-if-changed=src");
+    println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DOCS");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_SETUP");
 
     #[cfg(all(target_os = "linux", not(feature = "setup")))]

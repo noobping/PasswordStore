@@ -1,5 +1,9 @@
 mod build;
 mod controls;
+#[cfg(feature = "docs")]
+mod docs;
+#[cfg(not(feature = "docs"))]
+#[path = "docs_disabled.rs"]
 mod docs;
 mod git;
 pub(crate) mod host_access;

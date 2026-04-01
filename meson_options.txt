@@ -21,6 +21,13 @@ option(
 )
 
 option(
+  'docs',
+  type: 'boolean',
+  value: false,
+  description: 'Enable the built-in documentation browser.',
+)
+
+option(
   'fidokey',
   type: 'boolean',
   value: false,

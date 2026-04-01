@@ -12,7 +12,9 @@ use crate::setup::{
 };
 use crate::store::management::schedule_store_import_row;
 use crate::support::actions::activate_widget_action;
-use crate::support::runtime::{supports_host_command_features, supports_logging_features};
+use crate::support::runtime::{
+    supports_docs_features, supports_host_command_features, supports_logging_features,
+};
 use crate::support::ui::{append_action_row_with_button, flat_icon_button_with_tooltip};
 use crate::window::navigation::show_log_page;
 use adw::prelude::*;
@@ -20,6 +22,10 @@ use adw::{ActionRow, Toast};
 use std::rc::Rc;
 
 pub(super) fn append_optional_doc_row(state: &ToolsPageState) {
+    if !supports_docs_features() {
+        return;
+    }
+
     let window = state.window.clone();
     append_action_row_with_button(
         &state.logs_list,

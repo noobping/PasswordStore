@@ -20,8 +20,8 @@ use crate::window::navigation::{
 use adw::gtk::{Button, Image, ListBox, ScrolledWindow, Stack};
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, ComboRow, EntryRow, NavigationPage, StatusPage, Toast,
-    ToastOverlay,
+    ActionRow, ApplicationWindow, ComboRow, EntryRow, NavigationPage, PasswordEntryRow, StatusPage,
+    Toast, ToastOverlay,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -185,6 +185,7 @@ pub struct StoreImportPageState {
     pub source_file_button: Button,
     pub source_folder_button: Button,
     pub source_clear_button: Button,
+    pub source_password_row: PasswordEntryRow,
     pub target_path_row: EntryRow,
     pub import_button: Button,
     pub store_roots: Rc<RefCell<Vec<String>>>,
@@ -209,6 +210,7 @@ impl StoreImportPageState {
         source_file_button: &Button,
         source_folder_button: &Button,
         source_clear_button: &Button,
+        source_password_row: &PasswordEntryRow,
         target_path_row: &EntryRow,
         import_button: &Button,
     ) -> Self {
@@ -226,6 +228,7 @@ impl StoreImportPageState {
             source_file_button: source_file_button.clone(),
             source_folder_button: source_folder_button.clone(),
             source_clear_button: source_clear_button.clone(),
+            source_password_row: source_password_row.clone(),
             target_path_row: target_path_row.clone(),
             import_button: import_button.clone(),
             store_roots: Rc::new(RefCell::new(Vec::new())),
@@ -263,6 +266,7 @@ fn reset_store_import_form(state: &StoreImportPageState) {
     state
         .source_path_row
         .set_subtitle(&gettext(import_source_subtitle(None)));
+    state.source_password_row.set_text("");
     state.target_path_row.set_text("");
 }
 
@@ -393,6 +397,7 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
                 store_root,
                 source,
                 source_path: state.source_path.borrow().clone(),
+                source_password: state.source_password_row.text().to_string(),
                 target_path: normalize_optional_text(&state.target_path_row.text()),
             };
             start_pass_import(&state, request);

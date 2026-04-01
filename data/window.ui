@@ -1123,6 +1123,12 @@
                                       </object>
                                     </child>
                                     <child>
+                                      <object class="AdwPasswordEntryRow" id="store_import_password_row">
+                                        <property name="title" translatable="yes">Import password (optional)</property>
+                                        <property name="tooltip-text" translatable="yes">Leave this empty if the source does not use a password, for example a Chrome CSV.</property>
+                                      </object>
+                                    </child>
+                                    <child>
                                       <object class="AdwEntryRow" id="store_import_target_path_row">
                                         <property name="title" translatable="yes">Store subfolder</property>
                                       </object>

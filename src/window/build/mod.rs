@@ -212,6 +212,7 @@ fn initialize_store_import_page_ui(
         &widgets.store_import_source_file_button,
         &widgets.store_import_source_folder_button,
         &widgets.store_import_source_clear_button,
+        &widgets.store_import_password_row,
         &widgets.store_import_target_path_row,
         &widgets.store_import_button,
     );

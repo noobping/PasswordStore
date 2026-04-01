@@ -1,4 +1,4 @@
-use crate::logging::{run_command_output, CommandLogOptions};
+use crate::logging::{run_command_output, run_command_with_input, CommandLogOptions};
 use crate::preferences::Preferences;
 use crate::support::runtime::require_host_command_features;
 use std::process::{Command, Output};
@@ -8,6 +8,7 @@ pub struct PassImportRequest {
     pub store_root: String,
     pub source: String,
     pub source_path: Option<String>,
+    pub source_password: String,
     pub target_path: Option<String>,
 }
 
@@ -35,16 +36,24 @@ fn run_pass_command(context: &str, configure: impl FnOnce(&mut Command)) -> Resu
         .map_err(|err| format!("Failed to run the host backend command: {err}"))
 }
 
-fn run_store_pass_command(
+fn run_store_pass_command_with_input(
     store_root: &str,
     context: &str,
+    input: &str,
     configure: impl FnOnce(&mut Command),
 ) -> Result<Output, String> {
-    // Store-scoped imports still run through the configured host/custom pass command.
     let mut cmd = Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)]);
     configure(&mut cmd);
-    run_command_output(&mut cmd, context, CommandLogOptions::DEFAULT)
-        .map_err(|err| format!("Failed to run the host backend command: {err}"))
+    run_command_with_input(
+        &mut cmd,
+        context,
+        input,
+        CommandLogOptions {
+            redact_stdin: true,
+            ..CommandLogOptions::DEFAULT
+        },
+    )
+    .map_err(|err| format!("Failed to run the host backend command: {err}"))
 }
 
 fn strip_ansi_escape_sequences(text: &str) -> String {
@@ -88,6 +97,10 @@ pub fn normalize_optional_text(text: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
+fn pass_import_stdin(password: &str) -> String {
+    format!("{password}\n")
+}
+
 pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
     require_host_command_features()?;
     let output = run_pass_command("Read pass import sources", |cmd| {
@@ -107,9 +120,10 @@ pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
 
 pub fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
     require_host_command_features()?;
-    let output = run_store_pass_command(
+    let output = run_store_pass_command_with_input(
         &request.store_root,
         "Import passwords with pass import",
+        &pass_import_stdin(&request.source_password),
         |cmd| {
             cmd.arg("import");
             if let Some(target_path) = &request.target_path {
@@ -131,7 +145,10 @@ pub fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_optional_text, parse_import_sources, strip_ansi_escape_sequences};
+    use super::{
+        normalize_optional_text, parse_import_sources, pass_import_stdin,
+        strip_ansi_escape_sequences,
+    };
 
     #[test]
     fn ansi_sequences_are_removed_from_import_output() {
@@ -159,5 +176,11 @@ mod tests {
             normalize_optional_text(" folder/import "),
             Some("folder/import".to_string())
         );
+    }
+
+    #[test]
+    fn pass_import_stdin_keeps_password_exact_and_ends_with_newline() {
+        assert_eq!(pass_import_stdin(""), "\n");
+        assert_eq!(pass_import_stdin(" secret "), " secret \n");
     }
 }

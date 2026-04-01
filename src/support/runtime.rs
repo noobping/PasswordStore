@@ -51,11 +51,6 @@ pub const fn supports_smartcard_features() -> bool {
     cfg!(target_os = "linux")
 }
 
-pub const fn supports_fido_features() -> bool {
-    cfg!(any(feature = "fidostore", feature = "fidokey"))
-        && cfg!(any(target_os = "linux", target_os = "windows"))
-}
-
 pub const fn supports_fidostore_features() -> bool {
     cfg!(feature = "fidostore") && cfg!(any(target_os = "linux", target_os = "windows"))
 }
@@ -117,7 +112,8 @@ pub fn has_fido2_permission() -> bool {
 
 #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
 pub fn has_fido2_permission() -> bool {
-    supports_fido_features()
+    (supports_fidostore_features() || supports_fidokey_features())
+        && cfg!(any(target_os = "linux", target_os = "windows"))
 }
 
 #[cfg(all(target_os = "linux", feature = "flatpak"))]

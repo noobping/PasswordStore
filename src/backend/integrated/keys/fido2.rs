@@ -310,7 +310,7 @@ pub fn create_fido2_store_recipient(_pin: Option<&str>) -> Result<String, Privat
     ))
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(feature = "fidostore", any(target_os = "linux", target_os = "windows")))]
 pub(in crate::backend::integrated) fn unlock_fido2_binding_for_session(
     recipient: &str,
     pin: Option<&str>,
@@ -334,7 +334,10 @@ pub(in crate::backend::integrated) fn unlock_fido2_binding_for_session(
     Ok(())
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(all(
+    feature = "fidostore",
+    not(any(target_os = "linux", target_os = "windows"))
+))]
 pub(in crate::backend::integrated) fn unlock_fido2_binding_for_session(
     _recipient: &str,
     _pin: Option<&str>,
@@ -1049,6 +1052,7 @@ fn direct_fido2_store_message(fingerprint: &str, err: Fido2TransportError) -> St
     }
 }
 
+#[cfg(feature = "fidostore")]
 fn parse_store_recipient_binding(recipient: &str) -> Option<Fido2DirectBinding> {
     parse_fido2_recipient_string(recipient)
         .ok()

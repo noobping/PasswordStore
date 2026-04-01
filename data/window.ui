@@ -1305,7 +1305,7 @@
                               <object class="AdwPreferencesGroup" id="store_recipients_add_group">
                                 <property name="visible">false</property>
                                 <property name="title" translatable="yes">Other ways to add a key</property>
-                                <property name="description" translatable="yes">Import an existing private key, generate a FIDO2-protected key, or connect a hardware token.</property>
+                                <property name="description" translatable="yes">Import an existing private key or connect a hardware token.</property>
                                 <child>
                                   <object class="GtkListBox" id="store_recipients_add_list">
                                     <property name="selection-mode">none</property>

@@ -361,7 +361,7 @@ pub(super) fn private_key_requirement_for_label(
     effective_private_key_requirement_from_contents(&standard_contents, &fido2_contents)
 }
 
-pub(super) fn required_private_key_fingerprints_for_label(
+pub fn required_private_key_fingerprints_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<Vec<String>, String> {
@@ -460,7 +460,7 @@ pub(super) fn decryption_candidate_fingerprints_for_entry(
         private_key_requirement_for_label(store_root, label),
         Ok(StoreRecipientsPrivateKeyRequirement::AllManagedKeys)
     ) {
-        return required_private_key_fingerprints_for_label(store_root, label);
+        return required_private_key_fingerprints_for_entry(store_root, label);
     }
 
     let mut candidates = Vec::new();

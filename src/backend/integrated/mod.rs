@@ -30,7 +30,10 @@ pub use self::keys::{
     ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind,
     PrivateKeyUnlockRequest,
 };
-pub use self::recipients::preferred_ripasso_private_key_fingerprint_for_entry;
+pub use self::recipients::{
+    preferred_ripasso_private_key_fingerprint_for_entry,
+    required_private_key_fingerprints_for_entry,
+};
 
 pub use self::entries::{
     delete_password_entry, password_entry_fido2_recipient_count, password_entry_is_readable,

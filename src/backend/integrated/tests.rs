@@ -1100,7 +1100,8 @@ fn generated_fido2_private_keys_can_be_combined_with_password_keys() {
     ));
     let password_key = generate_ripasso_private_key("Alice", "alice@example.com", "hunter2")
         .expect("generate password-protected key");
-    let fido_key = generate_fido2_private_key(Some("123456")).expect("generate FIDO2-protected key");
+    let fido_key =
+        generate_fido2_private_key(Some("123456")).expect("generate FIDO2-protected key");
     let store = env.root_dir().join("mixed-managed-store");
 
     save_store_recipients(
@@ -1127,7 +1128,8 @@ fn removing_fido2_private_keys_removes_the_stored_key() {
         MockFido2Transport::default()
             .with_enrollment_result(Ok(mock_fido2_enrollment(b"backup-key-secret"))),
     ));
-    let imported = generate_fido2_private_key(Some("123456")).expect("generate FIDO2-protected key");
+    let imported =
+        generate_fido2_private_key(Some("123456")).expect("generate FIDO2-protected key");
 
     remove_ripasso_private_key(&imported.fingerprint).expect("remove FIDO2 private key");
 

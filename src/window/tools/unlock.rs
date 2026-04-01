@@ -1,8 +1,9 @@
 use super::{FieldValueRequest, ToolReadMode, ToolsPageState};
 use crate::backend::{
-    preferred_ripasso_private_key_fingerprint_for_entry, read_password_entry, read_password_line,
-    PasswordEntryError,
+    read_password_entry, read_password_line, required_private_key_fingerprints_for_entry,
+    ripasso_private_key_requires_session_unlock, PasswordEntryError,
 };
+use crate::fido2_recipient::{is_fido2_recipient_string, same_fido2_recipient};
 use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
@@ -77,17 +78,71 @@ fn collect_locked_tool_fingerprints(
             continue;
         }
 
-        let Ok(fingerprint) =
-            preferred_ripasso_private_key_fingerprint_for_entry(&request.root, &request.label)
+        let Ok(required_fingerprints) =
+            required_private_key_fingerprints_for_entry(&request.root, &request.label)
         else {
             continue;
         };
-        if !fingerprints.iter().any(|existing| existing == &fingerprint) {
-            fingerprints.push(fingerprint);
-        }
+        append_unlockable_tool_fingerprints(&mut fingerprints, required_fingerprints);
     }
 
     fingerprints
+}
+
+fn append_unlockable_tool_fingerprints(fingerprints: &mut Vec<String>, candidates: Vec<String>) {
+    for candidate in candidates {
+        let unlockable = if is_fido2_recipient_string(&candidate) {
+            true
+        } else {
+            matches!(
+                ripasso_private_key_requires_session_unlock(&candidate),
+                Ok(true)
+            )
+        };
+        if !unlockable {
+            continue;
+        }
+
+        let duplicate = fingerprints.iter().any(|existing| {
+            if is_fido2_recipient_string(existing) && is_fido2_recipient_string(&candidate) {
+                same_fido2_recipient(existing, &candidate)
+            } else {
+                existing.eq_ignore_ascii_case(&candidate)
+            }
+        });
+        if !duplicate {
+            fingerprints.push(candidate);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::append_unlockable_tool_fingerprints;
+
+    #[test]
+    fn unlockable_tool_fingerprints_keep_unique_standard_and_fido_keys() {
+        let mut fingerprints = vec!["ABCDEF0123456789".to_string()];
+        append_unlockable_tool_fingerprints(
+            &mut fingerprints,
+            vec![
+                "abcdef0123456789".to_string(),
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+                    .to_string(),
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4261636b7570204b6579:63726564"
+                    .to_string(),
+            ],
+        );
+
+        assert_eq!(
+            fingerprints,
+            vec![
+                "ABCDEF0123456789".to_string(),
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+                    .to_string(),
+            ]
+        );
+    }
 }
 
 fn prompt_tool_unlock_sequence(

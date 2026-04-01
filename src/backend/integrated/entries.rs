@@ -8,7 +8,7 @@ use super::recipients::{
     decryption_candidate_fingerprints_for_entry,
     password_entry_fido2_recipient_count as fido2_recipient_count,
     password_entry_is_readable as recipients_password_entry_is_readable,
-    private_key_requirement_for_label, required_private_key_fingerprints_for_label,
+    private_key_requirement_for_label, required_private_key_fingerprints_for_entry,
 };
 use crate::backend::{
     PasswordEntryError, PasswordEntryReadProgress, PasswordEntryWriteError,
@@ -34,7 +34,7 @@ pub fn read_password_entry_with_progress(
         Ok(StoreRecipientsPrivateKeyRequirement::AllManagedKeys)
     ) {
         let required_private_key_fingerprints =
-            required_private_key_fingerprints_for_label(store_root, label).map_err(|_| {
+            required_private_key_fingerprints_for_entry(store_root, label).map_err(|_| {
                 PasswordEntryError::missing_private_key(
                     "Import a private key in Preferences before using the password store.",
                 )

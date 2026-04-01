@@ -199,7 +199,7 @@ fn ensure_optional_fido2_access_row(list: &ListBox, overlay: &ToastOverlay) -> A
     );
     row.set_widget_name(OPTIONAL_FIDO2_ACCESS_ROW_NAME);
     add_persistent_hide_button(&row, OPTIONAL_FIDO2_ACCESS_NOTICE_ID, || {});
-    list.append(&row);
+    list.prepend(&row);
     row
 }
 

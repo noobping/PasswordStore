@@ -27,8 +27,8 @@ use super::keys::{
     store_ripasso_hardware_key_bytes, unlock_fido2_store_recipient_for_session,
     unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, Fido2AssertionOutput,
     Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError, HardwareSessionPolicy,
-    HardwareTransport, ManagedRipassoHardwareKey, ManagedRipassoPrivateKeyProtection,
-    PrivateKeyUnlockRequest,
+    HardwareTransport, HardwareTransportError, ManagedRipassoHardwareKey,
+    ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::{
@@ -156,11 +156,14 @@ impl MockHardwareTransport {
 }
 
 impl HardwareTransport for MockHardwareTransport {
-    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String> {
+    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
         Ok(self.tokens.lock().expect("tokens mutex poisoned").clone())
     }
 
-    fn verify_session(&self, _session: &HardwareSessionPolicy) -> Result<(), String> {
+    fn verify_session(
+        &self,
+        _session: &HardwareSessionPolicy,
+    ) -> Result<(), HardwareTransportError> {
         Ok(())
     }
 
@@ -168,24 +171,28 @@ impl HardwareTransport for MockHardwareTransport {
         &self,
         _session: &HardwareSessionPolicy,
         _ciphertext: &[u8],
-    ) -> Result<String, String> {
+    ) -> Result<String, HardwareTransportError> {
         self.decrypt_response
             .lock()
             .expect("decrypt mutex poisoned")
             .clone()
-            .ok_or_else(|| "No mock decrypt response configured.".to_string())
+            .ok_or_else(|| {
+                HardwareTransportError::Other("No mock decrypt response configured.".to_string())
+            })
     }
 
     fn sign_cleartext(
         &self,
         _session: &HardwareSessionPolicy,
         _data: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String, HardwareTransportError> {
         self.sign_response
             .lock()
             .expect("sign mutex poisoned")
             .clone()
-            .ok_or_else(|| "No mock sign response configured.".to_string())
+            .ok_or_else(|| {
+                HardwareTransportError::Other("No mock sign response configured.".to_string())
+            })
     }
 }
 

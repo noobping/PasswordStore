@@ -56,3 +56,103 @@ pub(in crate::backend::integrated) fn store_recipients_error_from_integrated_mes
         _ => StoreRecipientsError::other(message),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        password_entry_error_from_integrated_message,
+        password_entry_write_error_from_integrated_message, password_entry_write_error_from_io,
+        store_recipients_error_from_integrated_message, INCOMPATIBLE_PRIVATE_KEY_ERROR,
+        INVALID_STORE_PATH_ERROR, LOCKED_PRIVATE_KEY_ERROR, MISSING_PRIVATE_KEY_ERROR,
+    };
+    use crate::backend::{PasswordEntryError, PasswordEntryWriteError, StoreRecipientsError};
+    use std::io;
+
+    #[test]
+    fn integrated_read_errors_map_to_public_variants_and_toasts() {
+        let missing = password_entry_error_from_integrated_message(MISSING_PRIVATE_KEY_ERROR);
+        assert!(matches!(missing, PasswordEntryError::MissingPrivateKey(_)));
+        assert_eq!(
+            missing.toast_message(),
+            Some("Add a private key in Preferences.")
+        );
+
+        let locked = password_entry_error_from_integrated_message(LOCKED_PRIVATE_KEY_ERROR);
+        assert!(matches!(locked, PasswordEntryError::LockedPrivateKey(_)));
+        assert_eq!(locked.toast_message(), None);
+
+        let incompatible =
+            password_entry_error_from_integrated_message(INCOMPATIBLE_PRIVATE_KEY_ERROR);
+        assert!(matches!(
+            incompatible,
+            PasswordEntryError::IncompatiblePrivateKey(_)
+        ));
+        assert_eq!(
+            incompatible.toast_message(),
+            Some("This key can't open your items.")
+        );
+    }
+
+    #[test]
+    fn integrated_write_errors_map_to_public_variants_and_toasts() {
+        let missing = password_entry_write_error_from_integrated_message(MISSING_PRIVATE_KEY_ERROR);
+        assert!(matches!(
+            missing,
+            PasswordEntryWriteError::MissingPrivateKey(_)
+        ));
+        assert_eq!(
+            missing.save_toast_message(),
+            "Add a private key in Preferences."
+        );
+
+        let locked = password_entry_write_error_from_integrated_message(LOCKED_PRIVATE_KEY_ERROR);
+        assert!(matches!(
+            locked,
+            PasswordEntryWriteError::LockedPrivateKey(_)
+        ));
+        assert_eq!(
+            locked.save_toast_message(),
+            "Unlock the key in Preferences."
+        );
+
+        let incompatible =
+            password_entry_write_error_from_integrated_message(INCOMPATIBLE_PRIVATE_KEY_ERROR);
+        assert!(matches!(
+            incompatible,
+            PasswordEntryWriteError::IncompatiblePrivateKey(_)
+        ));
+        assert_eq!(
+            incompatible.save_toast_message(),
+            "This key can't open your items."
+        );
+    }
+
+    #[test]
+    fn integrated_write_io_errors_classify_by_io_kind() {
+        assert!(matches!(
+            password_entry_write_error_from_io(&io::Error::from(io::ErrorKind::AlreadyExists)),
+            PasswordEntryWriteError::EntryAlreadyExists(_)
+        ));
+        assert!(matches!(
+            password_entry_write_error_from_io(&io::Error::from(io::ErrorKind::NotFound)),
+            PasswordEntryWriteError::EntryNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn integrated_store_recipient_errors_map_to_public_variants_and_toasts() {
+        let invalid = store_recipients_error_from_integrated_message(INVALID_STORE_PATH_ERROR);
+        assert!(matches!(invalid, StoreRecipientsError::InvalidStorePath(_)));
+        assert_eq!(
+            invalid.toast_message("Couldn't save recipients."),
+            "The selected store path is not a folder."
+        );
+
+        let locked = store_recipients_error_from_integrated_message(LOCKED_PRIVATE_KEY_ERROR);
+        assert!(matches!(locked, StoreRecipientsError::LockedPrivateKey(_)));
+        assert_eq!(
+            locked.toast_message("Couldn't save recipients."),
+            "Unlock the key in Preferences."
+        );
+    }
+}

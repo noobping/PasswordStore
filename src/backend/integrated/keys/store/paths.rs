@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-pub(in crate::backend::integrated) fn ripasso_keys_dir() -> Result<PathBuf, String> {
+pub(in crate::backend) fn ripasso_keys_dir() -> Result<PathBuf, String> {
     let data_dir = dirs_next::data_local_dir()
         .ok_or_else(|| "Could not determine the data folder.".to_string())?;
     Ok(data_dir.join(env!("CARGO_PKG_NAME")).join("keys"))

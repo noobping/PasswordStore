@@ -55,6 +55,7 @@ pub(in crate::backend::integrated) use self::hardware::{
 #[cfg(test)]
 pub(in crate::backend::integrated) use self::hardware::{
     reset_hardware_transport_for_tests, set_hardware_transport_for_tests, HardwareTransport,
+    HardwareTransportError,
 };
 #[cfg(test)]
 pub use self::store::resolved_ripasso_own_fingerprint;

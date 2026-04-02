@@ -129,3 +129,45 @@ pub fn spawn_progress_result_task<T, P, Task, HandleProgress, HandleResult, Hand
         },
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::spawn_result_task_with_finalizer;
+    use adw::glib::MainLoop;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn finalizer_runs_before_result_handler() {
+        let main_loop = MainLoop::new(None, false);
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let events_for_finalize = events.clone();
+        let events_for_result = events.clone();
+        let events_for_disconnect = events.clone();
+        let main_loop_for_result = main_loop.clone();
+
+        spawn_result_task_with_finalizer(
+            || 7_u8,
+            move || events_for_finalize.borrow_mut().push("finalize"),
+            move |result| {
+                events_for_result.borrow_mut().push(if result == 7 {
+                    "result"
+                } else {
+                    "unexpected"
+                });
+                main_loop_for_result.quit();
+            },
+            {
+                let main_loop = main_loop.clone();
+                move || {
+                    events_for_disconnect.borrow_mut().push("disconnect");
+                    main_loop.quit();
+                }
+            },
+        );
+
+        main_loop.run();
+
+        assert_eq!(&*events.borrow(), &["finalize", "result"]);
+    }
+}

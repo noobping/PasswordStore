@@ -345,16 +345,12 @@ pub(in crate::backend) fn clear_cached_unlocked_ripasso_private_keys() {
 #[cfg(test)]
 mod tests {
     use super::{
-        borrow_cache_value, borrow_cached_fido2_pin, borrow_unlocked_ripasso_private_key,
-        cache_fido2_pin, cache_unlocked_ripasso_private_key, clear_integrated_runtime_secret_state,
-        peek_cache_value, peek_cached_fido2_pin, peek_unlocked_ripasso_private_key,
-        pending_fido2_enrollments, unlocked_ripasso_private_keys, CacheEntry,
-        SECRET_CACHE_IDLE_TIMEOUT,
+        borrow_unlocked_ripasso_private_key, cache_unlocked_ripasso_private_key,
+        clear_integrated_runtime_secret_state, peek_unlocked_ripasso_private_key,
+        unlocked_ripasso_private_keys, SECRET_CACHE_IDLE_TIMEOUT,
     };
     use sequoia_openpgp::Cert;
-    use std::sync::Arc;
     use std::time::Duration;
-    use zeroize::Zeroizing;
 
     fn test_cert() -> Cert {
         let (cert, _) = sequoia_openpgp::cert::CertBuilder::general_purpose(Some("Cache Test"))
@@ -440,11 +436,11 @@ mod tests {
     fn peek_does_not_refresh_fido_pin_entries() {
         clear_integrated_runtime_secret_state();
         let fingerprint = "0123456789abcdef0123456789abcdef01234567";
-        cache_fido2_pin(fingerprint, b"1234").expect("cache fido2 pin");
-        let _ = peek_cached_fido2_pin(fingerprint).expect("peek fido2 pin");
+        super::cache_fido2_pin(fingerprint, b"1234").expect("cache fido2 pin");
+        let _ = super::peek_cached_fido2_pin(fingerprint).expect("peek fido2 pin");
         expire_fido_pin_entry(fingerprint);
 
-        assert!(peek_cached_fido2_pin(fingerprint)
+        assert!(super::peek_cached_fido2_pin(fingerprint)
             .expect("peek expired pin")
             .is_none());
     }
@@ -454,8 +450,8 @@ mod tests {
     fn borrow_refreshes_fido_pin_entries() {
         clear_integrated_runtime_secret_state();
         let fingerprint = "0123456789abcdef0123456789abcdef01234567";
-        cache_fido2_pin(fingerprint, b"1234").expect("cache fido2 pin");
-        let borrowed = borrow_cached_fido2_pin(fingerprint)
+        super::cache_fido2_pin(fingerprint, b"1234").expect("cache fido2 pin");
+        let borrowed = super::borrow_cached_fido2_pin(fingerprint)
             .expect("borrow pin")
             .expect("cached pin should exist");
         assert_eq!(borrowed.as_slice(), b"1234");

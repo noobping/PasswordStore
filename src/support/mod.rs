@@ -2,6 +2,7 @@ pub mod actions;
 pub mod background;
 pub mod file_picker;
 pub mod git;
+pub mod hardening;
 pub mod object_data;
 pub mod pass_import;
 pub mod runtime;

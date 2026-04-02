@@ -30,6 +30,7 @@ use crate::i18n::gettext;
 use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
+use crate::support::hardening::apply_process_hardening;
 use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
 use crate::support::runtime::handle_unsupported_host_command_invocation;
 use crate::support::startup::{
@@ -68,6 +69,9 @@ fn main() -> ExitCode {
     }
 
     i18n::init();
+    if let Err(err) = apply_process_hardening() {
+        log_error(format!("Failed to apply process hardening: {err}"));
+    }
     if let Err(err) = resources_register_include!("compiled.gresource") {
         return fatal_startup_error(APP_WINDOW_TITLE, "Failed to register resources.", err);
     }

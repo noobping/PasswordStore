@@ -1,6 +1,7 @@
 mod command;
 mod errors;
 mod host;
+mod host_errors;
 mod integrated;
 #[cfg(test)]
 mod test_support;

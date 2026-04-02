@@ -9,6 +9,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, LocalFree, ERROR_INSUFFICIENT_BUFFER,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Security::Authorization::{
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    SE_FILE_OBJECT,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Security::{
+    GetTokenInformation, SetFileSecurityW, TokenUser, DACL_SECURITY_INFORMATION,
+    PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 #[cfg(unix)]
 const PRIVATE_DIR_MODE: u32 = 0o700;
@@ -19,6 +35,13 @@ const PRIVATE_FILE_MODE: u32 = 0o600;
 enum AtomicWriteMode {
     Standard,
     Private,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+enum PrivateObjectKind {
+    File,
+    Directory,
 }
 
 pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
@@ -180,7 +203,12 @@ fn set_private_dir_permissions(path: &Path) -> io::Result<()> {
     fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_DIR_MODE))
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
+fn set_private_dir_permissions(path: &Path) -> io::Result<()> {
+    apply_private_windows_dacl(path, PrivateObjectKind::Directory)
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
 fn set_private_dir_permissions(_path: &Path) -> io::Result<()> {
     Ok(())
 }
@@ -190,9 +218,173 @@ fn set_private_file_permissions(path: &Path) -> io::Result<()> {
     fs::set_permissions(path, fs::Permissions::from_mode(PRIVATE_FILE_MODE))
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
+fn set_private_file_permissions(path: &Path) -> io::Result<()> {
+    apply_private_windows_dacl(path, PrivateObjectKind::File)
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
 fn set_private_file_permissions(_path: &Path) -> io::Result<()> {
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn apply_private_windows_dacl(path: &Path, kind: PrivateObjectKind) -> io::Result<()> {
+    let user_sid = current_user_sid_string()?;
+    let sddl = match kind {
+        PrivateObjectKind::File => format!("D:P(A;;FA;;;SY)(A;;FA;;;{user_sid})"),
+        PrivateObjectKind::Directory => format!("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;{user_sid})"),
+    };
+    apply_security_descriptor(path, &sddl)
+}
+
+#[cfg(target_os = "windows")]
+fn current_user_sid_string() -> io::Result<String> {
+    let token = current_process_token()?;
+    let mut required_size = 0u32;
+    let probe_result = unsafe {
+        GetTokenInformation(
+            token.0,
+            TokenUser,
+            std::ptr::null_mut(),
+            0,
+            &mut required_size,
+        )
+    };
+    if probe_result != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Unexpectedly read token information without a buffer.",
+        ));
+    }
+
+    let error = unsafe { GetLastError() };
+    if error != ERROR_INSUFFICIENT_BUFFER {
+        return Err(io::Error::from_raw_os_error(error as i32));
+    }
+
+    let mut buffer = vec![0u8; required_size as usize];
+    let result = unsafe {
+        GetTokenInformation(
+            token.0,
+            TokenUser,
+            buffer.as_mut_ptr().cast(),
+            required_size,
+            &mut required_size,
+        )
+    };
+    if result == 0 {
+        return Err(last_windows_error());
+    }
+
+    let token_user = unsafe { &*(buffer.as_ptr().cast::<TOKEN_USER>()) };
+    sid_to_string(token_user.User.Sid)
+}
+
+#[cfg(target_os = "windows")]
+fn current_process_token() -> io::Result<OwnedHandle> {
+    let mut handle = 0isize;
+    let result = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut handle) };
+    if result == 0 {
+        Err(last_windows_error())
+    } else {
+        Ok(OwnedHandle(handle))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn sid_to_string(sid: *mut core::ffi::c_void) -> io::Result<String> {
+    let mut sid_string = std::ptr::null_mut();
+    if unsafe { ConvertSidToStringSidW(sid, &mut sid_string) } == 0 {
+        return Err(last_windows_error());
+    }
+
+    let sid_string = LocalBuffer(sid_string.cast());
+    Ok(utf16_ptr_to_string(sid_string.0))
+}
+
+#[cfg(target_os = "windows")]
+fn apply_security_descriptor(path: &Path, sddl: &str) -> io::Result<()> {
+    let wide_sddl = wide_string(sddl);
+    let mut security_descriptor = std::ptr::null_mut();
+    if unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            wide_sddl.as_ptr(),
+            SDDL_REVISION_1,
+            &mut security_descriptor,
+            std::ptr::null_mut(),
+        )
+    } == 0
+    {
+        return Err(last_windows_error());
+    }
+
+    let security_descriptor = LocalBuffer(security_descriptor.cast());
+    let path_wide = wide_path(path);
+    if unsafe {
+        SetFileSecurityW(
+            path_wide.as_ptr(),
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            security_descriptor.0.cast(),
+        )
+    } == 0
+    {
+        Err(last_windows_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn wide_string(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn utf16_ptr_to_string(ptr: *const u16) -> String {
+    let mut len = 0usize;
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len) })
+}
+
+#[cfg(target_os = "windows")]
+fn last_windows_error() -> io::Error {
+    let code = unsafe { GetLastError() } as i32;
+    if code == 0 {
+        io::Error::new(io::ErrorKind::Other, "unknown Windows error")
+    } else {
+        io::Error::from_raw_os_error(code)
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct OwnedHandle(isize);
+
+#[cfg(target_os = "windows")]
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        if self.0 != 0 {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct LocalBuffer<T>(*mut T);
+
+#[cfg(target_os = "windows")]
+impl<T> Drop for LocalBuffer<T> {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                LocalFree(self.0.cast());
+            }
+        }
+    }
 }
 
 #[cfg(test)]

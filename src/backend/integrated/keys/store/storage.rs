@@ -1,56 +1,59 @@
 #[cfg(feature = "fidokey")]
-use super::cache::clear_cached_fido2_pin;
-use super::cache::{
-    borrow_unlocked_ripasso_private_key, cache_unlocked_hardware_private_key,
-    cache_unlocked_ripasso_private_key, peek_unlocked_hardware_private_key,
-    peek_unlocked_ripasso_private_key, remove_cached_unlocked_ripasso_private_key,
+use super::super::cache::clear_cached_fido2_pin;
+use super::super::cache::{
+    borrow_unlocked_ripasso_private_key, cache_unlocked_ripasso_private_key,
+    remove_cached_unlocked_ripasso_private_key,
 };
 #[cfg(feature = "fidokey")]
-use super::cert::parse_fido2_public_key_bytes;
-use super::cert::{
-    cert_can_decrypt_password_entries, cert_has_transport_encryption_key, cert_requires_passphrase,
-    fingerprint_from_string, normalized_fingerprint, parse_hardware_public_key_bytes,
-    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ManagedRipassoHardwareKey,
-    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
+use super::super::cert::cert_can_decrypt_password_entries;
+#[cfg(feature = "fidokey")]
+use super::super::cert::parse_fido2_public_key_bytes;
+use super::super::cert::{
+    cert_has_transport_encryption_key, cert_requires_passphrase, fingerprint_from_string,
+    normalized_fingerprint, parse_hardware_public_key_bytes, parse_managed_private_key_bytes,
+    prepare_managed_private_key_bytes, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
+    ManagedRipassoPrivateKeyProtection,
 };
-use super::errors::{
-    INCOMPATIBLE_PRIVATE_KEY_ERROR, LOCKED_PRIVATE_KEY_ERROR, MISSING_PRIVATE_KEY_ERROR,
+use super::super::hardware::{
+    list_hardware_tokens, private_key_error_from_hardware_transport_error,
 };
-use super::hardware::{
-    list_hardware_tokens, private_key_error_from_hardware_transport_error, verify_hardware_session,
-    HardwareSessionPolicy, HardwareUnlockMode,
+#[cfg(feature = "fidokey")]
+use super::manifest::{
+    fido2_private_key_manifest_contents, managed_fido2_private_key_from_cert,
+    parse_fido2_private_key_manifest, parse_fido2_private_key_manifest_bytes,
+    read_fido2_private_key_manifest_entry, Fido2PrivateKeyManifest,
 };
-use crate::backend::{PasswordEntryError, PrivateKeyError};
+use super::manifest::{
+    read_hardware_private_key_manifest, read_hardware_private_key_manifest_entry,
+    HardwarePrivateKeyManifest,
+};
+#[cfg(test)]
+use super::missing_private_key_error;
+#[cfg(feature = "fidokey")]
+use super::paths::ripasso_fido_keys_dir;
+use super::paths::{
+    hardware_manifest_path, hardware_public_key_path, ripasso_keys_dir, ripasso_keys_v2_dir,
+};
+use super::private_key_not_stored_error;
+#[cfg(not(feature = "fidokey"))]
+use super::FIDO2_PRIVATE_KEY_FEATURE_DISABLED_ERROR;
+use crate::backend::PrivateKeyError;
 #[cfg(feature = "fidokey")]
 use crate::fido2_recipient::parse_fido2_recipient_string;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
-use secrecy::{ExposeSecret, SecretString};
 use sequoia_openpgp::{
     cert::CertBuilder,
     crypto::Password,
     serialize::{Serialize, SerializeInto},
     Cert,
 };
-use serde::{Deserialize, Serialize as SerdeSerialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use zeroize::Zeroizing;
-
-const PRIVATE_KEY_NOT_STORED_ERROR: &str = "That private key is not stored in the app.";
-#[cfg(not(feature = "fidokey"))]
-const FIDO2_PRIVATE_KEY_FEATURE_DISABLED_ERROR: &str =
-    "FIDO2 private-key support is disabled in this build of Keycord.";
-const HARDWARE_MANIFEST_FORMAT: u32 = 1;
-const HARDWARE_PROTECTION_KIND: &str = "hardware-openpgp-card";
-#[cfg(feature = "fidokey")]
-const FIDO2_PRIVATE_KEY_MANIFEST_FORMAT: u32 = 1;
-#[cfg(feature = "fidokey")]
-const FIDO2_PRIVATE_KEY_PROTECTION_KIND: &str = "fido2-hmac-secret";
 
 #[derive(Clone, Debug)]
 pub(in crate::backend::integrated) enum StoredPrivateKeyLocation {
@@ -74,95 +77,6 @@ pub(in crate::backend::integrated) struct StoredPrivateKeyEntry {
     pub(in crate::backend::integrated) location: StoredPrivateKeyLocation,
 }
 
-#[derive(Debug, Clone, SerdeSerialize, Deserialize)]
-struct HardwarePrivateKeyManifest {
-    format: u32,
-    protection: String,
-    fingerprint: String,
-    user_ids: Vec<String>,
-    ident: String,
-    signing_fingerprint: Option<String>,
-    decryption_fingerprint: Option<String>,
-    reader_hint: Option<String>,
-}
-
-#[cfg(feature = "fidokey")]
-#[derive(Debug, Clone, SerdeSerialize, Deserialize)]
-struct Fido2PrivateKeyManifest {
-    format: u32,
-    protection: String,
-    fingerprint: String,
-    public_key: String,
-    encrypted_private_key: String,
-}
-
-impl HardwarePrivateKeyManifest {
-    fn from_key(key: &ManagedRipassoPrivateKey, hardware: &ManagedRipassoHardwareKey) -> Self {
-        Self {
-            format: HARDWARE_MANIFEST_FORMAT,
-            protection: HARDWARE_PROTECTION_KIND.to_string(),
-            fingerprint: key.fingerprint.clone(),
-            user_ids: key.user_ids.clone(),
-            ident: hardware.ident.clone(),
-            signing_fingerprint: hardware.signing_fingerprint.clone(),
-            decryption_fingerprint: hardware.decryption_fingerprint.clone(),
-            reader_hint: hardware.reader_hint.clone(),
-        }
-    }
-
-    fn hardware(&self) -> ManagedRipassoHardwareKey {
-        ManagedRipassoHardwareKey {
-            ident: self.ident.clone(),
-            signing_fingerprint: self.signing_fingerprint.clone(),
-            decryption_fingerprint: self.decryption_fingerprint.clone(),
-            reader_hint: self.reader_hint.clone(),
-        }
-    }
-}
-
-pub(in crate::backend::integrated) fn ripasso_keys_dir() -> Result<PathBuf, String> {
-    let data_dir = dirs_next::data_local_dir()
-        .ok_or_else(|| "Could not determine the data folder.".to_string())?;
-    Ok(data_dir.join(env!("CARGO_PKG_NAME")).join("keys"))
-}
-
-fn ripasso_keys_v2_dir() -> Result<PathBuf, String> {
-    let data_dir = dirs_next::data_local_dir()
-        .ok_or_else(|| "Could not determine the data folder.".to_string())?;
-    Ok(data_dir.join(env!("CARGO_PKG_NAME")).join("keys-v2"))
-}
-
-#[cfg(feature = "fidokey")]
-fn ripasso_fido_keys_dir() -> Result<PathBuf, String> {
-    let data_dir = dirs_next::data_local_dir()
-        .ok_or_else(|| "Could not determine the data folder.".to_string())?;
-    Ok(data_dir.join(env!("CARGO_PKG_NAME")).join("keys-fido"))
-}
-
-fn hardware_manifest_path(dir: &Path) -> PathBuf {
-    dir.join("manifest.toml")
-}
-
-fn hardware_public_key_path(dir: &Path) -> PathBuf {
-    dir.join("public.asc")
-}
-
-pub(in crate::backend::integrated) fn missing_private_key_error() -> String {
-    MISSING_PRIVATE_KEY_ERROR.to_string()
-}
-
-pub(in crate::backend::integrated) fn locked_private_key_error() -> String {
-    LOCKED_PRIVATE_KEY_ERROR.to_string()
-}
-
-pub(in crate::backend::integrated) fn incompatible_private_key_error() -> String {
-    INCOMPATIBLE_PRIVATE_KEY_ERROR.to_string()
-}
-
-fn private_key_not_stored_error() -> String {
-    PRIVATE_KEY_NOT_STORED_ERROR.to_string()
-}
-
 fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let data = fs::read(path).map_err(|err| err.to_string())?;
     let (cert, key) = parse_managed_private_key_bytes(&data).map_err(|err| err.to_string())?;
@@ -176,39 +90,8 @@ fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry,
 }
 
 fn read_hardware_private_key_entry(dir: &Path) -> Result<StoredPrivateKeyEntry, String> {
-    let manifest_path = hardware_manifest_path(dir);
-    let manifest: HardwarePrivateKeyManifest =
-        toml::from_str(&fs::read_to_string(&manifest_path).map_err(|err| err.to_string())?)
-            .map_err(|err| err.to_string())?;
-    if manifest.format != HARDWARE_MANIFEST_FORMAT {
-        return Err(format!(
-            "Unsupported hardware key manifest format {}.",
-            manifest.format
-        ));
-    }
-    if manifest.protection != HARDWARE_PROTECTION_KIND {
-        return Err(format!(
-            "Unsupported hardware key protection '{}'.",
-            manifest.protection
-        ));
-    }
-
-    let hardware = manifest.hardware();
-    let (cert, mut key) = parse_hardware_public_key_bytes(
-        &fs::read(hardware_public_key_path(dir)).map_err(|err| err.to_string())?,
-        hardware.clone(),
-    )
-    .map_err(|err| err.to_string())?;
-    key.user_ids = manifest.user_ids;
-
-    Ok(StoredPrivateKeyEntry {
-        cert: Some(cert),
-        key,
-        location: StoredPrivateKeyLocation::Hardware {
-            dir: dir.to_path_buf(),
-            hardware,
-        },
-    })
+    let manifest = read_hardware_private_key_manifest(dir)?;
+    read_hardware_private_key_manifest_entry(dir, manifest)
 }
 
 fn stored_private_key_file_paths(keys_dir: &Path) -> Result<Vec<PathBuf>, String> {
@@ -225,71 +108,6 @@ fn stored_private_key_file_paths(keys_dir: &Path) -> Result<Vec<PathBuf>, String
         }
     }
     Ok(paths)
-}
-
-#[cfg(feature = "fidokey")]
-fn managed_fido2_private_key_from_cert(cert: &Cert) -> ManagedRipassoPrivateKey {
-    ManagedRipassoPrivateKey {
-        fingerprint: cert.fingerprint().to_hex(),
-        user_ids: cert
-            .userids()
-            .map(|user_id| user_id.userid().to_string())
-            .filter(|value| !value.trim().is_empty())
-            .collect(),
-        protection: ManagedRipassoPrivateKeyProtection::Fido2HmacSecret,
-        hardware: None,
-    }
-}
-
-#[cfg(feature = "fidokey")]
-fn parse_fido2_private_key_manifest(
-    contents: &str,
-) -> Result<Option<Fido2PrivateKeyManifest>, String> {
-    toml::from_str(contents).map(Some).or_else(|_| Ok(None))
-}
-
-#[cfg(feature = "fidokey")]
-fn parse_fido2_private_key_manifest_bytes(
-    bytes: &[u8],
-) -> Result<Option<Fido2PrivateKeyManifest>, String> {
-    let Ok(contents) = std::str::from_utf8(bytes) else {
-        return Ok(None);
-    };
-    parse_fido2_private_key_manifest(contents)
-}
-
-#[cfg(feature = "fidokey")]
-fn read_fido2_private_key_manifest_entry(
-    path: &Path,
-    manifest: Fido2PrivateKeyManifest,
-) -> Result<StoredPrivateKeyEntry, String> {
-    if manifest.format != FIDO2_PRIVATE_KEY_MANIFEST_FORMAT {
-        return Err(format!(
-            "Unsupported FIDO2 private key format {}.",
-            manifest.format
-        ));
-    }
-    if manifest.protection != FIDO2_PRIVATE_KEY_PROTECTION_KIND {
-        return Err(format!(
-            "Unsupported FIDO2 private key protection '{}'.",
-            manifest.protection
-        ));
-    }
-
-    let (cert, key) = parse_fido2_public_key_bytes(manifest.public_key.as_bytes())
-        .map_err(|err| err.to_string())?;
-    let expected = normalized_fingerprint(&manifest.fingerprint)?;
-    if !key.fingerprint.eq_ignore_ascii_case(&expected) {
-        return Err("That FIDO2-protected key is invalid.".to_string());
-    }
-
-    Ok(StoredPrivateKeyEntry {
-        cert: Some(cert),
-        key,
-        location: StoredPrivateKeyLocation::Fido2 {
-            path: path.to_path_buf(),
-        },
-    })
 }
 
 #[cfg(feature = "fidokey")]
@@ -463,347 +281,12 @@ pub(in crate::backend::integrated) fn selected_ripasso_own_fingerprint(
     Ok(selected)
 }
 
-fn stored_key_can_decrypt(entry: &StoredPrivateKeyEntry) -> bool {
-    match entry.key.protection {
-        ManagedRipassoPrivateKeyProtection::Password => entry
-            .cert
-            .as_ref()
-            .is_some_and(cert_can_decrypt_password_entries),
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => entry
-            .cert
-            .as_ref()
-            .is_some_and(cert_has_transport_encryption_key),
-        #[cfg(feature = "fidokey")]
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => entry
-            .cert
-            .as_ref()
-            .is_some_and(cert_has_transport_encryption_key),
-    }
-}
-
-#[cfg(feature = "fidokey")]
-fn cached_fido2_private_key_is_unlocked(fingerprint: &str) -> Result<bool, String> {
-    Ok(peek_unlocked_ripasso_private_key(fingerprint)?.is_some())
-}
-
-pub(in crate::backend::integrated) fn ensure_ripasso_private_key_is_ready(
-    fingerprint: &str,
-) -> Result<(), PasswordEntryError> {
-    if let Some(cert) =
-        peek_unlocked_ripasso_private_key(fingerprint).map_err(PasswordEntryError::other)?
-    {
-        if !cert_can_decrypt_password_entries(&cert) {
-            return Err(PasswordEntryError::incompatible_private_key(
-                incompatible_private_key_error(),
-            ));
-        }
-        return Ok(());
-    }
-
-    let entry = find_stored_private_key(fingerprint).map_err(|err| {
-        if err == PRIVATE_KEY_NOT_STORED_ERROR {
-            PasswordEntryError::missing_private_key(err)
-        } else {
-            PasswordEntryError::other(err)
-        }
-    })?;
-
-    match entry.key.protection {
-        ManagedRipassoPrivateKeyProtection::Password => {
-            let cert = entry
-                .cert
-                .as_ref()
-                .ok_or_else(|| PasswordEntryError::other(private_key_not_stored_error()))?;
-            if cert_requires_passphrase(cert) {
-                return Err(PasswordEntryError::locked_private_key(
-                    locked_private_key_error(),
-                ));
-            }
-            if !cert_can_decrypt_password_entries(cert) {
-                return Err(PasswordEntryError::incompatible_private_key(
-                    incompatible_private_key_error(),
-                ));
-            }
-            Ok(())
-        }
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            if peek_unlocked_hardware_private_key(fingerprint)
-                .map_err(PasswordEntryError::other)?
-                .is_none()
-            {
-                return Err(PasswordEntryError::locked_private_key(
-                    locked_private_key_error(),
-                ));
-            }
-            if !stored_key_can_decrypt(&entry) {
-                return Err(PasswordEntryError::incompatible_private_key(
-                    incompatible_private_key_error(),
-                ));
-            }
-            Ok(())
-        }
-        #[cfg(feature = "fidokey")]
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            if !cached_fido2_private_key_is_unlocked(fingerprint)
-                .map_err(PasswordEntryError::other)?
-            {
-                return Err(PasswordEntryError::locked_private_key(
-                    locked_private_key_error(),
-                ));
-            }
-            if !stored_key_can_decrypt(&entry) {
-                return Err(PasswordEntryError::incompatible_private_key(
-                    incompatible_private_key_error(),
-                ));
-            }
-            Ok(())
-        }
-    }
-}
-
-pub fn is_ripasso_private_key_unlocked(fingerprint: &str) -> Result<bool, String> {
-    let entry = find_stored_private_key(fingerprint)?;
-    match entry.key.protection {
-        ManagedRipassoPrivateKeyProtection::Password => {
-            Ok(peek_unlocked_ripasso_private_key(fingerprint)?.is_some())
-        }
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            Ok(peek_unlocked_hardware_private_key(fingerprint)?.is_some())
-        }
-        #[cfg(feature = "fidokey")]
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            cached_fido2_private_key_is_unlocked(fingerprint)
-        }
-    }
-}
-
-pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<bool, String> {
-    let entry = find_stored_private_key(fingerprint)?;
-    match entry.key.protection {
-        ManagedRipassoPrivateKeyProtection::Password => {
-            if peek_unlocked_ripasso_private_key(fingerprint)?.is_some() {
-                return Ok(false);
-            }
-            let cert = entry
-                .cert
-                .as_ref()
-                .ok_or_else(private_key_not_stored_error)?;
-            Ok(cert_requires_passphrase(cert))
-        }
-        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            Ok(peek_unlocked_hardware_private_key(fingerprint)?.is_none())
-        }
-        #[cfg(feature = "fidokey")]
-        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
-            Ok(!cached_fido2_private_key_is_unlocked(fingerprint)?)
-        }
-    }
-}
-
-fn password_unlock_request(
-    request: PrivateKeyUnlockRequest,
-) -> Result<SecretString, PrivateKeyError> {
-    match request {
-        PrivateKeyUnlockRequest::Password(passphrase) => Ok(passphrase),
-        PrivateKeyUnlockRequest::HardwarePin(_)
-        | PrivateKeyUnlockRequest::HardwareExternal
-        | PrivateKeyUnlockRequest::Fido2(_) => Err(PrivateKeyError::other(
-            "This private key is password protected.",
-        )),
-    }
-}
-
-fn hardware_unlock_mode(
-    request: PrivateKeyUnlockRequest,
-) -> Result<HardwareUnlockMode, PrivateKeyError> {
-    match request {
-        PrivateKeyUnlockRequest::HardwarePin(pin) => {
-            let trimmed = pin.expose_secret().trim();
-            if trimmed.is_empty() {
-                return Err(PrivateKeyError::hardware_pin_required(
-                    "Enter the hardware key PIN.",
-                ));
-            }
-            Ok(HardwareUnlockMode::Pin(Arc::new(Zeroizing::new(
-                trimmed.as_bytes().to_vec(),
-            ))))
-        }
-        PrivateKeyUnlockRequest::HardwareExternal => Ok(HardwareUnlockMode::External),
-        PrivateKeyUnlockRequest::Password(_) | PrivateKeyUnlockRequest::Fido2(_) => Err(
-            PrivateKeyError::other("This private key requires a hardware key."),
-        ),
-    }
-}
-
-#[cfg(feature = "fidokey")]
-fn fido2_unlock_pin(
-    request: PrivateKeyUnlockRequest,
-) -> Result<Option<SecretString>, PrivateKeyError> {
-    match request {
-        PrivateKeyUnlockRequest::Fido2(Some(pin)) => {
-            let trimmed = pin.expose_secret().trim();
-            if trimmed.is_empty() {
-                return Err(PrivateKeyError::fido2_pin_required(
-                    "Enter the FIDO2 security key PIN.",
-                ));
-            }
-            Ok(Some(SecretString::from(trimmed)))
-        }
-        PrivateKeyUnlockRequest::Fido2(None) => Ok(None),
-        PrivateKeyUnlockRequest::Password(_)
-        | PrivateKeyUnlockRequest::HardwarePin(_)
-        | PrivateKeyUnlockRequest::HardwareExternal => Err(PrivateKeyError::other(
-            "This private key requires a FIDO2 security key.",
-        )),
-    }
-}
-
-#[cfg(feature = "fidokey")]
-fn unlock_fido2_private_key_for_session(
-    fingerprint: &str,
-    request: PrivateKeyUnlockRequest,
-) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
-    let pin = fido2_unlock_pin(request)?;
-    let entry = find_stored_private_key(fingerprint).map_err(|err| {
-        if err == PRIVATE_KEY_NOT_STORED_ERROR {
-            PrivateKeyError::not_stored(err)
-        } else {
-            PrivateKeyError::other(err)
-        }
-    })?;
-    let key = entry.key.clone();
-    let StoredPrivateKeyLocation::Fido2 { path } = entry.location else {
-        return Err(PrivateKeyError::other(
-            "This private key requires a different unlock method.",
-        ));
-    };
-    let manifest = parse_fido2_private_key_manifest(
-        &fs::read_to_string(&path).map_err(|err| PrivateKeyError::other(err.to_string()))?,
-    )
-    .map_err(PrivateKeyError::other)?
-    .ok_or_else(|| PrivateKeyError::other("That FIDO2-protected key is invalid."))?;
-    let unlocked_bytes = super::fido2::unlock_fido2_private_key_material_for_session(
-        manifest.encrypted_private_key.as_bytes(),
-        pin.as_ref().map(|pin| pin.expose_secret()),
-    )?;
-    let unlocked = prepare_managed_private_key_bytes(&unlocked_bytes, None)?.0;
-    cache_unlocked_ripasso_private_key(unlocked);
-    Ok(key)
-}
-
-pub fn unlock_ripasso_private_key_for_session(
-    fingerprint: &str,
-    request: PrivateKeyUnlockRequest,
-) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
-    let entry = find_stored_private_key(fingerprint).map_err(|err| {
-        if err == PRIVATE_KEY_NOT_STORED_ERROR {
-            PrivateKeyError::not_stored(err)
-        } else {
-            PrivateKeyError::other(err)
-        }
-    })?;
-
-    match entry.location {
-        StoredPrivateKeyLocation::Password { path } => {
-            let passphrase = password_unlock_request(request)?;
-            let cert = entry
-                .cert
-                .as_ref()
-                .ok_or_else(|| PrivateKeyError::other(private_key_not_stored_error()))?;
-            let unlocked = if cert_requires_passphrase(cert) {
-                prepare_managed_private_key_bytes(
-                    &fs::read(&path).map_err(|err| PrivateKeyError::other(err.to_string()))?,
-                    Some(passphrase.expose_secret()),
-                )?
-                .0
-            } else {
-                cert.clone()
-            };
-
-            if !cert_can_decrypt_password_entries(&unlocked) {
-                return Err(PrivateKeyError::incompatible(
-                    "That private key cannot decrypt password store entries.",
-                ));
-            }
-
-            cache_unlocked_ripasso_private_key(unlocked);
-            Ok(entry.key)
-        }
-        StoredPrivateKeyLocation::Hardware { ref hardware, .. } => {
-            if !stored_key_can_decrypt(&entry) {
-                return Err(PrivateKeyError::incompatible(
-                    "That hardware key cannot decrypt password store entries.",
-                ));
-            }
-            let cert = entry
-                .cert
-                .clone()
-                .ok_or_else(|| PrivateKeyError::other(private_key_not_stored_error()))?;
-
-            let session =
-                HardwareSessionPolicy::from_key(hardware, cert, hardware_unlock_mode(request)?);
-            verify_hardware_session(&session)
-                .map_err(private_key_error_from_hardware_transport_error)?;
-            cache_unlocked_hardware_private_key(fingerprint, session)
-                .map_err(PrivateKeyError::other)?;
-            Ok(entry.key)
-        }
-        #[cfg(feature = "fidokey")]
-        StoredPrivateKeyLocation::Fido2 { .. } => {
-            unlock_fido2_private_key_for_session(&entry.key.fingerprint, request)
-        }
-    }
-}
-
-pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, PrivateKeyError> {
-    #[cfg(feature = "fidokey")]
-    if parse_fido2_private_key_manifest_bytes(bytes)
-        .map_err(PrivateKeyError::other)?
-        .is_some()
-    {
-        return Ok(false);
-    }
-
-    let (cert, _) = parse_managed_private_key_bytes(bytes)?;
-    Ok(cert_requires_passphrase(&cert))
-}
-
-pub fn create_fido2_store_recipient(pin: Option<&str>) -> Result<String, PrivateKeyError> {
-    super::fido2::create_fido2_store_recipient(pin)
-}
-
-pub fn unlock_fido2_store_recipient_for_session(
-    recipient: &str,
-    pin: Option<&str>,
-) -> Result<(), PrivateKeyError> {
-    super::fido2::unlock_fido2_store_recipient_for_session(recipient, pin)
-}
-
-#[cfg(feature = "fidokey")]
-fn fido2_private_key_manifest_contents(
-    manifest: &Fido2PrivateKeyManifest,
-) -> Result<String, PrivateKeyError> {
-    toml::to_string_pretty(manifest).map_err(|err| PrivateKeyError::other(err.to_string()))
-}
-
 #[cfg(feature = "fidokey")]
 fn store_fido2_private_key_manifest(
     manifest: Fido2PrivateKeyManifest,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let keys_dir = ripasso_fido_keys_dir().map_err(PrivateKeyError::other)?;
     ensure_private_dir(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
-    if manifest.format != FIDO2_PRIVATE_KEY_MANIFEST_FORMAT {
-        return Err(PrivateKeyError::other(format!(
-            "Unsupported FIDO2-protected key format {}.",
-            manifest.format
-        )));
-    }
-    if manifest.protection != FIDO2_PRIVATE_KEY_PROTECTION_KIND {
-        return Err(PrivateKeyError::other(format!(
-            "Unsupported FIDO2-protected key protection '{}'.",
-            manifest.protection
-        )));
-    }
     let (cert, key) = parse_fido2_public_key_bytes(manifest.public_key.as_bytes())?;
     let expected = normalized_fingerprint(&manifest.fingerprint).map_err(PrivateKeyError::other)?;
     if !key.fingerprint.eq_ignore_ascii_case(&expected) {
@@ -839,7 +322,7 @@ fn store_fido2_private_key_cert(
         ));
     }
 
-    let binding = super::fido2::direct_binding_from_store_recipient(binding_recipient)
+    let binding = super::super::fido2::direct_binding_from_store_recipient(binding_recipient)
         .map_err(PrivateKeyError::other)?
         .ok_or_else(|| PrivateKeyError::other("That FIDO2 security key is invalid."))?;
     let key = managed_fido2_private_key_from_cert(&cert);
@@ -856,13 +339,13 @@ fn store_fido2_private_key_cert(
     )
     .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     let encrypted_private_key = String::from_utf8(
-        super::fido2::encrypt_fido2_direct_required_layer(&binding, &private_key_bytes)
+        super::super::fido2::encrypt_fido2_direct_required_layer(&binding, &private_key_bytes)
             .map_err(PrivateKeyError::other)?,
     )
     .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     let manifest = Fido2PrivateKeyManifest {
-        format: FIDO2_PRIVATE_KEY_MANIFEST_FORMAT,
-        protection: FIDO2_PRIVATE_KEY_PROTECTION_KIND.to_string(),
+        format: 1,
+        protection: "fido2-hmac-secret".to_string(),
         fingerprint: key.fingerprint.clone(),
         public_key,
         encrypted_private_key,
@@ -1104,7 +587,7 @@ pub fn import_ripasso_hardware_key_bytes(
 }
 
 pub fn discover_ripasso_hardware_keys(
-) -> Result<Vec<super::hardware::DiscoveredHardwareToken>, String> {
+) -> Result<Vec<super::super::hardware::DiscoveredHardwareToken>, String> {
     list_hardware_tokens().map_err(|err| err.to_string())
 }
 
@@ -1112,7 +595,7 @@ pub fn discover_ripasso_hardware_keys(
 pub fn generate_fido2_private_key(
     pin: Option<&str>,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
-    let recipient = super::fido2::create_fido2_private_key_binding(pin)?;
+    let recipient = super::super::fido2::create_fido2_private_key_binding(pin)?;
     let parsed = parse_fido2_recipient_string(&recipient)
         .map_err(PrivateKeyError::other)?
         .ok_or_else(|| PrivateKeyError::other("That FIDO2 security key is invalid."))?;

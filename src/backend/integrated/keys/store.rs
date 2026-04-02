@@ -1,9 +1,9 @@
 #[cfg(feature = "fidokey")]
 use super::cache::clear_cached_fido2_pin;
 use super::cache::{
-    cache_unlocked_hardware_private_key, cache_unlocked_ripasso_private_key,
-    cached_unlocked_hardware_private_key, cached_unlocked_ripasso_private_key,
-    remove_cached_unlocked_ripasso_private_key,
+    borrow_unlocked_ripasso_private_key, cache_unlocked_hardware_private_key,
+    cache_unlocked_ripasso_private_key, peek_unlocked_hardware_private_key,
+    peek_unlocked_ripasso_private_key, remove_cached_unlocked_ripasso_private_key,
 };
 #[cfg(feature = "fidokey")]
 use super::cert::parse_fido2_public_key_bytes;
@@ -429,7 +429,7 @@ pub(in crate::backend::integrated) fn load_ripasso_key_ring(
     let user_key_id = fingerprint_from_string(fingerprint)?;
     let mut key_ring = load_stored_ripasso_key_ring()?;
 
-    if let Some(cert) = cached_unlocked_ripasso_private_key(fingerprint)? {
+    if let Some(cert) = borrow_unlocked_ripasso_private_key(fingerprint)? {
         key_ring.insert(user_key_id, cert);
     }
 
@@ -483,14 +483,14 @@ fn stored_key_can_decrypt(entry: &StoredPrivateKeyEntry) -> bool {
 
 #[cfg(feature = "fidokey")]
 fn cached_fido2_private_key_is_unlocked(fingerprint: &str) -> Result<bool, String> {
-    Ok(cached_unlocked_ripasso_private_key(fingerprint)?.is_some())
+    Ok(peek_unlocked_ripasso_private_key(fingerprint)?.is_some())
 }
 
 pub(in crate::backend::integrated) fn ensure_ripasso_private_key_is_ready(
     fingerprint: &str,
 ) -> Result<(), PasswordEntryError> {
     if let Some(cert) =
-        cached_unlocked_ripasso_private_key(fingerprint).map_err(PasswordEntryError::other)?
+        peek_unlocked_ripasso_private_key(fingerprint).map_err(PasswordEntryError::other)?
     {
         if !cert_can_decrypt_password_entries(&cert) {
             return Err(PasswordEntryError::incompatible_private_key(
@@ -527,7 +527,7 @@ pub(in crate::backend::integrated) fn ensure_ripasso_private_key_is_ready(
             Ok(())
         }
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            if cached_unlocked_hardware_private_key(fingerprint)
+            if peek_unlocked_hardware_private_key(fingerprint)
                 .map_err(PasswordEntryError::other)?
                 .is_none()
             {
@@ -565,10 +565,10 @@ pub fn is_ripasso_private_key_unlocked(fingerprint: &str) -> Result<bool, String
     let entry = find_stored_private_key(fingerprint)?;
     match entry.key.protection {
         ManagedRipassoPrivateKeyProtection::Password => {
-            Ok(cached_unlocked_ripasso_private_key(fingerprint)?.is_some())
+            Ok(peek_unlocked_ripasso_private_key(fingerprint)?.is_some())
         }
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            Ok(cached_unlocked_hardware_private_key(fingerprint)?.is_some())
+            Ok(peek_unlocked_hardware_private_key(fingerprint)?.is_some())
         }
         #[cfg(feature = "fidokey")]
         ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {
@@ -581,7 +581,7 @@ pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<
     let entry = find_stored_private_key(fingerprint)?;
     match entry.key.protection {
         ManagedRipassoPrivateKeyProtection::Password => {
-            if cached_unlocked_ripasso_private_key(fingerprint)?.is_some() {
+            if peek_unlocked_ripasso_private_key(fingerprint)?.is_some() {
                 return Ok(false);
             }
             let cert = entry
@@ -591,7 +591,7 @@ pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<
             Ok(cert_requires_passphrase(cert))
         }
         ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard => {
-            Ok(cached_unlocked_hardware_private_key(fingerprint)?.is_none())
+            Ok(peek_unlocked_hardware_private_key(fingerprint)?.is_none())
         }
         #[cfg(feature = "fidokey")]
         ManagedRipassoPrivateKeyProtection::Fido2HmacSecret => {

@@ -1,6 +1,6 @@
 use super::crypto::IntegratedCryptoContext;
 use super::keys::{
-    cached_unlocked_hardware_private_key, cached_unlocked_ripasso_private_key,
+    borrow_unlocked_hardware_private_key, borrow_unlocked_ripasso_private_key,
     list_ripasso_private_keys, ripasso_private_key_requires_session_unlock,
     sign_with_hardware_session, ManagedRipassoPrivateKey,
 };
@@ -393,13 +393,13 @@ fn commit_identity_from_private_key(key: &ManagedRipassoPrivateKey) -> CommitIde
 }
 
 fn unlocked_signing_cert(fingerprint: &str) -> Result<Option<Arc<Cert>>, String> {
-    cached_unlocked_ripasso_private_key(fingerprint)
+    borrow_unlocked_ripasso_private_key(fingerprint)
 }
 
 fn unlocked_hardware_signing_session(
     fingerprint: &str,
 ) -> Result<Option<super::keys::HardwareSessionPolicy>, String> {
-    cached_unlocked_hardware_private_key(fingerprint)
+    borrow_unlocked_hardware_private_key(fingerprint)
 }
 
 fn sign_commit_buffer(commit_buffer: &str, cert: &Cert) -> Result<String, String> {

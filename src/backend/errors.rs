@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::io;
 use thiserror::Error;
 
@@ -189,6 +190,7 @@ impl PasswordEntryWriteError {
         }
     }
 
+    #[cfg(test)]
     pub fn from_io_error(err: &io::Error) -> Self {
         match err.kind() {
             io::ErrorKind::AlreadyExists => Self::already_exists(err.to_string()),

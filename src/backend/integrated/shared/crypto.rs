@@ -1,5 +1,5 @@
 use super::keys::{
-    build_ripasso_crypto_from_key_ring, cached_unlocked_hardware_private_key,
+    borrow_unlocked_hardware_private_key, build_ripasso_crypto_from_key_ring,
     ciphertext_is_any_managed_bundle, decrypt_fido2_any_managed_bundle_dek_for_bindings,
     decrypt_fido2_any_managed_bundle_dek_for_fingerprint,
     decrypt_fido2_any_managed_bundle_for_fingerprint, decrypt_fido2_direct_required_layer,
@@ -428,7 +428,7 @@ fn decrypt_ciphertext_for_fingerprint(
     crypto: &Sequoia,
     ciphertext: &[u8],
 ) -> Result<String, String> {
-    if let Some(session) = cached_unlocked_hardware_private_key(fingerprint)? {
+    if let Some(session) = borrow_unlocked_hardware_private_key(fingerprint)? {
         return decrypt_with_hardware_session(&session, ciphertext).map_err(|err| err.to_string());
     }
 

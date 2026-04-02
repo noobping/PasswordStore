@@ -11,12 +11,13 @@ mod hardware;
 mod hardware_crypto;
 mod store;
 
-pub(in crate::backend::integrated) use self::cache::cached_unlocked_hardware_private_key;
-pub(in crate::backend::integrated) use self::cache::cached_unlocked_ripasso_private_key;
 #[cfg(test)]
 pub(in crate::backend) use self::cache::clear_cached_unlocked_ripasso_private_keys;
 pub(in crate::backend) use self::cache::clear_integrated_runtime_secret_state;
 pub(in crate::backend::integrated) use self::cache::clear_pending_fido2_enrollment;
+pub(in crate::backend::integrated) use self::cache::{
+    borrow_unlocked_hardware_private_key, borrow_unlocked_ripasso_private_key,
+};
 pub(in crate::backend::integrated) use self::cert::fingerprint_from_string;
 #[cfg(test)]
 pub(in crate::backend::integrated) use self::cert::{

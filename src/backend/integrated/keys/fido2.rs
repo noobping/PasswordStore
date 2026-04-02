@@ -1,6 +1,8 @@
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use super::cache::cache_pending_fido2_enrollment;
-use super::cache::{cached_fido2_pin, cached_pending_fido2_enrollment, clear_cached_fido2_pin};
+use super::cache::{
+    borrow_cached_fido2_pin, borrow_pending_fido2_enrollment, clear_cached_fido2_pin,
+};
 use crate::backend::PrivateKeyError;
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use crate::fido2_recipient::build_fido2_recipient_string;
@@ -764,7 +766,7 @@ fn direct_any_recipient_candidate(
 fn direct_hmac_material_for_binding(
     binding: &Fido2DirectBinding,
 ) -> Result<(Vec<u8>, Vec<u8>), String> {
-    if let Some(enrollment) = cached_pending_fido2_enrollment(&binding.fingerprint)?
+    if let Some(enrollment) = borrow_pending_fido2_enrollment(&binding.fingerprint)?
         .filter(|enrollment| enrollment.matches_credential_id(&binding.credential_id))
     {
         return Ok((
@@ -952,7 +954,7 @@ fn should_retry_direct_hmac_error(err: &Fido2TransportError) -> bool {
 }
 
 fn cached_pin_string(fingerprint: &str) -> Result<Option<SecretString>, String> {
-    let Some(pin) = cached_fido2_pin(fingerprint)? else {
+    let Some(pin) = borrow_cached_fido2_pin(fingerprint)? else {
         return Ok(None);
     };
     let text = std::str::from_utf8(pin.as_slice())

@@ -599,6 +599,10 @@ msgstr "Gekopieerd. Het klembord wordt niet automatisch gewist."
 msgid "Clipboard cleared."
 msgstr "Klembord gewist."
 
+#: src/clipboard.rs:167
+msgid "Clipboard cleared by Keycord."
+msgstr "Klembord gewist door Keycord."
+
 #: data/window.ui:695
 msgid "Clipboard"
 msgstr "Klembord"

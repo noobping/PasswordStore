@@ -9,7 +9,7 @@ use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::flat_icon_button_with_tooltip;
 use adw::gio;
-use adw::gtk::gdk::Display;
+use adw::gtk::gdk::{ContentProvider, Display};
 use adw::gtk::{Button, Widget};
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use std::rc::Rc;
@@ -21,6 +21,10 @@ const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";
 const COPIED_BUTTON_ICON_NAME: &str = "object-select-symbolic";
 const COPY_BUTTON_FEEDBACK_MS: u64 = 1200;
 static CLIPBOARD_WRITE_TOKEN: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "linux")]
+const KDE_PASSWORD_MANAGER_HINT_MIME: &str = "x-kde-passwordManagerHint";
+#[cfg(target_os = "linux")]
+const KDE_PASSWORD_MANAGER_HINT_VALUE: &[u8] = b"secret";
 
 fn show_clipboard_unavailable_toast(overlay: &ToastOverlay) {
     overlay.add_toast(Toast::new(&gettext("Clipboard unavailable.")));
@@ -79,6 +83,33 @@ pub fn set_clipboard_text(text: &str, overlay: &ToastOverlay, button: Option<&Bu
     set_clipboard_text_internal(text, overlay, button).is_some()
 }
 
+fn set_sensitive_clipboard_text_internal(
+    text: &str,
+    overlay: &ToastOverlay,
+    button: Option<&Button>,
+) -> Option<u64> {
+    Display::default().map_or_else(
+        || {
+            show_clipboard_unavailable_toast(overlay);
+            None
+        },
+        |display| {
+            if let Err(err) = set_sensitive_display_clipboard_text(&display, text) {
+                log_error(format!(
+                    "Failed to write sensitive clipboard contents: {err}"
+                ));
+                show_clipboard_unavailable_toast(overlay);
+                return None;
+            }
+            let token = note_clipboard_write();
+            if let Some(button) = button {
+                show_copy_feedback(button);
+            }
+            Some(token)
+        },
+    )
+}
+
 pub fn set_sensitive_clipboard_text(
     text: &str,
     overlay: &ToastOverlay,
@@ -88,7 +119,7 @@ pub fn set_sensitive_clipboard_text(
     let auto_clear_password = preferences.clipboard_auto_clear_password();
     let clear_after_seconds = preferences.clipboard_auto_clear_seconds();
 
-    let Some(token) = set_clipboard_text_internal(text, overlay, button) else {
+    let Some(token) = set_sensitive_clipboard_text_internal(text, overlay, button) else {
         return false;
     };
 
@@ -164,10 +195,43 @@ fn sensitive_clipboard_copy_toast_message(auto_clear_after_seconds: Option<u32>)
     }
 }
 
+fn clipboard_clear_marker() -> String {
+    gettext("Clipboard cleared by Keycord.")
+}
+
+#[cfg(target_os = "linux")]
+fn set_sensitive_display_clipboard_text(
+    display: &Display,
+    text: &str,
+) -> Result<(), glib::BoolError> {
+    let text_provider = ContentProvider::for_value(&text.to_value());
+    let hint_provider = ContentProvider::for_bytes(
+        KDE_PASSWORD_MANAGER_HINT_MIME,
+        &glib::Bytes::from_static(KDE_PASSWORD_MANAGER_HINT_VALUE),
+    );
+    let provider = ContentProvider::new_union(&[text_provider, hint_provider]);
+    display.clipboard().set_content(Some(&provider))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn set_sensitive_display_clipboard_text(
+    display: &Display,
+    text: &str,
+) -> Result<(), glib::BoolError> {
+    display.clipboard().set_content(ContentProvider::NONE)?;
+    display.clipboard().set_text(text);
+    Ok(())
+}
+
 fn clear_clipboard_contents(display: &Display, overlay: &ToastOverlay) {
-    let clipboard = display.clipboard();
-    clipboard.set_text("");
-    display.primary_clipboard().set_text("");
+    let marker = clipboard_clear_marker();
+    if display
+        .clipboard()
+        .set_content(ContentProvider::NONE)
+        .is_err()
+    {
+        display.clipboard().set_text(&marker);
+    }
     let _ = note_clipboard_write();
     log_info(gettext("Clipboard cleared."));
     overlay.add_toast(Toast::new(&gettext("Clipboard cleared.")));
@@ -210,6 +274,9 @@ fn schedule_password_clipboard_clear(
                 log_error(format!(
                     "Failed to inspect the clipboard before auto-clear: {err}"
                 ));
+                if clipboard_write_token() == token {
+                    clear_clipboard_contents(&display_for_response, &overlay_for_response);
+                }
             }
         });
     });

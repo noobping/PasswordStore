@@ -259,7 +259,6 @@ impl MockFido2Transport {
         self
     }
 
-    #[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
     fn next_enrollment(&self) -> Result<Fido2Enrollment, Fido2TransportError> {
         self.enrollments
             .lock()

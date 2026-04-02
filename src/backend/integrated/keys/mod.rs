@@ -2,9 +2,10 @@ mod cache;
 mod cert;
 mod errors;
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+#[path = "fido2/mod.rs"]
 mod fido2;
 #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
-#[path = "fido2_disabled.rs"]
+#[path = "fido2/mod.rs"]
 mod fido2;
 mod hardware;
 #[cfg(target_os = "linux")]

@@ -225,8 +225,7 @@ pub(in crate::backend::integrated) fn cache_unlocked_hardware_private_key(
     Ok(())
 }
 
-#[cfg(any(feature = "fidostore", feature = "fidokey"))]
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(all(test, any(feature = "fidostore", feature = "fidokey")))]
 pub(in crate::backend::integrated) fn peek_cached_fido2_pin(
     fingerprint: &str,
 ) -> Result<Option<Arc<Zeroizing<Vec<u8>>>>, String> {
@@ -265,8 +264,7 @@ pub(in crate::backend::integrated) fn clear_cached_fido2_pin(
     Ok(())
 }
 
-#[cfg(any(feature = "fidostore", feature = "fidokey"))]
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(all(test, any(feature = "fidostore", feature = "fidokey")))]
 pub(in crate::backend::integrated) fn peek_pending_fido2_enrollment(
     fingerprint: &str,
 ) -> Result<Option<PendingFido2Enrollment>, String> {
@@ -285,7 +283,6 @@ pub(in crate::backend::integrated) fn borrow_pending_fido2_enrollment(
     ))
 }
 
-#[cfg_attr(not(feature = "fidostore"), allow(dead_code))]
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn cache_pending_fido2_enrollment(
     fingerprint: &str,

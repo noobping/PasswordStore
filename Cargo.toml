@@ -19,24 +19,24 @@ fidokey = ["fido-common"]
 
 [dependencies]
 thiserror = "2.0"
-adw = { version = "0.9.0", package = "libadwaita", features = ["v1_5"] }
+adw = { version = "0.9.1", package = "libadwaita", features = ["v1_9"] }
 walkdir = "2.5.0"
-toml = "1.1.0"
+toml = "1.1.2"
 serde = { version = "1.0.228", features = ["derive"] }
 ripasso = "0.8.0"
 sequoia-openpgp = "2.2.0"
 dirs-next = "2.0.0"
-shellexpand = "3.1.1"
-totp-rs = "5.7.0"
+shellexpand = "3.1.2"
+totp-rs = "5.7.1"
 rand = "0.10.0"
-regex = "1.12.2"
-zeroize = { version = "1.8.1", features = ["alloc"] }
-pulldown-cmark = { version = "0.13.0", optional = true }
+regex = "1.12.3"
+zeroize = { version = "1.8.2", features = ["alloc"] }
+pulldown-cmark = { version = "0.13.3", optional = true }
 fido2-rs = { version = "0.4.0", optional = true }
 base64 = { version = "0.22.1", optional = true }
-hmac = { version = "0.12.1", optional = true }
+hmac = { version = "0.13.0", optional = true }
 openssl = { version = "0.10.76", optional = true }
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -55,5 +55,5 @@ winresource = "0.1.31"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 semver = "1.0.27"
-reqwest = { version = "0.12.24", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-winsafe = { version = "0.0.25", features = ["shell"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
+winsafe = { version = "0.0.27", features = ["shell"] }

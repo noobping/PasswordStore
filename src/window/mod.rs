@@ -97,7 +97,7 @@ mod tests {
     fn bare_urls_get_https_when_opened() {
         assert_eq!(
             uri_to_open("example.com/path"),
-            Some("https://example.com/path".to_string())
+            Ok("https://example.com/path".to_string())
         );
     }
 
@@ -105,7 +105,7 @@ mod tests {
     fn explicit_url_schemes_are_preserved() {
         assert_eq!(
             uri_to_open("https://example.com/path"),
-            Some("https://example.com/path".to_string())
+            Ok("https://example.com/path".to_string())
         );
     }
 

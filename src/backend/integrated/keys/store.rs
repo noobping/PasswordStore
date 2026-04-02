@@ -21,6 +21,7 @@ use crate::backend::{PasswordEntryError, PrivateKeyError};
 use crate::fido2_recipient::parse_fido2_recipient_string;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+use crate::support::secure_fs::{create_private_file, ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
 use sequoia_openpgp::{
     cert::CertBuilder,
@@ -31,7 +32,6 @@ use sequoia_openpgp::{
 use serde::{Deserialize, Serialize as SerdeSerialize};
 use std::collections::HashMap;
 use std::fs;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use zeroize::Zeroizing;
@@ -824,7 +824,7 @@ fn store_fido2_private_key_manifest(
     manifest: Fido2PrivateKeyManifest,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let keys_dir = ripasso_fido_keys_dir().map_err(PrivateKeyError::other)?;
-    fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    ensure_private_dir(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
     if manifest.format != FIDO2_PRIVATE_KEY_MANIFEST_FORMAT {
         return Err(PrivateKeyError::other(format!(
             "Unsupported FIDO2-protected key format {}.",
@@ -850,11 +850,10 @@ fn store_fido2_private_key_manifest(
         ));
     }
 
-    fs::write(
-        keys_dir.join(key.fingerprint.to_ascii_lowercase()),
-        fido2_private_key_manifest_contents(&manifest)?,
-    )
-    .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let manifest_path = keys_dir.join(key.fingerprint.to_ascii_lowercase());
+    let manifest_contents = fido2_private_key_manifest_contents(&manifest)?;
+    write_private_file(&manifest_path, manifest_contents.as_bytes())
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     Ok(key)
 }
@@ -865,7 +864,7 @@ fn store_fido2_private_key_cert(
     binding_recipient: &str,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let keys_dir = ripasso_fido_keys_dir().map_err(PrivateKeyError::other)?;
-    fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    ensure_private_dir(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     if !cert_can_decrypt_password_entries(&cert) {
         return Err(PrivateKeyError::incompatible(
@@ -901,11 +900,10 @@ fn store_fido2_private_key_cert(
         public_key,
         encrypted_private_key,
     };
-    fs::write(
-        keys_dir.join(key.fingerprint.to_ascii_lowercase()),
-        fido2_private_key_manifest_contents(&manifest)?,
-    )
-    .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let manifest_path = keys_dir.join(key.fingerprint.to_ascii_lowercase());
+    let manifest_contents = fido2_private_key_manifest_contents(&manifest)?;
+    write_private_file(&manifest_path, manifest_contents.as_bytes())
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     cache_unlocked_ripasso_private_key(cert);
     Ok(key)
 }
@@ -1010,7 +1008,7 @@ pub fn store_ripasso_private_key_bytes(
     }
 
     let keys_dir = ripasso_keys_dir().map_err(PrivateKeyError::other)?;
-    fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    ensure_private_dir(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     let (parsed_cert, key) = parse_managed_private_key_bytes(bytes)?;
     let stored_cert = if cert_requires_passphrase(&parsed_cert) {
@@ -1020,7 +1018,7 @@ pub fn store_ripasso_private_key_bytes(
             "That private key must be password protected before you can import it.",
         ));
     };
-    let mut file = File::create(keys_dir.join(key.fingerprint.to_ascii_lowercase()))
+    let mut file = create_private_file(&keys_dir.join(key.fingerprint.to_ascii_lowercase()))
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     stored_cert
         .as_tsk()
@@ -1104,23 +1102,23 @@ pub fn store_ripasso_hardware_key_bytes(
     hardware: ManagedRipassoHardwareKey,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let keys_dir = ripasso_keys_v2_dir().map_err(PrivateKeyError::other)?;
-    fs::create_dir_all(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    ensure_private_dir(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     let (cert, key) = parse_hardware_public_key_bytes(bytes, hardware.clone())?;
     validate_hardware_key_material(&cert, &hardware)?;
     let dir = keys_dir.join(key.fingerprint.to_ascii_lowercase());
-    fs::create_dir_all(&dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
-    fs::write(
-        hardware_manifest_path(&dir),
-        toml::to_string_pretty(&HardwarePrivateKeyManifest::from_key(&key, &hardware))
-            .map_err(|err| PrivateKeyError::other(err.to_string()))?,
-    )
-    .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    ensure_private_dir(&dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let manifest = toml::to_string_pretty(&HardwarePrivateKeyManifest::from_key(&key, &hardware))
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let manifest_path = hardware_manifest_path(&dir);
+    write_private_file(&manifest_path, manifest.as_bytes())
+        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
     let armored = cert
         .armored()
         .to_vec()
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
-    fs::write(hardware_public_key_path(&dir), armored)
+    let public_key_path = hardware_public_key_path(&dir);
+    write_private_file(&public_key_path, armored)
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     Ok(key)
@@ -1268,4 +1266,40 @@ pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
 
 pub fn ripasso_private_key_title(fingerprint: &str) -> Result<String, String> {
     Ok(find_stored_private_key(fingerprint)?.key.title())
+}
+
+#[cfg(all(test, target_os = "linux", unix))]
+mod tests {
+    use super::{generate_ripasso_private_key, ripasso_keys_dir};
+    use crate::backend::test_support::SystemBackendTestEnv;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn generated_private_keys_use_private_permissions() {
+        let env = SystemBackendTestEnv::new();
+        env.activate_profile("private-key-permissions");
+
+        let key = generate_ripasso_private_key("Keycord Test", "key-perms@example.com", "hunter2")
+            .expect("generate managed private key");
+        let keys_dir = ripasso_keys_dir().expect("resolve key storage directory");
+        let key_path = keys_dir.join(key.fingerprint.to_ascii_lowercase());
+
+        assert_eq!(
+            fs::metadata(&keys_dir)
+                .expect("read key storage directory metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&key_path)
+                .expect("read private key metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
 }

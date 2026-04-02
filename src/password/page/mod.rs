@@ -17,6 +17,7 @@ use crate::backend::{
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::password::entry_files::normalize_password_entry_label;
 use crate::password::model::{OpenPassFile, UsernameFallbackError};
 use crate::password::opened::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
@@ -208,6 +209,9 @@ fn prepare_password_save_context(state: &PasswordPageState) -> Result<PasswordSa
     let target_label = pass_file
         .updated_label_from_username(&state.username.text())
         .map_err(|err| username_fallback_failure_message(err).to_string())?;
+    let target_label = target_label
+        .map(|label| normalize_password_entry_label(&label).map_err(str::to_string))
+        .transpose()?;
     validate_password_save_contents(&contents)?;
 
     Ok(PasswordSaveContext {
@@ -463,10 +467,7 @@ pub fn begin_new_password_entry(
     store_root: Option<String>,
     add_dialog: &Dialog,
 ) -> Result<(), &'static str> {
-    let path = path.trim();
-    if path.is_empty() {
-        return Err("Enter a name.");
-    }
+    let path = normalize_password_entry_label(path)?;
 
     let settings = Preferences::new();
     let store_root = store_root.unwrap_or_else(|| settings.store());
@@ -475,13 +476,13 @@ pub fn begin_new_password_entry(
     }
     let template_contents =
         new_pass_file_contents_from_template(&settings.new_pass_file_template());
-    let opened_pass_file = OpenPassFile::from_label(store_root, path);
+    let opened_pass_file = OpenPassFile::from_label(store_root, &path);
     set_opened_pass_file(&state.nav, opened_pass_file.clone());
     let template_pass_file =
         refresh_opened_pass_file_from_contents(&state.nav, &opened_pass_file, &template_contents)
             .or_else(|| get_opened_pass_file(&state.nav));
 
-    show_password_editor_chrome(state, "New item", path);
+    show_password_editor_chrome(state, "New item", &path);
     show_password_editor_fields(state);
     state.otp.clear();
     push_navigation_page_if_needed(&state.nav, &state.page);

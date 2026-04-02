@@ -1,45 +1,37 @@
 #[cfg(any(target_os = "windows", test))]
 use adw::gio;
-#[cfg(not(target_os = "windows"))]
-use adw::prelude::DisplayExt;
 #[cfg(any(target_os = "windows", test))]
 use adw::prelude::FileExt;
+#[cfg(not(target_os = "windows"))]
+use gtk::UriLauncher;
 
 #[cfg(target_os = "windows")]
 use winsafe::{self as w, co};
 
-pub fn launch_default_uri(uri: &str) -> Result<(), String> {
+pub fn launch_default_uri(uri: &str, on_result: impl FnOnce(Result<(), String>) + 'static) {
     #[cfg(target_os = "windows")]
     {
-        return w::HWND::GetDesktopWindow()
-            .ShellExecute(
-                "open",
-                &windows_shell_target(uri),
-                None,
-                None,
-                co::SW::SHOWNORMAL,
-            )
-            .map_err(|err| format!("Windows ShellExecute failed: {err}"));
+        on_result(
+            w::HWND::GetDesktopWindow()
+                .ShellExecute(
+                    "open",
+                    &windows_shell_target(uri),
+                    None,
+                    None,
+                    co::SW::SHOWNORMAL,
+                )
+                .map_err(|err| format!("Windows ShellExecute failed: {err}")),
+        );
+        return;
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        use adw::gtk::gdk::Display;
-
-        Display::default()
-            .map_or_else(
-                || {
-                    adw::gio::AppInfo::launch_default_for_uri(
-                        uri,
-                        None::<&adw::gio::AppLaunchContext>,
-                    )
-                },
-                |display| {
-                    let context = display.app_launch_context();
-                    adw::gio::AppInfo::launch_default_for_uri(uri, Some(&context))
-                },
-            )
-            .map_err(|err| err.to_string())
+        UriLauncher::new(uri).launch(
+            None::<&gtk::Window>,
+            None::<&adw::gio::Cancellable>,
+            move |result| on_result(result.map_err(|err| err.to_string())),
+        );
     }
 }
 

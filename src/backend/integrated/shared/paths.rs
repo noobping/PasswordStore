@@ -1,27 +1,17 @@
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
 use crate::password::entry_files::{
-    is_password_entry_file, label_from_password_entry_path, password_entry_extension,
+    is_password_entry_file, label_from_password_entry_path, normalize_password_entry_label,
+    password_entry_extension,
 };
 
 pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String> {
-    let mut relative = PathBuf::new();
-    for component in Path::new(label).components() {
-        match component {
-            Component::Normal(part) => relative.push(part),
-            Component::CurDir => {}
-            _ => return Err("Invalid password entry path.".to_string()),
-        }
-    }
-
-    if relative.as_os_str().is_empty() {
-        return Err("Password entry name is empty.".to_string());
-    }
-
-    Ok(relative)
+    normalize_password_entry_label(label)
+        .map(PathBuf::from)
+        .map_err(str::to_string)
 }
 
 fn secret_entry_relative_path_with_extension(

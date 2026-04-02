@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path};
 
 pub const STANDARD_PASSWORD_ENTRY_EXTENSION: &str = "gpg";
 pub const FIDO2_PASSWORD_ENTRY_EXTENSION: &str = "keycord";
@@ -24,6 +24,33 @@ pub fn is_password_entry_extension(extension: &str) -> bool {
     )
 }
 
+pub fn normalize_password_entry_label(label: &str) -> Result<String, &'static str> {
+    let label = label.trim();
+    if label.is_empty() {
+        return Err("Enter a name.");
+    }
+    if label.contains('\\') {
+        return Err("Use a path inside the password store.");
+    }
+
+    let mut parts = Vec::new();
+    for component in Path::new(label).components() {
+        match component {
+            Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+                return Err("Use a path inside the password store.");
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return Err("Enter a name.");
+    }
+
+    Ok(parts.join("/"))
+}
+
 pub fn label_from_password_entry_path(store_root: &Path, entry_path: &Path) -> Option<String> {
     let relative = entry_path.strip_prefix(store_root).ok()?;
     label_from_password_entry_relative_path(relative)
@@ -44,8 +71,9 @@ pub fn label_from_password_entry_relative_path(relative: &Path) -> Option<String
 mod tests {
     use super::{
         is_password_entry_file, label_from_password_entry_path,
-        label_from_password_entry_relative_path, password_entry_extension,
-        FIDO2_PASSWORD_ENTRY_EXTENSION, STANDARD_PASSWORD_ENTRY_EXTENSION,
+        label_from_password_entry_relative_path, normalize_password_entry_label,
+        password_entry_extension, FIDO2_PASSWORD_ENTRY_EXTENSION,
+        STANDARD_PASSWORD_ENTRY_EXTENSION,
     };
     use std::path::Path;
 
@@ -86,5 +114,37 @@ mod tests {
         assert!(is_password_entry_file(Path::new("team/service.gpg")));
         assert!(is_password_entry_file(Path::new("team/service.keycord")));
         assert!(!is_password_entry_file(Path::new("team/service.txt")));
+    }
+
+    #[test]
+    fn password_entry_labels_are_normalized() {
+        assert_eq!(
+            normalize_password_entry_label(" team//alice/github "),
+            Ok("team/alice/github".to_string())
+        );
+    }
+
+    #[test]
+    fn password_entry_labels_reject_parent_traversal() {
+        assert_eq!(
+            normalize_password_entry_label("../alice/github"),
+            Err("Use a path inside the password store.")
+        );
+    }
+
+    #[test]
+    fn password_entry_labels_reject_absolute_paths() {
+        assert_eq!(
+            normalize_password_entry_label("/alice/github"),
+            Err("Use a path inside the password store.")
+        );
+    }
+
+    #[test]
+    fn password_entry_labels_reject_backslashes() {
+        assert_eq!(
+            normalize_password_entry_label(r"team\alice\github"),
+            Err("Use a path inside the password store.")
+        );
     }
 }

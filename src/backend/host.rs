@@ -6,6 +6,7 @@ use crate::backend::{
     StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::CommandLogOptions;
+use crate::password::entry_files::normalize_password_entry_label;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use std::path::Path;
 use std::process::Output;
@@ -29,9 +30,10 @@ impl HostGpgPrivateKeySummary {
 }
 
 fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
+    let label = normalize_password_entry_label(label).map_err(str::to_string)?;
     let output =
         run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
-            cmd.arg(label);
+            cmd.arg(&label);
         })?;
     ensure_success(output, "pass failed")
 }
@@ -88,6 +90,9 @@ pub(super) fn save_password_entry_with_progress(
     contents: &str,
     overwrite: bool,
 ) -> Result<(), PasswordEntryWriteError> {
+    let label = normalize_password_entry_label(label)
+        .map_err(str::to_string)
+        .map_err(PasswordEntryWriteError::other)?;
     let output = run_store_command_with_input(
         store_root,
         "Save password entry",
@@ -98,7 +103,7 @@ pub(super) fn save_password_entry_with_progress(
             if overwrite {
                 cmd.arg("-f");
             }
-            cmd.arg(label);
+            cmd.arg(&label);
         },
     )
     .map_err(PasswordEntryWriteError::from_store_message)?;
@@ -112,12 +117,18 @@ pub(super) fn rename_password_entry(
     old_label: &str,
     new_label: &str,
 ) -> Result<(), PasswordEntryWriteError> {
+    let old_label = normalize_password_entry_label(old_label)
+        .map_err(str::to_string)
+        .map_err(PasswordEntryWriteError::other)?;
+    let new_label = normalize_password_entry_label(new_label)
+        .map_err(str::to_string)
+        .map_err(PasswordEntryWriteError::other)?;
     let output = run_store_command_output(
         store_root,
         "Rename password entry",
         CommandLogOptions::DEFAULT,
         |cmd| {
-            cmd.arg("mv").arg(old_label).arg(new_label);
+            cmd.arg("mv").arg(&old_label).arg(&new_label);
         },
     )
     .map_err(PasswordEntryWriteError::from_store_message)?;
@@ -130,12 +141,15 @@ pub(super) fn delete_password_entry(
     store_root: &str,
     label: &str,
 ) -> Result<(), PasswordEntryWriteError> {
+    let label = normalize_password_entry_label(label)
+        .map_err(str::to_string)
+        .map_err(PasswordEntryWriteError::other)?;
     let output = run_store_command_output(
         store_root,
         "Delete password entry",
         CommandLogOptions::DEFAULT,
         |cmd| {
-            cmd.arg("rm").arg("-rf").arg(label);
+            cmd.arg("rm").arg("-rf").arg(&label);
         },
     )
     .map_err(PasswordEntryWriteError::from_store_message)?;

@@ -1007,11 +1007,15 @@ fn scroll_to_widget(scrolled: &ScrolledWindow, widget: &Widget) {
 }
 
 fn open_external_link(uri: &str) {
-    if let Err(error) = launch_default_uri(uri) {
-        log_error(format!(
-            "Failed to open documentation link.\nURL: {uri}\nerror: {error}"
-        ));
-    }
+    let uri = uri.to_string();
+    let uri_for_result = uri.clone();
+    launch_default_uri(&uri, move |result| {
+        if let Err(error) = result {
+            log_error(format!(
+                "Failed to open documentation link.\nURL: {uri_for_result}\nerror: {error}"
+            ));
+        }
+    });
 }
 
 fn encode_link_target(target: &DocumentationLinkTarget) -> String {

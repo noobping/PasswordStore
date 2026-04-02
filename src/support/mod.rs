@@ -5,6 +5,7 @@ pub mod git;
 pub mod object_data;
 pub mod pass_import;
 pub mod runtime;
+pub mod secure_fs;
 pub mod startup;
 pub mod ui;
 pub mod uri;

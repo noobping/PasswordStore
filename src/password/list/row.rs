@@ -8,6 +8,7 @@ use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::password::entry_files::normalize_password_entry_label;
 use crate::password::model::{OpenPassFile, PassEntry};
 use crate::password::undo::{
     delete_entry_with_optional_undo, move_entry_between_stores_action, move_entry_to_store,
@@ -365,7 +366,13 @@ fn connect_text_edit_actions(
                     return;
                 }
             },
-            TextEditMode::MoveWithinStore => moved_file_label(&entry, row.text().as_str()),
+            TextEditMode::MoveWithinStore => match moved_file_label(&entry, row.text().as_str()) {
+                Ok(new_label) => new_label,
+                Err(message) => {
+                    overlay.add_toast(Toast::new(&gettext(message)));
+                    return;
+                }
+            },
         };
 
         let Some(new_label) = new_label else {
@@ -562,7 +569,8 @@ fn renamed_file_label(entry: &PassEntry, new_name: &str) -> Result<Option<String
         return Err("Use a single file name.");
     }
 
-    let new_label = format!("{}{}", entry.relative_path, new_name);
+    let new_label =
+        normalize_password_entry_label(&format!("{}{}", entry.relative_path, new_name))?;
     if new_label == entry.label() {
         Ok(None)
     } else {
@@ -570,15 +578,16 @@ fn renamed_file_label(entry: &PassEntry, new_name: &str) -> Result<Option<String
     }
 }
 
-fn moved_file_label(entry: &PassEntry, new_location: &str) -> Option<String> {
+fn moved_file_label(entry: &PassEntry, new_location: &str) -> Result<Option<String>, &'static str> {
     let new_location = new_location.trim().trim_matches('/');
     let new_label = if new_location.is_empty() {
         entry.basename.clone()
     } else {
         format!("{new_location}/{}", entry.basename)
     };
+    let new_label = normalize_password_entry_label(&new_label)?;
 
-    (new_label != entry.label()).then_some(new_label)
+    Ok((new_label != entry.label()).then_some(new_label))
 }
 
 fn show_password_row_display(state: &PasswordRowState) {
@@ -659,12 +668,16 @@ fn build_unreadable_password_icon(visible: bool) -> Image {
 
 fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {
     let folder_uri = adw::gio::File::for_path(entry_parent_directory(entry)).uri();
-    if let Err(error) = launch_default_uri(&folder_uri) {
-        log_error(format!(
-            "Failed to open entry folder in the file manager.\nfolder: {folder_uri}\nerror: {error}"
-        ));
-        overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
-    }
+    let overlay = overlay.clone();
+    let folder_uri_for_result = folder_uri.clone();
+    launch_default_uri(&folder_uri, move |result| {
+        if let Err(error) = result {
+            log_error(format!(
+                "Failed to open entry folder in the file manager.\nfolder: {folder_uri_for_result}\nerror: {error}"
+            ));
+            overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
+        }
+    });
 }
 
 fn open_entry_in_new_window(state: &PasswordRowState, overlay: &ToastOverlay) {
@@ -792,9 +805,18 @@ mod tests {
         let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
         assert_eq!(
             moved_file_label(&entry, "personal"),
-            Some("personal/github".to_string())
+            Ok(Some("personal/github".to_string()))
         );
-        assert_eq!(moved_file_label(&entry, ""), Some("github".to_string()));
+        assert_eq!(moved_file_label(&entry, ""), Ok(Some("github".to_string())));
+    }
+
+    #[test]
+    fn move_pass_file_rejects_parent_traversal() {
+        let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
+        assert_eq!(
+            moved_file_label(&entry, "../private"),
+            Err("Use a path inside the password store.")
+        );
     }
 
     #[test]

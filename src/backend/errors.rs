@@ -166,7 +166,6 @@ impl StoreRecipientsError {
     }
 }
 
-#[cfg_attr(not(any(feature = "fidostore", feature = "fidokey")), allow(dead_code))]
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum PrivateKeyError {
     #[error("{0}")]
@@ -193,23 +192,27 @@ pub enum PrivateKeyError {
     UnsupportedHardwareKey(String),
     #[error("{0}")]
     HardwareTokenRemoved(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
     Fido2TokenNotPresent(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
     Fido2PinRequired(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
     IncorrectFido2Pin(String),
     #[error("{0}")]
     UnsupportedFido2Key(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
     Fido2UserActionTimeout(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
     Fido2TokenRemoved(String),
     #[error("{0}")]
     Other(String),
 }
 
-#[cfg_attr(not(any(feature = "fidostore", feature = "fidokey")), allow(dead_code))]
 impl PrivateKeyError {
     pub fn not_stored(message: impl Into<String>) -> Self {
         Self::NotStored(message.into())
@@ -259,14 +262,17 @@ impl PrivateKeyError {
         Self::HardwareTokenRemoved(message.into())
     }
 
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn fido2_token_not_present(message: impl Into<String>) -> Self {
         Self::Fido2TokenNotPresent(message.into())
     }
 
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn fido2_pin_required(message: impl Into<String>) -> Self {
         Self::Fido2PinRequired(message.into())
     }
 
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn incorrect_fido2_pin(message: impl Into<String>) -> Self {
         Self::IncorrectFido2Pin(message.into())
     }
@@ -275,16 +281,42 @@ impl PrivateKeyError {
         Self::UnsupportedFido2Key(message.into())
     }
 
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn fido2_user_action_timeout(message: impl Into<String>) -> Self {
         Self::Fido2UserActionTimeout(message.into())
     }
 
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn fido2_token_removed(message: impl Into<String>) -> Self {
         Self::Fido2TokenRemoved(message.into())
     }
 
     pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
+    }
+
+    pub const fn is_fido2_pin_required(&self) -> bool {
+        #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+        {
+            matches!(self, Self::Fido2PinRequired(_))
+        }
+
+        #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
+        {
+            false
+        }
+    }
+
+    pub const fn is_fido2_token_not_present(&self) -> bool {
+        #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+        {
+            matches!(self, Self::Fido2TokenNotPresent(_))
+        }
+
+        #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
+        {
+            false
+        }
     }
 
     pub const fn unlock_message(&self) -> &'static str {
@@ -297,12 +329,16 @@ impl PrivateKeyError {
             }
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key and try again.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2PinRequired(_) | Self::IncorrectFido2Pin(_) => {
                 "Couldn't unlock the FIDO2 security key."
             }
             Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2UserActionTimeout(_) => "Touch the FIDO2 security key and try again.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenRemoved(_) => "Reconnect the FIDO2 security key and try again.",
             _ => "Couldn't unlock the key.",
         }
@@ -320,12 +356,16 @@ impl PrivateKeyError {
             }
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key first.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2PinRequired(_) | Self::IncorrectFido2Pin(_) => {
                 "Couldn't unlock the FIDO2 security key."
             }
             Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2UserActionTimeout(_) => "Touch the FIDO2 security key and try again.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenRemoved(_) => "Reconnect the FIDO2 security key and try again.",
             Self::PassphraseRequired(_) | Self::IncorrectPassphrase(_) => {
                 "Couldn't unlock the key."

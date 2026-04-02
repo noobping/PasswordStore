@@ -21,8 +21,6 @@ use super::{
 use crate::backend::{PasswordEntryError, PrivateKeyError};
 use secrecy::{ExposeSecret, SecretString};
 use std::fs;
-use std::sync::Arc;
-use zeroize::Zeroizing;
 
 fn stored_key_can_decrypt(entry: &StoredPrivateKeyEntry) -> bool {
     match entry.key.protection {
@@ -185,9 +183,7 @@ fn hardware_unlock_mode(
                     "Enter the hardware key PIN.",
                 ));
             }
-            Ok(HardwareUnlockMode::Pin(Arc::new(Zeroizing::new(
-                trimmed.as_bytes().to_vec(),
-            ))))
+            Ok(HardwareUnlockMode::from_pin(trimmed))
         }
         PrivateKeyUnlockRequest::HardwareExternal => Ok(HardwareUnlockMode::External),
         PrivateKeyUnlockRequest::Password(_) | PrivateKeyUnlockRequest::Fido2(_) => Err(
@@ -301,8 +297,11 @@ pub fn unlock_ripasso_private_key_for_session(
                 .clone()
                 .ok_or_else(|| PrivateKeyError::other(private_key_not_stored_error()))?;
 
-            let session =
-                HardwareSessionPolicy::from_key(hardware, cert, hardware_unlock_mode(request)?);
+            let session = HardwareSessionPolicy::from_managed_key(
+                hardware,
+                cert,
+                hardware_unlock_mode(request)?,
+            );
             verify_hardware_session(&session)
                 .map_err(private_key_error_from_hardware_transport_error)?;
             cache_unlocked_hardware_private_key(fingerprint, session)

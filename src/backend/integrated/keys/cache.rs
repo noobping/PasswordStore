@@ -8,6 +8,10 @@ use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
 const SECRET_CACHE_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+type CachedFido2Pin = Arc<Zeroizing<Vec<u8>>>;
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+type Fido2PinCache = RwLock<HashMap<String, CacheEntry<CachedFido2Pin>>>;
 
 #[derive(Clone)]
 struct CacheEntry<T> {
@@ -42,9 +46,8 @@ fn unlocked_hardware_private_keys(
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-fn cached_fido2_pins() -> &'static RwLock<HashMap<String, CacheEntry<Arc<Zeroizing<Vec<u8>>>>>> {
-    static FIDO2_PINS: OnceLock<RwLock<HashMap<String, CacheEntry<Arc<Zeroizing<Vec<u8>>>>>>> =
-        OnceLock::new();
+fn cached_fido2_pins() -> &'static Fido2PinCache {
+    static FIDO2_PINS: OnceLock<Fido2PinCache> = OnceLock::new();
     FIDO2_PINS.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
@@ -228,7 +231,7 @@ pub(in crate::backend::integrated) fn cache_unlocked_hardware_private_key(
 #[cfg(all(test, any(feature = "fidostore", feature = "fidokey")))]
 pub(in crate::backend::integrated) fn peek_cached_fido2_pin(
     fingerprint: &str,
-) -> Result<Option<Arc<Zeroizing<Vec<u8>>>>, String> {
+) -> Result<Option<CachedFido2Pin>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
     Ok(peek_cache_value(cached_fido2_pins(), &fingerprint))
 }
@@ -236,7 +239,7 @@ pub(in crate::backend::integrated) fn peek_cached_fido2_pin(
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) fn borrow_cached_fido2_pin(
     fingerprint: &str,
-) -> Result<Option<Arc<Zeroizing<Vec<u8>>>>, String> {
+) -> Result<Option<CachedFido2Pin>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
     Ok(borrow_cache_value(cached_fido2_pins(), &fingerprint))
 }
@@ -262,14 +265,6 @@ pub(in crate::backend::integrated) fn clear_cached_fido2_pin(
     let fingerprint = normalized_fingerprint(fingerprint)?;
     remove_cache_value(cached_fido2_pins(), &fingerprint);
     Ok(())
-}
-
-#[cfg(all(test, any(feature = "fidostore", feature = "fidokey")))]
-pub(in crate::backend::integrated) fn peek_pending_fido2_enrollment(
-    fingerprint: &str,
-) -> Result<Option<PendingFido2Enrollment>, String> {
-    let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(peek_cache_value(pending_fido2_enrollments(), &fingerprint))
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]

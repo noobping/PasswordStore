@@ -173,7 +173,7 @@ fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<Secre
         move || create_fido2_store_recipient(pin.as_ref().map(|pin| pin.expose_secret())),
         move || progress_dialog.force_close(),
         move |result| match result {
-            Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
+            Err(err) if err.is_fido2_pin_required() && !pin_was_supplied => {
                 prompt_fido2_recipient_pin(&state);
             }
             other => finish_fido2_recipient_add(&state, other),

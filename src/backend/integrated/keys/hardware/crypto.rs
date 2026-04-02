@@ -13,7 +13,7 @@ use sequoia_openpgp::parse::stream::{
 use sequoia_openpgp::parse::Parse;
 use sequoia_openpgp::policy::StandardPolicy;
 use sequoia_openpgp::serialize::stream::{Message, Signer};
-use sequoia_openpgp::types::{Curve, HashAlgorithm, PublicKeyAlgorithm, SymmetricAlgorithm};
+use sequoia_openpgp::types::{Curve, HashAlgorithm, SymmetricAlgorithm};
 use sequoia_openpgp::{Cert, Fingerprint, KeyHandle};
 use std::convert::TryInto;
 use std::io;
@@ -164,9 +164,7 @@ impl crypto::Decryptor for CardDecryptor<'_, '_> {
                     decrypted = decrypted[1..33].to_vec();
                 }
 
-                #[allow(deprecated)]
-                let shared_secret: crypto::mem::Protected = decrypted.into();
-                #[allow(deprecated)]
+                let shared_secret = decrypted.into();
                 Ok(crypto::ecdh::decrypt_unwrap(
                     &self.public,
                     &shared_secret,
@@ -248,16 +246,18 @@ impl crypto::Signer for CardSigner<'_, '_> {
         &self.public
     }
 
-    fn sign(&mut self, hash_algo: HashAlgorithm, digest: &[u8]) -> openpgp::Result<mpi::Signature> {
+    fn sign(
+        &mut self,
+        hash_algo: HashAlgorithm,
+        digest: &[u8],
+    ) -> openpgp::Result<mpi::Signature> {
         let ard = self.tx.application_related_data()?;
         let touch_required = ard
             .uif_pso_cds()?
             .is_some_and(|uif| uif.touch_policy().touch_required());
 
-        let signature = match (self.public.pk_algo(), self.public.mpis()) {
-            #[allow(deprecated)]
-            (PublicKeyAlgorithm::RSASign, mpi::PublicKey::RSA { .. })
-            | (PublicKeyAlgorithm::RSAEncryptSign, mpi::PublicKey::RSA { .. }) => {
+        let signature = match self.public.mpis() {
+            mpi::PublicKey::RSA { .. } => {
                 let hash = match hash_algo {
                     HashAlgorithm::SHA256 => Hash::SHA256(
                         digest
@@ -287,7 +287,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
                 let mpi = mpi::MPI::new(&signature[..]);
                 mpi::Signature::RSA { s: mpi }
             }
-            (PublicKeyAlgorithm::EdDSA, mpi::PublicKey::EdDSA { .. }) => {
+            mpi::PublicKey::EdDSA { .. } => {
                 if touch_required {
                     (self.touch_prompt)();
                 }
@@ -298,7 +298,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
                     s: mpi::MPI::new(&signature[32..]),
                 }
             }
-            (PublicKeyAlgorithm::ECDSA, mpi::PublicKey::ECDSA { curve, .. }) => {
+            mpi::PublicKey::ECDSA { curve, .. } => {
                 let hash = match curve {
                     Curve::NistP256 => Hash::ECDSA(&digest[..32]),
                     Curve::NistP384 => Hash::ECDSA(&digest[..48]),
@@ -317,9 +317,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
                     s: mpi::MPI::new(&signature[midpoint..]),
                 }
             }
-            (algorithm, _) => {
-                return Err(anyhow!("Unsupported signing algorithm: {algorithm:?}"))
-            }
+            _ => return Err(anyhow!("Unsupported signing algorithm: {:?}", self.public.pk_algo())),
         };
 
         Ok(signature)

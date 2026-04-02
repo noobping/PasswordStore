@@ -187,16 +187,16 @@ fn start_private_key_unlock_for_action(
                 Ok(_) => {
                     finish_unlock_success(&window_for_result, &after_unlock, &on_finish_for_result);
                 }
-                Err(
-                    PrivateKeyError::Fido2PinRequired(_) | PrivateKeyError::Fido2TokenNotPresent(_),
-                ) if handle_managed_fido2_unlock_retry(
-                    &window_for_result,
-                    &overlay,
-                    &fingerprint,
-                    allow_fido2_retry,
-                    &after_unlock,
-                    &on_finish_for_result,
-                ) => {}
+                Err(err)
+                    if (err.is_fido2_pin_required() || err.is_fido2_token_not_present())
+                        && handle_managed_fido2_unlock_retry(
+                            &window_for_result,
+                            &overlay,
+                            &fingerprint,
+                            allow_fido2_retry,
+                            &after_unlock,
+                            &on_finish_for_result,
+                        ) => {}
                 Err(err) => {
                     log_error(format!("Failed to unlock ripasso private key: {err}"));
                     overlay.add_toast(Toast::new(&gettext(err.unlock_message())));
@@ -255,7 +255,7 @@ fn start_fido2_recipient_unlock_for_action(
                         &on_finish_for_result,
                     );
                 }
-                Err(PrivateKeyError::Fido2PinRequired(_)) if allow_pin_retry => {
+                Err(err) if err.is_fido2_pin_required() && allow_pin_retry => {
                     let key_title = fido2_recipient_title(&recipient_for_result);
                     let overlay_for_submit = overlay.clone();
                     let recipient_for_submit = recipient_for_result.clone();

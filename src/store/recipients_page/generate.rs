@@ -200,7 +200,7 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
         move || generate_fido2_private_key(pin.as_ref().map(|pin| pin.expose_secret())),
         move || progress_dialog.force_close(),
         move |result| match result {
-            Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
+            Err(err) if err.is_fido2_pin_required() && !pin_was_supplied => {
                 prompt_fido2_private_key_pin(&state);
             }
             other => finish_fido2_private_key_generation(&state, other),

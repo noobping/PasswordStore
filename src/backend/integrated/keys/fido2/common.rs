@@ -191,7 +191,9 @@ fn with_fido2_transport_read<T>(f: impl FnOnce(&Arc<dyn Fido2Transport>) -> T) -
 }
 
 #[cfg(test)]
-pub(super) fn set_fido2_transport_for_tests(transport: Arc<dyn Fido2Transport>) {
+pub(in crate::backend::integrated) fn set_fido2_transport_for_tests(
+    transport: Arc<dyn Fido2Transport>,
+) {
     match transport_cell().write() {
         Ok(mut current) => *current = transport,
         Err(poisoned) => {
@@ -202,7 +204,7 @@ pub(super) fn set_fido2_transport_for_tests(transport: Arc<dyn Fido2Transport>) 
 }
 
 #[cfg(test)]
-pub(super) fn reset_fido2_transport_for_tests() {
+pub(in crate::backend::integrated) fn reset_fido2_transport_for_tests() {
     match transport_cell().write() {
         Ok(mut current) => *current = Arc::new(RealFido2Transport),
         Err(poisoned) => {
@@ -254,7 +256,7 @@ pub(super) fn create_fido2_binding(pin: Option<&str>) -> Result<String, PrivateK
     cache_pending_fido2_enrollment(
         &id,
         &enrollment.credential_id,
-        &enrollment_salt,
+        enrollment_salt,
         &enrollment.hmac_secret,
     )
     .map_err(PrivateKeyError::other)?;
@@ -599,9 +601,7 @@ fn map_fido2_error_message(message: &str) -> Fido2TransportError {
         Fido2TransportError::TokenNotPresent
     } else if normalized.contains("unsupported") || normalized.contains("invalid option") {
         Fido2TransportError::Unsupported
-    } else if normalized.contains("action timeout") {
-        Fido2TransportError::UserActionTimeout
-    } else if normalized.contains("operation denied") {
+    } else if normalized.contains("action timeout") || normalized.contains("operation denied") {
         Fido2TransportError::UserActionTimeout
     } else if normalized.contains("rx")
         || normalized.contains("keepalive")
@@ -740,6 +740,16 @@ fn owned_device_label(info: DeviceInfo<'_>) -> Fido2DeviceLabel {
 
 struct RealFido2Transport;
 
+struct EnrollmentRequest<'a> {
+    label: &'a Fido2DeviceLabel,
+    rp_id: &'a str,
+    user_name: &'a str,
+    user_display_name: &'a str,
+    pin: Option<&'a str>,
+    salt: &'a [u8],
+    discoverable: bool,
+}
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 impl RealFido2Transport {
     fn single_enrollment_device() -> Result<(Device, Fido2DeviceLabel), Fido2TransportError> {
@@ -796,27 +806,30 @@ impl RealFido2Transport {
 
     fn enroll_hmac_secret_on_device(
         device: &Device,
-        label: &Fido2DeviceLabel,
-        rp_id: &str,
-        user_name: &str,
-        user_display_name: &str,
-        pin: Option<&str>,
-        salt: &[u8],
-        discoverable: bool,
+        request: EnrollmentRequest<'_>,
     ) -> Result<Fido2Enrollment, Fido2TransportError> {
         let mut credential = Credential::new();
-        set_credential_client_data(device, &mut credential, user_name)?;
+        set_credential_client_data(device, &mut credential, request.user_name)?;
         credential
-            .set_rp(rp_id, rp_id)
+            .set_rp(request.rp_id, request.rp_id)
             .map_err(map_fido2_library_error)?;
         credential
-            .set_user(user_id(), user_name, Some(user_display_name), Some(""))
+            .set_user(
+                user_id(),
+                request.user_name,
+                Some(request.user_display_name),
+                Some(""),
+            )
             .map_err(map_fido2_library_error)?;
         credential
             .set_extension(Extensions::HMAC_SECRET)
             .map_err(map_fido2_library_error)?;
         credential
-            .set_rk(if discoverable { Opt::True } else { Opt::False })
+            .set_rk(if request.discoverable {
+                Opt::True
+            } else {
+                Opt::False
+            })
             .map_err(map_fido2_library_error)?;
         credential
             .set_uv(Opt::Omit)
@@ -825,7 +838,7 @@ impl RealFido2Transport {
             .set_cose_type(CoseType::ES256)
             .map_err(map_fido2_library_error)?;
         device
-            .make_credential(&mut credential, pin)
+            .make_credential(&mut credential, request.pin)
             .map_err(map_fido2_library_error)?;
         let credential_id = credential.id().to_vec();
         if credential_id.is_empty() {
@@ -833,10 +846,16 @@ impl RealFido2Transport {
                 "The FIDO2 security key did not return a credential identifier.".to_string(),
             ));
         }
-        let hmac_secret = Self::hmac_secret_for_device(device, rp_id, &credential_id, pin, salt)?;
+        let hmac_secret = Self::hmac_secret_for_device(
+            device,
+            request.rp_id,
+            &credential_id,
+            request.pin,
+            request.salt,
+        )?;
         Ok(Fido2Enrollment {
             credential_id,
-            device: label.clone(),
+            device: request.label.clone(),
             hmac_secret,
         })
     }
@@ -856,13 +875,15 @@ impl Fido2Transport for RealFido2Transport {
         enroll_with_passkey_fallback(|discoverable| {
             Self::enroll_hmac_secret_on_device(
                 &device,
-                &label,
-                rp_id,
-                user_name,
-                user_display_name,
-                pin,
-                salt,
-                discoverable,
+                EnrollmentRequest {
+                    label: &label,
+                    rp_id,
+                    user_name,
+                    user_display_name,
+                    pin,
+                    salt,
+                    discoverable,
+                },
             )
         })
     }

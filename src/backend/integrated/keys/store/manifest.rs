@@ -86,7 +86,7 @@ pub(super) fn managed_fido2_private_key_from_cert(cert: &Cert) -> ManagedRipasso
 pub(super) fn parse_fido2_private_key_manifest(
     contents: &str,
 ) -> Result<Option<Fido2PrivateKeyManifest>, String> {
-    toml::from_str(contents).map(Some).or_else(|_| Ok(None))
+    toml::from_str(contents).map(Some).or(Ok(None))
 }
 
 #[cfg(feature = "fidokey")]

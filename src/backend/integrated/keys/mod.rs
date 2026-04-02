@@ -7,9 +7,8 @@ mod fido2;
 #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
 #[path = "fido2/mod.rs"]
 mod fido2;
+#[path = "hardware/mod.rs"]
 mod hardware;
-#[cfg(target_os = "linux")]
-mod hardware_crypto;
 mod store;
 
 #[cfg(test)]

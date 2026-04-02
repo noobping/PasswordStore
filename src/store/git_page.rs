@@ -2,7 +2,7 @@ use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::store::recipients_page::{StoreRecipientsMode, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
-use crate::support::background::spawn_result_task;
+use crate::support::background::spawn_result_task_with_finalizer;
 use crate::support::git::{
     add_store_git_remote, list_store_git_remotes, remove_store_git_remote, rename_store_git_remote,
     set_store_git_remote_url, store_git_repository_status, sync_store_repository, StoreGitHead,
@@ -761,37 +761,34 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
 
                     begin_git_operation(&sync_state, "Syncing store");
 
+                    let state_for_finalize = sync_state.clone();
                     let state_for_result = sync_state.clone();
                     let state_for_disconnect = sync_state.clone();
                     let store_for_worker = store_for_sync.clone();
                     let store_for_result = store_for_sync.clone();
-                    spawn_result_task(
+                    spawn_result_task_with_finalizer(
                         move || sync_store_repository(&store_for_worker),
-                        move |result| {
-                            finish_git_operation(&state_for_result);
-                            rebuild_store_git_page(&state_for_result);
-                            sync_related_views(&state_for_result);
-
-                            match result {
-                                Ok(()) => {
-                                    state_for_result
-                                        .overlay
-                                        .add_toast(Toast::new(&gettext("Store synced.")));
-                                }
-                                Err(err) => {
-                                    log_error(format!(
-                                        "Failed to sync password store '{store_for_result}': {err}"
-                                    ));
-                                    state_for_result
-                                        .overlay
-                                        .add_toast(Toast::new(&gettext("Couldn't sync store.")));
-                                }
+                        move || {
+                            finish_git_operation(&state_for_finalize);
+                            rebuild_store_git_page(&state_for_finalize);
+                            sync_related_views(&state_for_finalize);
+                        },
+                        move |result| match result {
+                            Ok(()) => {
+                                state_for_result
+                                    .overlay
+                                    .add_toast(Toast::new(&gettext("Store synced.")));
+                            }
+                            Err(err) => {
+                                log_error(format!(
+                                    "Failed to sync password store '{store_for_result}': {err}"
+                                ));
+                                state_for_result
+                                    .overlay
+                                    .add_toast(Toast::new(&gettext("Couldn't sync store.")));
                             }
                         },
                         move || {
-                            finish_git_operation(&state_for_disconnect);
-                            rebuild_store_git_page(&state_for_disconnect);
-                            sync_related_views(&state_for_disconnect);
                             state_for_disconnect.overlay.add_toast(Toast::new(&gettext(
                                 "Store sync stopped unexpectedly.",
                             )));

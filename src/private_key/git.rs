@@ -8,7 +8,7 @@ use crate::backend::{
 use crate::i18n::gettext;
 use crate::logging::{log_error, log_info};
 use crate::private_key::dialog::present_private_key_unlock_dialog_with_close_handler;
-use crate::support::background::spawn_result_task;
+use crate::support::background::spawn_result_task_with_finalizer;
 use adw::{prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use std::rc::Rc;
 
@@ -52,8 +52,9 @@ fn start_private_key_unlock_for_git_commit(
     let fingerprint_for_failure = fingerprint.clone();
     let after_unlock_attempt_for_result = after_unlock_attempt.clone();
     let after_unlock_attempt_for_disconnect = after_unlock_attempt.clone();
-    spawn_result_task(
+    spawn_result_task_with_finalizer(
         move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request),
+        || {},
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
                 after_unlock_attempt_for_result();

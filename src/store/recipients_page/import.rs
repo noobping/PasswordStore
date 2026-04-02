@@ -19,7 +19,7 @@ use crate::private_key::dialog::{
     present_private_key_unlock_dialog_with_close_handler, PrivateKeyDialogHandle,
 };
 use crate::support::actions::activate_widget_action;
-use crate::support::background::spawn_result_task;
+use crate::support::background::spawn_result_task_with_finalizer;
 use crate::support::file_picker::choose_file_bytes;
 use crate::support::ui::connect_row_action;
 use adw::gio;
@@ -124,9 +124,8 @@ fn start_private_key_import(
         None,
         "Please wait.",
     ));
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
-    spawn_result_task(
+    spawn_result_task_with_finalizer(
         move || {
             import_ripasso_private_key_bytes(
                 &bytes,
@@ -135,12 +134,11 @@ fn start_private_key_import(
                     .map(|passphrase| passphrase.expose_secret()),
             )
         },
+        move || progress_dialog.force_close(),
         move |result| {
-            progress_dialog.force_close();
             finish_private_key_import(&state, result);
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
             log_error("Private key import worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .platform
@@ -169,22 +167,18 @@ fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<Secre
         None,
         "Touch it if it starts blinking.",
     ));
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
     let pin_was_supplied = pin.is_some();
-    spawn_result_task(
+    spawn_result_task_with_finalizer(
         move || create_fido2_store_recipient(pin.as_ref().map(|pin| pin.expose_secret())),
-        move |result| {
-            progress_dialog.force_close();
-            match result {
-                Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
-                    prompt_fido2_recipient_pin(&state);
-                }
-                other => finish_fido2_recipient_add(&state, other),
+        move || progress_dialog.force_close(),
+        move |result| match result {
+            Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
+                prompt_fido2_recipient_pin(&state);
             }
+            other => finish_fido2_recipient_add(&state, other),
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
             log_error("FIDO2 recipient worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .platform
@@ -244,16 +238,14 @@ fn start_hardware_key_import(
         None,
         "Please wait.",
     ));
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
-    spawn_result_task(
+    spawn_result_task_with_finalizer(
         move || import_ripasso_hardware_key_bytes(&bytes, hardware.clone()),
+        move || progress_dialog.force_close(),
         move |result| {
-            progress_dialog.force_close();
             finish_hardware_key_import(&state, result);
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
             log_error("Hardware key import worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .platform

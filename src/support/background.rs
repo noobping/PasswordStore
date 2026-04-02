@@ -1,4 +1,6 @@
 use adw::glib;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
@@ -39,6 +41,39 @@ pub fn spawn_result_task<T, Task, HandleResult, HandleDisconnect>(
                 }
                 glib::ControlFlow::Break
             }
+        },
+    );
+}
+
+pub fn spawn_result_task_with_finalizer<T, Task, Finalize, HandleResult, HandleDisconnect>(
+    task: Task,
+    finalize: Finalize,
+    handle_result: HandleResult,
+    handle_disconnect: HandleDisconnect,
+) where
+    T: Send + 'static,
+    Task: FnOnce() -> T + Send + 'static,
+    Finalize: FnOnce() + 'static,
+    HandleResult: FnOnce(T) + 'static,
+    HandleDisconnect: FnOnce() + 'static,
+{
+    let finalize = Rc::new(RefCell::new(Some(finalize)));
+    let finalize_for_result = finalize.clone();
+    let finalize_for_disconnect = finalize;
+
+    spawn_result_task(
+        task,
+        move |result| {
+            if let Some(finalize) = finalize_for_result.borrow_mut().take() {
+                finalize();
+            }
+            handle_result(result);
+        },
+        move || {
+            if let Some(finalize) = finalize_for_disconnect.borrow_mut().take() {
+                finalize();
+            }
+            handle_disconnect();
         },
     );
 }

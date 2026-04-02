@@ -11,7 +11,7 @@ use crate::private_key::dialog::{
     PrivateKeyDialogHandle,
 };
 use crate::support::actions::activate_widget_action;
-use crate::support::background::spawn_result_task;
+use crate::support::background::spawn_result_task_with_finalizer;
 use adw::{glib, prelude::*, ApplicationWindow, Toast, ToastOverlay};
 use secrecy::ExposeSecret;
 use std::rc::Rc;
@@ -178,15 +178,13 @@ fn start_private_key_unlock_for_action(
     let allow_fido2_retry = matches!(request, PrivateKeyUnlockRequest::Fido2(None));
     let fingerprint_for_worker = fingerprint.clone();
     let progress_dialog = present_fido2_unlock_progress_dialog(window, key_title.as_deref(), kind);
-    let progress_dialog_for_result = progress_dialog.clone();
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     // Let GTK show the dialog before the hardware unlock flow starts.
     glib::idle_add_local_once(move || {
-        spawn_result_task(
+        spawn_result_task_with_finalizer(
             move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request),
+            move || progress_dialog.force_close(),
             move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
                 Ok(_) => {
-                    progress_dialog_for_result.force_close();
                     finish_unlock_success(&window_for_result, &after_unlock, &on_finish_for_result);
                 }
                 Err(
@@ -198,19 +196,14 @@ fn start_private_key_unlock_for_action(
                     allow_fido2_retry,
                     &after_unlock,
                     &on_finish_for_result,
-                ) =>
-                {
-                    progress_dialog_for_result.force_close();
-                }
+                ) => {}
                 Err(err) => {
-                    progress_dialog_for_result.force_close();
                     log_error(format!("Failed to unlock ripasso private key: {err}"));
                     overlay.add_toast(Toast::new(&gettext(err.unlock_message())));
                     on_finish_for_result(false);
                 }
             },
             move || {
-                progress_dialog_for_disconnect.force_close();
                 log_error("Private key unlock worker disconnected unexpectedly.".to_string());
                 show_unlock_failure_toast(&overlay_for_disconnect);
                 on_finish_for_disconnect(false);
@@ -241,11 +234,9 @@ fn start_fido2_recipient_unlock_for_action(
         key_title.as_deref(),
         PrivateKeyUnlockKind::Fido2SecurityKey,
     );
-    let progress_dialog_for_result = progress_dialog.clone();
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     // Let GTK show the dialog before the hardware unlock flow starts.
     glib::idle_add_local_once(move || {
-        spawn_result_task(
+        spawn_result_task_with_finalizer(
             move || {
                 let pin = match &request {
                     PrivateKeyUnlockRequest::Fido2(pin) => {
@@ -255,9 +246,9 @@ fn start_fido2_recipient_unlock_for_action(
                 };
                 unlock_fido2_store_recipient_for_session(&recipient, pin)
             },
+            move || progress_dialog.force_close(),
             move |result: Result<(), PrivateKeyError>| match result {
                 Ok(()) => {
-                    progress_dialog_for_result.force_close();
                     finish_unlock_success(
                         &window_for_retry,
                         &after_unlock_for_result,
@@ -265,7 +256,6 @@ fn start_fido2_recipient_unlock_for_action(
                     );
                 }
                 Err(PrivateKeyError::Fido2PinRequired(_)) if allow_pin_retry => {
-                    progress_dialog_for_result.force_close();
                     let key_title = fido2_recipient_title(&recipient_for_result);
                     let overlay_for_submit = overlay.clone();
                     let recipient_for_submit = recipient_for_result.clone();
@@ -293,14 +283,12 @@ fn start_fido2_recipient_unlock_for_action(
                     );
                 }
                 Err(err) => {
-                    progress_dialog_for_result.force_close();
                     log_error(format!("Failed to unlock FIDO2 recipient: {err}"));
                     overlay.add_toast(Toast::new(&gettext(err.unlock_message())));
                     on_finish_for_result(false);
                 }
             },
             move || {
-                progress_dialog_for_disconnect.force_close();
                 log_error("FIDO2 recipient unlock worker disconnected unexpectedly.".to_string());
                 show_unlock_failure_toast(&overlay_for_disconnect);
                 on_finish_for_disconnect(false);

@@ -13,7 +13,7 @@ use crate::private_key::dialog::{
     PrivateKeyDialogHandle,
 };
 use crate::support::actions::activate_widget_action;
-use crate::support::background::spawn_result_task;
+use crate::support::background::spawn_result_task_with_finalizer;
 use crate::support::ui::{
     connect_row_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
@@ -110,8 +110,6 @@ fn finish_private_key_generation(
     state: &StoreRecipientsPageState,
     result: Result<ManagedRipassoPrivateKey, PrivateKeyError>,
 ) {
-    set_private_key_generation_loading(state, false);
-
     match result {
         Ok(_) => {
             clear_private_key_generation_form(state);
@@ -144,8 +142,9 @@ fn start_private_key_generation(
 ) {
     set_private_key_generation_loading(state, true);
     let state = state.clone();
+    let state_for_finalize = state.clone();
     let state_for_disconnect = state.clone();
-    spawn_result_task(
+    spawn_result_task_with_finalizer(
         move || {
             generate_ripasso_private_key(
                 &request.name,
@@ -153,11 +152,11 @@ fn start_private_key_generation(
                 request.passphrase.expose_secret(),
             )
         },
+        move || set_private_key_generation_loading(&state_for_finalize, false),
         move |result| {
             finish_private_key_generation(&state, result);
         },
         move || {
-            set_private_key_generation_loading(&state_for_disconnect, false);
             log_error("Private key generation worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .platform
@@ -195,22 +194,18 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
         None,
         "Touch it if it starts blinking.",
     ));
-    let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
     let pin_was_supplied = pin.is_some();
-    spawn_result_task(
+    spawn_result_task_with_finalizer(
         move || generate_fido2_private_key(pin.as_ref().map(|pin| pin.expose_secret())),
-        move |result| {
-            progress_dialog.force_close();
-            match result {
-                Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
-                    prompt_fido2_private_key_pin(&state);
-                }
-                other => finish_fido2_private_key_generation(&state, other),
+        move || progress_dialog.force_close(),
+        move |result| match result {
+            Err(PrivateKeyError::Fido2PinRequired(_)) if !pin_was_supplied => {
+                prompt_fido2_private_key_pin(&state);
             }
+            other => finish_fido2_private_key_generation(&state, other),
         },
         move || {
-            progress_dialog_for_disconnect.force_close();
             log_error(
                 "FIDO2-protected key generation worker disconnected unexpectedly.".to_string(),
             );

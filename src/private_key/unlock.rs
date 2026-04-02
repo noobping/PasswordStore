@@ -39,13 +39,23 @@ fn finish_unlock_success(
 fn present_fido2_unlock_progress_dialog(
     window: &ApplicationWindow,
     subtitle: Option<&str>,
+    kind: PrivateKeyUnlockKind,
 ) -> PrivateKeyDialogHandle {
+    let description = private_key_unlock_progress_description(kind);
     PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
         window,
         "Unlock key",
         subtitle,
-        "Touch the security key if it starts blinking.",
+        description,
     ))
+}
+
+const fn private_key_unlock_progress_description(kind: PrivateKeyUnlockKind) -> &'static str {
+    match kind {
+        PrivateKeyUnlockKind::Fido2SecurityKey => "Touch the security key if it starts blinking.",
+        PrivateKeyUnlockKind::HardwareOpenPgpCard => "Unlock your key to continue.",
+        PrivateKeyUnlockKind::Password => "Please wait.",
+    }
 }
 
 #[cfg(feature = "fidokey")]
@@ -157,6 +167,7 @@ fn start_private_key_unlock_for_action(
             None
         }
     };
+    let kind = private_key_unlock_kind(&fingerprint);
     let overlay = overlay.clone();
     let overlay_for_disconnect = overlay.clone();
     let window_for_result = window.clone();
@@ -165,7 +176,7 @@ fn start_private_key_unlock_for_action(
     let on_finish_for_disconnect = on_finish.clone();
     let request_for_worker = request.clone();
     let fingerprint_for_worker = fingerprint.clone();
-    let progress_dialog = present_fido2_unlock_progress_dialog(window, key_title.as_deref());
+    let progress_dialog = present_fido2_unlock_progress_dialog(window, key_title.as_deref(), kind);
     let progress_dialog_for_result = progress_dialog.clone();
     let progress_dialog_for_disconnect = progress_dialog.clone();
     // Let GTK show the dialog before the hardware unlock flow starts.
@@ -229,7 +240,11 @@ fn start_fido2_recipient_unlock_for_action(
     let on_finish_for_disconnect = on_finish.clone();
     let recipient_for_result = recipient.clone();
     let request_for_worker = request.clone();
-    let progress_dialog = present_fido2_unlock_progress_dialog(window, key_title.as_deref());
+    let progress_dialog = present_fido2_unlock_progress_dialog(
+        window,
+        key_title.as_deref(),
+        PrivateKeyUnlockKind::Fido2SecurityKey,
+    );
     let progress_dialog_for_result = progress_dialog.clone();
     let progress_dialog_for_disconnect = progress_dialog.clone();
     // Let GTK show the dialog before the hardware unlock flow starts.
@@ -371,4 +386,26 @@ pub fn prompt_private_key_unlock_for_action(
         },
         move || on_finish_for_close(false),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::private_key_unlock_progress_description;
+    use crate::backend::PrivateKeyUnlockKind;
+
+    #[test]
+    fn unlock_progress_copy_is_fido_specific_only_for_fido_keys() {
+        assert_eq!(
+            private_key_unlock_progress_description(PrivateKeyUnlockKind::Fido2SecurityKey),
+            "Touch the security key if it starts blinking."
+        );
+        assert_eq!(
+            private_key_unlock_progress_description(PrivateKeyUnlockKind::HardwareOpenPgpCard),
+            "Unlock your key to continue."
+        );
+        assert_eq!(
+            private_key_unlock_progress_description(PrivateKeyUnlockKind::Password),
+            "Please wait."
+        );
+    }
 }

@@ -1,5 +1,5 @@
 use crate::backend::PrivateKeyError;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use sequoia_openpgp::{
     cert::amalgamation::key::PrimaryKey, crypto::Password, parse::Parse, Cert, Fingerprint, Packet,
 };
@@ -42,6 +42,28 @@ pub enum PrivateKeyUnlockRequest {
     HardwareExternal,
     Fido2(Option<SecretString>),
 }
+
+impl PartialEq for PrivateKeyUnlockRequest {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Password(left), Self::Password(right)) => {
+                left.expose_secret() == right.expose_secret()
+            }
+            (Self::HardwarePin(left), Self::HardwarePin(right)) => {
+                left.expose_secret() == right.expose_secret()
+            }
+            (Self::HardwareExternal, Self::HardwareExternal) => true,
+            (Self::Fido2(left), Self::Fido2(right)) => match (left, right) {
+                (Some(left), Some(right)) => left.expose_secret() == right.expose_secret(),
+                (None, None) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PrivateKeyUnlockRequest {}
 
 impl ManagedRipassoPrivateKey {
     pub fn title(&self) -> String {

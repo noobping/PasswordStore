@@ -13,6 +13,18 @@ pub struct PassImportRequest {
     pub target_path: Option<String>,
 }
 
+impl PartialEq for PassImportRequest {
+    fn eq(&self, other: &Self) -> bool {
+        self.store_root == other.store_root
+            && self.source == other.source
+            && self.source_path == other.source_path
+            && self.source_password.expose_secret() == other.source_password.expose_secret()
+            && self.target_path == other.target_path
+    }
+}
+
+impl Eq for PassImportRequest {}
+
 fn command_error(prefix: &str, output: &Output) -> String {
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();

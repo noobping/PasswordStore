@@ -36,6 +36,16 @@ struct PrivateKeyGenerationRequest {
     passphrase: SecretString,
 }
 
+impl PartialEq for PrivateKeyGenerationRequest {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.email == other.email
+            && self.passphrase.expose_secret() == other.passphrase.expose_secret()
+    }
+}
+
+impl Eq for PrivateKeyGenerationRequest {}
+
 fn validate_name_and_email(name: &str, email: &str) -> Result<(String, String), &'static str> {
     let name = name.trim();
     if name.is_empty() {

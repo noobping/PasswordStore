@@ -16,6 +16,7 @@ use crate::backend::{
 };
 use crate::fido2_recipient::is_fido2_recipient_string;
 use crate::logging::log_error;
+use crate::support::secure_fs::write_atomic_file;
 use std::fs;
 use std::path::Path;
 
@@ -318,8 +319,7 @@ fn ensure_required_private_keys_are_ready(
 }
 
 fn write_entry_ciphertext(entry_path: &Path, ciphertext: &[u8]) -> Result<(), String> {
-    ensure_parent_dir(entry_path)?;
-    fs::write(entry_path, ciphertext).map_err(|err| err.to_string())
+    write_atomic_file(entry_path, ciphertext).map_err(|err| err.to_string())
 }
 
 fn ensure_parent_dir(entry_path: &Path) -> Result<(), String> {

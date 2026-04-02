@@ -21,7 +21,7 @@ use crate::backend::{PasswordEntryError, PrivateKeyError};
 use crate::fido2_recipient::parse_fido2_recipient_string;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-use crate::support::secure_fs::{create_private_file, ensure_private_dir, write_private_file};
+use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
 use secrecy::{ExposeSecret, SecretString};
 use sequoia_openpgp::{
@@ -1023,12 +1023,16 @@ pub fn store_ripasso_private_key_bytes(
             "That private key must be password protected before you can import it.",
         ));
     };
-    let mut file = create_private_file(&keys_dir.join(key.fingerprint.to_ascii_lowercase()))
-        .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    let mut serialized = Vec::new();
     stored_cert
         .as_tsk()
-        .serialize(&mut file)
+        .serialize(&mut serialized)
         .map_err(|err| PrivateKeyError::other(err.to_string()))?;
+    write_private_file(
+        &keys_dir.join(key.fingerprint.to_ascii_lowercase()),
+        &serialized,
+    )
+    .map_err(|err| PrivateKeyError::other(err.to_string()))?;
 
     Ok(key)
 }

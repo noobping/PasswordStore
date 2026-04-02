@@ -17,6 +17,7 @@ use crate::backend::{
 use crate::fido2_recipient::{parse_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME};
 use crate::logging::log_error;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
+use crate::support::secure_fs::write_atomic_file;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -129,7 +130,8 @@ pub fn save_store_recipients(
                 let previous_ciphertext = fs::read(entry_path).ok();
                 let ciphertext = context
                     .encrypt_contents_with_existing(secret, previous_ciphertext.as_deref())?;
-                fs::write(&updated_entry_path, ciphertext).map_err(|err| err.to_string())?;
+                write_atomic_file(&updated_entry_path, &ciphertext)
+                    .map_err(|err| err.to_string())?;
                 if updated_entry_path != *entry_path {
                     fs::remove_file(entry_path).map_err(|err| err.to_string())?;
                 }
@@ -222,7 +224,8 @@ pub fn save_store_recipients_with_progress(
                         });
                     }),
                 )?;
-                fs::write(&updated_entry_path, ciphertext).map_err(|err| err.to_string())?;
+                write_atomic_file(&updated_entry_path, &ciphertext)
+                    .map_err(|err| err.to_string())?;
                 if updated_entry_path != *entry_path {
                     fs::remove_file(entry_path).map_err(|err| err.to_string())?;
                 }

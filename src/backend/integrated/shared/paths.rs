@@ -6,6 +6,7 @@ use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
 use crate::password::entry_files::{
     is_password_entry_file, label_from_password_entry_path, password_entry_extension,
 };
+use crate::support::secure_fs::write_atomic_file;
 
 pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String> {
     let mut relative = PathBuf::new();
@@ -147,7 +148,7 @@ fn write_optional_text_file(path: &Path, contents: &str) -> Result<(), String> {
             Err(err) => Err(err.to_string()),
         }
     } else {
-        fs::write(path, contents).map_err(|err| err.to_string())
+        write_atomic_file(path, contents.as_bytes()).map_err(|err| err.to_string())
     }
 }
 
@@ -160,11 +161,12 @@ pub(super) fn with_updated_recipient_files<T>(
 ) -> Result<T, String> {
     let previous_contents = fs::read_to_string(recipients_path).ok();
     let previous_fido2_contents = fs::read_to_string(fido2_recipients_path).ok();
-    fs::write(recipients_path, recipients_contents).map_err(|err| err.to_string())?;
+    write_atomic_file(recipients_path, recipients_contents.as_bytes())
+        .map_err(|err| err.to_string())?;
     if let Err(err) = write_optional_text_file(fido2_recipients_path, fido2_recipients_contents) {
         match previous_contents {
             Some(previous) => {
-                let _ = fs::write(recipients_path, previous);
+                let _ = write_atomic_file(recipients_path, previous.as_bytes());
             }
             None => {
                 let _ = fs::remove_file(recipients_path);
@@ -178,7 +180,7 @@ pub(super) fn with_updated_recipient_files<T>(
         Err(err) => {
             match previous_contents {
                 Some(previous) => {
-                    let _ = fs::write(recipients_path, previous);
+                    let _ = write_atomic_file(recipients_path, previous.as_bytes());
                 }
                 None => {
                     let _ = fs::remove_file(recipients_path);
@@ -186,7 +188,7 @@ pub(super) fn with_updated_recipient_files<T>(
             }
             match previous_fido2_contents {
                 Some(previous) => {
-                    let _ = fs::write(fido2_recipients_path, previous);
+                    let _ = write_atomic_file(fido2_recipients_path, previous.as_bytes());
                 }
                 None => {
                     let _ = fs::remove_file(fido2_recipients_path);

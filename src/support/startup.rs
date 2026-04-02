@@ -1,11 +1,11 @@
 use crate::logging::log_error;
+use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use adw::glib;
 #[cfg(target_os = "linux")]
 use adw::prelude::*;
 #[cfg(target_os = "linux")]
 use adw::AlertDialog;
 use std::fmt::Display;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 const STARTUP_LOG_FILE: &str = "startup-error.log";
@@ -24,9 +24,10 @@ pub fn fatal_startup_error(app_name: &str, context: &str, error: impl Display) -
 
 fn persist_startup_error_log(app_name: &str, detail: &str) -> Option<PathBuf> {
     let path = startup_log_path(app_name);
-    let parent = path.parent()?;
-    fs::create_dir_all(parent).ok()?;
-    fs::write(&path, detail).ok()?;
+    if let Some(parent) = path.parent() {
+        ensure_private_dir(parent).ok()?;
+    }
+    write_private_file(&path, detail.as_bytes()).ok()?;
     Some(path)
 }
 

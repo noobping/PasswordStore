@@ -20,7 +20,7 @@ fidokey = ["fido-common"]
 
 [dependencies]
 thiserror = "2.0"
-adw = { version = "0.9.1", package = "libadwaita", features = ["v1_9"] }
+adw = { version = "0.9.1", package = "libadwaita", features = ["v1_5"] }
 walkdir = "2.5.0"
 toml = "1.1.2"
 serde = { version = "1.0.228", features = ["derive"] }

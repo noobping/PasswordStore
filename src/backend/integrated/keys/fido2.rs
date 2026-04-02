@@ -23,7 +23,7 @@ use fido2_rs::{
     error::Error as Fido2LibraryError,
 };
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-use hmac::{Hmac, Mac};
+use hmac::{digest::KeyInit, Hmac, Mac};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use openssl::symm::{Cipher, Crypter, Mode};
 #[cfg(any(target_os = "linux", target_os = "windows"))]

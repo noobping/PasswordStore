@@ -460,13 +460,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/cmov/cmov-0.5.2.crate
-  sha256: de0758edba32d61d1fd9f4d69491b47604b91ee2f7e6b33de7e54ca4ebe55dc3
-  dest: cargo/vendor/cmov-0.5.2
+  url: https://static.crates.io/crates/cmov/cmov-0.5.3.crate
+  sha256: 3f88a43d011fc4a6876cb7344703e297c71dda42494fee094d5f7c76bf13f746
+  dest: cargo/vendor/cmov-0.5.3
 - type: inline
-  contents: '{"package": "de0758edba32d61d1fd9f4d69491b47604b91ee2f7e6b33de7e54ca4ebe55dc3",
+  contents: '{"package": "3f88a43d011fc4a6876cb7344703e297c71dda42494fee094d5f7c76bf13f746",
     "files": {}}'
-  dest: cargo/vendor/cmov-0.5.2
+  dest: cargo/vendor/cmov-0.5.3
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -630,13 +630,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/ctutils/ctutils-0.4.0.crate
-  sha256: 1005a6d4446f5120ef475ad3d2af2b30c49c2c9c6904258e3bb30219bebed5e4
-  dest: cargo/vendor/ctutils-0.4.0
+  url: https://static.crates.io/crates/ctutils/ctutils-0.4.1.crate
+  sha256: 66270f854fb5b25a21ffc0ee8c214c309ef1ce60988e448f6433a0b4736d2609
+  dest: cargo/vendor/ctutils-0.4.1
 - type: inline
-  contents: '{"package": "1005a6d4446f5120ef475ad3d2af2b30c49c2c9c6904258e3bb30219bebed5e4",
+  contents: '{"package": "66270f854fb5b25a21ffc0ee8c214c309ef1ce60988e448f6433a0b4736d2609",
     "files": {}}'
-  dest: cargo/vendor/ctutils-0.4.0
+  dest: cargo/vendor/ctutils-0.4.1
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

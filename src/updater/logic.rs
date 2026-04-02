@@ -7,6 +7,7 @@ pub struct ReleaseAsset {
     pub name: String,
     pub browser_download_url: String,
     pub size: u64,
+    pub sha256_digest: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,6 +86,7 @@ mod tests {
             name: name.to_string(),
             browser_download_url: format!("https://example.com/{name}"),
             size,
+            sha256_digest: None,
         }
     }
 

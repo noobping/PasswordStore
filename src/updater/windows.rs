@@ -15,10 +15,12 @@ use adw::{AlertDialog, Application, ApplicationWindow, Dialog, Toast, ToastOverl
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, USER_AGENT};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::cell::{Cell, RefCell};
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -171,6 +173,7 @@ struct GitHubAssetResponse {
     name: String,
     browser_download_url: String,
     size: u64,
+    digest: Option<String>,
 }
 
 impl UpdaterController {
@@ -242,7 +245,7 @@ impl UpdaterController {
                     return;
                 }
                 UpdateState::Ready { release, installer } => {
-                    if cached_installer_matches(&installer.path, installer.size) {
+                    if cached_installer_matches_release(installer, &release.asset) {
                         if matches!(mode, CheckMode::Manual) {
                             self.present_ready_dialog(release);
                         }
@@ -334,12 +337,25 @@ impl UpdaterController {
     }
 
     fn start_download(&self, run_id: u64, mode: CheckMode, release: SelectedRelease) {
+        if let Err(error) = validate_release_asset_digest(&release.asset) {
+            log_error(format!(
+                "Refusing to download Windows update {}: {error}",
+                release.version
+            ));
+            *self.inner.state.borrow_mut() = UpdateState::Idle;
+            self.close_dialog();
+            if matches!(mode, CheckMode::Manual) {
+                self.show_toast(UPDATE_CHECK_FAILED_TOAST);
+            }
+            return;
+        }
+
         let installer = CachedInstaller {
             path: cached_installer_path(&release),
             size: release.asset.size,
         };
 
-        if cached_installer_matches(&installer.path, installer.size) {
+        if cached_installer_matches_release(&installer, &release.asset) {
             log_info(format!(
                 "Reusing cached Windows installer for version {}.",
                 release.version
@@ -542,11 +558,11 @@ impl UpdaterController {
 
     fn begin_install_flow(&self) {
         let state = self.inner.state.borrow().clone();
-        let UpdateState::Ready { installer, .. } = state else {
+        let UpdateState::Ready { release, installer } = state else {
             return;
         };
 
-        if !cached_installer_matches(&installer.path, installer.size) {
+        if !cached_installer_matches_release(&installer, &release.asset) {
             *self.inner.state.borrow_mut() = UpdateState::Idle;
             self.start_check(CheckMode::Manual);
             return;
@@ -838,7 +854,7 @@ fn perform_download(
     };
     fs::create_dir_all(parent).map_err(download_fs_error("create update cache directory"))?;
 
-    if installer.path.exists() && !cached_installer_matches(&installer.path, installer.size) {
+    if installer.path.exists() && !cached_installer_matches_release(installer, &release.asset) {
         fs::remove_file(&installer.path).map_err(download_fs_error("remove stale installer"))?;
     }
 
@@ -880,6 +896,7 @@ fn perform_download(
 
     file.flush()
         .map_err(download_io_error("flush partial installer"))?;
+    drop(file);
 
     if cancel.load(Ordering::Relaxed) {
         let _ = fs::remove_file(&temp_path);
@@ -892,6 +909,11 @@ fn perform_download(
             "Installer size mismatch after download (expected {}, got {}).",
             installer.size, downloaded
         )));
+    }
+
+    if let Err(error) = validate_downloaded_installer(&temp_path, installer, &release.asset) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
     }
 
     fs::rename(&temp_path, &installer.path)
@@ -927,6 +949,7 @@ fn fetch_update_release() -> Result<Option<SelectedRelease>, String> {
                     name: asset.name,
                     browser_download_url: asset.browser_download_url,
                     size: asset.size,
+                    sha256_digest: asset.digest,
                 })
                 .collect(),
         })
@@ -1000,6 +1023,90 @@ fn cached_installer_path(release: &SelectedRelease) -> PathBuf {
             release.version,
             sanitize_filename(&release.asset.name)
         ))
+}
+
+fn cached_installer_matches_release(installer: &CachedInstaller, asset: &ReleaseAsset) -> bool {
+    validate_installer_file(&installer.path, installer.size, asset).is_ok()
+}
+
+fn validate_downloaded_installer(
+    path: &Path,
+    installer: &CachedInstaller,
+    asset: &ReleaseAsset,
+) -> Result<(), DownloadFailure> {
+    validate_installer_file(path, installer.size, asset).map_err(DownloadFailure::Error)
+}
+
+fn validate_installer_file(
+    path: &Path,
+    expected_size: u64,
+    asset: &ReleaseAsset,
+) -> Result<(), String> {
+    if !cached_installer_matches(path, expected_size) {
+        return Err(format!("Installer size mismatch for '{}'.", path.display()));
+    }
+
+    let expected_digest = parse_release_sha256_digest(asset)?;
+    let actual_digest = sha256_file_hex(path)
+        .map_err(|error| format!("Failed to hash installer '{}': {error}", path.display()))?;
+    if !actual_digest.eq_ignore_ascii_case(expected_digest) {
+        return Err(format!(
+            "Installer SHA-256 mismatch for '{}'.",
+            path.display()
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_release_asset_digest(asset: &ReleaseAsset) -> Result<(), String> {
+    parse_release_sha256_digest(asset).map(|_| ())
+}
+
+fn parse_release_sha256_digest(asset: &ReleaseAsset) -> Result<&str, String> {
+    let digest = asset.sha256_digest.as_deref().ok_or_else(|| {
+        format!(
+            "Release asset '{}' is missing a GitHub SHA-256 digest.",
+            asset.name
+        )
+    })?;
+    let digest = digest.trim();
+    let Some(hex) = digest.strip_prefix("sha256:") else {
+        return Err(format!(
+            "Release asset '{}' has an unsupported digest format.",
+            asset.name
+        ));
+    };
+
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!(
+            "Release asset '{}' has an invalid SHA-256 digest.",
+            asset.name
+        ));
+    }
+
+    Ok(hex)
+}
+
+fn sha256_file_hex(path: &Path) -> Result<String, std::io::Error> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+    Ok(hex)
 }
 
 fn sanitize_filename(name: &str) -> String {

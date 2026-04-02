@@ -3,7 +3,7 @@ use adw::glib;
 #[cfg(target_os = "linux")]
 use adw::prelude::*;
 #[cfg(target_os = "linux")]
-use adw::MessageDialog;
+use adw::AlertDialog;
 use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -90,7 +90,7 @@ pub fn show_startup_error_dialog(title: &str, body: &str) {
         return;
     }
 
-    let dialog = MessageDialog::new(None::<&adw::gtk::Window>, Some(title), Some(body));
+    let dialog = AlertDialog::new(Some(title), Some(body));
     dialog.add_response("close", "Close");
     dialog.set_close_response("close");
     dialog.set_default_response(Some("close"));
@@ -102,7 +102,7 @@ pub fn show_startup_error_dialog(title: &str, body: &str) {
         loop_for_response.quit();
     });
 
-    dialog.present();
+    dialog.present(None::<&adw::gtk::Widget>);
     loop_.run();
 }
 

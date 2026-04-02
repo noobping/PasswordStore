@@ -567,7 +567,8 @@ fn signature_for_commit(
             name = resolution.identity.name,
             email = resolution.identity.email,
         ));
-        let signature = sign_with_hardware_session(&session, unsigned_commit)?;
+        let signature =
+            sign_with_hardware_session(&session, unsigned_commit).map_err(|err| err.to_string())?;
         log_info(format!(
             "Signed password store Git commit for {store_root} with private key {fingerprint}."
         ));

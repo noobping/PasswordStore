@@ -1,5 +1,6 @@
 mod cache;
 mod cert;
+mod errors;
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 mod fido2;
 #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
@@ -24,6 +25,12 @@ pub(in crate::backend::integrated) use self::cert::{
 pub use self::cert::{
     ManagedRipassoHardwareKey, ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection,
     PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
+};
+pub(in crate::backend::integrated) use self::errors::{
+    password_entry_error_from_integrated_message,
+    password_entry_write_error_from_integrated_message, password_entry_write_error_from_io,
+    store_recipients_error_from_integrated_message, INCOMPATIBLE_PRIVATE_KEY_ERROR,
+    LOCKED_PRIVATE_KEY_ERROR, MISSING_PRIVATE_KEY_ERROR,
 };
 pub(in crate::backend::integrated) use self::fido2::{
     ciphertext_is_any_managed_bundle, decrypt_fido2_any_managed_bundle_dek_for_bindings,

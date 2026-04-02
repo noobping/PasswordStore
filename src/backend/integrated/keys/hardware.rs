@@ -1,6 +1,7 @@
 use super::cert::ManagedRipassoHardwareKey;
 #[cfg(target_os = "linux")]
 use super::hardware_crypto::{decrypt_with_card_transaction, sign_with_card_transaction};
+use crate::backend::PrivateKeyError;
 #[cfg(target_os = "linux")]
 use card_backend_pcsc::PcscBackend;
 #[cfg(target_os = "linux")]
@@ -10,6 +11,7 @@ use openpgp_card::{state, Card};
 #[cfg(target_os = "linux")]
 use secrecy::SecretString;
 use sequoia_openpgp::Cert;
+use std::fmt::{Display, Formatter};
 use std::sync::{Arc, OnceLock, RwLock};
 use zeroize::Zeroizing;
 
@@ -20,6 +22,39 @@ pub struct DiscoveredHardwareToken {
     pub cardholder_certificate: Option<Vec<u8>>,
     pub signing_fingerprint: Option<String>,
     pub decryption_fingerprint: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HardwareTransportError {
+    TokenNotPresent(String),
+    TokenMismatch(String),
+    PinRequired(String),
+    IncorrectPin(String),
+    TokenRemoved(String),
+    Unsupported(String),
+    Other(String),
+}
+
+impl Display for HardwareTransportError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TokenNotPresent(message)
+            | Self::TokenMismatch(message)
+            | Self::PinRequired(message)
+            | Self::IncorrectPin(message)
+            | Self::TokenRemoved(message)
+            | Self::Unsupported(message)
+            | Self::Other(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for HardwareTransportError {}
+
+impl From<String> for HardwareTransportError {
+    fn from(message: String) -> Self {
+        Self::Other(message)
+    }
 }
 
 #[derive(Clone)]
@@ -52,15 +87,19 @@ impl HardwareSessionPolicy {
 }
 
 pub trait HardwareTransport: Send + Sync {
-    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String>;
-    fn verify_session(&self, session: &HardwareSessionPolicy) -> Result<(), String>;
+    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError>;
+    fn verify_session(&self, session: &HardwareSessionPolicy)
+        -> Result<(), HardwareTransportError>;
     fn decrypt_ciphertext(
         &self,
         session: &HardwareSessionPolicy,
         ciphertext: &[u8],
-    ) -> Result<String, String>;
-    fn sign_cleartext(&self, session: &HardwareSessionPolicy, data: &str)
-        -> Result<String, String>;
+    ) -> Result<String, HardwareTransportError>;
+    fn sign_cleartext(
+        &self,
+        session: &HardwareSessionPolicy,
+        data: &str,
+    ) -> Result<String, HardwareTransportError>;
 }
 
 fn transport_cell() -> &'static RwLock<Arc<dyn HardwareTransport>> {
@@ -103,28 +142,54 @@ pub(in crate::backend::integrated) fn reset_hardware_transport_for_tests() {
 }
 
 pub(in crate::backend::integrated) fn list_hardware_tokens(
-) -> Result<Vec<DiscoveredHardwareToken>, String> {
+) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
     with_hardware_transport_read(|transport| transport.list_tokens())
 }
 
 pub(in crate::backend::integrated) fn decrypt_with_hardware_session(
     session: &HardwareSessionPolicy,
     ciphertext: &[u8],
-) -> Result<String, String> {
+) -> Result<String, HardwareTransportError> {
     with_hardware_transport_read(|transport| transport.decrypt_ciphertext(session, ciphertext))
 }
 
 pub(in crate::backend::integrated) fn verify_hardware_session(
     session: &HardwareSessionPolicy,
-) -> Result<(), String> {
+) -> Result<(), HardwareTransportError> {
     with_hardware_transport_read(|transport| transport.verify_session(session))
 }
 
 pub(in crate::backend::integrated) fn sign_with_hardware_session(
     session: &HardwareSessionPolicy,
     data: &str,
-) -> Result<String, String> {
+) -> Result<String, HardwareTransportError> {
     with_hardware_transport_read(|transport| transport.sign_cleartext(session, data))
+}
+
+pub(in crate::backend::integrated) fn private_key_error_from_hardware_transport_error(
+    err: HardwareTransportError,
+) -> PrivateKeyError {
+    match err {
+        HardwareTransportError::TokenNotPresent(message) => {
+            PrivateKeyError::hardware_token_not_present(message)
+        }
+        HardwareTransportError::TokenMismatch(message) => {
+            PrivateKeyError::hardware_token_mismatch(message)
+        }
+        HardwareTransportError::PinRequired(message) => {
+            PrivateKeyError::hardware_pin_required(message)
+        }
+        HardwareTransportError::IncorrectPin(message) => {
+            PrivateKeyError::incorrect_hardware_pin(message)
+        }
+        HardwareTransportError::TokenRemoved(message) => {
+            PrivateKeyError::hardware_token_removed(message)
+        }
+        HardwareTransportError::Unsupported(message) => {
+            PrivateKeyError::unsupported_hardware_key(message)
+        }
+        HardwareTransportError::Other(message) => PrivateKeyError::other(message),
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -144,7 +209,7 @@ impl RealHardwareTransport {
     fn matching_fingerprint(
         tx: &mut Card<state::Transaction<'_>>,
         key_type: KeyType,
-    ) -> Result<Option<String>, String> {
+    ) -> Result<Option<String>, HardwareTransportError> {
         tx.fingerprint(key_type)
             .map(|value| value.map(|value| value.to_string()))
             .map_err(card_error)
@@ -153,7 +218,7 @@ impl RealHardwareTransport {
     fn verify_binding(
         tx: &mut Card<state::Transaction<'_>>,
         session: &HardwareSessionPolicy,
-    ) -> Result<(), String> {
+    ) -> Result<(), HardwareTransportError> {
         let current_signing = Self::matching_fingerprint(tx, KeyType::Signing)?;
         let current_decryption = Self::matching_fingerprint(tx, KeyType::Decryption)?;
 
@@ -162,9 +227,9 @@ impl RealHardwareTransport {
             .as_deref()
             .is_some_and(|expected| !fingerprint_matches(current_signing.as_deref(), expected))
         {
-            return Err(
+            return Err(HardwareTransportError::TokenMismatch(
                 "The connected hardware key does not match the stored signing key.".to_string(),
-            );
+            ));
         }
 
         if session
@@ -172,15 +237,15 @@ impl RealHardwareTransport {
             .as_deref()
             .is_some_and(|expected| !fingerprint_matches(current_decryption.as_deref(), expected))
         {
-            return Err(
+            return Err(HardwareTransportError::TokenMismatch(
                 "The connected hardware key does not match the stored decryption key.".to_string(),
-            );
+            ));
         }
 
         Ok(())
     }
 
-    fn open_card(ident: &str) -> Result<Card<state::Open>, String> {
+    fn open_card(ident: &str) -> Result<Card<state::Open>, HardwareTransportError> {
         let backends = PcscBackend::card_backends(None).map_err(card_error)?;
         Card::<state::Open>::open_by_ident(backends, ident).map_err(card_error)
     }
@@ -192,7 +257,7 @@ impl RealHardwareTransport {
     fn verify_user_access(
         tx: &mut Card<state::Transaction<'_>>,
         session: &HardwareSessionPolicy,
-    ) -> Result<(), String> {
+    ) -> Result<(), HardwareTransportError> {
         match &session.mode {
             HardwareUnlockMode::Pin(pin) => tx
                 .verify_user_pin(Self::secret_pin(pin)?)
@@ -204,7 +269,7 @@ impl RealHardwareTransport {
     fn verify_signing_access(
         tx: &mut Card<state::Transaction<'_>>,
         session: &HardwareSessionPolicy,
-    ) -> Result<(), String> {
+    ) -> Result<(), HardwareTransportError> {
         match &session.mode {
             HardwareUnlockMode::Pin(pin) => tx
                 .verify_user_signing_pin(Self::secret_pin(pin)?)
@@ -218,7 +283,7 @@ impl RealHardwareTransport {
 
 #[cfg(target_os = "linux")]
 impl HardwareTransport for RealHardwareTransport {
-    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String> {
+    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
         let backends = PcscBackend::cards(None).map_err(card_error)?;
         let mut tokens = Vec::new();
 
@@ -248,7 +313,10 @@ impl HardwareTransport for RealHardwareTransport {
         Ok(tokens)
     }
 
-    fn verify_session(&self, session: &HardwareSessionPolicy) -> Result<(), String> {
+    fn verify_session(
+        &self,
+        session: &HardwareSessionPolicy,
+    ) -> Result<(), HardwareTransportError> {
         let mut card = Self::open_card(&session.ident)?;
         let mut tx = card.transaction().map_err(card_error)?;
         Self::verify_binding(&mut tx, session)?;
@@ -268,7 +336,7 @@ impl HardwareTransport for RealHardwareTransport {
         &self,
         session: &HardwareSessionPolicy,
         ciphertext: &[u8],
-    ) -> Result<String, String> {
+    ) -> Result<String, HardwareTransportError> {
         let mut card = Self::open_card(&session.ident)?;
         let mut tx = card.transaction().map_err(card_error)?;
         Self::verify_binding(&mut tx, session)?;
@@ -279,14 +347,14 @@ impl HardwareTransport for RealHardwareTransport {
             session.decryption_fingerprint.as_deref(),
             ciphertext,
         )
-        .map_err(|err| err.to_string())
+        .map_err(card_error)
     }
 
     fn sign_cleartext(
         &self,
         session: &HardwareSessionPolicy,
         data: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String, HardwareTransportError> {
         let mut card = Self::open_card(&session.ident)?;
         let mut tx = card.transaction().map_err(card_error)?;
         Self::verify_binding(&mut tx, session)?;
@@ -297,38 +365,80 @@ impl HardwareTransport for RealHardwareTransport {
             session.signing_fingerprint.as_deref(),
             data,
         )
-        .map_err(|err| err.to_string())
+        .map_err(card_error)
     }
 }
 
 #[cfg(not(target_os = "linux"))]
 impl HardwareTransport for RealHardwareTransport {
-    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, String> {
-        Err("Hardware OpenPGP keys are not supported on this platform.".to_string())
+    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
+        Err(HardwareTransportError::Unsupported(
+            "Hardware OpenPGP keys are not supported on this platform.".to_string(),
+        ))
     }
 
-    fn verify_session(&self, _session: &HardwareSessionPolicy) -> Result<(), String> {
-        Err("Hardware OpenPGP keys are not supported on this platform.".to_string())
+    fn verify_session(
+        &self,
+        _session: &HardwareSessionPolicy,
+    ) -> Result<(), HardwareTransportError> {
+        Err(HardwareTransportError::Unsupported(
+            "Hardware OpenPGP keys are not supported on this platform.".to_string(),
+        ))
     }
 
     fn decrypt_ciphertext(
         &self,
         _session: &HardwareSessionPolicy,
         _ciphertext: &[u8],
-    ) -> Result<String, String> {
-        Err("Hardware OpenPGP keys are not supported on this platform.".to_string())
+    ) -> Result<String, HardwareTransportError> {
+        Err(HardwareTransportError::Unsupported(
+            "Hardware OpenPGP keys are not supported on this platform.".to_string(),
+        ))
     }
 
     fn sign_cleartext(
         &self,
         _session: &HardwareSessionPolicy,
         _data: &str,
-    ) -> Result<String, String> {
-        Err("Hardware OpenPGP keys are not supported on this platform.".to_string())
+    ) -> Result<String, HardwareTransportError> {
+        Err(HardwareTransportError::Unsupported(
+            "Hardware OpenPGP keys are not supported on this platform.".to_string(),
+        ))
     }
 }
 
 #[cfg(target_os = "linux")]
-fn card_error(err: impl std::fmt::Display) -> String {
-    err.to_string()
+fn card_error(err: impl std::fmt::Display) -> HardwareTransportError {
+    map_hardware_transport_message(err.to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn map_hardware_transport_message(message: String) -> HardwareTransportError {
+    let lowered = message.to_ascii_lowercase();
+
+    if lowered.contains("couldn't find card")
+        || lowered.contains("no smartcard")
+        || lowered.contains("reader error")
+        || lowered.contains("context error")
+    {
+        HardwareTransportError::TokenNotPresent(message)
+    } else if lowered.contains("password not checked")
+        || lowered.contains("authentication method blocked")
+        || lowered.contains("security status not satisfied")
+        || lowered.contains("pin invalid")
+        || lowered.contains("incorrect")
+    {
+        HardwareTransportError::IncorrectPin(message)
+    } else if lowered.contains("pin required") || lowered.contains("enter the hardware key pin") {
+        HardwareTransportError::PinRequired(message)
+    } else if lowered.contains("not transacted")
+        || lowered.contains("reset")
+        || lowered.contains("removed")
+    {
+        HardwareTransportError::TokenRemoved(message)
+    } else if lowered.contains("does not support") || lowered.contains("unsupported") {
+        HardwareTransportError::Unsupported(message)
+    } else {
+        HardwareTransportError::Other(message)
+    }
 }

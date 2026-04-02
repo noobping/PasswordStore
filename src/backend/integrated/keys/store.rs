@@ -13,8 +13,12 @@ use super::cert::{
     parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ManagedRipassoHardwareKey,
     ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };
+use super::errors::{
+    INCOMPATIBLE_PRIVATE_KEY_ERROR, LOCKED_PRIVATE_KEY_ERROR, MISSING_PRIVATE_KEY_ERROR,
+};
 use super::hardware::{
-    list_hardware_tokens, verify_hardware_session, HardwareSessionPolicy, HardwareUnlockMode,
+    list_hardware_tokens, private_key_error_from_hardware_transport_error, verify_hardware_session,
+    HardwareSessionPolicy, HardwareUnlockMode,
 };
 use crate::backend::{PasswordEntryError, PrivateKeyError};
 #[cfg(feature = "fidokey")]
@@ -38,11 +42,6 @@ use std::sync::Arc;
 use zeroize::Zeroizing;
 
 const PRIVATE_KEY_NOT_STORED_ERROR: &str = "That private key is not stored in the app.";
-const MISSING_PRIVATE_KEY_ERROR: &str =
-    "Import a private key in Preferences before using the password store.";
-const LOCKED_PRIVATE_KEY_ERROR: &str =
-    "A private key for this item is locked. Unlock it in Preferences.";
-const INCOMPATIBLE_PRIVATE_KEY_ERROR: &str = "The available private keys cannot decrypt this item.";
 #[cfg(not(feature = "fidokey"))]
 const FIDO2_PRIVATE_KEY_FEATURE_DISABLED_ERROR: &str =
     "FIDO2 private-key support is disabled in this build of Keycord.";
@@ -162,44 +161,6 @@ pub(in crate::backend::integrated) fn incompatible_private_key_error() -> String
 
 fn private_key_not_stored_error() -> String {
     PRIVATE_KEY_NOT_STORED_ERROR.to_string()
-}
-
-fn private_key_error_from_hardware_message(message: impl Into<String>) -> PrivateKeyError {
-    let message = message.into();
-    let lowered = message.to_ascii_lowercase();
-
-    if lowered.contains("couldn't find card")
-        || lowered.contains("no smartcard")
-        || lowered.contains("reader error")
-        || lowered.contains("context error")
-    {
-        PrivateKeyError::hardware_token_not_present(message)
-    } else if lowered.contains("does not match the stored")
-        || lowered.contains("does not match the hardware")
-        || lowered.contains("connect the matching hardware key")
-    {
-        PrivateKeyError::hardware_token_mismatch(message)
-    } else if lowered.contains("enter the hardware key pin") {
-        PrivateKeyError::hardware_pin_required(message)
-    } else if lowered.contains("password not checked")
-        || lowered.contains("authentication method blocked")
-        || lowered.contains("security status not satisfied")
-    {
-        PrivateKeyError::incorrect_hardware_pin(message)
-    } else if lowered.contains("not transacted")
-        || lowered.contains("reset")
-        || lowered.contains("removed")
-    {
-        PrivateKeyError::hardware_token_removed(message)
-    } else if lowered.contains("does not support")
-        || lowered.contains("cannot decrypt password store entries")
-        || lowered.contains("cannot sign git commits")
-        || lowered.contains("unsupported")
-    {
-        PrivateKeyError::unsupported_hardware_key(message)
-    } else {
-        PrivateKeyError::other(message)
-    }
 }
 
 fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
@@ -781,7 +742,8 @@ pub fn unlock_ripasso_private_key_for_session(
 
             let session =
                 HardwareSessionPolicy::from_key(hardware, cert, hardware_unlock_mode(request)?);
-            verify_hardware_session(&session).map_err(private_key_error_from_hardware_message)?;
+            verify_hardware_session(&session)
+                .map_err(private_key_error_from_hardware_transport_error)?;
             cache_unlocked_hardware_private_key(fingerprint, session)
                 .map_err(PrivateKeyError::other)?;
             Ok(entry.key)
@@ -1075,7 +1037,8 @@ fn validate_hardware_key_material(
         }
     }
 
-    let discovered = list_hardware_tokens().map_err(private_key_error_from_hardware_message)?;
+    let discovered =
+        list_hardware_tokens().map_err(private_key_error_from_hardware_transport_error)?;
     let Some(found) = discovered
         .iter()
         .find(|token| token.ident == hardware.ident)
@@ -1142,7 +1105,7 @@ pub fn import_ripasso_hardware_key_bytes(
 
 pub fn discover_ripasso_hardware_keys(
 ) -> Result<Vec<super::hardware::DiscoveredHardwareToken>, String> {
-    list_hardware_tokens()
+    list_hardware_tokens().map_err(|err| err.to_string())
 }
 
 #[cfg(feature = "fidokey")]

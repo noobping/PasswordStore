@@ -1,6 +1,10 @@
 use super::crypto::{decrypt_any_managed_entry_for_fingerprint, IntegratedCryptoContext};
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
-use super::keys::ensure_ripasso_private_key_is_ready;
+use super::keys::{
+    ensure_ripasso_private_key_is_ready, password_entry_error_from_integrated_message,
+    password_entry_write_error_from_integrated_message, password_entry_write_error_from_io,
+    INCOMPATIBLE_PRIVATE_KEY_ERROR, LOCKED_PRIVATE_KEY_ERROR, MISSING_PRIVATE_KEY_ERROR,
+};
 use super::paths::{
     cleanup_empty_store_dirs, desired_entry_file_path, entry_file_path, existing_entry_file_path,
 };
@@ -35,14 +39,11 @@ pub fn read_password_entry_with_progress(
         Ok(StoreRecipientsPrivateKeyRequirement::AllManagedKeys)
     ) {
         let required_private_key_fingerprints =
-            required_private_key_fingerprints_for_entry(store_root, label).map_err(|_| {
-                PasswordEntryError::missing_private_key(
-                    "Import a private key in Preferences before using the password store.",
-                )
-            })?;
+            required_private_key_fingerprints_for_entry(store_root, label)
+                .map_err(|_| PasswordEntryError::missing_private_key(MISSING_PRIVATE_KEY_ERROR))?;
         ensure_required_private_keys_are_ready(&required_private_key_fingerprints)?;
         let context = IntegratedCryptoContext::load_for_label(store_root, label)
-            .map_err(PasswordEntryError::from_store_message)?;
+            .map_err(password_entry_error_from_integrated_message)?;
         return context
             .decrypt_entry_with_progress(
                 &entry_path,
@@ -53,7 +54,7 @@ pub fn read_password_entry_with_progress(
                     });
                 }),
             )
-            .map_err(PasswordEntryError::from_store_message);
+            .map_err(password_entry_error_from_integrated_message);
     }
 
     if let Ok(context) = IntegratedCryptoContext::load_for_label(store_root, label) {
@@ -68,7 +69,7 @@ pub fn read_password_entry_with_progress(
                         });
                     }),
                 )
-                .map_err(PasswordEntryError::from_store_message);
+                .map_err(password_entry_error_from_integrated_message);
         }
     }
 
@@ -94,7 +95,7 @@ pub fn read_password_entry_with_progress(
 
         match decrypt_any_managed_entry_for_fingerprint(&fingerprint, &entry_path) {
             Ok(secret) => return Ok(secret),
-            Err(err) => match PasswordEntryError::from_store_message(err) {
+            Err(err) => match password_entry_error_from_integrated_message(err) {
                 PasswordEntryError::LockedPrivateKey(message) => {
                     saw_locked_key = true;
                     last_error = Some(PasswordEntryError::LockedPrivateKey(message));
@@ -110,20 +111,17 @@ pub fn read_password_entry_with_progress(
 
     if saw_locked_key {
         return Err(PasswordEntryError::locked_private_key(
-            "A private key for this item is locked. Unlock it in Preferences.",
+            LOCKED_PRIVATE_KEY_ERROR,
         ));
     }
     if saw_incompatible_key {
         return Err(PasswordEntryError::incompatible_private_key(
-            "The available private keys cannot decrypt this item.",
+            INCOMPATIBLE_PRIVATE_KEY_ERROR,
         ));
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        PasswordEntryError::missing_private_key(
-            "Import a private key in Preferences before using the password store.",
-        )
-    }))
+    Err(last_error
+        .unwrap_or_else(|| PasswordEntryError::missing_private_key(MISSING_PRIVATE_KEY_ERROR)))
 }
 
 pub fn read_password_line(store_root: &str, label: &str) -> Result<String, PasswordEntryError> {
@@ -156,9 +154,9 @@ pub fn save_password_entry_with_progress(
     report_progress: &mut dyn FnMut(PasswordEntryWriteProgress),
 ) -> Result<(), PasswordEntryWriteError> {
     let existing_entry_path = existing_entry_file_path(store_root, label)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let entry_path = desired_entry_file_path(store_root, label)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let git_message = if existing_entry_path.is_some() {
         format!("Update password for {label}")
     } else {
@@ -171,12 +169,12 @@ pub fn save_password_entry_with_progress(
     }
 
     let context = IntegratedCryptoContext::load_for_label(store_root, label)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let previous_ciphertext = existing_entry_path
         .as_ref()
         .map(fs::read)
         .transpose()
-        .map_err(|err| PasswordEntryWriteError::from_store_message(err.to_string()))?;
+        .map_err(|err| password_entry_write_error_from_integrated_message(err.to_string()))?;
     let ciphertext = context
         .encrypt_contents_with_existing_and_progress(
             contents,
@@ -188,15 +186,15 @@ pub fn save_password_entry_with_progress(
                 });
             }),
         )
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let existing_git_path = existing_entry_path
         .as_ref()
         .filter(|existing_path| **existing_path != entry_path)
         .map(|existing_path| password_entry_git_path(Path::new(store_root), existing_path))
         .transpose()
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let new_git_path = password_entry_git_path(Path::new(store_root), &entry_path)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let result = write_entry_ciphertext(&entry_path, &ciphertext)
         .and_then(|()| {
             if let Some(existing_path) = existing_entry_path
@@ -207,7 +205,7 @@ pub fn save_password_entry_with_progress(
             }
             Ok(())
         })
-        .map_err(PasswordEntryWriteError::from_store_message);
+        .map_err(password_entry_write_error_from_integrated_message);
     if result.is_ok() {
         maybe_commit_git_paths(
             store_root,
@@ -228,14 +226,14 @@ pub fn rename_password_entry(
 ) -> Result<(), PasswordEntryWriteError> {
     let commit_fingerprint = commit_identity_fingerprint_for_label(store_root, old_label);
     let old_path = existing_entry_file_path(store_root, old_label)
-        .map_err(PasswordEntryWriteError::from_store_message)?
+        .map_err(password_entry_write_error_from_integrated_message)?
         .ok_or_else(|| {
             PasswordEntryWriteError::entry_not_found(format!(
                 "Password entry '{old_label}' was not found."
             ))
         })?;
     if existing_entry_file_path(store_root, new_label)
-        .map_err(PasswordEntryWriteError::from_store_message)?
+        .map_err(password_entry_write_error_from_integrated_message)?
         .is_some()
     {
         return Err(PasswordEntryWriteError::already_exists(
@@ -243,16 +241,16 @@ pub fn rename_password_entry(
         ));
     }
     let new_path = desired_entry_file_path(store_root, new_label)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
 
-    ensure_parent_dir(&new_path).map_err(PasswordEntryWriteError::from_store_message)?;
-    fs::rename(&old_path, &new_path).map_err(|err| PasswordEntryWriteError::from_io_error(&err))?;
+    ensure_parent_dir(&new_path).map_err(password_entry_write_error_from_integrated_message)?;
+    fs::rename(&old_path, &new_path).map_err(|err| password_entry_write_error_from_io(&err))?;
     let old_git_path = password_entry_git_path(Path::new(store_root), &old_path)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let new_git_path = password_entry_git_path(Path::new(store_root), &new_path)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
     let result = cleanup_empty_store_dirs(store_root, &old_path)
-        .map_err(PasswordEntryWriteError::from_store_message);
+        .map_err(password_entry_write_error_from_integrated_message);
     if result.is_ok() {
         maybe_commit_git_paths(
             store_root,
@@ -267,17 +265,17 @@ pub fn rename_password_entry(
 pub fn delete_password_entry(store_root: &str, label: &str) -> Result<(), PasswordEntryWriteError> {
     let commit_fingerprint = commit_identity_fingerprint_for_label(store_root, label);
     let entry_path = existing_entry_file_path(store_root, label)
-        .map_err(PasswordEntryWriteError::from_store_message)?
+        .map_err(password_entry_write_error_from_integrated_message)?
         .ok_or_else(|| {
             PasswordEntryWriteError::entry_not_found(format!(
                 "Password entry '{label}' was not found."
             ))
         })?;
     let git_path = password_entry_git_path(Path::new(store_root), &entry_path)
-        .map_err(PasswordEntryWriteError::from_store_message)?;
-    fs::remove_file(&entry_path).map_err(|err| PasswordEntryWriteError::from_io_error(&err))?;
+        .map_err(password_entry_write_error_from_integrated_message)?;
+    fs::remove_file(&entry_path).map_err(|err| password_entry_write_error_from_io(&err))?;
     let result = cleanup_empty_store_dirs(store_root, &entry_path)
-        .map_err(PasswordEntryWriteError::from_store_message);
+        .map_err(password_entry_write_error_from_integrated_message);
     if result.is_ok() {
         maybe_commit_git_paths(
             store_root,

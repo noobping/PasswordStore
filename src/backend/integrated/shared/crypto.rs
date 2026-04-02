@@ -429,7 +429,7 @@ fn decrypt_ciphertext_for_fingerprint(
     ciphertext: &[u8],
 ) -> Result<String, String> {
     if let Some(session) = cached_unlocked_hardware_private_key(fingerprint)? {
-        return decrypt_with_hardware_session(&session, ciphertext);
+        return decrypt_with_hardware_session(&session, ciphertext).map_err(|err| err.to_string());
     }
 
     decrypt_ciphertext_with_crypto(crypto, ciphertext)

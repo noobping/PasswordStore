@@ -1,7 +1,7 @@
 use super::crypto::IntegratedCryptoContext;
 use super::entries::{read_password_entry, read_password_entry_with_progress};
 use super::git::{maybe_commit_git_paths, password_entry_git_path};
-use super::keys::clear_pending_fido2_enrollment;
+use super::keys::{clear_pending_fido2_enrollment, store_recipients_error_from_integrated_message};
 use super::paths::{
     collect_password_entry_files, desired_entry_file_path, ensure_store_directory,
     fido2_recipients_file_for_recipients_path, label_from_entry_path, with_updated_recipient_files,
@@ -100,10 +100,10 @@ pub fn save_store_recipients(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
-    let store_dir =
-        ensure_store_directory(store_root).map_err(StoreRecipientsError::from_store_message)?;
+    let store_dir = ensure_store_directory(store_root)
+        .map_err(store_recipients_error_from_integrated_message)?;
     let decrypted_entries = decrypted_store_entries_with_progress(&store_dir, store_root, None)
-        .map_err(StoreRecipientsError::from_store_message)?;
+        .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_contents =
         standard_recipient_file_contents(recipients.standard(), private_key_requirement);
     let fido2_recipients_contents = fido2_recipient_file_contents(recipients.fido2());
@@ -111,7 +111,7 @@ pub fn save_store_recipients(
         &recipients_contents,
         &fido2_recipients_contents,
     )
-    .map_err(StoreRecipientsError::from_store_message)?;
+    .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_path = store_dir.join(".gpg-id");
     let fido2_recipients_path = fido2_recipients_file_for_recipients_path(&recipients_path);
     let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
@@ -144,12 +144,12 @@ pub fn save_store_recipients(
             Ok(())
         },
     )
-    .map_err(StoreRecipientsError::from_store_message)?;
+    .map_err(store_recipients_error_from_integrated_message)?;
     clear_saved_fido2_enrollment_state(recipients);
 
     if should_initialize_git {
         ensure_store_git_repository(store_root)
-            .map_err(StoreRecipientsError::from_store_message)?;
+            .map_err(store_recipients_error_from_integrated_message)?;
     }
 
     maybe_commit_git_paths(
@@ -173,11 +173,11 @@ pub fn save_store_recipients_with_progress(
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
 ) -> Result<(), StoreRecipientsError> {
-    let store_dir =
-        ensure_store_directory(store_root).map_err(StoreRecipientsError::from_store_message)?;
+    let store_dir = ensure_store_directory(store_root)
+        .map_err(store_recipients_error_from_integrated_message)?;
     let decrypted_entries =
         decrypted_store_entries_with_progress(&store_dir, store_root, Some(report_progress))
-            .map_err(StoreRecipientsError::from_store_message)?;
+            .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_contents =
         standard_recipient_file_contents(recipients.standard(), private_key_requirement);
     let fido2_recipients_contents = fido2_recipient_file_contents(recipients.fido2());
@@ -185,7 +185,7 @@ pub fn save_store_recipients_with_progress(
         &recipients_contents,
         &fido2_recipients_contents,
     )
-    .map_err(StoreRecipientsError::from_store_message)?;
+    .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_path = store_dir.join(".gpg-id");
     let fido2_recipients_path = fido2_recipients_file_for_recipients_path(&recipients_path);
     let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
@@ -238,12 +238,12 @@ pub fn save_store_recipients_with_progress(
             Ok(())
         },
     )
-    .map_err(StoreRecipientsError::from_store_message)?;
+    .map_err(store_recipients_error_from_integrated_message)?;
     clear_saved_fido2_enrollment_state(recipients);
 
     if should_initialize_git {
         ensure_store_git_repository(store_root)
-            .map_err(StoreRecipientsError::from_store_message)?;
+            .map_err(store_recipients_error_from_integrated_message)?;
     }
 
     maybe_commit_git_paths(

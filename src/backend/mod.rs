@@ -5,6 +5,8 @@ mod integrated;
 #[cfg(test)]
 mod test_support;
 
+use std::path::PathBuf;
+
 pub use self::errors::PasswordEntryError;
 pub use self::errors::PrivateKeyError;
 pub use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
@@ -62,6 +64,24 @@ pub enum StoreRecipientsPrivateKeyRequirement {
     #[default]
     AnyManagedKey,
     AllManagedKeys,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum StartupPreparation {
+    Ready,
+    ManagedKeyRecovery(ManagedKeyRecovery),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ManagedKeyRecovery {
+    incompatible_paths: Vec<PathBuf>,
+    detail: String,
+}
+
+impl ManagedKeyRecovery {
+    pub(crate) fn detail(&self) -> &str {
+        &self.detail
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -208,4 +228,33 @@ pub fn store_recipients_private_key_requiring_unlock(
 
 pub fn clear_runtime_secret_state() {
     integrated::clear_integrated_runtime_secret_state();
+}
+
+pub(crate) fn prepare_startup() -> Result<StartupPreparation, String> {
+    if Preferences::new().uses_integrated_backend() {
+        match integrated::prepare_managed_private_key_storage_for_startup()? {
+            integrated::ManagedKeyStorageStartup::Ready => Ok(StartupPreparation::Ready),
+            integrated::ManagedKeyStorageStartup::RecoveryRequired(recovery) => {
+                Ok(StartupPreparation::ManagedKeyRecovery(ManagedKeyRecovery {
+                    incompatible_paths: recovery.incompatible_paths,
+                    detail: recovery.detail,
+                }))
+            }
+        }
+    } else {
+        Ok(StartupPreparation::Ready)
+    }
+}
+
+pub(crate) fn continue_after_startup_recovery(recovery: &ManagedKeyRecovery) -> Result<(), String> {
+    if !Preferences::new().uses_integrated_backend() {
+        return Ok(());
+    }
+
+    integrated::continue_after_managed_key_storage_recovery(
+        &integrated::ManagedKeyStorageRecovery {
+            incompatible_paths: recovery.incompatible_paths.clone(),
+            detail: recovery.detail.clone(),
+        },
+    )
 }

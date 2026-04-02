@@ -77,7 +77,7 @@ pub(in crate::backend::integrated) struct StoredPrivateKeyEntry {
     pub(in crate::backend::integrated) location: StoredPrivateKeyLocation,
 }
 
-fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
+pub(super) fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let data = fs::read(path).map_err(|err| err.to_string())?;
     let (cert, key) = parse_managed_private_key_bytes(&data).map_err(|err| err.to_string())?;
     Ok(StoredPrivateKeyEntry {
@@ -89,7 +89,7 @@ fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry,
     })
 }
 
-fn read_hardware_private_key_entry(dir: &Path) -> Result<StoredPrivateKeyEntry, String> {
+pub(super) fn read_hardware_private_key_entry(dir: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let manifest = read_hardware_private_key_manifest(dir)?;
     read_hardware_private_key_manifest_entry(dir, manifest)
 }
@@ -111,7 +111,7 @@ fn stored_private_key_file_paths(keys_dir: &Path) -> Result<Vec<PathBuf>, String
 }
 
 #[cfg(feature = "fidokey")]
-fn read_fido2_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
+pub(super) fn read_fido2_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
     let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
     let manifest = parse_fido2_private_key_manifest(&contents)?
         .ok_or_else(|| "That FIDO2-protected key is invalid.".to_string())?;
@@ -157,34 +157,6 @@ pub(in crate::backend::integrated) fn find_stored_private_key(
         let direct_fido2_path = fido2_dir.join(requested.to_ascii_lowercase());
         if direct_fido2_path.exists() {
             return read_fido2_private_key_entry(&direct_fido2_path);
-        }
-    }
-
-    for path in stored_private_key_file_paths(&legacy_dir)? {
-        let Ok(entry) = read_password_private_key_entry(&path) else {
-            continue;
-        };
-        if entry.key.fingerprint.eq_ignore_ascii_case(&requested) {
-            return Ok(entry);
-        }
-    }
-
-    for dir in stored_hardware_private_key_dirs(&hardware_dir)? {
-        let Ok(entry) = read_hardware_private_key_entry(&dir) else {
-            continue;
-        };
-        if entry.key.fingerprint.eq_ignore_ascii_case(&requested) {
-            return Ok(entry);
-        }
-    }
-
-    #[cfg(feature = "fidokey")]
-    for path in stored_private_key_file_paths(&ripasso_fido_keys_dir()?)? {
-        let Ok(entry) = read_fido2_private_key_entry(&path) else {
-            continue;
-        };
-        if entry.key.fingerprint.eq_ignore_ascii_case(&requested) {
-            return Ok(entry);
         }
     }
 

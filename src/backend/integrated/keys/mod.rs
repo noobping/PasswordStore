@@ -77,3 +77,7 @@ pub(in crate::backend::integrated) use self::store::{
     imported_private_key_fingerprints, load_ripasso_key_ring, load_stored_ripasso_key_ring,
     missing_private_key_error, selected_ripasso_own_fingerprint,
 };
+pub(in crate::backend) use self::store::{
+    continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
+    ManagedKeyStorageRecovery, ManagedKeyStorageStartup,
+};

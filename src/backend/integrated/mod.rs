@@ -18,6 +18,10 @@ pub use self::git::{
 #[cfg(test)]
 pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_keys;
 pub(in crate::backend) use self::keys::clear_integrated_runtime_secret_state;
+pub(in crate::backend) use self::keys::{
+    continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
+    ManagedKeyStorageRecovery, ManagedKeyStorageStartup,
+};
 #[cfg(target_os = "linux")]
 pub use self::keys::store_ripasso_private_key_bytes;
 pub use self::keys::{

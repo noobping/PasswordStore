@@ -1,4 +1,5 @@
 mod manifest;
+mod migration;
 mod paths;
 mod storage;
 mod unlock;
@@ -46,6 +47,10 @@ pub use unlock::{
 pub(in crate::backend) use paths::ripasso_keys_dir;
 #[cfg(test)]
 pub use storage::resolved_ripasso_own_fingerprint;
+pub(in crate::backend) use migration::{
+    continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
+    ManagedKeyStorageRecovery, ManagedKeyStorageStartup,
+};
 pub(in crate::backend::integrated) use storage::{
     build_ripasso_crypto_from_key_ring, imported_private_key_fingerprints, load_ripasso_key_ring,
     load_stored_ripasso_key_ring, selected_ripasso_own_fingerprint,

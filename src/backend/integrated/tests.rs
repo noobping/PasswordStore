@@ -1414,10 +1414,10 @@ fn pure_fido2_store_reads_wait_briefly_for_the_next_security_key() {
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
-fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
+fn pure_fido2_store_reads_current_any_managed_entries_with_all_fido2_recipients() {
     let env = SystemBackendTestEnv::new();
-    let first_credential = b"compat-credential-1";
-    let second_credential = b"compat-credential-2";
+    let first_credential = b"current-credential-1";
+    let second_credential = b"current-credential-2";
     let first_recipient = build_fido2_recipient_string(
         "0123456789abcdef0123456789abcdef01234567",
         "First Key",
@@ -1431,7 +1431,7 @@ fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
     )
     .expect("build second FIDO2 recipient");
 
-    let store = env.root_dir().join("fido2-compat-store");
+    let store = env.root_dir().join("fido2-current-store");
     save_store_recipients(
         store.to_string_lossy().as_ref(),
         &[first_recipient.clone(), second_recipient.clone()],
@@ -1448,8 +1448,8 @@ fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
 
     let _write_guard =
         Fido2TransportGuard::install(Arc::new(SequentialOnlyFido2Transport::new(&[
-            (first_credential.as_slice(), b"compat-secret-1".as_slice()),
-            (second_credential.as_slice(), b"compat-secret-2".as_slice()),
+            (first_credential.as_slice(), b"current-secret-1".as_slice()),
+            (second_credential.as_slice(), b"current-secret-2".as_slice()),
         ])));
     let ciphertext = encrypt_fido2_any_managed_bundle_with_progress(
         &[first_binding, second_binding],
@@ -1458,21 +1458,21 @@ fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
         None,
         None,
     )
-    .expect("build legacy any-managed FIDO2 entry");
+    .expect("build current any-managed FIDO2 entry");
     let entry_path = store.join("team/service.gpg");
     fs::create_dir_all(entry_path.parent().expect("entry parent")).expect("create entry parent");
     fs::write(&entry_path, ciphertext).expect("write legacy entry");
     drop(_write_guard);
 
     let read_transport = Arc::new(RecordingSequentialFido2Transport::new(&[
-        (first_credential.as_slice(), b"compat-secret-1".as_slice()),
-        (second_credential.as_slice(), b"compat-secret-2".as_slice()),
+        (first_credential.as_slice(), b"current-secret-1".as_slice()),
+        (second_credential.as_slice(), b"current-secret-2".as_slice()),
     ]));
     let _read_guard = Fido2TransportGuard::install(read_transport.clone());
 
     assert_eq!(
         read_password_entry(store.to_string_lossy().as_ref(), "team/service")
-            .expect("read legacy entry with all FIDO2 recipients"),
+            .expect("read current any-managed entry with all FIDO2 recipients"),
         "supersecret\nusername: alice"
     );
     assert_eq!(

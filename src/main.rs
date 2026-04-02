@@ -32,7 +32,10 @@ use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
 use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
 use crate::support::runtime::handle_unsupported_host_command_invocation;
-use crate::support::startup::{fatal_startup_error, show_startup_error_dialog};
+use crate::support::startup::{
+    fatal_startup_error, prompt_startup_recovery_dialog, show_startup_error_dialog,
+    StartupRecoveryChoice,
+};
 use crate::window::navigation::APP_WINDOW_TITLE;
 
 use adw::gio::SimpleAction;
@@ -79,6 +82,30 @@ fn main() -> ExitCode {
     };
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);
+
+    match backend::prepare_startup() {
+        Ok(backend::StartupPreparation::Ready) => {}
+        Ok(backend::StartupPreparation::ManagedKeyRecovery(recovery)) => {
+            let choice = prompt_startup_recovery_dialog(APP_WINDOW_TITLE, recovery.detail());
+            if choice == StartupRecoveryChoice::Quit {
+                return 0.into();
+            }
+            if let Err(err) = backend::continue_after_startup_recovery(&recovery) {
+                return fatal_startup_error(
+                    APP_WINDOW_TITLE,
+                    "Failed to recover incompatible managed private-key data.",
+                    err,
+                );
+            }
+        }
+        Err(err) => {
+            return fatal_startup_error(
+                APP_WINDOW_TITLE,
+                "Failed to prepare managed private-key storage.",
+                err,
+            );
+        }
+    }
 
     // Create the application
     let app = Application::builder()

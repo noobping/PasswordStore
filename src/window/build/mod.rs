@@ -375,15 +375,15 @@ pub fn create_main_window(
     let store_recipients_page_state =
         build_store_recipients_page_state(&widgets, &store_git_page_state);
     let window_navigation_state = window_navigation_state(&widgets);
-    let docs_page_state = DocumentationPageState::new(DocumentationPageWidgets {
-        navigation: &window_navigation_state,
-        page: &widgets.docs_page,
-        search_entry: &widgets.docs_search_entry,
-        list: &widgets.docs_list,
-        detail_page: &widgets.docs_detail_page,
-        detail_scrolled: &widgets.docs_detail_scrolled,
-        detail_box: &widgets.docs_detail_box,
-    });
+    let docs_page_state = DocumentationPageState::new(DocumentationPageWidgets::new(
+        &window_navigation_state,
+        &widgets.docs_page,
+        &widgets.docs_search_entry,
+        &widgets.docs_list,
+        &widgets.docs_detail_page,
+        &widgets.docs_detail_scrolled,
+        &widgets.docs_detail_box,
+    ));
     let tools_page_state = ToolsPageState::new(ToolsPageWidgets {
         window: &widgets.window,
         navigation: &window_navigation_state,

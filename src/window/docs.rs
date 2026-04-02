@@ -130,6 +130,28 @@ pub struct DocumentationPageWidgets<'a> {
     pub detail_box: &'a GtkBox,
 }
 
+impl<'a> DocumentationPageWidgets<'a> {
+    pub fn new(
+        navigation: &'a crate::window::navigation::WindowNavigationState,
+        page: &'a NavigationPage,
+        search_entry: &'a SearchEntry,
+        list: &'a ListBox,
+        detail_page: &'a NavigationPage,
+        detail_scrolled: &'a ScrolledWindow,
+        detail_box: &'a GtkBox,
+    ) -> Self {
+        Self {
+            navigation,
+            page,
+            search_entry,
+            list,
+            detail_page,
+            detail_scrolled,
+            detail_box,
+        }
+    }
+}
+
 impl DocumentationPageState {
     pub fn new(widgets: DocumentationPageWidgets<'_>) -> Self {
         let state = Self {

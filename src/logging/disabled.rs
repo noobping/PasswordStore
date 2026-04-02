@@ -30,19 +30,29 @@ impl CommandLogOptions {
     };
 }
 
+fn consume_command_log_options(options: CommandLogOptions) {
+    let _ = (
+        options.redact_stdout,
+        options.redact_stdin,
+        options.accepted_exit_codes,
+    );
+}
+
 pub fn run_command_output(
     cmd: &mut Command,
     _context: &str,
-    _options: CommandLogOptions,
+    options: CommandLogOptions,
 ) -> io::Result<Output> {
+    consume_command_log_options(options);
     cmd.output()
 }
 
 pub fn run_command_status(
     cmd: &mut Command,
     _context: &str,
-    _options: CommandLogOptions,
+    options: CommandLogOptions,
 ) -> io::Result<ExitStatus> {
+    consume_command_log_options(options);
     cmd.status()
 }
 
@@ -50,8 +60,9 @@ pub fn run_command_with_input(
     cmd: &mut Command,
     _context: &str,
     input: &str,
-    _options: CommandLogOptions,
+    options: CommandLogOptions,
 ) -> Result<Output, String> {
+    consume_command_log_options(options);
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());

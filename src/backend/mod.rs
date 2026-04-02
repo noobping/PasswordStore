@@ -205,3 +205,7 @@ pub fn store_recipients_private_key_requiring_unlock(
         || host::store_recipients_private_key_requiring_unlock(store_root),
     )
 }
+
+pub fn clear_runtime_secret_state() {
+    integrated::clear_integrated_runtime_secret_state();
+}

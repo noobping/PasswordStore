@@ -112,6 +112,10 @@ fn main() -> ExitCode {
         });
     }
 
+    app.connect_shutdown(|_| {
+        backend::clear_runtime_secret_state();
+    });
+
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
         let query = take_string_data(app, "query");

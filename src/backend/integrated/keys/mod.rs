@@ -14,6 +14,7 @@ pub(in crate::backend::integrated) use self::cache::cached_unlocked_hardware_pri
 pub(in crate::backend::integrated) use self::cache::cached_unlocked_ripasso_private_key;
 #[cfg(test)]
 pub(in crate::backend) use self::cache::clear_cached_unlocked_ripasso_private_keys;
+pub(in crate::backend) use self::cache::clear_integrated_runtime_secret_state;
 pub(in crate::backend::integrated) use self::cache::clear_pending_fido2_enrollment;
 pub(in crate::backend::integrated) use self::cert::fingerprint_from_string;
 #[cfg(test)]

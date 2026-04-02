@@ -305,10 +305,16 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
     Ok(())
 }
 
-#[cfg(test)]
-pub(in crate::backend) fn clear_cached_unlocked_ripasso_private_keys() {
+pub(in crate::backend) fn clear_integrated_runtime_secret_state() {
     with_unlocked_ripasso_keys_write(std::collections::HashMap::clear);
     with_unlocked_hardware_keys_write(std::collections::HashMap::clear);
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     with_cached_fido2_pins_write(std::collections::HashMap::clear);
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     with_pending_fido2_enrollments_write(std::collections::HashMap::clear);
+}
+
+#[cfg(test)]
+pub(in crate::backend) fn clear_cached_unlocked_ripasso_private_keys() {
+    clear_integrated_runtime_secret_state();
 }

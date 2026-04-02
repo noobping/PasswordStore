@@ -5,49 +5,65 @@
 
 use super::crypto::IntegratedCryptoContext;
 use super::entries::{
-    delete_password_entry, password_entry_fido2_recipient_count, password_entry_is_readable,
-    read_password_entry, read_password_entry_with_progress, rename_password_entry,
-    save_password_entry, save_password_entry_with_progress,
+    delete_password_entry, password_entry_is_readable, read_password_entry, rename_password_entry,
+    save_password_entry,
+};
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use super::entries::{
+    password_entry_fido2_recipient_count, read_password_entry_with_progress,
+    save_password_entry_with_progress,
 };
 use super::git::{
     git_commit_private_key_requiring_unlock_for_entry,
     git_commit_private_key_requiring_unlock_for_store_recipients as git_commit_private_key_requiring_unlock_for_split_store_recipients,
 };
+#[cfg(feature = "fidokey")]
+use super::keys::generate_fido2_private_key;
 use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
-    create_fido2_store_recipient, direct_binding_from_store_recipient,
-    discover_ripasso_hardware_keys, encrypt_fido2_any_managed_bundle_with_progress,
-    ensure_ripasso_private_key_is_ready, generate_fido2_private_key, generate_ripasso_private_key,
-    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys, parse_managed_private_key_bytes,
-    prepare_managed_private_key_bytes, remove_ripasso_private_key, reset_fido2_transport_for_tests,
+    discover_ripasso_hardware_keys, ensure_ripasso_private_key_is_ready,
+    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
     reset_hardware_transport_for_tests, resolved_ripasso_own_fingerprint, ripasso_keys_dir,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    set_fido2_transport_for_tests, set_hardware_transport_for_tests,
-    store_ripasso_hardware_key_bytes, unlock_fido2_store_recipient_for_session,
-    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, Fido2AssertionOutput,
-    Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError, HardwareSessionPolicy,
+    set_hardware_transport_for_tests, store_ripasso_hardware_key_bytes,
+    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, HardwareSessionPolicy,
     HardwareTransport, HardwareTransportError, ManagedRipassoHardwareKey,
     ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use super::keys::{
+    create_fido2_store_recipient, direct_binding_from_store_recipient,
+    encrypt_fido2_any_managed_bundle_with_progress, reset_fido2_transport_for_tests,
+    set_fido2_transport_for_tests, unlock_fido2_store_recipient_for_session, Fido2AssertionOutput,
+    Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError,
+};
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use super::store::save_store_recipients_with_progress as save_split_store_recipients_with_progress;
 use super::store::{
     save_store_recipients as save_split_store_recipients,
-    save_store_recipients_with_progress as save_split_store_recipients_with_progress,
     store_recipients_private_key_requiring_unlock,
 };
 use crate::backend::{
-    test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryReadProgress,
-    PasswordEntryWriteError, PasswordEntryWriteProgress, PrivateKeyError, StoreRecipientsError,
-    StoreRecipientsPrivateKeyRequirement, StoreRecipientsSaveProgress, StoreRecipientsSaveStage,
+    test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryWriteError,
+    PrivateKeyError, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
 };
-use crate::fido2_recipient::{
-    build_fido2_recipient_string, is_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME,
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use crate::backend::{
+    PasswordEntryReadProgress, PasswordEntryWriteProgress, StoreRecipientsSaveProgress,
+    StoreRecipientsSaveStage,
 };
+#[cfg(feature = "fidokey")]
+use crate::fido2_recipient::is_fido2_recipient_string;
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use crate::fido2_recipient::{build_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME};
 use crate::preferences::Preferences;
 use crate::store::recipients::split_store_recipients;
 use crate::support::git::has_git_repository;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, parse::Parse, serialize::Serialize};
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -102,6 +118,7 @@ fn save_store_recipients(
     save_split_store_recipients(store_root, &recipients, private_key_requirement)
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn save_store_recipients_with_progress(
     store_root: &str,
     recipients: &[String],
@@ -211,12 +228,14 @@ impl Drop for HardwareTransportGuard {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[derive(Default)]
 struct MockFido2Transport {
     enrollments: Mutex<Vec<Result<Fido2Enrollment, Fido2TransportError>>>,
     assertions: Mutex<Vec<Result<Fido2AssertionOutput, Fido2TransportError>>>,
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl MockFido2Transport {
     fn with_enrollment_result(
         mut self,
@@ -256,6 +275,7 @@ impl MockFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Fido2Transport for MockFido2Transport {
     fn enroll_hmac_secret(
         &self,
@@ -280,17 +300,20 @@ impl Fido2Transport for MockFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 struct SequentialOnlyFido2Transport {
     state: Mutex<SequentialOnlyFido2TransportState>,
     credentials: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct SequentialOnlyFido2TransportState {
     active_calls: usize,
     poisoned: bool,
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl SequentialOnlyFido2Transport {
     fn new(credentials: &[(&[u8], &[u8])]) -> Self {
         Self {
@@ -303,6 +326,7 @@ impl SequentialOnlyFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Fido2Transport for SequentialOnlyFido2Transport {
     fn enroll_hmac_secret(
         &self,
@@ -356,12 +380,14 @@ impl Fido2Transport for SequentialOnlyFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 struct RecordingSequentialFido2Transport {
     state: Mutex<SequentialOnlyFido2TransportState>,
     credentials: Vec<(Vec<u8>, Vec<u8>)>,
     observed_credentials: Mutex<Vec<Vec<u8>>>,
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl RecordingSequentialFido2Transport {
     fn new(credentials: &[(&[u8], &[u8])]) -> Self {
         Self {
@@ -382,6 +408,7 @@ impl RecordingSequentialFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Fido2Transport for RecordingSequentialFido2Transport {
     fn enroll_hmac_secret(
         &self,
@@ -440,6 +467,7 @@ impl Fido2Transport for RecordingSequentialFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 struct MisleadingMultiDeviceFido2Transport {
     state: Mutex<SequentialOnlyFido2TransportState>,
     first_label: Fido2DeviceLabel,
@@ -452,6 +480,7 @@ struct MisleadingMultiDeviceFido2Transport {
     observed: Mutex<Vec<(Vec<u8>, String)>>,
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl MisleadingMultiDeviceFido2Transport {
     fn new(
         first_credential: &[u8],
@@ -491,6 +520,7 @@ impl MisleadingMultiDeviceFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Fido2Transport for MisleadingMultiDeviceFido2Transport {
     fn enroll_hmac_secret(
         &self,
@@ -573,6 +603,7 @@ impl Fido2Transport for MisleadingMultiDeviceFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 struct DelayedSecondKeyFido2Transport {
     state: Mutex<SequentialOnlyFido2TransportState>,
     first_credential: Vec<u8>,
@@ -584,6 +615,7 @@ struct DelayedSecondKeyFido2Transport {
     observed_credentials: Mutex<Vec<Vec<u8>>>,
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl DelayedSecondKeyFido2Transport {
     fn new(
         first_credential: &[u8],
@@ -612,6 +644,7 @@ impl DelayedSecondKeyFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Fido2Transport for DelayedSecondKeyFido2Transport {
     fn enroll_hmac_secret(
         &self,
@@ -680,8 +713,10 @@ impl Fido2Transport for DelayedSecondKeyFido2Transport {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 struct Fido2TransportGuard;
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Fido2TransportGuard {
     fn install(transport: Arc<dyn Fido2Transport>) -> Self {
         set_fido2_transport_for_tests(transport);
@@ -689,12 +724,14 @@ impl Fido2TransportGuard {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 impl Drop for Fido2TransportGuard {
     fn drop(&mut self) {
         reset_fido2_transport_for_tests();
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn mock_fido2_enrollment(secret: &[u8]) -> Fido2Enrollment {
     Fido2Enrollment {
         credential_id: b"mock-credential-id".to_vec(),
@@ -708,6 +745,7 @@ fn mock_fido2_enrollment(secret: &[u8]) -> Fido2Enrollment {
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn mock_fido2_enrollment_with_credential(credential_id: &[u8], secret: &[u8]) -> Fido2Enrollment {
     Fido2Enrollment {
         credential_id: credential_id.to_vec(),
@@ -721,6 +759,7 @@ fn mock_fido2_enrollment_with_credential(credential_id: &[u8], secret: &[u8]) ->
     }
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn mock_fido2_assertion(secret: &[u8]) -> Fido2AssertionOutput {
     Fido2AssertionOutput {
         hmac_secret: secret.to_vec(),
@@ -1146,6 +1185,7 @@ fn removing_fido2_private_keys_removes_the_stored_key() {
         .any(|key| key.fingerprint == imported.fingerprint));
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_recipients_can_retry_after_pin_required() {
     let _env = SystemBackendTestEnv::new();
@@ -1168,6 +1208,7 @@ fn pure_fido2_recipients_can_retry_after_pin_required() {
         .expect("unlock FIDO2 recipient with PIN");
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_store_reads_require_all_fido2_recipients_in_order() {
     let env = SystemBackendTestEnv::new();
@@ -1237,6 +1278,7 @@ fn pure_fido2_store_reads_require_all_fido2_recipients_in_order() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_store_reads_can_fall_through_to_the_second_device_for_the_next_key() {
     let env = SystemBackendTestEnv::new();
@@ -1306,6 +1348,7 @@ fn pure_fido2_store_reads_can_fall_through_to_the_second_device_for_the_next_key
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_store_reads_wait_briefly_for_the_next_security_key() {
     let env = SystemBackendTestEnv::new();
@@ -1370,6 +1413,7 @@ fn pure_fido2_store_reads_wait_briefly_for_the_next_security_key() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
     let env = SystemBackendTestEnv::new();
@@ -1438,6 +1482,7 @@ fn pure_fido2_store_reads_old_any_managed_entries_with_all_fido2_recipients() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_store_can_add_a_second_recipient_without_parallel_reencrypt_access() {
     let env = SystemBackendTestEnv::new();
@@ -1497,6 +1542,7 @@ fn pure_fido2_store_can_add_a_second_recipient_without_parallel_reencrypt_access
     assert!(fido2_lines.contains(second_recipient.as_str()));
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn pure_fido2_store_keeps_a_newly_enrolled_second_recipient_after_save() {
     let env = SystemBackendTestEnv::new();
@@ -1583,6 +1629,7 @@ fn pure_fido2_store_keeps_a_newly_enrolled_second_recipient_after_save() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn single_fido2_recipient_entries_use_the_security_key_directly() {
     let env = SystemBackendTestEnv::new();
@@ -1631,6 +1678,7 @@ fn single_fido2_recipient_entries_use_the_security_key_directly() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn password_entry_fido2_usage_detection_matches_selected_recipients() {
     let env = SystemBackendTestEnv::new();
@@ -1660,6 +1708,7 @@ fn password_entry_fido2_usage_detection_matches_selected_recipients() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn password_entry_fido2_recipient_count_matches_multiple_selected_security_keys() {
     let env = SystemBackendTestEnv::new();
@@ -1693,6 +1742,7 @@ fn password_entry_fido2_recipient_count_matches_multiple_selected_security_keys(
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn multi_fido2_password_saves_report_step_progress() {
     let env = SystemBackendTestEnv::new();
@@ -1752,6 +1802,7 @@ fn multi_fido2_password_saves_report_step_progress() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn multi_fido2_password_reads_report_step_progress() {
     let env = SystemBackendTestEnv::new();
@@ -1837,6 +1888,7 @@ fn multi_fido2_password_reads_report_step_progress() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn store_recipients_fido2_rewrites_report_progress() {
     let env = SystemBackendTestEnv::new();
@@ -1925,6 +1977,7 @@ fn store_recipients_fido2_rewrites_report_progress() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn all_keys_mode_can_layer_a_fido2_security_key() {
     let env = SystemBackendTestEnv::new();
@@ -1985,6 +2038,7 @@ fn all_keys_mode_can_layer_a_fido2_security_key() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnecting_them() {
     let env = SystemBackendTestEnv::new();
@@ -2059,6 +2113,7 @@ fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnectin
         .any(|line| line.contains(second_fido.as_str())));
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn save_password_entry_preserves_existing_fido2_recipients_without_reconnecting_them() {
     let env = SystemBackendTestEnv::new();
@@ -2839,6 +2894,7 @@ fn integrated_backend_commits_without_signature_when_private_key_is_locked() {
         .expect("inspect commit headers"));
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn integrated_backend_commits_pure_fido2_store_changes_without_signature() {
     let env = SystemBackendTestEnv::new();
@@ -3114,6 +3170,7 @@ fn git_commit_unlock_helper_detects_a_locked_recipients_signing_key() {
     );
 }
 
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
 fn git_commit_unlock_helper_skips_pure_fido2_store_signing() {
     let env = SystemBackendTestEnv::new();

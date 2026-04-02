@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(dead_code))]
+
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{parse_fido2_recipient_string, Fido2StoreRecipient};
 #[cfg(test)]

@@ -59,7 +59,7 @@ mod tests {
     fn missing_entries_do_not_trigger_a_backend_switch() {
         assert!(!should_switch_to_integrated_backend(
             false,
-            &PasswordEntryError::from_store_message("item was not found")
+            &PasswordEntryError::EntryNotFound("item was not found".to_string())
         ));
     }
 }

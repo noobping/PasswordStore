@@ -43,7 +43,7 @@ pub(in crate::backend::integrated) use self::fido2::{
     reencrypt_fido2_any_managed_bundle_with_progress, Fido2DirectBinding, Fido2ReadProgress,
     Fido2WriteProgress,
 };
-#[cfg(test)]
+#[cfg(all(test, any(feature = "fidostore", feature = "fidokey")))]
 pub(in crate::backend::integrated) use self::fido2::{
     reset_fido2_transport_for_tests, set_fido2_transport_for_tests, Fido2AssertionOutput,
     Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError,

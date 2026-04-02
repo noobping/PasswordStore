@@ -1,3 +1,9 @@
+mod legacy;
+
+use self::legacy::{
+    password_entry_error_from_host_message, password_entry_write_error_from_host_message,
+    store_recipients_error_from_host_message,
+};
 #[cfg(target_os = "linux")]
 use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
@@ -48,7 +54,7 @@ pub(super) fn read_password_entry_with_progress(
     label: &str,
 ) -> Result<String, PasswordEntryError> {
     let output = read_entry_output(store_root, label, "Read password entry")
-        .map_err(PasswordEntryError::from_store_message)?;
+        .map_err(password_entry_error_from_host_message)?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -57,7 +63,7 @@ pub(super) fn read_password_line(
     label: &str,
 ) -> Result<String, PasswordEntryError> {
     let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
-        .map_err(PasswordEntryError::from_store_message)?;
+        .map_err(password_entry_error_from_host_message)?;
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .next()
@@ -101,10 +107,10 @@ pub(super) fn save_password_entry_with_progress(
             cmd.arg(label);
         },
     )
-    .map_err(PasswordEntryWriteError::from_store_message)?;
+    .map_err(password_entry_write_error_from_host_message)?;
     ensure_success(output, "pass insert failed")
         .map(|_| ())
-        .map_err(PasswordEntryWriteError::from_store_message)
+        .map_err(password_entry_write_error_from_host_message)
 }
 
 pub(super) fn rename_password_entry(
@@ -120,10 +126,10 @@ pub(super) fn rename_password_entry(
             cmd.arg("mv").arg(old_label).arg(new_label);
         },
     )
-    .map_err(PasswordEntryWriteError::from_store_message)?;
+    .map_err(password_entry_write_error_from_host_message)?;
     ensure_success(output, "pass mv failed")
         .map(|_| ())
-        .map_err(PasswordEntryWriteError::from_store_message)
+        .map_err(password_entry_write_error_from_host_message)
 }
 
 pub(super) fn delete_password_entry(
@@ -138,10 +144,10 @@ pub(super) fn delete_password_entry(
             cmd.arg("rm").arg("-rf").arg(label);
         },
     )
-    .map_err(PasswordEntryWriteError::from_store_message)?;
+    .map_err(password_entry_write_error_from_host_message)?;
     ensure_success(output, "pass rm failed")
         .map(|_| ())
-        .map_err(PasswordEntryWriteError::from_store_message)
+        .map_err(password_entry_write_error_from_host_message)
 }
 
 pub(super) fn save_store_recipients(
@@ -173,11 +179,11 @@ pub(super) fn save_store_recipients_with_progress(
             cmd.arg("init").args(recipients.standard());
         },
     )
-    .map_err(StoreRecipientsError::from_store_message)?;
-    ensure_success(output, "pass init failed").map_err(StoreRecipientsError::from_store_message)?;
+    .map_err(store_recipients_error_from_host_message)?;
+    ensure_success(output, "pass init failed").map_err(store_recipients_error_from_host_message)?;
     if should_initialize_git {
         ensure_store_git_repository(store_root)
-            .map_err(StoreRecipientsError::from_store_message)?;
+            .map_err(store_recipients_error_from_host_message)?;
     }
     Ok(())
 }

@@ -6,6 +6,7 @@ use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::build_fido2_recipient_string;
 use crate::fido2_recipient::{parse_fido2_recipient_string, Fido2StoreRecipient};
 use rand::random;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::sync::mpsc;
@@ -936,7 +937,7 @@ fn derive_direct_hmac_assertion(
         credential_id,
         salt,
         excluded_devices,
-        cached_pin.as_deref(),
+        cached_pin.as_ref().map(|pin| pin.expose_secret()),
     )
     .map_err(|err| direct_fido2_store_message(fingerprint, err))
 }
@@ -950,13 +951,13 @@ fn should_retry_direct_hmac_error(err: &Fido2TransportError) -> bool {
     )
 }
 
-fn cached_pin_string(fingerprint: &str) -> Result<Option<String>, String> {
+fn cached_pin_string(fingerprint: &str) -> Result<Option<SecretString>, String> {
     let Some(pin) = cached_fido2_pin(fingerprint)? else {
         return Ok(None);
     };
     let text = std::str::from_utf8(pin.as_slice())
         .map_err(|err| format!("Stored FIDO2 PIN is not valid UTF-8: {err}"))?;
-    Ok(Some(text.to_string()))
+    Ok(Some(SecretString::from(text)))
 }
 
 #[cfg(feature = "fidokey")]
@@ -982,7 +983,7 @@ pub(in crate::backend::integrated) fn unlock_fido2_private_key_material_for_sess
                     "Enter the FIDO2 security key PIN.",
                 ));
             }
-            Some(trimmed.to_string())
+            Some(SecretString::from(trimmed))
         }
         None => cached_pin_string(&envelope.fingerprint).map_err(PrivateKeyError::other)?,
     };
@@ -1000,7 +1001,7 @@ pub(in crate::backend::integrated) fn unlock_fido2_private_key_material_for_sess
             &credential_id,
             &hmac_salt,
             &excluded_devices,
-            resolved_pin.as_deref(),
+            resolved_pin.as_ref().map(|pin| pin.expose_secret()),
         )
         .map_err(private_key_error_from_fido2_error)?;
         let kek = derive_kek(&assertion.hmac_secret, &envelope.fingerprint, &hmac_salt)?;
@@ -1012,7 +1013,7 @@ pub(in crate::backend::integrated) fn unlock_fido2_private_key_material_for_sess
             &payload_ciphertext,
         ) {
             Ok(plaintext) => {
-                if let Some(pin) = resolved_pin.as_deref() {
+                if let Some(pin) = resolved_pin.as_ref().map(|pin| pin.expose_secret()) {
                     super::cache::cache_fido2_pin(&envelope.fingerprint, pin)
                         .map_err(PrivateKeyError::other)?;
                 }

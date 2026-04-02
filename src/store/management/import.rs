@@ -23,6 +23,7 @@ use adw::{
     ActionRow, ApplicationWindow, ComboRow, EntryRow, NavigationPage, PasswordEntryRow, StatusPage,
     Toast, ToastOverlay,
 };
+use secrecy::SecretString;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -397,7 +398,7 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
                 store_root,
                 source,
                 source_path: state.source_path.borrow().clone(),
-                source_password: state.source_password_row.text().to_string(),
+                source_password: SecretString::from(state.source_password_row.text().as_str()),
                 target_path: normalize_optional_text(&state.target_path_row.text()),
             };
             start_pass_import(&state, request);
@@ -408,7 +409,8 @@ pub fn initialize_store_import_page(state: &StoreImportPageState) {
 fn finish_pass_import(
     state: &StoreImportPageState,
     result: Result<(), String>,
-    request: &PassImportRequest,
+    store_root: &str,
+    source: &str,
 ) {
     set_store_import_loading(state, false);
 
@@ -423,7 +425,7 @@ fn finish_pass_import(
         Err(err) => {
             log_error(format!(
                 "Failed to import passwords into '{}' from '{}': {err}",
-                request.store_root, request.source
+                store_root, source
             ));
             state
                 .overlay
@@ -438,11 +440,12 @@ fn start_pass_import(state: &StoreImportPageState, request: PassImportRequest) {
     let state_for_disconnect = state.clone();
     let store_for_error = request.store_root.clone();
     let source_for_error = request.source.clone();
-    let request_for_result = request.clone();
+    let store_for_result = store_for_error.clone();
+    let source_for_result = source_for_error.clone();
     spawn_result_task(
         move || run_pass_import(&request),
         move |result| {
-            finish_pass_import(&state, result, &request_for_result);
+            finish_pass_import(&state, result, &store_for_result, &source_for_result);
         },
         move || {
             set_store_import_loading(&state_for_disconnect, false);

@@ -1,4 +1,5 @@
 use crate::backend::PrivateKeyError;
+use secrecy::SecretString;
 use sequoia_openpgp::{
     cert::amalgamation::key::PrimaryKey, crypto::Password, parse::Parse, Cert, Fingerprint, Packet,
 };
@@ -34,12 +35,12 @@ pub struct ManagedRipassoPrivateKey {
     pub hardware: Option<ManagedRipassoHardwareKey>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum PrivateKeyUnlockRequest {
-    Password(String),
-    HardwarePin(String),
+    Password(SecretString),
+    HardwarePin(SecretString),
     HardwareExternal,
-    Fido2(Option<String>),
+    Fido2(Option<SecretString>),
 }
 
 impl ManagedRipassoPrivateKey {

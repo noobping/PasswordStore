@@ -21,6 +21,7 @@ use crate::support::validation::validate_email_address;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::prelude::*;
 use adw::Toast;
+use secrecy::{ExposeSecret, SecretString};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -28,11 +29,11 @@ const PRIVATE_KEY_GENERATION_TITLE: &str = "Generate private key";
 const PRIVATE_KEY_GENERATION_SUBTITLE: &str =
     "Create a password-protected private key for password stores.";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct PrivateKeyGenerationRequest {
     name: String,
     email: String,
-    passphrase: String,
+    passphrase: SecretString,
 }
 
 fn validate_name_and_email(name: &str, email: &str) -> Result<(String, String), &'static str> {
@@ -64,7 +65,7 @@ fn validate_private_key_generation_request(
     Ok(PrivateKeyGenerationRequest {
         name,
         email,
-        passphrase: passphrase.to_string(),
+        passphrase: SecretString::from(passphrase),
     })
 }
 
@@ -135,7 +136,13 @@ fn start_private_key_generation(
     let state = state.clone();
     let state_for_disconnect = state.clone();
     spawn_result_task(
-        move || generate_ripasso_private_key(&request.name, &request.email, &request.passphrase),
+        move || {
+            generate_ripasso_private_key(
+                &request.name,
+                &request.email,
+                request.passphrase.expose_secret(),
+            )
+        },
         move |result| {
             finish_private_key_generation(&state, result);
         },
@@ -166,7 +173,7 @@ fn finish_fido2_private_key_generation(
     }
 }
 
-fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Option<String>) {
+fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Option<SecretString>) {
     if !ensure_standard_recipient_actions_allowed(state) {
         return;
     }
@@ -180,10 +187,9 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
     ));
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
-    let pin_for_worker = pin.clone();
     let pin_was_supplied = pin.is_some();
     spawn_result_task(
-        move || generate_fido2_private_key(pin_for_worker.as_deref()),
+        move || generate_fido2_private_key(pin.as_ref().map(|pin| pin.expose_secret())),
         move |result| {
             progress_dialog.force_close();
             match result {

@@ -1,14 +1,15 @@
 use crate::logging::{run_command_output, run_command_with_input, CommandLogOptions};
 use crate::preferences::Preferences;
 use crate::support::runtime::require_host_command_features;
+use secrecy::{ExposeSecret, SecretString};
 use std::process::{Command, Output};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct PassImportRequest {
     pub store_root: String,
     pub source: String,
     pub source_path: Option<String>,
-    pub source_password: String,
+    pub source_password: SecretString,
     pub target_path: Option<String>,
 }
 
@@ -97,8 +98,8 @@ pub fn normalize_optional_text(text: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-fn pass_import_stdin(password: &str) -> String {
-    format!("{password}\n")
+fn pass_import_stdin(password: &str) -> SecretString {
+    SecretString::from(format!("{password}\n"))
 }
 
 pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
@@ -120,10 +121,11 @@ pub fn available_pass_import_sources() -> Result<Vec<String>, String> {
 
 pub fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
     require_host_command_features()?;
+    let stdin = pass_import_stdin(request.source_password.expose_secret());
     let output = run_store_pass_command_with_input(
         &request.store_root,
         "Import passwords with pass import",
-        &pass_import_stdin(&request.source_password),
+        stdin.expose_secret(),
         |cmd| {
             cmd.arg("import");
             if let Some(target_path) = &request.target_path {
@@ -149,6 +151,7 @@ mod tests {
         normalize_optional_text, parse_import_sources, pass_import_stdin,
         strip_ansi_escape_sequences,
     };
+    use secrecy::ExposeSecret;
 
     #[test]
     fn ansi_sequences_are_removed_from_import_output() {
@@ -180,7 +183,7 @@ mod tests {
 
     #[test]
     fn pass_import_stdin_keeps_password_exact_and_ends_with_newline() {
-        assert_eq!(pass_import_stdin(""), "\n");
-        assert_eq!(pass_import_stdin(" secret "), " secret \n");
+        assert_eq!(pass_import_stdin("").expose_secret(), "\n");
+        assert_eq!(pass_import_stdin(" secret ").expose_secret(), " secret \n");
     }
 }

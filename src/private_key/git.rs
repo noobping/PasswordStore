@@ -52,14 +52,8 @@ fn start_private_key_unlock_for_git_commit(
     let fingerprint_for_failure = fingerprint.clone();
     let after_unlock_attempt_for_result = after_unlock_attempt.clone();
     let after_unlock_attempt_for_disconnect = after_unlock_attempt.clone();
-    let request_for_worker = request.clone();
     spawn_result_task(
-        move || {
-            unlock_ripasso_private_key_for_session(
-                &fingerprint_for_worker,
-                request_for_worker.clone(),
-            )
-        },
+        move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request),
         move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
             Ok(_) => {
                 after_unlock_attempt_for_result();

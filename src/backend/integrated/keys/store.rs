@@ -23,6 +23,7 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::secure_fs::{create_private_file, ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
+use secrecy::{ExposeSecret, SecretString};
 use sequoia_openpgp::{
     cert::CertBuilder,
     crypto::Password,
@@ -638,7 +639,9 @@ pub fn ripasso_private_key_requires_session_unlock(fingerprint: &str) -> Result<
     }
 }
 
-fn password_unlock_request(request: PrivateKeyUnlockRequest) -> Result<String, PrivateKeyError> {
+fn password_unlock_request(
+    request: PrivateKeyUnlockRequest,
+) -> Result<SecretString, PrivateKeyError> {
     match request {
         PrivateKeyUnlockRequest::Password(passphrase) => Ok(passphrase),
         PrivateKeyUnlockRequest::HardwarePin(_)
@@ -654,7 +657,7 @@ fn hardware_unlock_mode(
 ) -> Result<HardwareUnlockMode, PrivateKeyError> {
     match request {
         PrivateKeyUnlockRequest::HardwarePin(pin) => {
-            let trimmed = pin.trim();
+            let trimmed = pin.expose_secret().trim();
             if trimmed.is_empty() {
                 return Err(PrivateKeyError::hardware_pin_required(
                     "Enter the hardware key PIN.",
@@ -672,16 +675,18 @@ fn hardware_unlock_mode(
 }
 
 #[cfg(feature = "fidokey")]
-fn fido2_unlock_pin(request: PrivateKeyUnlockRequest) -> Result<Option<String>, PrivateKeyError> {
+fn fido2_unlock_pin(
+    request: PrivateKeyUnlockRequest,
+) -> Result<Option<SecretString>, PrivateKeyError> {
     match request {
         PrivateKeyUnlockRequest::Fido2(Some(pin)) => {
-            let trimmed = pin.trim();
+            let trimmed = pin.expose_secret().trim();
             if trimmed.is_empty() {
                 return Err(PrivateKeyError::fido2_pin_required(
                     "Enter the FIDO2 security key PIN.",
                 ));
             }
-            Ok(Some(trimmed.to_string()))
+            Ok(Some(SecretString::from(trimmed)))
         }
         PrivateKeyUnlockRequest::Fido2(None) => Ok(None),
         PrivateKeyUnlockRequest::Password(_)
@@ -718,7 +723,7 @@ fn unlock_fido2_private_key_for_session(
     .ok_or_else(|| PrivateKeyError::other("That FIDO2-protected key is invalid."))?;
     let unlocked_bytes = super::fido2::unlock_fido2_private_key_material_for_session(
         manifest.encrypted_private_key.as_bytes(),
-        pin.as_deref(),
+        pin.as_ref().map(|pin| pin.expose_secret()),
     )?;
     let unlocked = prepare_managed_private_key_bytes(&unlocked_bytes, None)?.0;
     cache_unlocked_ripasso_private_key(unlocked);
@@ -747,7 +752,7 @@ pub fn unlock_ripasso_private_key_for_session(
             let unlocked = if cert_requires_passphrase(cert) {
                 prepare_managed_private_key_bytes(
                     &fs::read(&path).map_err(|err| PrivateKeyError::other(err.to_string()))?,
-                    Some(&passphrase),
+                    Some(passphrase.expose_secret()),
                 )?
                 .0
             } else {

@@ -995,7 +995,7 @@ fn encrypted_private_keys_unlock_for_the_current_session_only() {
 
     unlock_ripasso_private_key_for_session(
         &imported.fingerprint,
-        PrivateKeyUnlockRequest::Password("hunter2".to_string()),
+        PrivateKeyUnlockRequest::Password("hunter2".into()),
     )
     .expect("unlock private key for session");
     assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
@@ -1026,7 +1026,7 @@ fn fido2_private_key_unlocks_via_the_fidokey_feature() {
 
     let unlocked = unlock_ripasso_private_key_for_session(
         &generated.fingerprint,
-        PrivateKeyUnlockRequest::Fido2(Some("123456".to_string())),
+        PrivateKeyUnlockRequest::Fido2(Some("123456".into())),
     )
     .expect("unlock FIDO2-backed private key");
 
@@ -1968,7 +1968,7 @@ fn all_keys_mode_can_layer_a_fido2_security_key() {
     clear_cached_unlocked_ripasso_private_keys();
     unlock_ripasso_private_key_for_session(
         &key_a.fingerprint,
-        PrivateKeyUnlockRequest::Password("hunter2".to_string()),
+        PrivateKeyUnlockRequest::Password("hunter2".into()),
     )
     .expect("unlock password-protected key for the layered read");
     assert_eq!(

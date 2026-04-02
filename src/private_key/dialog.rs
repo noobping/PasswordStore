@@ -6,6 +6,7 @@ use adw::prelude::*;
 use adw::{
     ApplicationWindow, Dialog, PasswordEntryRow, PreferencesGroup, PreferencesPage, ToastOverlay,
 };
+use secrecy::{ExposeSecret, SecretString};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -120,7 +121,7 @@ pub fn present_private_key_password_dialog<F>(
     subtitle: Option<&str>,
     on_submit: F,
 ) where
-    F: Fn(String) + 'static,
+    F: Fn(SecretString) + 'static,
 {
     present_private_key_password_dialog_with_close_handler(
         window,
@@ -140,7 +141,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     on_submit: F,
     on_close: G,
 ) where
-    F: Fn(String) + 'static,
+    F: Fn(SecretString) + 'static,
     G: Fn() + 'static,
 {
     let password_row = PasswordEntryRow::new();
@@ -182,8 +183,9 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     let dialog_handle_for_apply = dialog_handle;
     let error_label_for_apply = error_label.clone();
     password_row.connect_apply(move |row| {
-        let passphrase = row.text().to_string();
-        if let Some(message) = private_key_password_dialog_error_message(&passphrase) {
+        let passphrase = SecretString::from(row.text().as_str());
+        if let Some(message) = private_key_password_dialog_error_message(passphrase.expose_secret())
+        {
             error_label_for_apply.set_label(&gettext(message));
             error_label_for_apply.set_visible(true);
             return;
@@ -191,6 +193,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
         error_label_for_apply.set_visible(false);
 
         submitted_for_apply.set(true);
+        row.set_text("");
         dialog_handle_for_apply.force_close();
         on_submit(passphrase);
     });
@@ -202,7 +205,9 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
         });
     }
 
+    let password_row_for_close = password_row.clone();
     dialog.connect_closed(move |_| {
+        password_row_for_close.set_text("");
         if !submitted.get() {
             on_close();
         }
@@ -280,8 +285,9 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     let error_label_for_apply = error_label.clone();
     let on_submit_for_apply = on_submit.clone();
     password_row.connect_apply(move |row| {
-        let input = row.text().to_string();
-        if let Some(message) = private_key_unlock_dialog_error_message(kind, &input) {
+        let input = SecretString::from(row.text().as_str());
+        if let Some(message) = private_key_unlock_dialog_error_message(kind, input.expose_secret())
+        {
             error_label_for_apply.set_label(&gettext(message));
             error_label_for_apply.set_visible(true);
             return;
@@ -289,6 +295,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
         error_label_for_apply.set_visible(false);
 
         submitted_for_apply.set(true);
+        row.set_text("");
         dialog_handle_for_apply.force_close();
         let request = match kind {
             PrivateKeyUnlockKind::Password => PrivateKeyUnlockRequest::Password(input),
@@ -311,14 +318,18 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
         let submitted_for_button = submitted.clone();
         let dialog_handle_for_button = dialog_handle.clone();
         let on_submit_for_button = on_submit.clone();
+        let password_row_for_button = password_row.clone();
         button.connect_clicked(move |_| {
             submitted_for_button.set(true);
+            password_row_for_button.set_text("");
             dialog_handle_for_button.force_close();
             on_submit_for_button(PrivateKeyUnlockRequest::HardwareExternal);
         });
     }
 
+    let password_row_for_close = password_row.clone();
     dialog.connect_closed(move |_| {
+        password_row_for_close.set_text("");
         if !submitted.get() {
             on_close();
         }

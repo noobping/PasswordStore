@@ -26,6 +26,7 @@ use adw::gio;
 use adw::gtk::gdk::Display;
 use adw::prelude::*;
 use adw::Toast;
+use secrecy::{ExposeSecret, SecretString};
 use std::rc::Rc;
 
 fn finish_private_key_import(
@@ -114,7 +115,7 @@ fn finish_hardware_key_import(
 fn start_private_key_import(
     state: &StoreRecipientsPageState,
     bytes: Vec<u8>,
-    passphrase: Option<String>,
+    passphrase: Option<SecretString>,
 ) {
     let state = state.clone();
     let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
@@ -126,7 +127,14 @@ fn start_private_key_import(
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
     spawn_result_task(
-        move || import_ripasso_private_key_bytes(&bytes, passphrase.as_deref()),
+        move || {
+            import_ripasso_private_key_bytes(
+                &bytes,
+                passphrase
+                    .as_ref()
+                    .map(|passphrase| passphrase.expose_secret()),
+            )
+        },
         move |result| {
             progress_dialog.force_close();
             finish_private_key_import(&state, result);
@@ -142,7 +150,7 @@ fn start_private_key_import(
     );
 }
 
-fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<String>) {
+fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<SecretString>) {
     if !ensure_fido2_recipient_actions_allowed(state) {
         return;
     }
@@ -163,10 +171,9 @@ fn start_fido2_recipient_add(state: &StoreRecipientsPageState, pin: Option<Strin
     ));
     let progress_dialog_for_disconnect = progress_dialog.clone();
     let state_for_disconnect = state.clone();
-    let pin_for_worker = pin.clone();
     let pin_was_supplied = pin.is_some();
     spawn_result_task(
-        move || create_fido2_store_recipient(pin_for_worker.as_deref()),
+        move || create_fido2_store_recipient(pin.as_ref().map(|pin| pin.expose_secret())),
         move |result| {
             progress_dialog.force_close();
             match result {

@@ -13,6 +13,7 @@ use crate::private_key::dialog::{
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task;
 use adw::{glib, prelude::*, ApplicationWindow, Toast, ToastOverlay};
+use secrecy::ExposeSecret;
 use std::rc::Rc;
 
 fn toast_overlay_window(overlay: &ToastOverlay) -> Option<ApplicationWindow> {
@@ -73,11 +74,11 @@ fn handle_managed_fido2_unlock_retry(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     fingerprint: &str,
-    request: &PrivateKeyUnlockRequest,
+    allow_retry: bool,
     after_unlock: &Rc<dyn Fn()>,
     on_finish: &Rc<dyn Fn(bool)>,
 ) -> bool {
-    if !matches!(request, PrivateKeyUnlockRequest::Fido2(None)) {
+    if !allow_retry {
         return false;
     }
 
@@ -123,7 +124,7 @@ fn handle_managed_fido2_unlock_retry(
     _window: &ApplicationWindow,
     _overlay: &ToastOverlay,
     _fingerprint: &str,
-    _request: &PrivateKeyUnlockRequest,
+    _allow_retry: bool,
     _after_unlock: &Rc<dyn Fn()>,
     _on_finish: &Rc<dyn Fn(bool)>,
 ) -> bool {
@@ -174,7 +175,7 @@ fn start_private_key_unlock_for_action(
     let after_unlock = after_unlock.clone();
     let on_finish_for_result = on_finish.clone();
     let on_finish_for_disconnect = on_finish.clone();
-    let request_for_worker = request.clone();
+    let allow_fido2_retry = matches!(request, PrivateKeyUnlockRequest::Fido2(None));
     let fingerprint_for_worker = fingerprint.clone();
     let progress_dialog = present_fido2_unlock_progress_dialog(window, key_title.as_deref(), kind);
     let progress_dialog_for_result = progress_dialog.clone();
@@ -182,12 +183,7 @@ fn start_private_key_unlock_for_action(
     // Let GTK show the dialog before the hardware unlock flow starts.
     glib::idle_add_local_once(move || {
         spawn_result_task(
-            move || {
-                unlock_ripasso_private_key_for_session(
-                    &fingerprint_for_worker,
-                    request_for_worker.clone(),
-                )
-            },
+            move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request),
             move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
                 Ok(_) => {
                     progress_dialog_for_result.force_close();
@@ -199,7 +195,7 @@ fn start_private_key_unlock_for_action(
                     &window_for_result,
                     &overlay,
                     &fingerprint,
-                    &request,
+                    allow_fido2_retry,
                     &after_unlock,
                     &on_finish_for_result,
                 ) =>
@@ -239,7 +235,7 @@ fn start_fido2_recipient_unlock_for_action(
     let on_finish_for_result = on_finish.clone();
     let on_finish_for_disconnect = on_finish.clone();
     let recipient_for_result = recipient.clone();
-    let request_for_worker = request.clone();
+    let allow_pin_retry = matches!(request, PrivateKeyUnlockRequest::Fido2(None));
     let progress_dialog = present_fido2_unlock_progress_dialog(
         window,
         key_title.as_deref(),
@@ -251,8 +247,10 @@ fn start_fido2_recipient_unlock_for_action(
     glib::idle_add_local_once(move || {
         spawn_result_task(
             move || {
-                let pin = match &request_for_worker {
-                    PrivateKeyUnlockRequest::Fido2(pin) => pin.as_deref(),
+                let pin = match &request {
+                    PrivateKeyUnlockRequest::Fido2(pin) => {
+                        pin.as_ref().map(|pin| pin.expose_secret())
+                    }
                     _ => None,
                 };
                 unlock_fido2_store_recipient_for_session(&recipient, pin)
@@ -266,9 +264,7 @@ fn start_fido2_recipient_unlock_for_action(
                         &on_finish_for_result,
                     );
                 }
-                Err(PrivateKeyError::Fido2PinRequired(_))
-                    if matches!(request, PrivateKeyUnlockRequest::Fido2(None)) =>
-                {
+                Err(PrivateKeyError::Fido2PinRequired(_)) if allow_pin_retry => {
                     progress_dialog_for_result.force_close();
                     let key_title = fido2_recipient_title(&recipient_for_result);
                     let overlay_for_submit = overlay.clone();

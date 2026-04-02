@@ -7,19 +7,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::backend) enum ManagedKeyStorageStartup {
+pub(crate) enum ManagedKeyStorageStartup {
     Ready,
     RecoveryRequired(ManagedKeyStorageRecovery),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::backend) struct ManagedKeyStorageRecovery {
-    pub(in crate::backend) incompatible_paths: Vec<PathBuf>,
-    pub(in crate::backend) detail: String,
+pub(crate) struct ManagedKeyStorageRecovery {
+    pub(crate) incompatible_paths: Vec<PathBuf>,
+    pub(crate) detail: String,
 }
 
 impl ManagedKeyStorageRecovery {
-    pub(in crate::backend) fn detail(&self) -> &str {
+    pub(crate) fn detail(&self) -> &str {
         &self.detail
     }
 }
@@ -39,7 +39,7 @@ impl IncompatibleManagedKeyArtifact {
     }
 }
 
-pub(in crate::backend) fn prepare_managed_private_key_storage_for_startup(
+pub(crate) fn prepare_managed_private_key_storage_for_startup(
 ) -> Result<ManagedKeyStorageStartup, String> {
     let mut incompatible = Vec::new();
     migrate_password_key_names(&mut incompatible)?;
@@ -56,7 +56,7 @@ pub(in crate::backend) fn prepare_managed_private_key_storage_for_startup(
     }
 }
 
-pub(in crate::backend) fn continue_after_managed_key_storage_recovery(
+pub(crate) fn continue_after_managed_key_storage_recovery(
     recovery: &ManagedKeyStorageRecovery,
 ) -> Result<(), String> {
     for path in &recovery.incompatible_paths {
@@ -82,7 +82,10 @@ fn build_recovery_report(
         .join("\n");
 
     ManagedKeyStorageRecovery {
-        incompatible_paths: incompatible.into_iter().map(|artifact| artifact.path).collect(),
+        incompatible_paths: incompatible
+            .into_iter()
+            .map(|artifact| artifact.path)
+            .collect(),
         detail,
     }
 }
@@ -238,7 +241,9 @@ fn rename_managed_key_path(current: &Path, canonical: &Path) -> Result<(), Strin
 
 fn unique_sibling_path(path: &Path, suffix: &str) -> PathBuf {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = path.file_name().unwrap_or_else(|| OsStr::new("managed-key"));
+    let stem = path
+        .file_name()
+        .unwrap_or_else(|| OsStr::new("managed-key"));
 
     for attempt in 0.. {
         let candidate = parent.join(format!("{}{}{attempt}", stem.to_string_lossy(), suffix));
@@ -280,8 +285,8 @@ fn remove_incompatible_managed_key_artifact(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
-        ManagedKeyStorageStartup,
+        continue_after_managed_key_storage_recovery,
+        prepare_managed_private_key_storage_for_startup, ManagedKeyStorageStartup,
     };
     use crate::backend::integrated::keys::cert::{
         parse_hardware_public_key_bytes, parse_managed_private_key_bytes, ManagedRipassoHardwareKey,
@@ -357,9 +362,9 @@ mod tests {
         fs::create_dir_all(&legacy_dir).expect("create hardware dir");
         fs::write(
             legacy_dir.join("manifest.toml"),
-            toml::to_string_pretty(&super::super::manifest::HardwarePrivateKeyManifest::from_key(
-                &key, &hardware,
-            ))
+            toml::to_string_pretty(
+                &super::super::manifest::HardwarePrivateKeyManifest::from_key(&key, &hardware),
+            )
             .expect("serialize manifest"),
         )
         .expect("write manifest");

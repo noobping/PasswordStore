@@ -1,20 +1,16 @@
+use super::super::cache::{borrow_pending_fido2_enrollment, clear_cached_fido2_pin};
+#[cfg(not(feature = "fidostore"))]
+use super::common::FIDO2_STORE_FEATURE_DISABLED_MESSAGE;
 use super::common::{
-    cached_pin_string, decode_base64, decrypt_aes_256_gcm, derive_kek,
-    derive_direct_hmac_assertion_with_pin, encode_base64, encrypt_aes_256_gcm,
-    parse_text_envelope, random_bytes,
+    cached_pin_string, decode_base64, decrypt_aes_256_gcm, derive_direct_hmac_assertion_with_pin,
+    derive_kek, encode_base64, encrypt_aes_256_gcm, parse_text_envelope, random_bytes,
     serialize_text_envelope, validate_direct_any_envelope, validate_direct_layer_envelope,
     Fido2AssertionOutput, Fido2DeviceLabel, Fido2DirectAnyManagedEnvelope, Fido2DirectBinding,
     Fido2DirectLayerEnvelope, Fido2DirectRecipientEnvelope, Fido2TransportError,
-    Fido2WriteProgress, FIDO2_DIRECT_ANY_MANAGED_HEADER,
-    FIDO2_DIRECT_ANY_MANAGED_KIND, FIDO2_DIRECT_ANY_PAYLOAD_AAD,
-    FIDO2_DIRECT_ANY_WRAPPED_DEK_AAD_PREFIX, FIDO2_DIRECT_ENTRY_FORMAT,
-    FIDO2_DIRECT_LAYER_AAD_PREFIX, FIDO2_DIRECT_LAYER_HEADER, FIDO2_DIRECT_LAYER_KIND,
-    FIDO2_HMAC_SALT_LEN, FIDO2_RP_ID,
-};
-#[cfg(not(feature = "fidostore"))]
-use super::common::FIDO2_STORE_FEATURE_DISABLED_MESSAGE;
-use super::super::cache::{
-    borrow_pending_fido2_enrollment, clear_cached_fido2_pin,
+    Fido2WriteProgress, FIDO2_DIRECT_ANY_MANAGED_HEADER, FIDO2_DIRECT_ANY_MANAGED_KIND,
+    FIDO2_DIRECT_ANY_PAYLOAD_AAD, FIDO2_DIRECT_ANY_WRAPPED_DEK_AAD_PREFIX,
+    FIDO2_DIRECT_ENTRY_FORMAT, FIDO2_DIRECT_LAYER_AAD_PREFIX, FIDO2_DIRECT_LAYER_HEADER,
+    FIDO2_DIRECT_LAYER_KIND, FIDO2_HMAC_SALT_LEN, FIDO2_RP_ID,
 };
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{parse_fido2_recipient_string, Fido2StoreRecipient};

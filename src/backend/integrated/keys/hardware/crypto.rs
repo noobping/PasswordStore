@@ -246,11 +246,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
         &self.public
     }
 
-    fn sign(
-        &mut self,
-        hash_algo: HashAlgorithm,
-        digest: &[u8],
-    ) -> openpgp::Result<mpi::Signature> {
+    fn sign(&mut self, hash_algo: HashAlgorithm, digest: &[u8]) -> openpgp::Result<mpi::Signature> {
         let ard = self.tx.application_related_data()?;
         let touch_required = ard
             .uif_pso_cds()?
@@ -274,9 +270,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
                             .try_into()
                             .map_err(|_| anyhow!("Invalid SHA512 digest length"))?,
                     ),
-                    _ => {
-                        return Err(anyhow!("Unsupported hash algorithm for RSA: {hash_algo:?}"))
-                    }
+                    _ => return Err(anyhow!("Unsupported hash algorithm for RSA: {hash_algo:?}")),
                 };
 
                 if touch_required {
@@ -317,7 +311,12 @@ impl crypto::Signer for CardSigner<'_, '_> {
                     s: mpi::MPI::new(&signature[midpoint..]),
                 }
             }
-            _ => return Err(anyhow!("Unsupported signing algorithm: {:?}", self.public.pk_algo())),
+            _ => {
+                return Err(anyhow!(
+                    "Unsupported signing algorithm: {:?}",
+                    self.public.pk_algo()
+                ))
+            }
         };
 
         Ok(signature)

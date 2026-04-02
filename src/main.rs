@@ -85,7 +85,7 @@ fn main() -> ExitCode {
 
     match backend::prepare_startup() {
         Ok(backend::StartupPreparation::Ready) => {}
-        Ok(backend::StartupPreparation::ManagedKeyRecovery(recovery)) => {
+        Ok(backend::StartupPreparation::RecoveryRequired(recovery)) => {
             let choice = prompt_startup_recovery_dialog(APP_WINDOW_TITLE, recovery.detail());
             if choice == StartupRecoveryChoice::Quit {
                 return 0.into();

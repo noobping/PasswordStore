@@ -69,11 +69,7 @@ fn main() {
     icons.sort();
     write_resources_xml(data_dir, &icons);
 
-    glib_build_tools::compile_resources(
-        &[data_dir],
-        "data/resources.xml",
-        "compiled.gresource",
-    );
+    glib_build_tools::compile_resources(&[data_dir], "data/resources.xml", "compiled.gresource");
 
     #[cfg(target_os = "windows")]
     {

@@ -77,7 +77,9 @@ pub(in crate::backend::integrated) struct StoredPrivateKeyEntry {
     pub(in crate::backend::integrated) location: StoredPrivateKeyLocation,
 }
 
-pub(super) fn read_password_private_key_entry(path: &Path) -> Result<StoredPrivateKeyEntry, String> {
+pub(super) fn read_password_private_key_entry(
+    path: &Path,
+) -> Result<StoredPrivateKeyEntry, String> {
     let data = fs::read(path).map_err(|err| err.to_string())?;
     let (cert, key) = parse_managed_private_key_bytes(&data).map_err(|err| err.to_string())?;
     Ok(StoredPrivateKeyEntry {

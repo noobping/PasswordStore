@@ -46,9 +46,7 @@ use super::controls::{
     register_context_undo_action, register_go_home_action, register_list_visibility_action,
     register_reload_password_list_action, register_toggle_find_action, ListVisibilityState,
 };
-use super::docs::{
-    register_open_docs_action, DocumentationPageState, DocumentationPageWidgets,
-};
+use super::docs::{register_open_docs_action, DocumentationPageState, DocumentationPageWidgets};
 use super::git::GitActionState;
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,

@@ -213,9 +213,7 @@ fn show_startup_recovery_dialog(title: &str, body: &str) -> StartupRecoveryChoic
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        fatal_startup_dialog_body, startup_recovery_dialog_body, StartupRecoveryChoice,
-    };
+    use super::{fatal_startup_dialog_body, startup_recovery_dialog_body, StartupRecoveryChoice};
     use std::path::Path;
 
     #[test]

@@ -52,8 +52,7 @@ pub(super) const FIDO2_DIRECT_LAYER_KIND: &str = "fido2-required-layer";
 pub(super) const FIDO2_DIRECT_ANY_PAYLOAD_AAD: &[u8] = b"keycord/fido2-any-managed/payload/v1";
 pub(super) const FIDO2_DIRECT_ANY_WRAPPED_DEK_AAD_PREFIX: &[u8] =
     b"keycord/fido2-any-managed/wrapped-dek/v1:";
-pub(super) const FIDO2_DIRECT_LAYER_AAD_PREFIX: &[u8] =
-    b"keycord/fido2-required-layer/payload/v1:";
+pub(super) const FIDO2_DIRECT_LAYER_AAD_PREFIX: &[u8] = b"keycord/fido2-required-layer/payload/v1:";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::backend::integrated) struct Fido2Progress {

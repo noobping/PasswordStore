@@ -269,7 +269,9 @@ fn parse_host_gpg_private_keys(output: &str) -> Vec<HostGpgPrivateKeySummary> {
         keys: &mut Vec<HostGpgPrivateKeySummary>,
     ) -> Option<PartialHostKey> {
         let partial = partial?;
-        let fingerprint = partial.fingerprint.filter(|value| !value.trim().is_empty())?;
+        let fingerprint = partial
+            .fingerprint
+            .filter(|value| !value.trim().is_empty())?;
         if keys
             .iter()
             .any(|existing| existing.fingerprint.eq_ignore_ascii_case(&fingerprint))

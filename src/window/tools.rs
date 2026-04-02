@@ -8,7 +8,7 @@ mod weak_passwords;
 use crate::i18n::gettext;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
-use crate::store::recipients::store_uses_fido2_recipients;
+use crate::store::support::StoreSupportCache;
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
 use crate::support::ui::{
@@ -23,7 +23,6 @@ use adw::gtk::{ListBox, SearchEntry};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, NavigationPage, ToastOverlay};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use self::field_values::FieldValueBrowserState;
@@ -325,9 +324,9 @@ fn collect_loaded_entry_requests(list: &ListBox) -> Vec<FieldValueRequest> {
         child = next;
     }
 
-    let mut tool_compatible_stores = HashMap::<String, bool>::new();
+    let mut store_support = StoreSupportCache::default();
     filter_tool_requests(requests, |store_path| {
-        tool_store_is_compatible(store_path, &mut tool_compatible_stores)
+        store_support.supports_password_read_tools(store_path)
     })
 }
 
@@ -341,19 +340,10 @@ fn filter_tool_requests(
         .collect()
 }
 
-fn tool_store_is_compatible(store_path: &str, cache: &mut HashMap<String, bool>) -> bool {
-    if let Some(compatible) = cache.get(store_path) {
-        return *compatible;
-    }
-
-    let compatible = !store_uses_fido2_recipients(store_path);
-    cache.insert(store_path.to_string(), compatible);
-    compatible
-}
-
 fn password_read_tools_available_for_store_roots(stores: &[String]) -> bool {
+    let mut store_support = StoreSupportCache::default();
     password_read_tools_available_for_store_roots_with(stores, |store_path| {
-        !store_uses_fido2_recipients(store_path)
+        store_support.supports_password_read_tools(store_path)
     })
 }
 

@@ -10,8 +10,6 @@ use zeroize::Zeroizing;
 const SECRET_CACHE_IDLE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 type CachedFido2Pin = Arc<Zeroizing<Vec<u8>>>;
-#[cfg(any(feature = "fidostore", feature = "fidokey"))]
-type Fido2PinCache = RwLock<HashMap<String, CacheEntry<CachedFido2Pin>>>;
 
 #[derive(Clone)]
 struct CacheEntry<T> {
@@ -32,32 +30,101 @@ impl<T> CacheEntry<T> {
     }
 }
 
-fn unlocked_ripasso_private_keys() -> &'static RwLock<HashMap<String, CacheEntry<Arc<Cert>>>> {
-    static UNLOCKED_KEYS: OnceLock<RwLock<HashMap<String, CacheEntry<Arc<Cert>>>>> =
-        OnceLock::new();
-    UNLOCKED_KEYS.get_or_init(|| RwLock::new(HashMap::new()))
+struct SecretCache<T> {
+    entries: RwLock<HashMap<String, CacheEntry<T>>>,
 }
 
-fn unlocked_hardware_private_keys(
-) -> &'static RwLock<HashMap<String, CacheEntry<HardwareSessionPolicy>>> {
-    static UNLOCKED_KEYS: OnceLock<RwLock<HashMap<String, CacheEntry<HardwareSessionPolicy>>>> =
-        OnceLock::new();
-    UNLOCKED_KEYS.get_or_init(|| RwLock::new(HashMap::new()))
+impl<T> SecretCache<T> {
+    fn new() -> Self {
+        Self {
+            entries: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn with_write<R>(
+        &self,
+        f: impl FnOnce(&mut HashMap<String, CacheEntry<T>>, Instant) -> R,
+    ) -> R {
+        match self.entries.write() {
+            Ok(mut entries) => {
+                let now = Instant::now();
+                Self::prune_expired_entries(&mut entries, now);
+                f(&mut entries, now)
+            }
+            Err(poisoned) => {
+                let mut entries = poisoned.into_inner();
+                let now = Instant::now();
+                Self::prune_expired_entries(&mut entries, now);
+                f(&mut entries, now)
+            }
+        }
+    }
+
+    fn prune_expired_entries(entries: &mut HashMap<String, CacheEntry<T>>, now: Instant) {
+        entries.retain(|_, entry| !entry.is_expired_at(now));
+    }
+
+    fn insert(&self, fingerprint: String, value: T) {
+        self.with_write(|entries, _| {
+            entries.insert(fingerprint, CacheEntry::new(value));
+        });
+    }
+
+    fn remove(&self, fingerprint: &str) {
+        self.with_write(|entries, _| {
+            entries.remove(fingerprint);
+        });
+    }
+
+    fn clear(&self) {
+        self.with_write(|entries, _| entries.clear());
+    }
+
+    #[cfg(test)]
+    fn expire_for_tests(&self, fingerprint: &str) {
+        self.with_write(|entries, _| {
+            let entry = entries
+                .get_mut(fingerprint)
+                .expect("cache entry should exist");
+            entry.last_secret_use -= SECRET_CACHE_IDLE_TIMEOUT + Duration::from_secs(1);
+        });
+    }
+}
+
+impl<T: Clone> SecretCache<T> {
+    fn peek(&self, fingerprint: &str) -> Option<T> {
+        self.with_write(|entries, _| entries.get(fingerprint).map(|entry| entry.value.clone()))
+    }
+
+    fn borrow(&self, fingerprint: &str) -> Option<T> {
+        self.with_write(|entries, now| {
+            let entry = entries.get_mut(fingerprint)?;
+            entry.last_secret_use = now;
+            Some(entry.value.clone())
+        })
+    }
+}
+
+fn unlocked_ripasso_private_keys() -> &'static SecretCache<Arc<Cert>> {
+    static UNLOCKED_KEYS: OnceLock<SecretCache<Arc<Cert>>> = OnceLock::new();
+    UNLOCKED_KEYS.get_or_init(SecretCache::new)
+}
+
+fn unlocked_hardware_private_keys() -> &'static SecretCache<HardwareSessionPolicy> {
+    static UNLOCKED_KEYS: OnceLock<SecretCache<HardwareSessionPolicy>> = OnceLock::new();
+    UNLOCKED_KEYS.get_or_init(SecretCache::new)
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-fn cached_fido2_pins() -> &'static Fido2PinCache {
-    static FIDO2_PINS: OnceLock<Fido2PinCache> = OnceLock::new();
-    FIDO2_PINS.get_or_init(|| RwLock::new(HashMap::new()))
+fn cached_fido2_pins() -> &'static SecretCache<CachedFido2Pin> {
+    static FIDO2_PINS: OnceLock<SecretCache<CachedFido2Pin>> = OnceLock::new();
+    FIDO2_PINS.get_or_init(SecretCache::new)
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-fn pending_fido2_enrollments(
-) -> &'static RwLock<HashMap<String, CacheEntry<PendingFido2Enrollment>>> {
-    static FIDO2_ENROLLMENTS: OnceLock<
-        RwLock<HashMap<String, CacheEntry<PendingFido2Enrollment>>>,
-    > = OnceLock::new();
-    FIDO2_ENROLLMENTS.get_or_init(|| RwLock::new(HashMap::new()))
+fn pending_fido2_enrollments() -> &'static SecretCache<PendingFido2Enrollment> {
+    static FIDO2_ENROLLMENTS: OnceLock<SecretCache<PendingFido2Enrollment>> = OnceLock::new();
+    FIDO2_ENROLLMENTS.get_or_init(SecretCache::new)
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -105,118 +172,36 @@ impl Clone for PendingFido2Enrollment {
     }
 }
 
-fn with_cache_write<T, R>(
-    cache: &'static RwLock<HashMap<String, CacheEntry<T>>>,
-    f: impl FnOnce(&mut HashMap<String, CacheEntry<T>>, Instant) -> R,
-) -> R {
-    match cache.write() {
-        Ok(mut entries) => {
-            let now = Instant::now();
-            prune_expired_entries(&mut entries, now);
-            f(&mut entries, now)
-        }
-        Err(poisoned) => {
-            let mut entries = poisoned.into_inner();
-            let now = Instant::now();
-            prune_expired_entries(&mut entries, now);
-            f(&mut entries, now)
-        }
-    }
-}
-
-fn prune_expired_entries<T>(entries: &mut HashMap<String, CacheEntry<T>>, now: Instant) {
-    entries.retain(|_, entry| !entry.is_expired_at(now));
-}
-
-fn peek_cache_value<T: Clone>(
-    cache: &'static RwLock<HashMap<String, CacheEntry<T>>>,
-    fingerprint: &str,
-) -> Option<T> {
-    with_cache_write(cache, |entries, _| {
-        entries.get(fingerprint).map(|entry| entry.value.clone())
-    })
-}
-
-fn borrow_cache_value<T: Clone>(
-    cache: &'static RwLock<HashMap<String, CacheEntry<T>>>,
-    fingerprint: &str,
-) -> Option<T> {
-    with_cache_write(cache, |entries, now| {
-        let entry = entries.get_mut(fingerprint)?;
-        entry.last_secret_use = now;
-        Some(entry.value.clone())
-    })
-}
-
-fn cache_value<T>(
-    cache: &'static RwLock<HashMap<String, CacheEntry<T>>>,
-    fingerprint: String,
-    value: T,
-) {
-    with_cache_write(cache, |entries, _| {
-        entries.insert(fingerprint, CacheEntry::new(value));
-    });
-}
-
-fn remove_cache_value<T>(
-    cache: &'static RwLock<HashMap<String, CacheEntry<T>>>,
-    fingerprint: &str,
-) {
-    with_cache_write(cache, |entries, _| {
-        entries.remove(fingerprint);
-    });
-}
-
-fn clear_cache<T>(cache: &'static RwLock<HashMap<String, CacheEntry<T>>>) {
-    with_cache_write(cache, |entries, _| entries.clear());
-}
-
 pub(in crate::backend::integrated) fn peek_unlocked_ripasso_private_key(
     fingerprint: &str,
 ) -> Result<Option<Arc<Cert>>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(peek_cache_value(
-        unlocked_ripasso_private_keys(),
-        &fingerprint,
-    ))
+    Ok(unlocked_ripasso_private_keys().peek(&fingerprint))
 }
 
 pub(in crate::backend::integrated) fn borrow_unlocked_ripasso_private_key(
     fingerprint: &str,
 ) -> Result<Option<Arc<Cert>>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(borrow_cache_value(
-        unlocked_ripasso_private_keys(),
-        &fingerprint,
-    ))
+    Ok(unlocked_ripasso_private_keys().borrow(&fingerprint))
 }
 
 pub(in crate::backend::integrated) fn cache_unlocked_ripasso_private_key(cert: Cert) {
-    cache_value(
-        unlocked_ripasso_private_keys(),
-        cert.fingerprint().to_hex(),
-        Arc::new(cert),
-    );
+    unlocked_ripasso_private_keys().insert(cert.fingerprint().to_hex(), Arc::new(cert));
 }
 
 pub(in crate::backend::integrated) fn peek_unlocked_hardware_private_key(
     fingerprint: &str,
 ) -> Result<Option<HardwareSessionPolicy>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(peek_cache_value(
-        unlocked_hardware_private_keys(),
-        &fingerprint,
-    ))
+    Ok(unlocked_hardware_private_keys().peek(&fingerprint))
 }
 
 pub(in crate::backend::integrated) fn borrow_unlocked_hardware_private_key(
     fingerprint: &str,
 ) -> Result<Option<HardwareSessionPolicy>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(borrow_cache_value(
-        unlocked_hardware_private_keys(),
-        &fingerprint,
-    ))
+    Ok(unlocked_hardware_private_keys().borrow(&fingerprint))
 }
 
 pub(in crate::backend::integrated) fn cache_unlocked_hardware_private_key(
@@ -224,7 +209,7 @@ pub(in crate::backend::integrated) fn cache_unlocked_hardware_private_key(
     session: HardwareSessionPolicy,
 ) -> Result<(), String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    cache_value(unlocked_hardware_private_keys(), fingerprint, session);
+    unlocked_hardware_private_keys().insert(fingerprint, session);
     Ok(())
 }
 
@@ -233,7 +218,7 @@ pub(in crate::backend::integrated) fn peek_cached_fido2_pin(
     fingerprint: &str,
 ) -> Result<Option<CachedFido2Pin>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(peek_cache_value(cached_fido2_pins(), &fingerprint))
+    Ok(cached_fido2_pins().peek(&fingerprint))
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -241,7 +226,7 @@ pub(in crate::backend::integrated) fn borrow_cached_fido2_pin(
     fingerprint: &str,
 ) -> Result<Option<CachedFido2Pin>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(borrow_cache_value(cached_fido2_pins(), &fingerprint))
+    Ok(cached_fido2_pins().borrow(&fingerprint))
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -250,11 +235,7 @@ pub(in crate::backend::integrated) fn cache_fido2_pin(
     pin: impl AsRef<[u8]>,
 ) -> Result<(), String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    cache_value(
-        cached_fido2_pins(),
-        fingerprint,
-        Arc::new(Zeroizing::new(pin.as_ref().to_vec())),
-    );
+    cached_fido2_pins().insert(fingerprint, Arc::new(Zeroizing::new(pin.as_ref().to_vec())));
     Ok(())
 }
 
@@ -263,7 +244,7 @@ pub(in crate::backend::integrated) fn clear_cached_fido2_pin(
     fingerprint: &str,
 ) -> Result<(), String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    remove_cache_value(cached_fido2_pins(), &fingerprint);
+    cached_fido2_pins().remove(&fingerprint);
     Ok(())
 }
 
@@ -272,10 +253,7 @@ pub(in crate::backend::integrated) fn borrow_pending_fido2_enrollment(
     fingerprint: &str,
 ) -> Result<Option<PendingFido2Enrollment>, String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    Ok(borrow_cache_value(
-        pending_fido2_enrollments(),
-        &fingerprint,
-    ))
+    Ok(pending_fido2_enrollments().borrow(&fingerprint))
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -287,7 +265,7 @@ pub(in crate::backend::integrated) fn cache_pending_fido2_enrollment(
 ) -> Result<(), String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
     let enrollment = PendingFido2Enrollment::new(credential_id, hmac_salt, hmac_secret);
-    cache_value(pending_fido2_enrollments(), fingerprint, enrollment);
+    pending_fido2_enrollments().insert(fingerprint, enrollment);
     Ok(())
 }
 
@@ -296,7 +274,7 @@ pub(in crate::backend::integrated) fn clear_pending_fido2_enrollment(
     fingerprint: &str,
 ) -> Result<(), String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    remove_cache_value(pending_fido2_enrollments(), &fingerprint);
+    pending_fido2_enrollments().remove(&fingerprint);
     Ok(())
 }
 
@@ -311,22 +289,22 @@ pub(in crate::backend::integrated) fn remove_cached_unlocked_ripasso_private_key
     fingerprint: &str,
 ) -> Result<(), String> {
     let fingerprint = normalized_fingerprint(fingerprint)?;
-    remove_cache_value(unlocked_ripasso_private_keys(), &fingerprint);
-    remove_cache_value(unlocked_hardware_private_keys(), &fingerprint);
+    unlocked_ripasso_private_keys().remove(&fingerprint);
+    unlocked_hardware_private_keys().remove(&fingerprint);
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-    remove_cache_value(cached_fido2_pins(), &fingerprint);
+    cached_fido2_pins().remove(&fingerprint);
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-    remove_cache_value(pending_fido2_enrollments(), &fingerprint);
+    pending_fido2_enrollments().remove(&fingerprint);
     Ok(())
 }
 
 pub(in crate::backend) fn clear_integrated_runtime_secret_state() {
-    clear_cache(unlocked_ripasso_private_keys());
-    clear_cache(unlocked_hardware_private_keys());
+    unlocked_ripasso_private_keys().clear();
+    unlocked_hardware_private_keys().clear();
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-    clear_cache(cached_fido2_pins());
+    cached_fido2_pins().clear();
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
-    clear_cache(pending_fido2_enrollments());
+    pending_fido2_enrollments().clear();
 }
 
 #[cfg(test)]
@@ -339,10 +317,9 @@ mod tests {
     use super::{
         borrow_unlocked_ripasso_private_key, cache_unlocked_ripasso_private_key,
         clear_integrated_runtime_secret_state, peek_unlocked_ripasso_private_key,
-        unlocked_ripasso_private_keys, SECRET_CACHE_IDLE_TIMEOUT,
+        unlocked_ripasso_private_keys,
     };
     use sequoia_openpgp::Cert;
-    use std::time::Duration;
 
     fn test_cert() -> Cert {
         let (cert, _) = sequoia_openpgp::cert::CertBuilder::general_purpose(Some("Cache Test"))
@@ -352,40 +329,12 @@ mod tests {
     }
 
     fn expire_ripasso_entry(fingerprint: &str) {
-        match unlocked_ripasso_private_keys().write() {
-            Ok(mut entries) => {
-                let entry = entries
-                    .get_mut(fingerprint)
-                    .expect("ripasso cache entry should exist");
-                entry.last_secret_use -= SECRET_CACHE_IDLE_TIMEOUT + Duration::from_secs(1);
-            }
-            Err(poisoned) => {
-                let mut entries = poisoned.into_inner();
-                let entry = entries
-                    .get_mut(fingerprint)
-                    .expect("ripasso cache entry should exist");
-                entry.last_secret_use -= SECRET_CACHE_IDLE_TIMEOUT + Duration::from_secs(1);
-            }
-        }
+        unlocked_ripasso_private_keys().expire_for_tests(fingerprint);
     }
 
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     fn expire_fido_pin_entry(fingerprint: &str) {
-        match super::cached_fido2_pins().write() {
-            Ok(mut entries) => {
-                let entry = entries
-                    .get_mut(fingerprint)
-                    .expect("fido2 pin cache entry should exist");
-                entry.last_secret_use -= SECRET_CACHE_IDLE_TIMEOUT + Duration::from_secs(1);
-            }
-            Err(poisoned) => {
-                let mut entries = poisoned.into_inner();
-                let entry = entries
-                    .get_mut(fingerprint)
-                    .expect("fido2 pin cache entry should exist");
-                entry.last_secret_use -= SECRET_CACHE_IDLE_TIMEOUT + Duration::from_secs(1);
-            }
-        }
+        super::cached_fido2_pins().expire_for_tests(fingerprint);
     }
 
     #[test]

@@ -3,10 +3,9 @@ use super::{SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
 use crate::backend::read_password_entry;
 use crate::password::file::{pass_file_has_otp, searchable_pass_fields, SearchablePassField};
 use crate::password::strength::weak_password_reason;
-use crate::store::recipients::store_uses_fido2_recipients;
+use crate::store::support::StoreSupportCache;
 use crate::support::object_data::{cloned_data, non_null_to_string_option};
 use adw::gtk::{ListBox, ListBoxRow};
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SearchIndexRequest {
@@ -53,7 +52,7 @@ pub(super) fn build_search_index_batch(
 
 pub(super) fn collect_unindexed_requests(list: &ListBox) -> Vec<SearchIndexRequest> {
     let mut requests = Vec::new();
-    let mut advanced_search_compatible_stores = HashMap::<String, bool>::new();
+    let mut store_support = StoreSupportCache::default();
     for_each_row(list, |row| {
         if !matches!(
             row_field_index_state(&row),
@@ -65,7 +64,7 @@ pub(super) fn collect_unindexed_requests(list: &ListBox) -> Vec<SearchIndexReque
         let Some(root) = non_null_to_string_option(&row, "root") else {
             return;
         };
-        if !advanced_search_store_is_compatible(&root, &mut advanced_search_compatible_stores) {
+        if !store_support.supports_password_read_tools(&root) {
             return;
         }
         let Some(label) = non_null_to_string_option(&row, "label") else {
@@ -130,17 +129,4 @@ fn for_each_row(list: &ListBox, mut f: impl FnMut(ListBoxRow)) {
         f(row);
         index += 1;
     }
-}
-
-fn advanced_search_store_is_compatible(
-    store_path: &str,
-    cache: &mut HashMap<String, bool>,
-) -> bool {
-    if let Some(compatible) = cache.get(store_path) {
-        return *compatible;
-    }
-
-    let compatible = !store_uses_fido2_recipients(store_path);
-    cache.insert(store_path.to_string(), compatible);
-    compatible
 }

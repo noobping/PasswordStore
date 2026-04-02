@@ -474,7 +474,11 @@ fn present_remote_dialog(
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
-        .child(&dialog_content_shell(request.title, Some(request.store), &content))
+        .child(&dialog_content_shell(
+            request.title,
+            Some(request.store),
+            &content,
+        ))
         .build();
 
     let dialog_for_submit = dialog.clone();

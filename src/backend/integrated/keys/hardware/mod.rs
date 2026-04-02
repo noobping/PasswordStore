@@ -12,10 +12,10 @@ mod unsupported;
 
 #[cfg(target_os = "linux")]
 use self::linux::RealHardwareTransport;
-#[cfg(not(target_os = "linux"))]
-use self::unsupported::RealHardwareTransport;
 #[cfg(target_os = "linux")]
 pub(in crate::backend::integrated) use self::linux::{HardwareSessionPolicy, HardwareUnlockMode};
+#[cfg(not(target_os = "linux"))]
+use self::unsupported::RealHardwareTransport;
 #[cfg(not(target_os = "linux"))]
 pub(in crate::backend::integrated) use self::unsupported::{
     HardwareSessionPolicy, HardwareUnlockMode,
@@ -81,10 +81,8 @@ impl HardwareSessionPolicy {
 
 pub trait HardwareTransport: Send + Sync {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError>;
-    fn verify_session(
-        &self,
-        session: &HardwareSessionPolicy,
-    ) -> Result<(), HardwareTransportError>;
+    fn verify_session(&self, session: &HardwareSessionPolicy)
+        -> Result<(), HardwareTransportError>;
     fn decrypt_ciphertext(
         &self,
         session: &HardwareSessionPolicy,

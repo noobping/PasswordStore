@@ -10,10 +10,10 @@ mod backend;
 mod clipboard;
 mod fido2_recipient;
 mod i18n;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "logging"))]
 mod logging;
-#[cfg(not(target_os = "linux"))]
-#[path = "logging/non_linux.rs"]
+#[cfg(not(all(target_os = "linux", feature = "logging")))]
+#[path = "logging/disabled.rs"]
 mod logging;
 mod password;
 mod preferences;

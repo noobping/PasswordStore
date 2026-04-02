@@ -23,8 +23,15 @@ option(
 option(
   'docs',
   type: 'boolean',
-  value: false,
+  value: true,
   description: 'Enable the built-in documentation browser.',
+)
+
+option(
+  'logging',
+  type: 'boolean',
+  value: true,
+  description: 'Enable the in-app log viewer and command stream capture.',
 )
 
 option(

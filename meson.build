@@ -12,6 +12,7 @@ gnome = import('gnome')
 cargo_variant = get_option('cargo_variant')
 cargo_features = get_option('cargo_features')
 docs = get_option('docs')
+logging = get_option('logging')
 fidostore = get_option('fidostore')
 fidokey = get_option('fidokey')
 project_binary = 'keycord'
@@ -20,6 +21,7 @@ cargo_command = 'cargo build'
 effective_cargo_features = cargo_features
 foreach feature_name, enabled : {
   'docs': docs,
+  'logging': logging,
   'fidostore': fidostore,
   'fidokey': fidokey,
 }
@@ -76,9 +78,9 @@ if [ "$variant" = "release" ] || [ "$variant" = "translation" ]; then
 fi
 
 if [ -n "$native_cargo" ]; then
-  set -- "$native_cargo" build "--manifest-path" "$source_root/Cargo.toml" "--target-dir" "$build_root/cargo-target"
+  set -- "$native_cargo" build "--manifest-path" "$source_root/Cargo.toml" "--target-dir" "$build_root/cargo-target" "--no-default-features"
 else
-  set -- "$flatpak_spawn" --host toolbox run cargo build "--manifest-path" "$source_root/Cargo.toml" "--target-dir" "$build_root/cargo-target"
+  set -- "$flatpak_spawn" --host toolbox run cargo build "--manifest-path" "$source_root/Cargo.toml" "--target-dir" "$build_root/cargo-target" "--no-default-features"
 fi
 
 if [ "$profile_dir" = "release" ]; then

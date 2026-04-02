@@ -22,7 +22,10 @@ use crate::store::management::{
     register_store_recipients_reload_action, register_store_recipients_save_action,
     StoreRecipientsPageState,
 };
-use crate::store::management::{initialize_store_import_page, StoreImportPageState};
+use crate::store::management::{
+    initialize_store_import_page, StoreImportChrome, StoreImportControls, StoreImportPageState,
+    StoreImportPageWidgets,
+};
 use adw::gtk::Builder;
 use adw::{prelude::*, Application, ApplicationWindow};
 
@@ -43,7 +46,9 @@ use super::controls::{
     register_context_undo_action, register_go_home_action, register_list_visibility_action,
     register_reload_password_list_action, register_toggle_find_action, ListVisibilityState,
 };
-use super::docs::{register_open_docs_action, DocumentationPageState};
+use super::docs::{
+    register_open_docs_action, DocumentationPageState, DocumentationPageWidgets,
+};
 use super::git::GitActionState;
 use super::git::{
     register_open_git_action, register_synchronize_action, set_git_action_availability,
@@ -60,7 +65,10 @@ use super::preferences::{
     connect_password_generation_autosave, connect_password_list_sort_autosave,
     connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
-use super::tools::{register_open_tools_action, sync_tools_action_availability, ToolsPageState};
+use super::tools::{
+    register_open_tools_action, sync_tools_action_availability, ToolBrowserWidgets, ToolsPageState,
+    ToolsPageWidgets,
+};
 use crate::logging::{log_error, log_info};
 use crate::support::actions::activate_widget_action;
 use crate::support::runtime::{
@@ -198,24 +206,28 @@ fn initialize_store_import_page_ui(
     widgets: &WindowWidgets,
     navigation_state: &WindowNavigationState,
 ) {
-    let state = StoreImportPageState::new(
-        &widgets.window,
-        navigation_state,
-        &widgets.toast_overlay,
-        &widgets.store_import_page,
-        &widgets.store_import_stack,
-        &widgets.store_import_form,
-        &widgets.store_import_loading,
-        &widgets.store_import_store_dropdown,
-        &widgets.store_import_source_dropdown,
-        &widgets.store_import_source_path_row,
-        &widgets.store_import_source_file_button,
-        &widgets.store_import_source_folder_button,
-        &widgets.store_import_source_clear_button,
-        &widgets.store_import_password_row,
-        &widgets.store_import_target_path_row,
-        &widgets.store_import_button,
-    );
+    let state = StoreImportPageState::new(StoreImportPageWidgets {
+        chrome: StoreImportChrome {
+            window: &widgets.window,
+            navigation: navigation_state,
+            overlay: &widgets.toast_overlay,
+            page: &widgets.store_import_page,
+            stack: &widgets.store_import_stack,
+            form: &widgets.store_import_form,
+            loading: &widgets.store_import_loading,
+        },
+        controls: StoreImportControls {
+            store_dropdown: &widgets.store_import_store_dropdown,
+            source_dropdown: &widgets.store_import_source_dropdown,
+            source_path_row: &widgets.store_import_source_path_row,
+            source_file_button: &widgets.store_import_source_file_button,
+            source_folder_button: &widgets.store_import_source_folder_button,
+            source_clear_button: &widgets.store_import_source_clear_button,
+            source_password_row: &widgets.store_import_password_row,
+            target_path_row: &widgets.store_import_target_path_row,
+            import_button: &widgets.store_import_button,
+        },
+    });
     initialize_store_import_page(&state);
 }
 
@@ -363,35 +375,41 @@ pub fn create_main_window(
     let store_recipients_page_state =
         build_store_recipients_page_state(&widgets, &store_git_page_state);
     let window_navigation_state = window_navigation_state(&widgets);
-    let docs_page_state = DocumentationPageState::new(
-        &window_navigation_state,
-        &widgets.docs_page,
-        &widgets.docs_search_entry,
-        &widgets.docs_list,
-        &widgets.docs_detail_page,
-        &widgets.docs_detail_scrolled,
-        &widgets.docs_detail_box,
-    );
-    let tools_page_state = ToolsPageState::new(
-        &widgets.window,
-        &window_navigation_state,
-        &widgets.tools_page,
-        &widgets.tools_list,
-        &widgets.tools_logs_list,
-        &widgets.toast_overlay,
-        &password_list_state,
-        &widgets.tools_field_values_page,
-        &widgets.tools_field_values_search_entry,
-        &widgets.tools_field_values_list,
-        &widgets.tools_value_values_page,
-        &widgets.tools_value_values_search_entry,
-        &widgets.tools_value_values_list,
-        &widgets.tools_weak_passwords_page,
-        &widgets.tools_weak_passwords_search_entry,
-        &widgets.tools_weak_passwords_list,
-        &widgets.list,
-        &widgets.search_entry,
-    );
+    let docs_page_state = DocumentationPageState::new(DocumentationPageWidgets {
+        navigation: &window_navigation_state,
+        page: &widgets.docs_page,
+        search_entry: &widgets.docs_search_entry,
+        list: &widgets.docs_list,
+        detail_page: &widgets.docs_detail_page,
+        detail_scrolled: &widgets.docs_detail_scrolled,
+        detail_box: &widgets.docs_detail_box,
+    });
+    let tools_page_state = ToolsPageState::new(ToolsPageWidgets {
+        window: &widgets.window,
+        navigation: &window_navigation_state,
+        page: &widgets.tools_page,
+        list: &widgets.tools_list,
+        logs_list: &widgets.tools_logs_list,
+        overlay: &widgets.toast_overlay,
+        password_page: &password_list_state,
+        field_values: ToolBrowserWidgets {
+            page: &widgets.tools_field_values_page,
+            search_entry: &widgets.tools_field_values_search_entry,
+            list: &widgets.tools_field_values_list,
+        },
+        value_values: ToolBrowserWidgets {
+            page: &widgets.tools_value_values_page,
+            search_entry: &widgets.tools_value_values_search_entry,
+            list: &widgets.tools_value_values_list,
+        },
+        weak_passwords: ToolBrowserWidgets {
+            page: &widgets.tools_weak_passwords_page,
+            search_entry: &widgets.tools_weak_passwords_search_entry,
+            list: &widgets.tools_weak_passwords_list,
+        },
+        root_list: &widgets.list,
+        root_search_entry: &widgets.search_entry,
+    });
     initialize_store_import_page_ui(&widgets, &window_navigation_state);
     let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);
     let git_action_state = build_git_action_state(

@@ -28,10 +28,10 @@ struct PoEntry {
 
 #[derive(Clone, Copy, Debug)]
 enum ActivePoField {
-    MsgId,
-    MsgIdPlural,
-    MsgStr,
-    MsgStrPlural(usize),
+    Id,
+    IdPlural,
+    Str,
+    StrPlural(usize),
 }
 
 fn main() {
@@ -71,7 +71,7 @@ fn main() {
 
     glib_build_tools::compile_resources(
         &[data_dir],
-        &format!("data/resources.xml"),
+        "data/resources.xml",
         "compiled.gresource",
     );
 
@@ -955,7 +955,7 @@ fn parse_po_entries(source: &str) -> Vec<PoEntry> {
 
         if let Some(value) = trimmed.strip_prefix("msgid_plural ") {
             current.msgid_plural = Some(parse_po_quoted(value));
-            active_field = Some(ActivePoField::MsgIdPlural);
+            active_field = Some(ActivePoField::IdPlural);
             continue;
         }
 
@@ -967,32 +967,32 @@ fn parse_po_entries(source: &str) -> Vec<PoEntry> {
                 finalize_po_entry(&mut entries, &mut current);
             }
             current.msgid = parse_po_quoted(value);
-            active_field = Some(ActivePoField::MsgId);
+            active_field = Some(ActivePoField::Id);
             continue;
         }
 
         if let Some(value) = trimmed.strip_prefix("msgstr ") {
             current.msgstr = parse_po_quoted(value);
-            active_field = Some(ActivePoField::MsgStr);
+            active_field = Some(ActivePoField::Str);
             continue;
         }
 
         if let Some((index, value)) = parse_po_plural_msgstr(trimmed) {
             current.msgstr_plural.insert(index, value);
-            active_field = Some(ActivePoField::MsgStrPlural(index));
+            active_field = Some(ActivePoField::StrPlural(index));
             continue;
         }
 
         if trimmed.starts_with('"') {
             let value = parse_po_quoted(trimmed);
             match active_field {
-                Some(ActivePoField::MsgId) => current.msgid.push_str(&value),
-                Some(ActivePoField::MsgIdPlural) => current
+                Some(ActivePoField::Id) => current.msgid.push_str(&value),
+                Some(ActivePoField::IdPlural) => current
                     .msgid_plural
                     .get_or_insert_with(String::new)
                     .push_str(&value),
-                Some(ActivePoField::MsgStr) => current.msgstr.push_str(&value),
-                Some(ActivePoField::MsgStrPlural(index)) => current
+                Some(ActivePoField::Str) => current.msgstr.push_str(&value),
+                Some(ActivePoField::StrPlural(index)) => current
                     .msgstr_plural
                     .entry(index)
                     .or_default()

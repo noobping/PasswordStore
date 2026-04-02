@@ -867,9 +867,9 @@ fn matches_field(
     metadata_fields: &[SearchablePassField],
     indexed_fields: Option<&[SearchablePassField]>,
     field_key: &str,
-    mut predicate: impl FnMut(&SearchablePassField) -> bool,
+    predicate: impl FnMut(&SearchablePassField) -> bool,
 ) -> bool {
-    fields_for_key(metadata_fields, indexed_fields, field_key).any(|field| predicate(field))
+    fields_for_key(metadata_fields, indexed_fields, field_key).any(predicate)
 }
 
 fn field_reference_matches(

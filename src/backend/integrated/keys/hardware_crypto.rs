@@ -145,7 +145,7 @@ impl crypto::Decryptor for CardDecryptor<'_, '_> {
             (mpi::Ciphertext::ECDH { e, .. }, mpi::PublicKey::ECDH { curve, .. }) => {
                 let cryptogram = if curve == &Curve::Cv25519 {
                     if e.value().first().copied() != Some(0x40) {
-                        return Err(anyhow!("Unexpected Cv25519 ciphertext shape").into());
+                        return Err(anyhow!("Unexpected Cv25519 ciphertext shape"));
                     }
                     Cryptogram::ECDH(&e.value()[1..])
                 } else {
@@ -159,7 +159,7 @@ impl crypto::Decryptor for CardDecryptor<'_, '_> {
                 let mut decrypted = self.tx.decipher(cryptogram)?;
                 if curve == &Curve::NistP256 && decrypted.len() == 65 {
                     if decrypted[0] != 0x04 {
-                        return Err(anyhow!("Unexpected NistP256 ciphertext shape").into());
+                        return Err(anyhow!("Unexpected NistP256 ciphertext shape"));
                     }
                     decrypted = decrypted[1..33].to_vec();
                 }
@@ -178,8 +178,7 @@ impl crypto::Decryptor for CardDecryptor<'_, '_> {
                 "Unsupported combination of ciphertext {:?} and public key {:?}",
                 ciphertext,
                 public
-            )
-            .into()),
+            )),
         }
     }
 }
@@ -276,9 +275,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
                             .map_err(|_| anyhow!("Invalid SHA512 digest length"))?,
                     ),
                     _ => {
-                        return Err(
-                            anyhow!("Unsupported hash algorithm for RSA: {hash_algo:?}").into()
-                        )
+                        return Err(anyhow!("Unsupported hash algorithm for RSA: {hash_algo:?}"))
                     }
                 };
 
@@ -321,7 +318,7 @@ impl crypto::Signer for CardSigner<'_, '_> {
                 }
             }
             (algorithm, _) => {
-                return Err(anyhow!("Unsupported signing algorithm: {algorithm:?}").into())
+                return Err(anyhow!("Unsupported signing algorithm: {algorithm:?}"))
             }
         };
 

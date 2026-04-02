@@ -138,7 +138,7 @@ fn main() -> ExitCode {
 }
 
 fn command_line_pass_file(args: &[OsString]) -> Option<OpenPassFile> {
-    if !args.get(1).is_some_and(|arg| arg == "--open-entry") {
+    if args.get(1).is_none_or(|arg| arg != "--open-entry") {
         return None;
     }
 

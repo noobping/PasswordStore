@@ -116,35 +116,6 @@ fn append_unlockable_tool_fingerprints(fingerprints: &mut Vec<String>, candidate
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::append_unlockable_tool_fingerprints;
-
-    #[test]
-    fn unlockable_tool_fingerprints_keep_unique_standard_and_fido_keys() {
-        let mut fingerprints = vec!["ABCDEF0123456789".to_string()];
-        append_unlockable_tool_fingerprints(
-            &mut fingerprints,
-            vec![
-                "abcdef0123456789".to_string(),
-                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
-                    .to_string(),
-                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4261636b7570204b6579:63726564"
-                    .to_string(),
-            ],
-        );
-
-        assert_eq!(
-            fingerprints,
-            vec![
-                "ABCDEF0123456789".to_string(),
-                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
-                    .to_string(),
-            ]
-        );
-    }
-}
-
 fn prompt_tool_unlock_sequence(
     overlay: &ToastOverlay,
     fingerprints: Vec<String>,
@@ -190,4 +161,33 @@ fn prompt_tool_unlock_at_index(
             }
         }),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::append_unlockable_tool_fingerprints;
+
+    #[test]
+    fn unlockable_tool_fingerprints_keep_unique_standard_and_fido_keys() {
+        let mut fingerprints = vec!["ABCDEF0123456789".to_string()];
+        append_unlockable_tool_fingerprints(
+            &mut fingerprints,
+            vec![
+                "abcdef0123456789".to_string(),
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+                    .to_string(),
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4261636b7570204b6579:63726564"
+                    .to_string(),
+            ],
+        );
+
+        assert_eq!(
+            fingerprints,
+            vec![
+                "ABCDEF0123456789".to_string(),
+                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
+                    .to_string(),
+            ]
+        );
+    }
 }

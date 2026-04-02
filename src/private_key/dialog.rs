@@ -71,7 +71,7 @@ pub fn build_private_key_progress_dialog(
     content.append(&spinner);
 
     let dialog = Dialog::builder()
-        .title(&gettext(title))
+        .title(gettext(title))
         .content_width(520)
         .content_height(260)
         .follows_content_size(true)
@@ -170,7 +170,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title(&gettext(title))
+        .title(gettext(title))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
@@ -271,7 +271,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title(&gettext(title))
+        .title(gettext(title))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)

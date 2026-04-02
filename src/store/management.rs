@@ -6,7 +6,8 @@ use self::clone::append_store_clone_row;
 #[cfg(target_os = "linux")]
 pub use self::clone::prompt_store_clone;
 pub use self::import::{
-    initialize_store_import_page, schedule_store_import_row, StoreImportPageState,
+    initialize_store_import_page, schedule_store_import_row, StoreImportChrome,
+    StoreImportControls, StoreImportPageState, StoreImportPageWidgets,
 };
 use super::recipients::{
     read_store_recipients, store_is_supported_in_current_build, store_recipients_subtitle,

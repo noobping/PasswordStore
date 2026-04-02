@@ -156,8 +156,8 @@ fn resolved_placeholder(empty: bool, has_store_dirs: bool) -> StatusPage {
     } else {
         StatusPage::builder()
             .icon_name("edit-find-symbolic")
-            .title(&gettext("No matches"))
-            .description(&gettext("Try another query."))
+            .title(gettext("No matches"))
+            .description(gettext("Try another query."))
             .build()
     }
 }
@@ -166,13 +166,13 @@ fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -
     let builder = StatusPage::builder().icon_name(symbolic);
     if has_store_dirs {
         builder
-            .title(&gettext("No items yet"))
-            .description(&gettext("Create a new item to get started."))
+            .title(gettext("No items yet"))
+            .description(gettext("Create a new item to get started."))
             .build()
     } else {
         builder
-            .title(&gettext("No folders added"))
-            .description(&gettext("Open Preferences to add a password store folder."))
+            .title(gettext("No folders added"))
+            .description(gettext("Open Preferences to add a password store folder."))
             .build()
     }
 }

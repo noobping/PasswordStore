@@ -195,43 +195,52 @@ pub struct StoreImportPageState {
     pub in_flight: Rc<Cell<bool>>,
 }
 
+pub struct StoreImportChrome<'a> {
+    pub window: &'a ApplicationWindow,
+    pub navigation: &'a WindowNavigationState,
+    pub overlay: &'a ToastOverlay,
+    pub page: &'a NavigationPage,
+    pub stack: &'a Stack,
+    pub form: &'a ScrolledWindow,
+    pub loading: &'a StatusPage,
+}
+
+pub struct StoreImportControls<'a> {
+    pub store_dropdown: &'a ComboRow,
+    pub source_dropdown: &'a ComboRow,
+    pub source_path_row: &'a ActionRow,
+    pub source_file_button: &'a Button,
+    pub source_folder_button: &'a Button,
+    pub source_clear_button: &'a Button,
+    pub source_password_row: &'a PasswordEntryRow,
+    pub target_path_row: &'a EntryRow,
+    pub import_button: &'a Button,
+}
+
+pub struct StoreImportPageWidgets<'a> {
+    pub chrome: StoreImportChrome<'a>,
+    pub controls: StoreImportControls<'a>,
+}
+
 impl StoreImportPageState {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        window: &ApplicationWindow,
-        navigation: &WindowNavigationState,
-        overlay: &ToastOverlay,
-        page: &NavigationPage,
-        stack: &Stack,
-        form: &ScrolledWindow,
-        loading: &StatusPage,
-        store_dropdown: &ComboRow,
-        source_dropdown: &ComboRow,
-        source_path_row: &ActionRow,
-        source_file_button: &Button,
-        source_folder_button: &Button,
-        source_clear_button: &Button,
-        source_password_row: &PasswordEntryRow,
-        target_path_row: &EntryRow,
-        import_button: &Button,
-    ) -> Self {
+    pub fn new(widgets: StoreImportPageWidgets<'_>) -> Self {
         Self {
-            window: window.clone(),
-            navigation: navigation.clone(),
-            overlay: overlay.clone(),
-            page: page.clone(),
-            stack: stack.clone(),
-            form: form.clone(),
-            loading: loading.clone(),
-            store_dropdown: store_dropdown.clone(),
-            source_dropdown: source_dropdown.clone(),
-            source_path_row: source_path_row.clone(),
-            source_file_button: source_file_button.clone(),
-            source_folder_button: source_folder_button.clone(),
-            source_clear_button: source_clear_button.clone(),
-            source_password_row: source_password_row.clone(),
-            target_path_row: target_path_row.clone(),
-            import_button: import_button.clone(),
+            window: widgets.chrome.window.clone(),
+            navigation: widgets.chrome.navigation.clone(),
+            overlay: widgets.chrome.overlay.clone(),
+            page: widgets.chrome.page.clone(),
+            stack: widgets.chrome.stack.clone(),
+            form: widgets.chrome.form.clone(),
+            loading: widgets.chrome.loading.clone(),
+            store_dropdown: widgets.controls.store_dropdown.clone(),
+            source_dropdown: widgets.controls.source_dropdown.clone(),
+            source_path_row: widgets.controls.source_path_row.clone(),
+            source_file_button: widgets.controls.source_file_button.clone(),
+            source_folder_button: widgets.controls.source_folder_button.clone(),
+            source_clear_button: widgets.controls.source_clear_button.clone(),
+            source_password_row: widgets.controls.source_password_row.clone(),
+            target_path_row: widgets.controls.target_path_row.clone(),
+            import_button: widgets.controls.import_button.clone(),
             store_roots: Rc::new(RefCell::new(Vec::new())),
             import_sources: Rc::new(RefCell::new(Vec::new())),
             source_path: Rc::new(RefCell::new(None)),

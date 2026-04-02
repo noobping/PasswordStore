@@ -179,27 +179,6 @@ pub(super) fn append_store_clone_row(
     );
 }
 
-#[cfg(test)]
-mod tests {
-    use super::clone_url_dialog_error_message;
-
-    #[test]
-    fn clone_url_dialog_requires_a_repository_url() {
-        assert_eq!(
-            clone_url_dialog_error_message(""),
-            Some("Enter a repository URL.")
-        );
-        assert_eq!(
-            clone_url_dialog_error_message("   "),
-            Some("Enter a repository URL.")
-        );
-        assert_eq!(
-            clone_url_dialog_error_message("ssh://git@example.test/repo.git"),
-            None
-        );
-    }
-}
-
 fn start_store_clone(
     window: &ApplicationWindow,
     stores_list: &ListBox,
@@ -256,4 +235,25 @@ fn start_store_clone(
             overlay_for_disconnect.add_toast(Toast::new(&gettext("Restore stopped unexpectedly.")));
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clone_url_dialog_error_message;
+
+    #[test]
+    fn clone_url_dialog_requires_a_repository_url() {
+        assert_eq!(
+            clone_url_dialog_error_message(""),
+            Some("Enter a repository URL.")
+        );
+        assert_eq!(
+            clone_url_dialog_error_message("   "),
+            Some("Enter a repository URL.")
+        );
+        assert_eq!(
+            clone_url_dialog_error_message("ssh://git@example.test/repo.git"),
+            None
+        );
+    }
 }

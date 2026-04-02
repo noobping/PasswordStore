@@ -153,8 +153,8 @@ fn present_private_key_sync_confirmation(
     on_response: impl FnOnce(bool) + 'static,
 ) {
     let dialog = AlertDialog::builder()
-        .heading(&gettext("Turn on private-key sync?"))
-        .body(&gettext("Keycord will first make its private-key list match the GPG private keys on your computer. After that, creating, importing, or deleting a private key in Keycord will update the host too. Keys that only exist in Keycord may be removed during the first sync."))
+        .heading(gettext("Turn on private-key sync?"))
+        .body(gettext("Keycord will first make its private-key list match the GPG private keys on your computer. After that, creating, importing, or deleting a private key in Keycord will update the host too. Keys that only exist in Keycord may be removed during the first sync."))
         .build();
     let cancel = gettext("Cancel");
     let turn_on = gettext("Turn On");

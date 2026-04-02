@@ -74,9 +74,9 @@ pub fn require_host_command_features() -> Result<(), String> {
 }
 
 pub fn handle_unsupported_host_command_invocation(args: &[OsString]) -> bool {
-    if !args
+    if args
         .get(1)
-        .is_some_and(|arg| arg == UNSUPPORTED_HOST_COMMAND_ARG)
+        .is_none_or(|arg| arg != UNSUPPORTED_HOST_COMMAND_ARG)
     {
         return false;
     }

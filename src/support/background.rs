@@ -104,11 +104,8 @@ pub fn spawn_progress_result_task<T, P, Task, HandleProgress, HandleResult, Hand
     glib::timeout_add_local(
         Duration::from_millis(BACKGROUND_TASK_POLL_INTERVAL_MS),
         move || {
-            loop {
-                match progress_rx.try_recv() {
-                    Ok(progress) => handle_progress(progress),
-                    Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
-                }
+            while let Ok(progress) = progress_rx.try_recv() {
+                handle_progress(progress);
             }
 
             match result_rx.try_recv() {

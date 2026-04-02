@@ -393,25 +393,28 @@ fn next_autofilled_remote_name(
     Some(suggestion.unwrap_or_default())
 }
 
-fn present_remote_dialog(
-    window: &ApplicationWindow,
-    store: &str,
-    title: &str,
-    initial_name: &str,
-    initial_url: &str,
+struct RemoteDialogRequest<'a> {
+    window: &'a ApplicationWindow,
+    store: &'a str,
+    title: &'a str,
+    initial_name: &'a str,
+    initial_url: &'a str,
     existing_names: Vec<String>,
     existing_urls: Vec<String>,
-    _submit_label: &str,
+}
+
+fn present_remote_dialog(
+    request: RemoteDialogRequest<'_>,
     on_submit: impl Fn(String, String) -> Result<(), String> + 'static,
 ) {
-    let existing_names = Rc::new(existing_names);
-    let existing_urls = Rc::new(existing_urls);
+    let existing_names = Rc::new(request.existing_names);
+    let existing_urls = Rc::new(request.existing_urls);
     let name_row = EntryRow::new();
     name_row.set_title(&gettext("Remote name"));
-    name_row.set_text(initial_name);
+    name_row.set_text(request.initial_name);
     let url_row = EntryRow::new();
     url_row.set_title(&gettext("Remote URL"));
-    url_row.set_text(initial_url);
+    url_row.set_text(request.initial_url);
     url_row.set_show_apply_button(true);
 
     let syncing = Rc::new(Cell::new(false));
@@ -467,11 +470,11 @@ fn present_remote_dialog(
     content.append(&error_label);
 
     let dialog = Dialog::builder()
-        .title(gettext(title))
+        .title(gettext(request.title))
         .content_height(280)
         .content_width(800)
         .follows_content_size(true)
-        .child(&dialog_content_shell(title, Some(store), &content))
+        .child(&dialog_content_shell(request.title, Some(request.store), &content))
         .build();
 
     let dialog_for_submit = dialog.clone();
@@ -519,7 +522,7 @@ fn present_remote_dialog(
         });
     }
 
-    dialog.present(Some(window));
+    dialog.present(Some(request.window));
 }
 
 fn update_store_git_remote(
@@ -588,14 +591,15 @@ fn append_remote_row(
         let store_for_submit = store_for_edit.clone();
         let current_name_for_submit = current_name.clone();
         present_remote_dialog(
-            &state_for_edit.window,
-            &store_for_edit,
-            "Edit remote",
-            &current_name,
-            &current_url,
-            existing_names.clone(),
-            existing_urls.clone(),
-            "Save",
+            RemoteDialogRequest {
+                window: &state_for_edit.window,
+                store: &store_for_edit,
+                title: "Edit remote",
+                initial_name: &current_name,
+                initial_url: &current_url,
+                existing_names: existing_names.clone(),
+                existing_urls: existing_urls.clone(),
+            },
             move |next_name, next_url| {
                 update_store_git_remote(
                     &store_for_submit,
@@ -705,14 +709,15 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     let state_for_submit = add_state.clone();
                     let store_for_submit = store_for_add.clone();
                     present_remote_dialog(
-                        &add_state.window,
-                        &store_for_add,
-                        "Add remote",
-                        "",
-                        "",
-                        existing_remote_names.clone(),
-                        existing_remote_urls.clone(),
-                        "Add",
+                        RemoteDialogRequest {
+                            window: &add_state.window,
+                            store: &store_for_add,
+                            title: "Add remote",
+                            initial_name: "",
+                            initial_url: "",
+                            existing_names: existing_remote_names.clone(),
+                            existing_urls: existing_remote_urls.clone(),
+                        },
                         move |name, url| {
                             add_store_git_remote(&store_for_submit, &name, &url)?;
                             rebuild_store_git_page(&state_for_submit);

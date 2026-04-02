@@ -120,24 +120,26 @@ struct ParsedListItem<'a> {
     text: &'a str,
 }
 
+pub struct DocumentationPageWidgets<'a> {
+    pub navigation: &'a crate::window::navigation::WindowNavigationState,
+    pub page: &'a NavigationPage,
+    pub search_entry: &'a SearchEntry,
+    pub list: &'a ListBox,
+    pub detail_page: &'a NavigationPage,
+    pub detail_scrolled: &'a ScrolledWindow,
+    pub detail_box: &'a GtkBox,
+}
+
 impl DocumentationPageState {
-    pub fn new(
-        navigation: &crate::window::navigation::WindowNavigationState,
-        page: &NavigationPage,
-        search_entry: &SearchEntry,
-        list: &ListBox,
-        detail_page: &NavigationPage,
-        detail_scrolled: &ScrolledWindow,
-        detail_box: &GtkBox,
-    ) -> Self {
+    pub fn new(widgets: DocumentationPageWidgets<'_>) -> Self {
         let state = Self {
-            navigation: navigation.clone(),
-            page: page.clone(),
-            search_entry: search_entry.clone(),
-            list: list.clone(),
-            detail_page: detail_page.clone(),
-            detail_scrolled: detail_scrolled.clone(),
-            detail_box: detail_box.clone(),
+            navigation: widgets.navigation.clone(),
+            page: widgets.page.clone(),
+            search_entry: widgets.search_entry.clone(),
+            list: widgets.list.clone(),
+            detail_page: widgets.detail_page.clone(),
+            detail_scrolled: widgets.detail_scrolled.clone(),
+            detail_box: widgets.detail_box.clone(),
             documents: Rc::new(load_documents()),
             current_doc_index: Rc::new(RefCell::new(None)),
         };

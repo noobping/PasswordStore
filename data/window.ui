@@ -692,6 +692,47 @@
 
                             <child>
                               <object class="AdwPreferencesGroup">
+                                <property name="title" translatable="yes">Clipboard</property>
+                                <property name="description" translatable="yes">Used when Keycord copies a value itself, such as a password, username, OTP code, or structured field value.</property>
+                                <child>
+                                  <object class="AdwActionRow" id="clipboard_auto_clear_password_row">
+                                    <property name="title" translatable="yes">Clear copied pass values automatically</property>
+                                    <property name="subtitle" translatable="yes">Replace copied passwords and field values after a short delay.</property>
+                                    <property name="activatable">True</property>
+                                    <child type="suffix">
+                                      <object class="GtkCheckButton" id="clipboard_auto_clear_password_check">
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwActionRow" id="clipboard_auto_clear_seconds_row">
+                                    <property name="title" translatable="yes">Clear after</property>
+                                    <property name="subtitle" translatable="yes">Seconds before the copied value is cleared.</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinButton" id="clipboard_auto_clear_seconds_spin">
+                                        <property name="adjustment">
+                                          <object class="GtkAdjustment">
+                                            <property name="lower">1</property>
+                                            <property name="upper">3600</property>
+                                            <property name="step-increment">1</property>
+                                            <property name="page-increment">15</property>
+                                            <property name="value">45</property>
+                                          </object>
+                                        </property>
+                                        <property name="numeric">true</property>
+                                        <property name="width-chars">4</property>
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
+                              <object class="AdwPreferencesGroup">
                                 <property name="title" translatable="yes">Password Generation</property>
                                 <property name="description" translatable="yes">These settings are used when you generate or regenerate a password from the editor.</property>
                                 <child>

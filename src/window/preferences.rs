@@ -15,7 +15,7 @@ use crate::support::ui::push_navigation_page_if_needed;
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowPageState, APP_WINDOW_TITLE,
 };
-use adw::gtk::{CheckButton, ListBox, TextView};
+use adw::gtk::{CheckButton, ListBox, SpinButton, TextView};
 use adw::prelude::*;
 use adw::{ActionRow, AlertDialog, ComboRow, EntryRow};
 use adw::{Toast, ToastOverlay};
@@ -325,6 +325,12 @@ fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Pre
         &state.clear_empty_fields_before_save_check,
         settings.clear_empty_fields_before_save(),
     );
+    sync_clipboard_auto_clear_controls(
+        &state.clipboard_auto_clear_password_check,
+        &state.clipboard_auto_clear_seconds_row,
+        &state.clipboard_auto_clear_seconds_spin,
+        settings,
+    );
     sync_password_list_sort_checks(
         &state.password_list_sort_filename_check,
         &state.password_list_sort_store_path_check,
@@ -350,6 +356,10 @@ pub struct PreferencesActionState {
     pub template_view: TextView,
     pub clear_empty_fields_before_save_row: ActionRow,
     pub clear_empty_fields_before_save_check: CheckButton,
+    pub clipboard_auto_clear_password_row: ActionRow,
+    pub clipboard_auto_clear_password_check: CheckButton,
+    pub clipboard_auto_clear_seconds_row: ActionRow,
+    pub clipboard_auto_clear_seconds_spin: SpinButton,
     pub username_folder_check: CheckButton,
     pub username_filename_check: CheckButton,
     pub password_list_sort_filename_check: CheckButton,
@@ -368,6 +378,25 @@ pub struct PreferencesActionState {
 fn sync_clear_empty_fields_before_save_check(check: &CheckButton, enabled: bool) {
     if check.is_active() != enabled {
         check.set_active(enabled);
+    }
+}
+
+fn sync_clipboard_auto_clear_controls(
+    toggle_check: &CheckButton,
+    seconds_row: &ActionRow,
+    seconds_spin: &SpinButton,
+    preferences: &Preferences,
+) {
+    let enabled = preferences.clipboard_auto_clear_password();
+    let seconds = preferences.clipboard_auto_clear_seconds();
+
+    if toggle_check.is_active() != enabled {
+        toggle_check.set_active(enabled);
+    }
+    seconds_row.set_sensitive(enabled);
+    seconds_spin.set_sensitive(enabled);
+    if seconds_spin.value_as_int() != seconds as i32 {
+        seconds_spin.set_value(seconds as f64);
     }
 }
 
@@ -408,6 +437,93 @@ pub fn connect_clear_empty_fields_before_save_autosave(
         }
         syncing_for_toggle.set(false);
     });
+}
+
+pub fn connect_clipboard_auto_clear_autosave(
+    toggle_row: &ActionRow,
+    toggle_check: &CheckButton,
+    seconds_row: &ActionRow,
+    seconds_spin: &SpinButton,
+    overlay: &ToastOverlay,
+) {
+    let check_for_row = toggle_check.clone();
+    toggle_row.connect_activated(move |_| {
+        if !check_for_row.is_sensitive() {
+            return;
+        }
+        check_for_row.set_active(!check_for_row.is_active());
+    });
+
+    let preferences = Preferences::new();
+    sync_clipboard_auto_clear_controls(toggle_check, seconds_row, seconds_spin, &preferences);
+
+    let overlay = overlay.clone();
+    let syncing = Rc::new(Cell::new(false));
+
+    {
+        let preferences = preferences.clone();
+        let syncing = syncing.clone();
+        let overlay = overlay.clone();
+        let toggle_check_for_signal = toggle_check.clone();
+        let toggle_check = toggle_check.clone();
+        let seconds_row = seconds_row.clone();
+        let seconds_spin = seconds_spin.clone();
+        toggle_check_for_signal.connect_toggled(move |button| {
+            if syncing.get() {
+                return;
+            }
+
+            let desired = button.is_active();
+            let stored = preferences.clipboard_auto_clear_password();
+            if desired != stored {
+                syncing.set(true);
+                if let Err(err) = preferences.set_clipboard_auto_clear_password(desired) {
+                    toast_preferences_save_error(&overlay, "clipboard auto clear", &err);
+                    button.set_active(stored);
+                }
+                syncing.set(false);
+            }
+
+            sync_clipboard_auto_clear_controls(
+                &toggle_check,
+                &seconds_row,
+                &seconds_spin,
+                &preferences,
+            );
+        });
+    }
+
+    {
+        let preferences = preferences.clone();
+        let syncing = syncing.clone();
+        let overlay = overlay.clone();
+        let toggle_check = toggle_check.clone();
+        let seconds_row = seconds_row.clone();
+        let seconds_spin_for_signal = seconds_spin.clone();
+        let seconds_spin_ref = seconds_spin.clone();
+        seconds_spin_for_signal.connect_value_changed(move |spin| {
+            if syncing.get() {
+                return;
+            }
+
+            let desired = spin.value_as_int().max(1) as u32;
+            let stored = preferences.clipboard_auto_clear_seconds();
+            if desired != stored {
+                syncing.set(true);
+                if let Err(err) = preferences.set_clipboard_auto_clear_seconds(desired) {
+                    toast_preferences_save_error(&overlay, "clipboard auto clear seconds", &err);
+                }
+                syncing.set(false);
+            }
+
+            sync_clipboard_auto_clear_controls(
+                &toggle_check,
+                &seconds_row,
+                &seconds_spin_ref,
+                &preferences,
+            );
+        });
+    }
 }
 
 pub fn connect_new_password_template_autosave(template_view: &TextView, overlay: &ToastOverlay) {

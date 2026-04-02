@@ -583,6 +583,50 @@ msgstr "Context"
 msgid "Copied."
 msgstr "Gekopieerd."
 
+#: src/clipboard.rs:156 src/clipboard.rs:293
+msgid "Copied. Clipboard will clear in 1 second."
+msgstr "Gekopieerd. Het klembord wordt over 1 seconde gewist."
+
+#: src/clipboard.rs:157 src/clipboard.rs:297
+msgid "Copied. Clipboard will clear in {seconds} seconds."
+msgstr "Gekopieerd. Het klembord wordt over {seconds} seconden gewist."
+
+#: src/clipboard.rs:159 src/clipboard.rs:306
+msgid "Copied. Clipboard will not clear automatically."
+msgstr "Gekopieerd. Het klembord wordt niet automatisch gewist."
+
+#: src/clipboard.rs:184
+msgid "Clipboard cleared."
+msgstr "Klembord gewist."
+
+#: data/window.ui:695
+msgid "Clipboard"
+msgstr "Klembord"
+
+#: data/window.ui:696
+msgid ""
+"Used when Keycord copies a value itself, such as a password, username, "
+"OTP code, or structured field value."
+msgstr ""
+"Gebruikt wanneer Keycord zelf een pass-waarde kopieert, zoals een "
+"wachtwoord, gebruikersnaam, OTP-code of gestructureerde veldwaarde."
+
+#: data/window.ui:699
+msgid "Clear copied pass values automatically"
+msgstr "Gekopieerde pass-waarden automatisch wissen"
+
+#: data/window.ui:700
+msgid "Replace copied passwords and field values after a short delay."
+msgstr "Vervang gekopieerde wachtwoorden en veldwaarden na een korte vertraging."
+
+#: data/window.ui:711
+msgid "Clear after"
+msgstr "Wissen na"
+
+#: data/window.ui:712
+msgid "Seconds before the copied value is cleared."
+msgstr "Aantal seconden voordat de gekopieerde waarde wordt gewist."
+
 #: src/store/recipients_page/list.rs:909
 msgid "Copy FIDO2-protected private key"
 msgstr "Met FIDO2 beveiligde privésleutel kopiëren"

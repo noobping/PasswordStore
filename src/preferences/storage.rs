@@ -14,6 +14,8 @@ pub(super) struct PreferenceFile {
     pub(super) window_height: Option<i32>,
     pub(super) new_pass_file_template: Option<String>,
     pub(super) clear_empty_fields_before_save: Option<bool>,
+    pub(super) clipboard_auto_clear_password: Option<bool>,
+    pub(super) clipboard_auto_clear_seconds: Option<u32>,
     pub(super) password_generation: Option<PasswordGenerationSettings>,
     pub(super) username_fallback_mode: Option<UsernameFallbackMode>,
     pub(super) password_list_sort_mode: Option<PasswordListSortMode>,

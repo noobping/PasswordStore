@@ -56,9 +56,10 @@ use super::preferences::{
     initialize_backend_row,
 };
 use super::preferences::{
-    connect_clear_empty_fields_before_save_autosave, connect_new_password_template_autosave,
-    connect_password_generation_autosave, connect_password_list_sort_autosave,
-    connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
+    connect_clear_empty_fields_before_save_autosave, connect_clipboard_auto_clear_autosave,
+    connect_new_password_template_autosave, connect_password_generation_autosave,
+    connect_password_list_sort_autosave, connect_username_fallback_autosave,
+    register_open_preferences_action, PreferencesActionState,
 };
 use super::tools::{register_open_tools_action, sync_tools_action_availability, ToolsPageState};
 use crate::logging::{log_error, log_info};
@@ -237,6 +238,13 @@ fn connect_window_behaviors(
     connect_clear_empty_fields_before_save_autosave(
         &preferences_action_state.clear_empty_fields_before_save_row,
         &preferences_action_state.clear_empty_fields_before_save_check,
+        &widgets.toast_overlay,
+    );
+    connect_clipboard_auto_clear_autosave(
+        &preferences_action_state.clipboard_auto_clear_password_row,
+        &preferences_action_state.clipboard_auto_clear_password_check,
+        &preferences_action_state.clipboard_auto_clear_seconds_row,
+        &preferences_action_state.clipboard_auto_clear_seconds_spin,
         &widgets.toast_overlay,
     );
     connect_username_fallback_autosave(

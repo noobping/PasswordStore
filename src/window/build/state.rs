@@ -241,6 +241,10 @@ pub(super) fn preferences_action_state(
         template_view: widgets.new_pass_file_template_view.clone(),
         clear_empty_fields_before_save_row: widgets.clear_empty_fields_before_save_row.clone(),
         clear_empty_fields_before_save_check: widgets.clear_empty_fields_before_save_check.clone(),
+        clipboard_auto_clear_password_row: widgets.clipboard_auto_clear_password_row.clone(),
+        clipboard_auto_clear_password_check: widgets.clipboard_auto_clear_password_check.clone(),
+        clipboard_auto_clear_seconds_row: widgets.clipboard_auto_clear_seconds_row.clone(),
+        clipboard_auto_clear_seconds_spin: widgets.clipboard_auto_clear_seconds_spin.clone(),
         username_folder_check: widgets.preferences_username_folder_check.clone(),
         username_filename_check: widgets.preferences_username_filename_check.clone(),
         password_list_sort_filename_check: widgets

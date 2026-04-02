@@ -1,6 +1,6 @@
 use super::types::{is_url_field_key, DynamicFieldRow, DynamicFieldTemplate, StructuredPassLine};
 use super::url::add_open_url_suffix;
-use crate::clipboard::add_copy_suffix;
+use crate::clipboard::add_sensitive_copy_suffix;
 use adw::gtk::{Box as GtkBox, Widget};
 use adw::{prelude::*, EntryRow, PasswordEntryRow, ToastOverlay};
 use std::cell::RefCell;
@@ -63,7 +63,7 @@ pub fn dynamic_field_row(
         row.set_text(value);
         apply_field_row_style(&row);
         let row_clone = row.clone();
-        add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
+        add_sensitive_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
         DynamicFieldRow::Secret(row)
     } else {
         let row = EntryRow::new();
@@ -71,7 +71,7 @@ pub fn dynamic_field_row(
         row.set_text(value);
         apply_field_row_style(&row);
         let row_clone = row.clone();
-        add_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
+        add_sensitive_copy_suffix(&row, move || row_clone.text().to_string(), overlay);
         if is_url_field_key(&template.raw_key) {
             let row_clone = row.clone();
             add_open_url_suffix(&row, move || row_clone.text().to_string(), overlay);

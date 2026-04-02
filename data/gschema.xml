@@ -57,6 +57,22 @@
       </description>
     </key>
 
+    <key name="clipboard-auto-clear-password" type="b">
+      <default>true</default>
+      <summary>Clear copied pass values automatically</summary>
+      <description>
+        Automatically clear copied pass values after a delay when Keycord copies them directly.
+      </description>
+    </key>
+
+    <key name="clipboard-auto-clear-seconds" type="u">
+      <default>45</default>
+      <summary>Clipboard auto-clear delay</summary>
+      <description>
+        Delay in seconds before a copied value is cleared from the clipboard when Keycord copies it directly.
+      </description>
+    </key>
+
     <key name="username-fallback-mode" type="s">
       <default>'filename'</default>
       <summary>Username fallback mode</summary>

@@ -19,6 +19,8 @@ use crate::support::runtime::supports_host_command_features;
 const DEFAULT_NEW_PASS_FILE_TEMPLATE: &str = "username:\nemail:\nurl:";
 const DEFAULT_WINDOW_WIDTH: i32 = 850;
 const DEFAULT_WINDOW_HEIGHT: i32 = 600;
+const DEFAULT_CLIPBOARD_AUTO_CLEAR_PASSWORD: bool = true;
+const DEFAULT_CLIPBOARD_AUTO_CLEAR_SECONDS: u32 = 45;
 const APP_ID: &str = env!("APP_ID");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,6 +164,12 @@ impl Preferences {
         value.filter(|value| *value > 0).unwrap_or(default)
     }
 
+    fn stored_clipboard_auto_clear_seconds(value: Option<u32>) -> u32 {
+        value
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_CLIPBOARD_AUTO_CLEAR_SECONDS)
+    }
+
     fn normalized_hidden_notices(notices: Vec<String>) -> Vec<String> {
         let mut notices = notices
             .into_iter()
@@ -222,6 +230,27 @@ impl Preferences {
         self.read_preference(
             |settings| settings.boolean("clear-empty-fields-before-save"),
             |cfg| cfg.clear_empty_fields_before_save.unwrap_or(false),
+        )
+    }
+
+    pub fn clipboard_auto_clear_password(&self) -> bool {
+        self.read_preference(
+            |settings| settings.boolean("clipboard-auto-clear-password"),
+            |cfg| {
+                cfg.clipboard_auto_clear_password
+                    .unwrap_or(DEFAULT_CLIPBOARD_AUTO_CLEAR_PASSWORD)
+            },
+        )
+    }
+
+    pub fn clipboard_auto_clear_seconds(&self) -> u32 {
+        self.read_preference(
+            |settings| {
+                Self::stored_clipboard_auto_clear_seconds(Some(
+                    settings.uint("clipboard-auto-clear-seconds"),
+                ))
+            },
+            |cfg| Self::stored_clipboard_auto_clear_seconds(cfg.clipboard_auto_clear_seconds),
         )
     }
 
@@ -320,6 +349,21 @@ impl Preferences {
         self.write_preference(
             |settings| settings.set_boolean("clear-empty-fields-before-save", enabled),
             |cfg| cfg.clear_empty_fields_before_save = Some(enabled),
+        )
+    }
+
+    pub fn set_clipboard_auto_clear_password(&self, enabled: bool) -> Result<(), BoolError> {
+        self.write_preference(
+            |settings| settings.set_boolean("clipboard-auto-clear-password", enabled),
+            |cfg| cfg.clipboard_auto_clear_password = Some(enabled),
+        )
+    }
+
+    pub fn set_clipboard_auto_clear_seconds(&self, seconds: u32) -> Result<(), BoolError> {
+        let seconds = Self::stored_clipboard_auto_clear_seconds(Some(seconds));
+        self.write_preference(
+            |settings| settings.set_uint("clipboard-auto-clear-seconds", seconds),
+            |cfg| cfg.clipboard_auto_clear_seconds = Some(seconds),
         )
     }
 
@@ -437,7 +481,8 @@ impl Preferences {
 mod tests {
     use super::{
         default_backend_kind, default_store_dirs, BackendKind, PasswordListSortMode, Preferences,
-        UsernameFallbackMode, DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH,
+        UsernameFallbackMode, DEFAULT_CLIPBOARD_AUTO_CLEAR_SECONDS, DEFAULT_WINDOW_HEIGHT,
+        DEFAULT_WINDOW_WIDTH,
     };
     use crate::password::generation::PasswordGenerationSettings;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -506,6 +551,17 @@ mod tests {
 
         assert!(settings.length >= settings.minimum_length());
         assert!(settings.minimum_length() > 0);
+    }
+
+    #[test]
+    fn clipboard_auto_clear_defaults_are_enabled_and_positive() {
+        let preferences = Preferences::new();
+
+        assert!(preferences.clipboard_auto_clear_password());
+        assert_eq!(
+            preferences.clipboard_auto_clear_seconds(),
+            DEFAULT_CLIPBOARD_AUTO_CLEAR_SECONDS
+        );
     }
 
     #[test]

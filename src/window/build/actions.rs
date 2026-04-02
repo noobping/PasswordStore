@@ -1,4 +1,4 @@
-use crate::clipboard::connect_copy_button;
+use crate::clipboard::connect_sensitive_copy_button;
 use crate::i18n::gettext;
 use crate::password::list::toggle_password_list_folder_row;
 use crate::password::model::OpenPassFile;
@@ -65,17 +65,17 @@ pub(super) fn connect_password_copy_buttons(
     {
         let entry = password_entry.clone();
         let button = copy_password_button.clone();
-        connect_copy_button(&button, overlay, move || entry.text().to_string());
+        connect_sensitive_copy_button(&button, overlay, move || entry.text().to_string());
     }
     {
         let entry = username_entry.clone();
         let button = copy_username_button.clone();
-        connect_copy_button(&button, overlay, move || entry.text().to_string());
+        connect_sensitive_copy_button(&button, overlay, move || entry.text().to_string());
     }
     {
         let entry = otp_entry.clone();
         let button = copy_otp_button.clone();
-        connect_copy_button(&button, overlay, move || entry.text().to_string());
+        connect_sensitive_copy_button(&button, overlay, move || entry.text().to_string());
     }
 }
 

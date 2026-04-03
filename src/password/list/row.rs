@@ -659,12 +659,16 @@ fn build_unreadable_password_icon(visible: bool) -> Image {
 
 fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {
     let folder_uri = adw::gio::File::for_path(entry_parent_directory(entry)).uri();
-    if let Err(error) = launch_default_uri(&folder_uri) {
-        log_error(format!(
-            "Failed to open entry folder in the file manager.\nfolder: {folder_uri}\nerror: {error}"
-        ));
-        overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
-    }
+    let overlay = overlay.clone();
+    let folder_uri_for_log = folder_uri.clone();
+    launch_default_uri(&folder_uri, move |result| {
+        if let Err(error) = result {
+            log_error(format!(
+                "Failed to open entry folder in the file manager.\nfolder: {folder_uri_for_log}\nerror: {error}"
+            ));
+            overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
+        }
+    });
 }
 
 fn open_entry_in_new_window(state: &PasswordRowState, overlay: &ToastOverlay) {

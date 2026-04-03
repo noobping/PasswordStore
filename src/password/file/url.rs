@@ -38,12 +38,16 @@ pub(super) fn add_open_url_suffix(
             return;
         };
 
-        if let Err(error) = launch_default_uri(&uri) {
-            log_error(format!(
-                "Failed to open URL in the default browser.\nURL: {uri}\nerror: {error}"
-            ));
-            overlay.add_toast(Toast::new(&gettext("Couldn't open the link.")));
-        }
+        let overlay = overlay.clone();
+        let uri_for_log = uri.clone();
+        launch_default_uri(&uri, move |result| {
+            if let Err(error) = result {
+                log_error(format!(
+                    "Failed to open URL in the default browser.\nURL: {uri_for_log}\nerror: {error}"
+                ));
+                overlay.add_toast(Toast::new(&gettext("Couldn't open the link.")));
+            }
+        });
     });
     row.add_suffix(&button);
 }

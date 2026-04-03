@@ -54,7 +54,7 @@ pub const fn supports_docs_features() -> bool {
 }
 
 pub const fn supports_smartcard_features() -> bool {
-    cfg!(target_os = "linux")
+    cfg!(all(target_os = "linux", feature = "hardwarekey"))
 }
 
 pub const fn supports_fidostore_features() -> bool {

@@ -186,12 +186,15 @@ pub enum PrivateKeyError {
     HardwareTokenMismatch(String),
     #[error("{0}")]
     HardwarePinRequired(String),
+    #[cfg(feature = "hardwarekey")]
     #[error("{0}")]
     IncorrectHardwarePin(String),
+    #[cfg(feature = "hardwarekey")]
     #[error("{0}")]
     HardwarePinBlocked(String),
     #[error("{0}")]
     UnsupportedHardwareKey(String),
+    #[cfg(feature = "hardwarekey")]
     #[error("{0}")]
     HardwareTokenRemoved(String),
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -252,10 +255,12 @@ impl PrivateKeyError {
         Self::HardwarePinRequired(message.into())
     }
 
+    #[cfg(feature = "hardwarekey")]
     pub fn incorrect_hardware_pin(message: impl Into<String>) -> Self {
         Self::IncorrectHardwarePin(message.into())
     }
 
+    #[cfg(feature = "hardwarekey")]
     pub fn hardware_pin_blocked(message: impl Into<String>) -> Self {
         Self::HardwarePinBlocked(message.into())
     }
@@ -264,6 +269,7 @@ impl PrivateKeyError {
         Self::UnsupportedHardwareKey(message.into())
     }
 
+    #[cfg(feature = "hardwarekey")]
     pub fn hardware_token_removed(message: impl Into<String>) -> Self {
         Self::HardwareTokenRemoved(message.into())
     }
@@ -330,10 +336,14 @@ impl PrivateKeyError {
             Self::Incompatible(_) => "This key can't open your items.",
             Self::HardwareTokenNotPresent(_) => "Connect the hardware key and try again.",
             Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
+            #[cfg(feature = "hardwarekey")]
             Self::HardwarePinRequired(_)
             | Self::IncorrectHardwarePin(_)
             | Self::HardwarePinBlocked(_) => "Couldn't unlock the hardware key.",
+            #[cfg(not(feature = "hardwarekey"))]
+            Self::HardwarePinRequired(_) => "Couldn't unlock the hardware key.",
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
+            #[cfg(feature = "hardwarekey")]
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key and try again.",
@@ -357,11 +367,16 @@ impl PrivateKeyError {
             Self::Incompatible(_) => "This key can't open your items.",
             Self::HardwareTokenNotPresent(_) => "Connect the hardware key first.",
             Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
+            #[cfg(feature = "hardwarekey")]
             Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
                 "Couldn't unlock the hardware key."
             }
+            #[cfg(not(feature = "hardwarekey"))]
+            Self::HardwarePinRequired(_) => "Couldn't unlock the hardware key.",
+            #[cfg(feature = "hardwarekey")]
             Self::HardwarePinBlocked(_) => "The hardware key PIN is blocked.",
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
+            #[cfg(feature = "hardwarekey")]
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key first.",

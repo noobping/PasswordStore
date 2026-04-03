@@ -3,20 +3,20 @@ use crate::backend::PrivateKeyError;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, OnceLock, RwLock};
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "hardwarekey"))]
 mod crypto;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "hardwarekey"))]
 mod linux;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "hardwarekey")))]
 mod unsupported;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "hardwarekey"))]
 use self::linux::RealHardwareTransport;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "hardwarekey"))]
 pub(in crate::backend::integrated) use self::linux::{HardwareSessionPolicy, HardwareUnlockMode};
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "hardwarekey")))]
 use self::unsupported::RealHardwareTransport;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "hardwarekey")))]
 pub(in crate::backend::integrated) use self::unsupported::{
     HardwareSessionPolicy, HardwareUnlockMode,
 };
@@ -42,11 +42,17 @@ pub struct HardwareKeyGenerationRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HardwareTransportError {
+    #[cfg(feature = "hardwarekey")]
     TokenNotPresent(String),
+    #[cfg(feature = "hardwarekey")]
     TokenMismatch(String),
+    #[cfg(feature = "hardwarekey")]
     PinRequired(String),
+    #[cfg(feature = "hardwarekey")]
     IncorrectPin(String),
+    #[cfg(feature = "hardwarekey")]
     PinBlocked(String),
+    #[cfg(feature = "hardwarekey")]
     TokenRemoved(String),
     Unsupported(String),
     Other(String),
@@ -55,6 +61,7 @@ pub enum HardwareTransportError {
 impl Display for HardwareTransportError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            #[cfg(feature = "hardwarekey")]
             Self::TokenNotPresent(message)
             | Self::TokenMismatch(message)
             | Self::PinRequired(message)
@@ -63,6 +70,8 @@ impl Display for HardwareTransportError {
             | Self::TokenRemoved(message)
             | Self::Unsupported(message)
             | Self::Other(message) => write!(f, "{message}"),
+            #[cfg(not(feature = "hardwarekey"))]
+            Self::Unsupported(message) | Self::Other(message) => write!(f, "{message}"),
         }
     }
 }
@@ -185,21 +194,27 @@ pub(in crate::backend::integrated) fn private_key_error_from_hardware_transport_
     err: HardwareTransportError,
 ) -> PrivateKeyError {
     match err {
+        #[cfg(feature = "hardwarekey")]
         HardwareTransportError::TokenNotPresent(message) => {
             PrivateKeyError::hardware_token_not_present(message)
         }
+        #[cfg(feature = "hardwarekey")]
         HardwareTransportError::TokenMismatch(message) => {
             PrivateKeyError::hardware_token_mismatch(message)
         }
+        #[cfg(feature = "hardwarekey")]
         HardwareTransportError::PinRequired(message) => {
             PrivateKeyError::hardware_pin_required(message)
         }
+        #[cfg(feature = "hardwarekey")]
         HardwareTransportError::IncorrectPin(message) => {
             PrivateKeyError::incorrect_hardware_pin(message)
         }
+        #[cfg(feature = "hardwarekey")]
         HardwareTransportError::PinBlocked(message) => {
             PrivateKeyError::hardware_pin_blocked(message)
         }
+        #[cfg(feature = "hardwarekey")]
         HardwareTransportError::TokenRemoved(message) => {
             PrivateKeyError::hardware_token_removed(message)
         }

@@ -5,7 +5,8 @@ use super::{
 use crate::backend::integrated::keys::cert::ManagedRipassoHardwareKey;
 use sequoia_openpgp::Cert;
 
-const UNSUPPORTED_MESSAGE: &str = "Hardware OpenPGP keys are not supported on this platform.";
+const UNSUPPORTED_MESSAGE: &str =
+    "Hardware OpenPGP keys are not supported in this build or on this platform.";
 
 #[derive(Clone)]
 pub(in crate::backend::integrated) enum HardwareUnlockMode {

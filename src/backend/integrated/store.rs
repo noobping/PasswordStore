@@ -127,9 +127,7 @@ pub fn save_store_recipients(
             for (entry_path, secret) in &decrypted_entries {
                 let label = label_from_entry_path(&store_dir, entry_path)?;
                 let updated_entry_path = desired_entry_file_path(store_root, &label)?;
-                let previous_ciphertext = fs::read(entry_path).ok();
-                let ciphertext = context
-                    .encrypt_contents_with_existing(secret, previous_ciphertext.as_deref())?;
+                let ciphertext = context.encrypt_contents_with_existing(secret, None)?;
                 write_atomic_file(&updated_entry_path, &ciphertext)
                     .map_err(|err| err.to_string())?;
                 if updated_entry_path != *entry_path {
@@ -210,10 +208,9 @@ pub fn save_store_recipients_with_progress(
                     current_touch: 0,
                     total_touches: 0,
                 });
-                let previous_ciphertext = fs::read(entry_path).ok();
                 let ciphertext = context.encrypt_contents_with_existing_and_progress(
                     secret,
-                    previous_ciphertext.as_deref(),
+                    None,
                     Some(&mut |progress| {
                         report_progress(StoreRecipientsSaveProgress {
                             stage: StoreRecipientsSaveStage::WritingUpdatedItems,

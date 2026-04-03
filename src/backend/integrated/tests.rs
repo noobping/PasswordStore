@@ -34,10 +34,12 @@ use super::keys::{
 };
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use super::keys::{
-    create_fido2_store_recipient, direct_binding_from_store_recipient,
-    encrypt_fido2_any_managed_bundle_with_progress, reset_fido2_transport_for_tests,
-    set_fido2_transport_for_tests, unlock_fido2_store_recipient_for_session, Fido2AssertionOutput,
-    Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError,
+    create_fido2_store_recipient, decrypt_fido2_any_managed_bundle_dek_for_fingerprint,
+    decrypt_fido2_any_managed_bundle_for_fingerprint, decrypt_payload_from_any_managed_bundle,
+    direct_binding_from_store_recipient, encrypt_fido2_any_managed_bundle_with_progress,
+    reset_fido2_transport_for_tests, set_fido2_transport_for_tests,
+    unlock_fido2_store_recipient_for_session, Fido2AssertionOutput, Fido2DeviceLabel,
+    Fido2Enrollment, Fido2Transport, Fido2TransportError,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -2039,7 +2041,7 @@ fn all_keys_mode_can_layer_a_fido2_security_key() {
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 #[test]
-fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnecting_them() {
+fn save_store_recipients_rotates_any_managed_dek_when_fido2_recipients_change() {
     let env = SystemBackendTestEnv::new();
     let bytes_a = protected_cert_bytes("Key A <a@example.com>");
     let key_a = import_ripasso_private_key_bytes(&bytes_a, Some("hunter2"))
@@ -2061,6 +2063,12 @@ fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnectin
     ));
     let first_fido = create_fido2_store_recipient(None).expect("create first FIDO2 recipient");
     let second_fido = create_fido2_store_recipient(None).expect("create second FIDO2 recipient");
+    let first_binding = direct_binding_from_store_recipient(&first_fido)
+        .expect("parse first binding")
+        .expect("first binding");
+    let second_binding = direct_binding_from_store_recipient(&second_fido)
+        .expect("parse second binding")
+        .expect("second binding");
 
     let store = env.root_dir().join("secondary-store");
     save_store_recipients(
@@ -2076,8 +2084,21 @@ fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnectin
         true,
     )
     .expect("save entry protected by the first FIDO2 recipient");
+    let entry_path = store.join("team/service.keycord");
+    let old_ciphertext = fs::read(&entry_path).expect("read original entry");
 
     drop(_first_guard);
+    let _old_dek_guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_assertion_results(vec![Ok(mock_fido2_assertion(b"first-fido-secret"))]),
+    ));
+    let old_dek = decrypt_fido2_any_managed_bundle_dek_for_fingerprint(
+        &first_binding.fingerprint,
+        &old_ciphertext,
+    )
+    .expect("decrypt the original DEK");
+    drop(_old_dek_guard);
+
     let _second_guard = Fido2TransportGuard::install(Arc::new(
         MockFido2Transport::default()
             .with_assertion_results(vec![Ok(mock_fido2_assertion(b"second-fido-secret"))]),
@@ -2085,14 +2106,24 @@ fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnectin
 
     save_store_recipients(
         store.to_string_lossy().as_ref(),
-        &[
-            key_a.fingerprint.clone(),
-            first_fido.clone(),
-            second_fido.clone(),
-        ],
+        &[key_a.fingerprint.clone(), second_fido.clone()],
         StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     )
-    .expect("save both FIDO2 recipients without reconnecting the first one");
+    .expect("replace the FIDO2 recipient");
+
+    let new_ciphertext = fs::read(&entry_path).expect("read rewritten entry");
+    assert!(
+        decrypt_payload_from_any_managed_bundle(&new_ciphertext, &old_dek).is_err(),
+        "rewritten entries must not keep using the old DEK after recipients change"
+    );
+    assert_eq!(
+        decrypt_fido2_any_managed_bundle_for_fingerprint(
+            &second_binding.fingerprint,
+            &new_ciphertext
+        )
+        .expect("decrypt rewritten entry with the new recipient"),
+        b"supersecret\nusername: alice"
+    );
 
     let recipients = fs::read_to_string(store.join(".gpg-id")).expect("read recipients");
     assert!(!recipients.contains("keycord-fido2-recipient-v1="));
@@ -2103,10 +2134,7 @@ fn save_store_recipients_preserves_existing_fido2_recipients_without_reconnectin
         .lines()
         .filter(|line| line.contains("keycord-fido2-recipient-v1="))
         .collect::<HashSet<_>>();
-    assert_eq!(fido2_lines.len(), 2);
-    assert!(fido2_lines
-        .iter()
-        .any(|line| line.contains(first_fido.as_str())));
+    assert_eq!(fido2_lines.len(), 1);
     assert!(fido2_lines
         .iter()
         .any(|line| line.contains(second_fido.as_str())));

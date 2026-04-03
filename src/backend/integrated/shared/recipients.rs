@@ -30,6 +30,8 @@ pub(super) enum ResolvedRecipient<'a> {
     },
 }
 
+type StandardRecipientMatch<'a> = ([u8; 20], &'a Arc<Cert>);
+
 impl ResolvedRecipient<'_> {
     pub(super) fn recipient_id(&self) -> String {
         match self {
@@ -56,7 +58,7 @@ impl ResolvedRecipient<'_> {
 fn resolve_recipient_cert<'a>(
     recipient_id: &str,
     key_ring: &'a HashMap<[u8; 20], Arc<Cert>>,
-) -> Result<Option<([u8; 20], &'a Arc<Cert>)>, String> {
+) -> Result<Option<StandardRecipientMatch<'a>>, String> {
     if let Ok(fingerprint) = fingerprint_from_string(recipient_id) {
         if let Some(cert) = key_ring.get(&fingerprint) {
             return Ok(Some((fingerprint, cert)));
@@ -94,8 +96,8 @@ fn resolve_recipient_cert<'a>(
 
 fn resolve_unique_standard_recipient_match<'a>(
     recipient_id: &str,
-    mut matches: impl Iterator<Item = ([u8; 20], &'a Arc<Cert>)>,
-) -> Result<Option<([u8; 20], &'a Arc<Cert>)>, String> {
+    mut matches: impl Iterator<Item = StandardRecipientMatch<'a>>,
+) -> Result<Option<StandardRecipientMatch<'a>>, String> {
     let Some(first) = matches.next() else {
         return Ok(None);
     };

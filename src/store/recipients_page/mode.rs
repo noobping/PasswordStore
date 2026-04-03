@@ -212,7 +212,7 @@ mod tests {
             StoreRecipientsSelectionMode::StandardOnly
         );
         assert_eq!(
-            store_recipients_selection_mode(&[recipient.clone()]),
+            store_recipients_selection_mode(std::slice::from_ref(&recipient)),
             StoreRecipientsSelectionMode::Fido2Only
         );
         assert_eq!(

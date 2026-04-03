@@ -5,9 +5,11 @@ use super::host_errors::{
     store_recipients_error_from_host_launch, HostStoreAction,
 };
 #[cfg(target_os = "linux")]
+use crate::backend::command::ensure_success;
+#[cfg(target_os = "linux")]
 use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
-    command::{ensure_success, run_store_command_output, run_store_command_with_input},
+    command::{run_store_command_output, run_store_command_with_input},
     PasswordEntryError, PasswordEntryWriteError, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };

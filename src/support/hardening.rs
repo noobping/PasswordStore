@@ -70,8 +70,11 @@ mod windows {
     };
     use windows_sys::Win32::System::Threading::{
         ProcessASLRPolicy, ProcessExtensionPointDisablePolicy, ProcessStrictHandleCheckPolicy,
-        SetProcessDEPPolicy, SetProcessMitigationPolicy, PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION,
-        PROCESS_DEP_ENABLE,
+        SetProcessMitigationPolicy,
+    };
+    #[cfg(target_pointer_width = "32")]
+    use windows_sys::Win32::System::Threading::{
+        SetProcessDEPPolicy, PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION, PROCESS_DEP_ENABLE,
     };
 
     const ENABLE_BOTTOM_UP_ASLR: u32 = 0b0001;
@@ -119,25 +122,19 @@ mod windows {
 
     fn enable_aslr() -> io::Result<()> {
         let mut policy = PROCESS_MITIGATION_ASLR_POLICY::default();
-        unsafe {
-            policy.Anonymous.Flags = ENABLE_BOTTOM_UP_ASLR | ENABLE_HIGH_ENTROPY_ASLR;
-        }
+        policy.Anonymous.Flags = ENABLE_BOTTOM_UP_ASLR | ENABLE_HIGH_ENTROPY_ASLR;
         set_process_mitigation(ProcessASLRPolicy, &policy)
     }
 
     fn disable_extension_points() -> io::Result<()> {
         let mut policy = PROCESS_MITIGATION_EXTENSION_POINT_DISABLE_POLICY::default();
-        unsafe {
-            policy.Anonymous.Flags = DISABLE_EXTENSION_POINTS;
-        }
+        policy.Anonymous.Flags = DISABLE_EXTENSION_POINTS;
         set_process_mitigation(ProcessExtensionPointDisablePolicy, &policy)
     }
 
     fn enable_strict_handle_checks() -> io::Result<()> {
         let mut policy = PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY::default();
-        unsafe {
-            policy.Anonymous.Flags = RAISE_ON_INVALID_HANDLE | HANDLE_EXCEPTIONS_PERMANENT;
-        }
+        policy.Anonymous.Flags = RAISE_ON_INVALID_HANDLE | HANDLE_EXCEPTIONS_PERMANENT;
         set_process_mitigation(ProcessStrictHandleCheckPolicy, &policy)
     }
 

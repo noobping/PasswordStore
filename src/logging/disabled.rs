@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 use std::process::{Command, ExitStatus, Output, Stdio};
+use std::thread;
 
 pub fn log_info(_message: impl Into<String>) {}
 
@@ -75,14 +76,17 @@ pub fn run_command_with_input(
         return Err("Failed to open stdin for command".to_string());
     };
 
-    stdin
-        .write_all(input.as_bytes())
-        .map_err(|err| format!("Failed to write command input: {err}"))?;
-    drop(stdin);
+    let input = input.to_string();
+    let writer = thread::spawn(move || stdin.write_all(input.as_bytes()));
 
-    child
+    let output = child
         .wait_with_output()
-        .map_err(|err| format!("Failed to wait for command: {err}"))
+        .map_err(|err| format!("Failed to wait for command: {err}"))?;
+    match writer.join() {
+        Ok(Ok(())) => Ok(output),
+        Ok(Err(err)) => Err(format!("Failed to write command input: {err}")),
+        Err(_) => Err("Command input writer panicked.".to_string()),
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -124,5 +128,25 @@ mod tests {
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), "secret input");
         assert!(output.stderr.is_empty());
+    }
+
+    #[test]
+    fn disabled_logging_handles_large_input_when_stdout_fills_first() {
+        let mut cmd = Command::new("sh");
+        cmd.args([
+            "-lc",
+            "dd if=/dev/zero bs=65536 count=2 2>/dev/null; cat >/dev/null",
+        ]);
+
+        let output = run_command_with_input(
+            &mut cmd,
+            "disabled logging large stdin",
+            &"x".repeat(262_144),
+            CommandLogOptions::SENSITIVE,
+        )
+        .expect("command should run");
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout.len(), 131_072);
     }
 }

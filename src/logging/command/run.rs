@@ -7,6 +7,7 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, ExitStatus, Output, Stdio};
+use std::thread;
 
 fn shell_quote(value: &OsStr) -> String {
     let text = value.to_string_lossy();
@@ -154,6 +155,23 @@ fn run_command_output_inner(
     }
 }
 
+fn spawn_input_writer(
+    mut stdin: impl Write + Send + 'static,
+    input: String,
+) -> thread::JoinHandle<Result<(), String>> {
+    thread::spawn(move || {
+        stdin
+            .write_all(input.as_bytes())
+            .map_err(|err| format!("Failed to write command input: {err}"))
+    })
+}
+
+fn join_input_writer(handle: thread::JoinHandle<Result<(), String>>) -> Result<(), String> {
+    handle
+        .join()
+        .unwrap_or_else(|_| Err("Command input writer panicked.".to_string()))
+}
+
 pub fn run_command_output(
     cmd: &mut Command,
     context: &str,
@@ -217,19 +235,12 @@ pub fn run_command_with_input(
         )
     });
 
-    let Some(mut stdin) = child.stdin.take() else {
+    let Some(stdin) = child.stdin.take() else {
         let message = format!("{context}\n$ {command}\nfailed to open stdin");
         log_error(message);
         return Err("Failed to open stdin for command".to_string());
     };
-
-    if let Err(err) = stdin.write_all(input.as_bytes()) {
-        log_error(format!(
-            "{context}\n$ {command}\nfailed to write stdin: {err}"
-        ));
-        return Err(format!("Failed to write command input: {err}"));
-    }
-    drop(stdin);
+    let input_writer = spawn_input_writer(stdin, input.to_string());
 
     let status = match child.wait() {
         Ok(status) => status,
@@ -248,6 +259,13 @@ pub fn run_command_with_input(
         stdout,
         stderr,
     };
+
+    if let Err(err) = join_input_writer(input_writer) {
+        log_error(format!(
+            "{context}\n$ {command}\nfailed to write stdin: {err}"
+        ));
+        return Err(err);
+    }
 
     log_command_state(
         context,

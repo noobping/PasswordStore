@@ -3,6 +3,10 @@ use std::io::{Error, ErrorKind};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{env, fs};
+use std::{
+    process,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 const APP_ID: &str = env!("APP_ID");
 const GETTEXT_DOMAIN: &str = env!("GETTEXT_DOMAIN");
@@ -141,20 +145,32 @@ pub fn uninstall_locally() -> std::io::Result<()> {
 }
 
 fn is_writable(dir: &Path) -> bool {
-    // Try to open a temp file for writing
-    let test_path = dir.join(".perm_test");
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(&test_path)
-    {
-        Ok(_) => {
-            let _ = std::fs::remove_file(test_path);
-            true
+    for attempt in 0..8u32 {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        let test_path = dir.join(format!(
+            ".perm_test.{}.{}.{}",
+            process::id(),
+            nanos,
+            attempt
+        ));
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&test_path)
+        {
+            Ok(_) => {
+                let _ = std::fs::remove_file(test_path);
+                return true;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return false,
         }
-        Err(_) => false,
     }
+
+    false
 }
 
 fn write_desktop_file(apps_path: &Path, bin_path: &Path) -> std::io::Result<()> {
@@ -224,6 +240,33 @@ Exec={} --search-provider
     fs::set_permissions(&file, perms)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_writable;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn writability_probe_does_not_truncate_existing_perm_test_files() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("keycord-setup-writable-{unique}"));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let existing = dir.join(".perm_test");
+        fs::write(&existing, "keep").expect("write marker");
+
+        assert!(is_writable(&dir));
+        assert_eq!(
+            fs::read_to_string(&existing).expect("read marker"),
+            "keep".to_string()
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
 }
 
 fn extract_icon(apps_dir: &Path) -> std::io::Result<()> {

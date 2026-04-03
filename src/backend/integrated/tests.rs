@@ -2609,6 +2609,77 @@ fn new_entries_can_use_email_recipients() {
 }
 
 #[test]
+fn store_recipient_updates_leave_nested_gpg_id_entries_on_their_own_recipients() {
+    let env = SystemBackendTestEnv::new();
+    let root_key = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Root Key <root@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import root key");
+    let nested_key = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Nested Key <nested@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import nested key");
+    let replacement_root_key = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Replacement Root <replacement@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import replacement root key");
+
+    let store = env.root_dir().join("secondary-store");
+    fs::create_dir_all(store.join("team")).expect("create nested store dir");
+    fs::write(store.join(".gpg-id"), format!("{}\n", root_key.fingerprint))
+        .expect("write root recipients");
+    fs::write(
+        store.join("team/.gpg-id"),
+        format!("{}\n", nested_key.fingerprint),
+    )
+    .expect("write nested recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "root-entry",
+        "root secret",
+        true,
+    )
+    .expect("save root entry");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "nested secret",
+        true,
+    )
+    .expect("save nested entry");
+
+    save_store_recipients(
+        store.to_string_lossy().as_ref(),
+        std::slice::from_ref(&replacement_root_key.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("update store recipients");
+
+    assert_eq!(
+        fs::read_to_string(store.join(".gpg-id")).expect("read root recipients"),
+        format!("{}\n", replacement_root_key.fingerprint)
+    );
+    assert_eq!(
+        fs::read_to_string(store.join("team/.gpg-id")).expect("read nested recipients"),
+        format!("{}\n", nested_key.fingerprint)
+    );
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "root-entry")
+            .expect("read root entry after update"),
+        "root secret".to_string()
+    );
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read nested entry after update"),
+        "nested secret".to_string()
+    );
+}
+
+#[test]
 fn store_recipients_work_without_a_selected_default_key() {
     let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();

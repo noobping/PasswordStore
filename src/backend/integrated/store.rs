@@ -4,7 +4,8 @@ use super::git::{maybe_commit_git_paths, password_entry_git_path};
 use super::keys::{clear_pending_fido2_enrollment, store_recipients_error_from_integrated_message};
 use super::paths::{
     collect_password_entry_files, desired_entry_file_path, ensure_store_directory,
-    fido2_recipients_file_for_recipients_path, label_from_entry_path, with_updated_recipient_files,
+    fido2_recipients_file_for_recipients_path, label_from_entry_path, recipients_file_for_label,
+    with_updated_recipient_files,
 };
 use super::recipients::{
     fido2_recipient_file_contents, preferred_ripasso_private_key_fingerprint_for_entry,
@@ -24,10 +25,12 @@ use std::path::{Path, PathBuf};
 fn decrypted_store_entries_with_progress(
     store_dir: &Path,
     store_root: &str,
+    scoped_recipients_path: &Path,
     mut report_progress: Option<&mut dyn FnMut(StoreRecipientsSaveProgress)>,
 ) -> Result<Vec<(PathBuf, String)>, String> {
     let mut decrypted = Vec::new();
-    let entry_paths = collect_password_entry_files(store_dir)?;
+    let entry_paths =
+        collect_root_scoped_entry_paths(store_dir, store_root, scoped_recipients_path)?;
     let total_items = entry_paths.len();
 
     for (index, entry_path) in entry_paths.into_iter().enumerate() {
@@ -59,6 +62,23 @@ fn decrypted_store_entries_with_progress(
     }
 
     Ok(decrypted)
+}
+
+fn collect_root_scoped_entry_paths(
+    store_dir: &Path,
+    store_root: &str,
+    scoped_recipients_path: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    let mut scoped_paths = Vec::new();
+    for entry_path in collect_password_entry_files(store_dir)? {
+        let label = label_from_entry_path(store_dir, &entry_path)?;
+        if recipients_file_for_label(store_root, &label)? != scoped_recipients_path {
+            continue;
+        }
+        scoped_paths.push(entry_path);
+    }
+
+    Ok(scoped_paths)
 }
 
 fn clear_saved_fido2_enrollment_state(recipients: &StoreRecipients) {
@@ -102,8 +122,10 @@ pub fn save_store_recipients(
 ) -> Result<(), StoreRecipientsError> {
     let store_dir = ensure_store_directory(store_root)
         .map_err(store_recipients_error_from_integrated_message)?;
-    let decrypted_entries = decrypted_store_entries_with_progress(&store_dir, store_root, None)
-        .map_err(store_recipients_error_from_integrated_message)?;
+    let recipients_path = store_dir.join(".gpg-id");
+    let decrypted_entries =
+        decrypted_store_entries_with_progress(&store_dir, store_root, &recipients_path, None)
+            .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_contents =
         standard_recipient_file_contents(recipients.standard(), private_key_requirement);
     let fido2_recipients_contents = fido2_recipient_file_contents(recipients.fido2());
@@ -112,7 +134,6 @@ pub fn save_store_recipients(
         &fido2_recipients_contents,
     )
     .map_err(store_recipients_error_from_integrated_message)?;
-    let recipients_path = store_dir.join(".gpg-id");
     let fido2_recipients_path = fido2_recipients_file_for_recipients_path(&recipients_path);
     let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
     let had_fido2_recipients_path = fido2_recipients_path.exists();
@@ -173,9 +194,14 @@ pub fn save_store_recipients_with_progress(
 ) -> Result<(), StoreRecipientsError> {
     let store_dir = ensure_store_directory(store_root)
         .map_err(store_recipients_error_from_integrated_message)?;
-    let decrypted_entries =
-        decrypted_store_entries_with_progress(&store_dir, store_root, Some(report_progress))
-            .map_err(store_recipients_error_from_integrated_message)?;
+    let recipients_path = store_dir.join(".gpg-id");
+    let decrypted_entries = decrypted_store_entries_with_progress(
+        &store_dir,
+        store_root,
+        &recipients_path,
+        Some(report_progress),
+    )
+    .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_contents =
         standard_recipient_file_contents(recipients.standard(), private_key_requirement);
     let fido2_recipients_contents = fido2_recipient_file_contents(recipients.fido2());
@@ -184,7 +210,6 @@ pub fn save_store_recipients_with_progress(
         &fido2_recipients_contents,
     )
     .map_err(store_recipients_error_from_integrated_message)?;
-    let recipients_path = store_dir.join(".gpg-id");
     let fido2_recipients_path = fido2_recipients_file_for_recipients_path(&recipients_path);
     let should_initialize_git = !recipients_path.exists() && !has_git_repository(store_root);
     let had_fido2_recipients_path = fido2_recipients_path.exists();

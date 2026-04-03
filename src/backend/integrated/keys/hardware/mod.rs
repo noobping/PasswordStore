@@ -46,6 +46,7 @@ pub enum HardwareTransportError {
     TokenMismatch(String),
     PinRequired(String),
     IncorrectPin(String),
+    PinBlocked(String),
     TokenRemoved(String),
     Unsupported(String),
     Other(String),
@@ -58,6 +59,7 @@ impl Display for HardwareTransportError {
             | Self::TokenMismatch(message)
             | Self::PinRequired(message)
             | Self::IncorrectPin(message)
+            | Self::PinBlocked(message)
             | Self::TokenRemoved(message)
             | Self::Unsupported(message)
             | Self::Other(message) => write!(f, "{message}"),
@@ -194,6 +196,9 @@ pub(in crate::backend::integrated) fn private_key_error_from_hardware_transport_
         }
         HardwareTransportError::IncorrectPin(message) => {
             PrivateKeyError::incorrect_hardware_pin(message)
+        }
+        HardwareTransportError::PinBlocked(message) => {
+            PrivateKeyError::hardware_pin_blocked(message)
         }
         HardwareTransportError::TokenRemoved(message) => {
             PrivateKeyError::hardware_token_removed(message)

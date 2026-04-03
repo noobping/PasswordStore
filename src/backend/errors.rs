@@ -189,6 +189,8 @@ pub enum PrivateKeyError {
     #[error("{0}")]
     IncorrectHardwarePin(String),
     #[error("{0}")]
+    HardwarePinBlocked(String),
+    #[error("{0}")]
     UnsupportedHardwareKey(String),
     #[error("{0}")]
     HardwareTokenRemoved(String),
@@ -252,6 +254,10 @@ impl PrivateKeyError {
 
     pub fn incorrect_hardware_pin(message: impl Into<String>) -> Self {
         Self::IncorrectHardwarePin(message.into())
+    }
+
+    pub fn hardware_pin_blocked(message: impl Into<String>) -> Self {
+        Self::HardwarePinBlocked(message.into())
     }
 
     pub fn unsupported_hardware_key(message: impl Into<String>) -> Self {
@@ -324,9 +330,9 @@ impl PrivateKeyError {
             Self::Incompatible(_) => "This key can't open your items.",
             Self::HardwareTokenNotPresent(_) => "Connect the hardware key and try again.",
             Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
-            Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
-                "Couldn't unlock the hardware key."
-            }
+            Self::HardwarePinRequired(_)
+            | Self::IncorrectHardwarePin(_)
+            | Self::HardwarePinBlocked(_) => "Couldn't unlock the hardware key.",
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -354,6 +360,7 @@ impl PrivateKeyError {
             Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
                 "Couldn't unlock the hardware key."
             }
+            Self::HardwarePinBlocked(_) => "The hardware key PIN is blocked.",
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]

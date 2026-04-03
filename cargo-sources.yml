@@ -370,13 +370,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/cc/cc-1.2.58.crate
-  sha256: e1e928d4b69e3077709075a938a05ffbedfa53a84c8f766efbf8220bb1ff60e1
-  dest: cargo/vendor/cc-1.2.58
+  url: https://static.crates.io/crates/cc/cc-1.2.59.crate
+  sha256: b7a4d3ec6524d28a329fc53654bbadc9bdd7b0431f5d65f1a56ffb28a1ee5283
+  dest: cargo/vendor/cc-1.2.59
 - type: inline
-  contents: '{"package": "e1e928d4b69e3077709075a938a05ffbedfa53a84c8f766efbf8220bb1ff60e1",
+  contents: '{"package": "b7a4d3ec6524d28a329fc53654bbadc9bdd7b0431f5d65f1a56ffb28a1ee5283",
     "files": {}}'
-  dest: cargo/vendor/cc-1.2.58
+  dest: cargo/vendor/cc-1.2.59
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

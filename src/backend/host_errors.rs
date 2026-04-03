@@ -27,7 +27,7 @@ impl HostCommandFailure {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let message = if !stderr.is_empty() {
             stderr
-        } else if !stdout.is_empty() {
+        } else if !stdout.is_empty() && !action.stdout_may_contain_secret_data() {
             stdout
         } else {
             format!("{fallback_prefix}: {}", output.status)
@@ -38,6 +38,12 @@ impl HostCommandFailure {
 
     fn message(&self) -> &str {
         &self.message
+    }
+}
+
+impl HostStoreAction {
+    const fn stdout_may_contain_secret_data(self) -> bool {
+        matches!(self, Self::ReadEntry | Self::ReadLine | Self::SaveEntry)
     }
 }
 
@@ -258,6 +264,14 @@ mod tests {
         }
     }
 
+    fn failed_output_with_stdout(stdout: &str) -> Output {
+        Output {
+            status: ExitStatus::from_raw(1 << 8),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: Vec::new(),
+        }
+    }
+
     #[test]
     fn host_write_errors_classify_existing_and_missing_entries() {
         assert!(matches!(
@@ -330,5 +344,23 @@ mod tests {
             )),
             PasswordEntryError::IncompatiblePrivateKey(_)
         ));
+    }
+
+    #[test]
+    fn host_sensitive_read_failures_do_not_surface_stdout_contents() {
+        let error = password_entry_error_from_host_failure(HostCommandFailure::from_output(
+            HostStoreAction::ReadEntry,
+            failed_output_with_stdout("supersecret\nusername: alice"),
+            "pass failed",
+        ));
+
+        match error {
+            PasswordEntryError::Other(message) => {
+                assert!(message.contains("pass failed"));
+                assert!(!message.contains("supersecret"));
+                assert!(!message.contains("username: alice"));
+            }
+            other => panic!("unexpected host read error: {other:?}"),
+        }
     }
 }

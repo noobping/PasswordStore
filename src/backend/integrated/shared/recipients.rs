@@ -56,37 +56,90 @@ impl ResolvedRecipient<'_> {
 fn resolve_recipient_cert<'a>(
     recipient_id: &str,
     key_ring: &'a HashMap<[u8; 20], Arc<Cert>>,
-) -> Option<([u8; 20], &'a Arc<Cert>)> {
+) -> Result<Option<([u8; 20], &'a Arc<Cert>)>, String> {
     if let Ok(fingerprint) = fingerprint_from_string(recipient_id) {
         if let Some(cert) = key_ring.get(&fingerprint) {
-            return Some((fingerprint, cert));
+            return Ok(Some((fingerprint, cert)));
         }
     }
 
     if let Ok(handle) = recipient_id.parse::<KeyHandle>() {
-        for (fingerprint, cert) in key_ring {
-            if cert.key_handle().aliases(&handle) {
-                return Some((*fingerprint, cert));
-            }
+        if let Some(resolved) = resolve_unique_standard_recipient_match(
+            recipient_id,
+            key_ring
+                .iter()
+                .filter(|(_, cert)| cert.key_handle().aliases(&handle))
+                .map(|(fingerprint, cert)| (*fingerprint, cert)),
+        )? {
+            return Ok(Some(resolved));
         }
     }
 
-    let needle = recipient_id.trim().to_ascii_lowercase();
-    if needle.is_empty() {
+    let Some(needle) = normalized_standard_recipient_lookup(recipient_id) else {
+        return Ok(None);
+    };
+
+    resolve_unique_standard_recipient_match(
+        recipient_id,
+        key_ring
+            .iter()
+            .filter(|(_, cert)| {
+                cert.userids().any(|user_id| {
+                    standard_recipient_matches_user_id(&needle, &user_id.userid().to_string())
+                })
+            })
+            .map(|(fingerprint, cert)| (*fingerprint, cert)),
+    )
+}
+
+fn resolve_unique_standard_recipient_match<'a>(
+    recipient_id: &str,
+    mut matches: impl Iterator<Item = ([u8; 20], &'a Arc<Cert>)>,
+) -> Result<Option<([u8; 20], &'a Arc<Cert>)>, String> {
+    let Some(first) = matches.next() else {
+        return Ok(None);
+    };
+    if matches.next().is_some() {
+        return Err(format!(
+            "Recipient '{recipient_id}' matches multiple keys in the app. Use a fingerprint instead."
+        ));
+    }
+
+    Ok(Some(first))
+}
+
+fn normalized_standard_recipient_lookup(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_ascii_lowercase())
+    }
+}
+
+fn extracted_user_id_email(user_id: &str) -> Option<&str> {
+    let trimmed = user_id.trim();
+    let start = trimmed.rfind('<')?;
+    let after_start = &trimmed[start + 1..];
+    let end = after_start.find('>')?;
+    let remainder = &after_start[end + 1..];
+    if !remainder.trim().is_empty() {
         return None;
     }
 
-    for (fingerprint, cert) in key_ring {
-        if cert.userids().any(|user_id| {
-            let user_id = user_id.userid().to_string();
-            let user_id = user_id.trim().to_ascii_lowercase();
-            user_id == needle || user_id.contains(&format!("<{needle}>"))
-        }) {
-            return Some((*fingerprint, cert));
-        }
+    let email = after_start[..end].trim();
+    if email.is_empty() {
+        None
+    } else {
+        Some(email)
     }
+}
 
-    None
+fn standard_recipient_matches_user_id(needle: &str, user_id: &str) -> bool {
+    normalized_standard_recipient_lookup(user_id).is_some_and(|candidate| candidate == needle)
+        || extracted_user_id_email(user_id)
+            .and_then(normalized_standard_recipient_lookup)
+            .is_some_and(|email| email == needle)
 }
 
 fn resolved_standard_recipients_from_contents<'a>(
@@ -97,7 +150,7 @@ fn resolved_standard_recipients_from_contents<'a>(
     let mut seen_standard = HashSet::new();
 
     for recipient_id in standard_recipient_ids_from_contents(contents) {
-        let Some((fingerprint, cert)) = resolve_recipient_cert(&recipient_id, key_ring) else {
+        let Some((fingerprint, cert)) = resolve_recipient_cert(&recipient_id, key_ring)? else {
             return Err(format!(
                 "Recipient '{recipient_id}' is not available in the app."
             ));
@@ -405,9 +458,12 @@ pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
     match private_key_requirement {
         StoreRecipientsPrivateKeyRequirement::AnyManagedKey => {
             standard_recipient_ids.into_iter().any(|id| {
-                resolve_recipient_cert(&id, &key_ring).is_some_and(|(_, cert)| {
-                    private_key_is_openable_with_unlock(&cert.fingerprint().to_hex())
-                })
+                resolve_recipient_cert(&id, &key_ring)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|(_, cert)| {
+                        private_key_is_openable_with_unlock(&cert.fingerprint().to_hex())
+                    })
             }) || fido2_recipient_ids
                 .into_iter()
                 .any(|id| private_key_is_openable_with_unlock(&id))
@@ -415,7 +471,7 @@ pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
         StoreRecipientsPrivateKeyRequirement::AllManagedKeys => {
             let mut seen_standard = HashSet::new();
             for id in standard_recipient_ids {
-                let Some((_, cert)) = resolve_recipient_cert(&id, &key_ring) else {
+                let Ok(Some((_, cert))) = resolve_recipient_cert(&id, &key_ring) else {
                     return false;
                 };
                 if !seen_standard.insert(cert.fingerprint().to_hex()) {
@@ -504,8 +560,30 @@ pub fn preferred_ripasso_private_key_fingerprint_for_entry(
 
 #[cfg(test)]
 mod tests {
-    use super::effective_private_key_requirement;
+    use super::{
+        effective_private_key_requirement, resolve_recipient_cert,
+        resolved_standard_recipients_from_contents,
+    };
     use crate::backend::StoreRecipientsPrivateKeyRequirement;
+    use sequoia_openpgp::{cert::CertBuilder, Cert};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn test_key_ring(user_ids: &[&str]) -> HashMap<[u8; 20], Arc<Cert>> {
+        user_ids
+            .iter()
+            .map(|user_id| {
+                let (cert, _) = CertBuilder::general_purpose(Some(*user_id))
+                    .generate()
+                    .expect("generate test certificate");
+                let fingerprint = crate::backend::integrated::keys::fingerprint_from_string(
+                    &cert.fingerprint().to_hex(),
+                )
+                .expect("parse fingerprint");
+                (fingerprint, Arc::new(cert))
+            })
+            .collect()
+    }
 
     #[test]
     fn pure_multi_fido2_stores_effectively_require_all_keys() {
@@ -533,5 +611,45 @@ mod tests {
             ),
             StoreRecipientsPrivateKeyRequirement::AllManagedKeys
         );
+    }
+
+    #[test]
+    fn exact_email_matches_only_a_unique_cert() {
+        let key_ring = test_key_ring(&["Alice Example <alice@example.com>"]);
+        let resolved = resolve_recipient_cert("alice@example.com", &key_ring)
+            .expect("resolve recipient")
+            .expect("expected a matching certificate");
+
+        assert_eq!(resolved.1.fingerprint().to_hex().len(), 40);
+    }
+
+    #[test]
+    fn ambiguous_email_matches_are_rejected() {
+        let key_ring = test_key_ring(&[
+            "Alice One <shared@example.com>",
+            "Alice Two <shared@example.com>",
+        ]);
+
+        assert_eq!(
+            resolve_recipient_cert("shared@example.com", &key_ring).unwrap_err(),
+            "Recipient 'shared@example.com' matches multiple keys in the app. Use a fingerprint instead."
+                .to_string()
+        );
+        assert_eq!(
+            resolved_standard_recipients_from_contents("shared@example.com\n", &key_ring)
+                .err()
+                .expect("expected ambiguity error"),
+            "Recipient 'shared@example.com' matches multiple keys in the app. Use a fingerprint instead."
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn user_id_fragments_do_not_match_by_substring() {
+        let key_ring = test_key_ring(&["Alice Example <alice@example.com>"]);
+
+        assert!(resolve_recipient_cert("example.com", &key_ring)
+            .expect("resolve recipient")
+            .is_none());
     }
 }

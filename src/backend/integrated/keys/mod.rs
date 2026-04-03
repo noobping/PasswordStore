@@ -54,8 +54,8 @@ pub(in crate::backend::integrated) use self::hardware::{
 };
 #[cfg(test)]
 pub(in crate::backend::integrated) use self::hardware::{
-    reset_hardware_transport_for_tests, set_hardware_transport_for_tests, HardwareTransport,
-    HardwareTransportError,
+    reset_hardware_transport_for_tests, set_hardware_transport_for_tests,
+    HardwareKeyGenerationRequest, HardwareTransport, HardwareTransportError,
 };
 #[cfg(test)]
 pub use self::store::resolved_ripasso_own_fingerprint;
@@ -67,12 +67,12 @@ pub use self::store::store_ripasso_hardware_key_bytes;
 pub use self::store::store_ripasso_private_key_bytes;
 pub use self::store::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
-    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_private_key,
-    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
-    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
-    unlock_ripasso_private_key_for_session,
+    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_hardware_key,
+    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    remove_ripasso_private_key, ripasso_private_key_requires_passphrase,
+    ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
+    unlock_fido2_store_recipient_for_session, unlock_ripasso_private_key_for_session,
 };
 pub(in crate::backend::integrated) use self::store::{
     build_ripasso_crypto_from_key_ring, ensure_ripasso_private_key_is_ready,

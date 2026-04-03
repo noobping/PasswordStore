@@ -22,14 +22,14 @@ pub(in crate::backend) use self::keys::clear_integrated_runtime_secret_state;
 pub use self::keys::store_ripasso_private_key_bytes;
 pub use self::keys::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
-    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_private_key,
-    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
-    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
-    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, ManagedRipassoHardwareKey,
-    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind,
-    PrivateKeyUnlockRequest,
+    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_hardware_key,
+    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    remove_ripasso_private_key, ripasso_private_key_requires_passphrase,
+    ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
+    unlock_fido2_store_recipient_for_session, unlock_ripasso_private_key_for_session,
+    DiscoveredHardwareToken, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
+    ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
 };
 pub(crate) use self::keys::{
     continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,

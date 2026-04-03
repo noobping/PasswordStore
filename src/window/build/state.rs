@@ -113,6 +113,7 @@ fn build_store_recipients_platform_state(
         options_group: widgets.store_recipients_options_group.clone(),
         git_group: widgets.store_recipients_git_group.clone(),
         git_list: widgets.store_recipients_git_list.clone(),
+        setup_hardware_key_row: widgets.store_recipients_setup_hardware_key_row.clone(),
         add_hardware_key_row: widgets.store_recipients_add_hardware_key_row.clone(),
         add_fido2_key_row: widgets.store_recipients_add_fido2_key_row.clone(),
         store_git_page: store_git_page.clone(),
@@ -133,6 +134,18 @@ fn build_store_recipients_platform_state(
         private_key_generation_password_row: widgets.private_key_generation_password_row.clone(),
         private_key_generation_confirm_row: widgets.private_key_generation_confirm_row.clone(),
         private_key_generation_in_flight: Rc::new(Cell::new(false)),
+        hardware_key_generation_page: widgets.hardware_key_generation_page.clone(),
+        hardware_key_generation_stack: widgets.hardware_key_generation_stack.clone(),
+        hardware_key_generation_form: widgets.hardware_key_generation_form.clone(),
+        hardware_key_generation_loading: widgets.hardware_key_generation_loading.clone(),
+        hardware_key_generation_name_row: widgets.hardware_key_generation_name_row.clone(),
+        hardware_key_generation_email_row: widgets.hardware_key_generation_email_row.clone(),
+        hardware_key_generation_admin_pin_row: widgets
+            .hardware_key_generation_admin_pin_row
+            .clone(),
+        hardware_key_generation_user_pin_row: widgets.hardware_key_generation_user_pin_row.clone(),
+        hardware_key_generation_token: Rc::new(RefCell::new(None)),
+        hardware_key_generation_in_flight: Rc::new(Cell::new(false)),
     }
 }
 

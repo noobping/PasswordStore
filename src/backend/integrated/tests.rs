@@ -22,7 +22,7 @@ use super::keys::generate_fido2_private_key;
 use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
     discover_ripasso_hardware_keys, ensure_ripasso_private_key_is_ready,
-    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    generate_ripasso_hardware_key, generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
     reset_hardware_transport_for_tests, resolved_ripasso_own_fingerprint, ripasso_keys_dir,
@@ -149,9 +149,14 @@ fn git_commit_private_key_requiring_unlock_for_store_recipients(
     )
 }
 
+type MockHardwareGenerationResult =
+    Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError>;
+
 #[derive(Default)]
 struct MockHardwareTransport {
     tokens: Mutex<Vec<DiscoveredHardwareToken>>,
+    generation_result: Mutex<Option<MockHardwareGenerationResult>>,
+    generation_requests: Mutex<Vec<super::keys::HardwareKeyGenerationRequest>>,
     decrypt_response: Mutex<Option<String>>,
     sign_response: Mutex<Option<String>>,
 }
@@ -160,9 +165,19 @@ impl MockHardwareTransport {
     fn with_tokens(tokens: Vec<DiscoveredHardwareToken>) -> Self {
         Self {
             tokens: Mutex::new(tokens),
+            generation_result: Mutex::new(None),
+            generation_requests: Mutex::new(Vec::new()),
             decrypt_response: Mutex::new(None),
             sign_response: Mutex::new(None),
         }
+    }
+
+    fn with_generation_result(mut self, result: MockHardwareGenerationResult) -> Self {
+        self.generation_result
+            .get_mut()
+            .expect("generation mutex poisoned")
+            .replace(result);
+        self
     }
 
     fn with_decrypt_response(mut self, plaintext: &str) -> Self {
@@ -177,6 +192,25 @@ impl MockHardwareTransport {
 impl HardwareTransport for MockHardwareTransport {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
         Ok(self.tokens.lock().expect("tokens mutex poisoned").clone())
+    }
+
+    fn generate_key_material(
+        &self,
+        request: &super::keys::HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        self.generation_requests
+            .lock()
+            .expect("generation request mutex poisoned")
+            .push(request.clone());
+        self.generation_result
+            .lock()
+            .expect("generation mutex poisoned")
+            .clone()
+            .ok_or_else(|| {
+                HardwareTransportError::Other(
+                    "No mock hardware generation result configured.".to_string(),
+                )
+            })?
     }
 
     fn verify_session(
@@ -882,6 +916,93 @@ fn hardware_public_keys_can_be_stored_and_unlocked_for_a_session() {
     )
     .expect("unlock hardware key");
     assert!(is_ripasso_private_key_unlocked(&imported.fingerprint).unwrap());
+}
+
+#[test]
+fn blank_hardware_tokens_can_generate_a_managed_openpgp_key() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("hardware-key-generate");
+    let public_bytes = public_cert_bytes("Generated Hardware <generated@example.com>");
+    let generated_token = DiscoveredHardwareToken {
+        ident: "mock-token".to_string(),
+        reader_hint: Some("Mock Reader".to_string()),
+        cardholder_certificate: Some(public_bytes.clone()),
+        signing_fingerprint: None,
+        decryption_fingerprint: None,
+    };
+    let _guard = HardwareTransportGuard::install(Arc::new(
+        MockHardwareTransport::with_tokens(vec![generated_token.clone()])
+            .with_generation_result(Ok((generated_token, public_bytes))),
+    ));
+
+    let generated = generate_ripasso_hardware_key(
+        "mock-token",
+        Some("Mock Reader"),
+        "Generated Hardware",
+        "generated@example.com",
+        "12345678",
+        "123456",
+        true,
+    )
+    .expect("generate hardware-backed key");
+
+    assert_eq!(
+        generated.protection,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+    );
+    assert_eq!(
+        generated
+            .hardware
+            .as_ref()
+            .and_then(|hardware| hardware.reader_hint.as_deref()),
+        Some("Mock Reader")
+    );
+}
+
+#[test]
+fn hardware_key_generation_can_keep_existing_user_pin() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("hardware-key-generate-existing-pin");
+    let public_bytes = public_cert_bytes("Existing Hardware <existing@example.com>");
+    let transport = Arc::new(
+        MockHardwareTransport::with_tokens(vec![DiscoveredHardwareToken {
+            ident: "mock-token".to_string(),
+            reader_hint: Some("Mock Reader".to_string()),
+            cardholder_certificate: Some(public_bytes.clone()),
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+        }])
+        .with_generation_result(Ok((
+            DiscoveredHardwareToken {
+                ident: "mock-token".to_string(),
+                reader_hint: Some("Mock Reader".to_string()),
+                cardholder_certificate: Some(public_bytes.clone()),
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+            },
+            public_bytes,
+        ))),
+    );
+    let _guard = HardwareTransportGuard::install(transport.clone());
+
+    generate_ripasso_hardware_key(
+        "mock-token",
+        Some("Mock Reader"),
+        "Existing Hardware",
+        "existing@example.com",
+        "12345678",
+        "654321",
+        false,
+    )
+    .expect("generate hardware-backed key while keeping user pin");
+
+    let requests = transport
+        .generation_requests
+        .lock()
+        .expect("generation request mutex poisoned");
+    assert_eq!(requests.len(), 1);
+    assert!(!requests[0].replace_user_pin);
+    assert_eq!(requests[0].user_pin, "654321");
 }
 
 #[test]

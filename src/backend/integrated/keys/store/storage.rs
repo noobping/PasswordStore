@@ -15,7 +15,8 @@ use super::super::cert::{
     ManagedRipassoPrivateKeyProtection,
 };
 use super::super::hardware::{
-    list_hardware_tokens, private_key_error_from_hardware_transport_error,
+    generate_hardware_key_material, list_hardware_tokens,
+    private_key_error_from_hardware_transport_error, HardwareKeyGenerationRequest,
 };
 #[cfg(feature = "fidokey")]
 use super::manifest::{
@@ -563,6 +564,67 @@ pub fn import_ripasso_hardware_key_bytes(
 pub fn discover_ripasso_hardware_keys(
 ) -> Result<Vec<super::super::hardware::DiscoveredHardwareToken>, String> {
     list_hardware_tokens().map_err(|err| err.to_string())
+}
+
+pub fn generate_ripasso_hardware_key(
+    ident: &str,
+    reader_hint: Option<&str>,
+    name: &str,
+    email: &str,
+    admin_pin: &str,
+    user_pin: &str,
+    replace_user_pin: bool,
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(PrivateKeyError::other("Enter a name for the hardware key."));
+    }
+
+    let email = email.trim();
+    if email.is_empty() {
+        return Err(PrivateKeyError::other(
+            "Enter an email address for the hardware key.",
+        ));
+    }
+
+    let admin_pin = admin_pin.trim();
+    if admin_pin.is_empty() {
+        return Err(PrivateKeyError::hardware_pin_required(
+            "Enter the hardware key admin PIN.",
+        ));
+    }
+
+    let user_pin = user_pin.trim();
+    if user_pin.is_empty() {
+        return Err(PrivateKeyError::hardware_pin_required(
+            if replace_user_pin {
+                "Enter the new hardware key PIN."
+            } else {
+                "Enter the hardware key PIN."
+            },
+        ));
+    }
+
+    let user_id = format!("{name} <{email}>");
+    let (token, public_key_bytes) = generate_hardware_key_material(&HardwareKeyGenerationRequest {
+        ident: ident.to_string(),
+        cardholder_name: name.to_string(),
+        user_id,
+        admin_pin: admin_pin.to_string(),
+        user_pin: user_pin.to_string(),
+        replace_user_pin,
+    })
+    .map_err(private_key_error_from_hardware_transport_error)?;
+    let hardware = ManagedRipassoHardwareKey {
+        ident: token.ident,
+        signing_fingerprint: token.signing_fingerprint,
+        decryption_fingerprint: token.decryption_fingerprint,
+        reader_hint: token
+            .reader_hint
+            .or_else(|| reader_hint.map(ToString::to_string)),
+    };
+
+    store_ripasso_hardware_key_bytes(&public_key_bytes, hardware)
 }
 
 #[cfg(feature = "fidokey")]

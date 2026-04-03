@@ -33,9 +33,9 @@ fn private_key_not_stored_error() -> String {
 pub use storage::store_ripasso_hardware_key_bytes;
 pub use storage::{
     armored_ripasso_private_key, armored_ripasso_public_key, discover_ripasso_hardware_keys,
-    generate_fido2_private_key, generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
-    import_ripasso_private_key_bytes, list_ripasso_private_keys, remove_ripasso_private_key,
-    ripasso_private_key_title, store_ripasso_private_key_bytes,
+    generate_fido2_private_key, generate_ripasso_hardware_key, generate_ripasso_private_key,
+    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes, list_ripasso_private_keys,
+    remove_ripasso_private_key, ripasso_private_key_title, store_ripasso_private_key_bytes,
 };
 pub use unlock::{
     create_fido2_store_recipient, is_ripasso_private_key_unlocked,

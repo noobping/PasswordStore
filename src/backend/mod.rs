@@ -77,9 +77,9 @@ pub use self::host::{
 pub use integrated::store_ripasso_private_key_bytes;
 pub use integrated::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
-    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_private_key,
-    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_hardware_key,
+    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
     required_private_key_fingerprints_for_entry, ripasso_private_key_requires_passphrase,
     ripasso_private_key_requires_session_unlock, ripasso_private_key_title,

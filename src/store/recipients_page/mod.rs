@@ -2,6 +2,7 @@ use super::recipients::{
     read_store_private_key_requirement, read_store_recipients, store_is_supported_in_current_build,
     UNSUPPORTED_FIDOSTORE_MESSAGE,
 };
+use crate::backend::DiscoveredHardwareToken;
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
@@ -126,6 +127,7 @@ pub struct StoreRecipientsPlatformState {
     pub options_group: PreferencesGroup,
     pub git_group: PreferencesGroup,
     pub git_list: ListBox,
+    pub setup_hardware_key_row: ActionRow,
     pub add_hardware_key_row: ActionRow,
     pub add_fido2_key_row: ActionRow,
     pub store_git_page: StoreGitPageState,
@@ -146,6 +148,16 @@ pub struct StoreRecipientsPlatformState {
     pub private_key_generation_password_row: PasswordEntryRow,
     pub private_key_generation_confirm_row: PasswordEntryRow,
     pub private_key_generation_in_flight: Rc<Cell<bool>>,
+    pub hardware_key_generation_page: NavigationPage,
+    pub hardware_key_generation_stack: Stack,
+    pub hardware_key_generation_form: ScrolledWindow,
+    pub hardware_key_generation_loading: StatusPage,
+    pub hardware_key_generation_name_row: EntryRow,
+    pub hardware_key_generation_email_row: EntryRow,
+    pub hardware_key_generation_admin_pin_row: PasswordEntryRow,
+    pub hardware_key_generation_user_pin_row: PasswordEntryRow,
+    pub hardware_key_generation_token: Rc<RefCell<Option<DiscoveredHardwareToken>>>,
+    pub hardware_key_generation_in_flight: Rc<Cell<bool>>,
 }
 
 impl StoreRecipientsPageState {
@@ -161,6 +173,8 @@ impl StoreRecipientsPageState {
 
 pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
     import::connect_private_key_import_controls(state);
+    import::connect_hardware_key_generation_autofill(state);
+    import::connect_hardware_key_generation_submit(state);
     generate::connect_private_key_generate_controls(state);
     list::connect_private_key_requirement_control(state);
     list::connect_dismissible_notice_controls(state);

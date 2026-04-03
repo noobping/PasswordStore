@@ -1,24 +1,279 @@
 use anyhow::{anyhow, Context, Result};
 use openpgp_card::ocard;
+use openpgp_card::ocard::algorithm::{AlgorithmAttributes, Curve as CardCurve};
+use openpgp_card::ocard::crypto::PublicKeyMaterial;
 use openpgp_card::ocard::crypto::{Cryptogram, Hash};
+use openpgp_card::ocard::data::{Fingerprint as CardFingerprint, KeyGenerationTime};
+use openpgp_card::ocard::KeyType as CardKeyType;
+use openpgp_card::{state, Card, Error as CardError};
 use sequoia_openpgp as openpgp;
 use sequoia_openpgp::armor;
 use sequoia_openpgp::cert::amalgamation::key::ErasedKeyAmalgamation;
 use sequoia_openpgp::crypto;
 use sequoia_openpgp::crypto::mpi;
 use sequoia_openpgp::packet::key;
+use sequoia_openpgp::packet::key::{Key4, KeyRole, PrimaryRole, SubordinateRole};
+use sequoia_openpgp::packet::signature::SignatureBuilder;
+use sequoia_openpgp::packet::Signature;
+use sequoia_openpgp::packet::{Key, UserID};
 use sequoia_openpgp::parse::stream::{
     DecryptionHelper, DecryptorBuilder, MessageStructure, VerificationHelper,
 };
 use sequoia_openpgp::parse::Parse;
 use sequoia_openpgp::policy::StandardPolicy;
 use sequoia_openpgp::serialize::stream::{Message, Signer};
-use sequoia_openpgp::types::{Curve, HashAlgorithm, SymmetricAlgorithm};
+use sequoia_openpgp::types::{
+    Curve, HashAlgorithm, KeyFlags, PublicKeyAlgorithm, SignatureType, SymmetricAlgorithm,
+    Timestamp,
+};
+use sequoia_openpgp::Packet;
 use sequoia_openpgp::{Cert, Fingerprint, KeyHandle};
 use std::convert::TryInto;
 use std::io;
 
 type PublicKey = openpgp::packet::Key<key::PublicParts, key::UnspecifiedRole>;
+
+pub(super) fn build_public_cert(
+    open: &mut Card<state::Transaction<'_>>,
+    signing_key: PublicKey,
+    decryption_key: Option<PublicKey>,
+    authentication_key: Option<PublicKey>,
+    user_pin: Option<&str>,
+    pinpad_prompt: &dyn Fn(),
+    touch_prompt: &(dyn Fn() + Send + Sync),
+    user_ids: &[String],
+) -> Result<Cert> {
+    let mut packets = Vec::new();
+
+    let mut sign_on_card =
+        |op: &mut dyn Fn(&mut dyn sequoia_openpgp::crypto::Signer) -> Result<Signature>| {
+            if let Some(user_pin) = user_pin {
+                open.verify_user_signing_pin(user_pin.to_string().into())?;
+            } else {
+                open.verify_user_signing_pinpad(pinpad_prompt)?;
+            }
+
+            let mut signer = CardSigner::new(open.card(), signing_key.clone(), touch_prompt);
+            op(&mut signer)
+        };
+
+    let primary_key = PrimaryRole::convert_key(signing_key.clone());
+    packets.push(Packet::from(primary_key));
+
+    let direct_key_signature = sign_on_card(&mut |signer| {
+        SignatureBuilder::new(SignatureType::DirectKey)
+            .set_key_flags(KeyFlags::empty().set_signing().set_certification())?
+            .sign_direct_key(signer, signing_key.role_as_primary())
+    })?;
+    packets.push(direct_key_signature.into());
+
+    if let Some(decryption_key) = decryption_key {
+        let decryption_subkey = SubordinateRole::convert_key(decryption_key);
+        packets.push(Packet::from(decryption_subkey.clone()));
+
+        let cert = Cert::try_from(packets.clone())?;
+        let binding = sign_on_card(&mut |signer| {
+            decryption_subkey.bind(
+                signer,
+                &cert,
+                SignatureBuilder::new(SignatureType::SubkeyBinding).set_key_flags(
+                    KeyFlags::empty()
+                        .set_storage_encryption()
+                        .set_transport_encryption(),
+                )?,
+            )
+        })?;
+        packets.push(binding.into());
+    }
+
+    if let Some(authentication_key) = authentication_key {
+        let authentication_subkey = SubordinateRole::convert_key(authentication_key);
+        packets.push(Packet::from(authentication_subkey.clone()));
+
+        let cert = Cert::try_from(packets.clone())?;
+        let binding = sign_on_card(&mut |signer| {
+            authentication_subkey.bind(
+                signer,
+                &cert,
+                SignatureBuilder::new(SignatureType::SubkeyBinding)
+                    .set_key_flags(KeyFlags::empty().set_authentication())?,
+            )
+        })?;
+        packets.push(binding.into());
+    }
+
+    for user_id in user_ids.iter().map(|value| value.as_bytes()) {
+        let user_id: UserID = user_id.into();
+        packets.push(user_id.clone().into());
+
+        let cert = Cert::try_from(packets.clone())?;
+        let binding = sign_on_card(&mut |signer| {
+            user_id.bind(
+                signer,
+                &cert,
+                SignatureBuilder::new(SignatureType::PositiveCertification)
+                    .set_key_flags(KeyFlags::empty().set_signing().set_certification())?,
+            )
+        })?;
+        packets.push(binding.into());
+    }
+
+    Ok(Cert::try_from(packets)?)
+}
+
+pub(super) fn public_key_material_and_fp_to_key(
+    public_key: &PublicKeyMaterial,
+    key_type: CardKeyType,
+    time: &KeyGenerationTime,
+    fingerprint: &CardFingerprint,
+) -> Result<PublicKey, CardError> {
+    let parameters: &[(Option<HashAlgorithm>, Option<SymmetricAlgorithm>)] =
+        match (public_key, key_type) {
+            (PublicKeyMaterial::E(_), CardKeyType::Decryption) => &[
+                (
+                    Some(HashAlgorithm::SHA256),
+                    Some(SymmetricAlgorithm::AES128),
+                ),
+                (
+                    Some(HashAlgorithm::SHA512),
+                    Some(SymmetricAlgorithm::AES256),
+                ),
+                (
+                    Some(HashAlgorithm::SHA384),
+                    Some(SymmetricAlgorithm::AES256),
+                ),
+                (
+                    Some(HashAlgorithm::SHA384),
+                    Some(SymmetricAlgorithm::AES192),
+                ),
+                (
+                    Some(HashAlgorithm::SHA256),
+                    Some(SymmetricAlgorithm::AES256),
+                ),
+            ],
+            _ => &[(None, None)],
+        };
+
+    for (hash, sym) in parameters {
+        if let Ok(key) = public_key_material_to_key(public_key, key_type, time, *hash, *sym) {
+            if key.fingerprint().as_bytes() == fingerprint.as_bytes() {
+                return Ok(key);
+            }
+        }
+    }
+
+    Err(CardError::InternalError(
+        "Couldn't find key with matching fingerprint".to_string(),
+    ))
+}
+
+pub(super) fn public_to_fingerprint(
+    public_key: &PublicKeyMaterial,
+    time: KeyGenerationTime,
+    key_type: CardKeyType,
+) -> Result<CardFingerprint, CardError> {
+    let key = public_key_material_to_key(public_key, key_type, &time, None, None)?;
+    key.fingerprint().as_bytes().try_into()
+}
+
+fn public_key_material_to_key(
+    public_key: &PublicKeyMaterial,
+    key_type: CardKeyType,
+    time: &KeyGenerationTime,
+    hash: Option<HashAlgorithm>,
+    sym: Option<SymmetricAlgorithm>,
+) -> Result<PublicKey, CardError> {
+    let time = Timestamp::from(time.get()).into();
+
+    match public_key {
+        PublicKeyMaterial::R(rsa) => {
+            let key = Key4::import_public_rsa(rsa.v(), rsa.n(), Some(time)).map_err(|err| {
+                CardError::InternalError(format!("sequoia Key4::import_public_rsa failed: {err:?}"))
+            })?;
+            Ok(key.into())
+        }
+        PublicKeyMaterial::E(ecc) => {
+            let algorithm = ecc.algo();
+            let AlgorithmAttributes::Ecc(ecc_algorithm) = &algorithm else {
+                return Err(CardError::InternalError(format!(
+                    "unexpected ECC algorithm attributes: {algorithm:?}"
+                )));
+            };
+
+            let curve = match ecc_algorithm.curve() {
+                CardCurve::NistP256r1 => Curve::NistP256,
+                CardCurve::NistP384r1 => Curve::NistP384,
+                CardCurve::NistP521r1 => Curve::NistP521,
+                CardCurve::Ed25519 => Curve::Ed25519,
+                CardCurve::Curve25519 => Curve::Cv25519,
+                other => {
+                    return Err(CardError::UnsupportedAlgo(format!(
+                        "unhandled curve: {other:?}"
+                    )))
+                }
+            };
+
+            match key_type {
+                CardKeyType::Authentication | CardKeyType::Signing => {
+                    if ecc_algorithm.curve() == &CardCurve::Ed25519 {
+                        let key = Key4::import_public_ed25519(ecc.data(), time).map_err(|err| {
+                            CardError::InternalError(format!(
+                                "sequoia Key4::import_public_ed25519 failed: {err:?}"
+                            ))
+                        })?;
+                        Ok(Key::from(key))
+                    } else {
+                        let key = Key4::new(
+                            time,
+                            PublicKeyAlgorithm::ECDSA,
+                            mpi::PublicKey::ECDSA {
+                                curve,
+                                q: mpi::MPI::new(ecc.data()),
+                            },
+                        )
+                        .map_err(|err| {
+                            CardError::InternalError(format!(
+                                "sequoia Key4::new for ECDSA failed: {err:?}"
+                            ))
+                        })?;
+                        Ok(key.into())
+                    }
+                }
+                CardKeyType::Decryption => {
+                    if ecc_algorithm.curve() == &CardCurve::Curve25519 {
+                        let key = Key4::import_public_cv25519(ecc.data(), hash, sym, time)
+                            .map_err(|err| {
+                                CardError::InternalError(format!(
+                                    "sequoia Key4::import_public_cv25519 failed: {err:?}"
+                                ))
+                            })?;
+                        Ok(key.into())
+                    } else {
+                        let key = Key4::new(
+                            time,
+                            PublicKeyAlgorithm::ECDH,
+                            mpi::PublicKey::ECDH {
+                                curve,
+                                q: mpi::MPI::new(ecc.data()),
+                                hash: hash.unwrap_or_default(),
+                                sym: sym.unwrap_or_default(),
+                            },
+                        )
+                        .map_err(|err| {
+                            CardError::InternalError(format!(
+                                "sequoia Key4::new for ECDH failed: {err:?}"
+                            ))
+                        })?;
+                        Ok(key.into())
+                    }
+                }
+                other => Err(CardError::InternalError(format!(
+                    "unsupported key type: {other:?}"
+                ))),
+            }
+        }
+    }
+}
 
 pub(super) fn decrypt_with_card_transaction(
     tx: &mut ocard::Transaction<'_>,

@@ -63,6 +63,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_options_group: PreferencesGroup,
     pub(in crate::window) store_recipients_git_group: PreferencesGroup,
     pub(in crate::window) store_recipients_git_list: ListBox,
+    pub(in crate::window) store_recipients_setup_hardware_key_row: ActionRow,
     pub(in crate::window) store_recipients_add_hardware_key_row: ActionRow,
     pub(in crate::window) store_recipients_add_fido2_key_row: ActionRow,
     pub(in crate::window) store_recipients_import_hardware_key_row: ActionRow,
@@ -85,6 +86,14 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) private_key_generation_email_row: EntryRow,
     pub(in crate::window) private_key_generation_password_row: PasswordEntryRow,
     pub(in crate::window) private_key_generation_confirm_row: PasswordEntryRow,
+    pub(in crate::window) hardware_key_generation_page: NavigationPage,
+    pub(in crate::window) hardware_key_generation_stack: Stack,
+    pub(in crate::window) hardware_key_generation_form: ScrolledWindow,
+    pub(in crate::window) hardware_key_generation_loading: StatusPage,
+    pub(in crate::window) hardware_key_generation_name_row: EntryRow,
+    pub(in crate::window) hardware_key_generation_email_row: EntryRow,
+    pub(in crate::window) hardware_key_generation_admin_pin_row: PasswordEntryRow,
+    pub(in crate::window) hardware_key_generation_user_pin_row: PasswordEntryRow,
     pub(in crate::window) log_page: NavigationPage,
     pub(in crate::window) new_pass_file_template_view: TextView,
     pub(in crate::window) clear_empty_fields_before_save_row: ActionRow,
@@ -211,6 +220,9 @@ impl WindowWidgets {
             store_recipients_options_group: required!("store_recipients_options_group"),
             store_recipients_git_group: required!("store_recipients_git_group"),
             store_recipients_git_list: required!("store_recipients_git_list"),
+            store_recipients_setup_hardware_key_row: required!(
+                "store_recipients_setup_hardware_key_row"
+            ),
             store_recipients_add_hardware_key_row: required!(
                 "store_recipients_add_hardware_key_row"
             ),
@@ -243,6 +255,16 @@ impl WindowWidgets {
             private_key_generation_email_row: required!("private_key_generation_email_row"),
             private_key_generation_password_row: required!("private_key_generation_password_row"),
             private_key_generation_confirm_row: required!("private_key_generation_confirm_row"),
+            hardware_key_generation_page: required!("hardware_key_generation_page"),
+            hardware_key_generation_stack: required!("hardware_key_generation_stack"),
+            hardware_key_generation_form: required!("hardware_key_generation_form"),
+            hardware_key_generation_loading: required!("hardware_key_generation_loading"),
+            hardware_key_generation_name_row: required!("hardware_key_generation_name_row"),
+            hardware_key_generation_email_row: required!("hardware_key_generation_email_row"),
+            hardware_key_generation_admin_pin_row: required!(
+                "hardware_key_generation_admin_pin_row"
+            ),
+            hardware_key_generation_user_pin_row: required!("hardware_key_generation_user_pin_row"),
             log_page: required!("log_page"),
             new_pass_file_template_view: required!("new_pass_file_template_view"),
             clear_empty_fields_before_save_row: required!("clear_empty_fields_before_save_row"),

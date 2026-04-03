@@ -31,6 +31,16 @@ pub struct DiscoveredHardwareToken {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HardwareKeyGenerationRequest {
+    pub ident: String,
+    pub cardholder_name: String,
+    pub user_id: String,
+    pub admin_pin: String,
+    pub user_pin: String,
+    pub replace_user_pin: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HardwareTransportError {
     TokenNotPresent(String),
     TokenMismatch(String),
@@ -81,6 +91,10 @@ impl HardwareSessionPolicy {
 
 pub trait HardwareTransport: Send + Sync {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError>;
+    fn generate_key_material(
+        &self,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError>;
     fn verify_session(&self, session: &HardwareSessionPolicy)
         -> Result<(), HardwareTransportError>;
     fn decrypt_ciphertext(
@@ -137,6 +151,12 @@ pub(in crate::backend::integrated) fn reset_hardware_transport_for_tests() {
 pub(in crate::backend::integrated) fn list_hardware_tokens(
 ) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
     with_hardware_transport_read(|transport| transport.list_tokens())
+}
+
+pub(in crate::backend::integrated) fn generate_hardware_key_material(
+    request: &HardwareKeyGenerationRequest,
+) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+    with_hardware_transport_read(|transport| transport.generate_key_material(request))
 }
 
 pub(in crate::backend::integrated) fn decrypt_with_hardware_session(

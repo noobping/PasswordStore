@@ -1,10 +1,17 @@
-use super::crypto::{decrypt_with_card_transaction, sign_with_card_transaction};
-use super::{DiscoveredHardwareToken, HardwareTransport, HardwareTransportError};
+use super::crypto::{
+    build_public_cert, decrypt_with_card_transaction, public_key_material_and_fp_to_key,
+    public_to_fingerprint, sign_with_card_transaction,
+};
+use super::{
+    DiscoveredHardwareToken, HardwareKeyGenerationRequest, HardwareTransport,
+    HardwareTransportError,
+};
 use crate::backend::integrated::keys::cert::ManagedRipassoHardwareKey;
 use card_backend_pcsc::PcscBackend;
 use openpgp_card::ocard::KeyType;
 use openpgp_card::{state, Card};
 use secrecy::SecretString;
+use sequoia_openpgp::serialize::Serialize;
 use sequoia_openpgp::Cert;
 use std::sync::Arc;
 use zeroize::Zeroizing;
@@ -105,6 +112,87 @@ impl RealHardwareTransport {
         Ok(pin_string(pin)?.into())
     }
 
+    fn generated_public_cert(
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        let mut card = Self::open_card(&request.ident)?;
+        let mut transaction = card.transaction().map_err(card_error)?;
+        let mut admin = transaction
+            .to_admin_card(SecretString::from(request.admin_pin.clone()))
+            .map_err(card_error)?;
+        admin
+            .set_cardholder_name(&request.cardholder_name)
+            .map_err(card_error)?;
+        let (signing_material, signing_time) = admin
+            .generate_key(public_to_fingerprint, KeyType::Signing)
+            .map_err(card_error)?;
+        let (decryption_material, decryption_time) = admin
+            .generate_key(public_to_fingerprint, KeyType::Decryption)
+            .map_err(card_error)?;
+        if request.replace_user_pin {
+            admin
+                .reset_user_pin(SecretString::from(request.user_pin.clone()))
+                .map_err(card_error)?;
+        }
+        let transaction = admin.as_transaction();
+        let signing_fingerprint = transaction
+            .fingerprint(KeyType::Signing)
+            .map_err(card_error)?
+            .ok_or_else(|| {
+                HardwareTransportError::Other(
+                    "The hardware key did not return a signing fingerprint.".to_string(),
+                )
+            })?;
+        let decryption_fingerprint = transaction
+            .fingerprint(KeyType::Decryption)
+            .map_err(card_error)?
+            .ok_or_else(|| {
+                HardwareTransportError::Other(
+                    "The hardware key did not return a decryption fingerprint.".to_string(),
+                )
+            })?;
+        let signing_key = public_key_material_and_fp_to_key(
+            &signing_material,
+            KeyType::Signing,
+            &signing_time,
+            &signing_fingerprint,
+        )
+        .map_err(|err| HardwareTransportError::Other(err.to_string()))?;
+        let decryption_key = public_key_material_and_fp_to_key(
+            &decryption_material,
+            KeyType::Decryption,
+            &decryption_time,
+            &decryption_fingerprint,
+        )
+        .map_err(|err| HardwareTransportError::Other(err.to_string()))?;
+        let cert = build_public_cert(
+            transaction,
+            signing_key,
+            Some(decryption_key),
+            None,
+            Some(request.user_pin.as_str()),
+            &|| {},
+            &|| {},
+            std::slice::from_ref(&request.user_id),
+        )
+        .map_err(|err| map_hardware_transport_message(err.to_string()))?
+        .strip_secret_key_material();
+        let mut bytes = Vec::new();
+        cert.serialize(&mut bytes)
+            .map_err(|err| HardwareTransportError::Other(err.to_string()))?;
+
+        Ok((
+            DiscoveredHardwareToken {
+                ident: request.ident.clone(),
+                reader_hint: None,
+                cardholder_certificate: Some(bytes.clone()),
+                signing_fingerprint: Some(signing_fingerprint.to_string()),
+                decryption_fingerprint: Some(decryption_fingerprint.to_string()),
+            },
+            bytes,
+        ))
+    }
+
     fn verify_user_access(
         tx: &mut Card<state::Transaction<'_>>,
         session: &HardwareSessionPolicy,
@@ -161,6 +249,23 @@ impl HardwareTransport for RealHardwareTransport {
         }
 
         Ok(tokens)
+    }
+
+    fn generate_key_material(
+        &self,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        if request.user_pin.trim().is_empty() {
+            return Err(HardwareTransportError::PinRequired(
+                if request.replace_user_pin {
+                    "Enter the new hardware key PIN."
+                } else {
+                    "Enter the hardware key PIN."
+                }
+                .to_string(),
+            ));
+        }
+        Self::generated_public_cert(request)
     }
 
     fn verify_session(

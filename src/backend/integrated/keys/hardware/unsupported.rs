@@ -1,4 +1,7 @@
-use super::{DiscoveredHardwareToken, HardwareTransport, HardwareTransportError};
+use super::{
+    DiscoveredHardwareToken, HardwareKeyGenerationRequest, HardwareTransport,
+    HardwareTransportError,
+};
 use crate::backend::integrated::keys::cert::ManagedRipassoHardwareKey;
 use sequoia_openpgp::Cert;
 
@@ -33,6 +36,15 @@ pub(super) struct RealHardwareTransport;
 
 impl HardwareTransport for RealHardwareTransport {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
+        Err(HardwareTransportError::Unsupported(
+            UNSUPPORTED_MESSAGE.to_string(),
+        ))
+    }
+
+    fn generate_key_material(
+        &self,
+        _request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
         Err(HardwareTransportError::Unsupported(
             UNSUPPORTED_MESSAGE.to_string(),
         ))

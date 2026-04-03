@@ -1328,9 +1328,22 @@
                                     </child>
                                     <child>
                                       <object class="AdwActionRow"
+                                        id="store_recipients_setup_hardware_key_row">
+                                        <property name="title" translatable="yes">Set up new hardware key</property>
+                                        <property name="subtitle" translatable="yes">Create a new OpenPGP key on a blank connected smartcard or YubiKey.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow"
                                         id="store_recipients_add_hardware_key_row">
                                         <property name="title" translatable="yes">Add hardware key</property>
-                                        <property name="subtitle" translatable="yes">Use a connected OpenPGP smartcard or YubiKey.</property>
+                                        <property name="subtitle" translatable="yes">Add the public key already stored on the connected OpenPGP smartcard or YubiKey.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
                                           <object class="GtkImage">
@@ -1536,6 +1549,74 @@
                         <child>
                           <object class="AdwStatusPage" id="private_key_generation_loading">
                             <property name="title" translatable="yes">Generating key</property>
+                            <property name="icon-name">dialog-password-symbolic</property>
+                            <property name="hexpand">true</property>
+                            <property name="vexpand">true</property>
+                            <child>
+                              <object class="GtkSpinner">
+                                <property name="spinning">true</property>
+                                <property name="margin-top">24</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">24</property>
+                                <property name="margin-end">24</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="hardware_key_generation_page">
+                    <property name="title" translatable="yes">Set up new hardware key</property>
+                    <child>
+                      <object class="GtkStack" id="hardware_key_generation_stack">
+                        <child>
+                          <object class="GtkScrolledWindow" id="hardware_key_generation_form">
+                            <property name="vscrollbar-policy">automatic</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="AdwPreferencesPage">
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <child>
+                                      <object class="AdwEntryRow"
+                                        id="hardware_key_generation_name_row">
+                                        <property name="title" translatable="yes">Name</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwEntryRow"
+                                        id="hardware_key_generation_email_row">
+                                        <property name="title" translatable="yes">Email</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwPasswordEntryRow"
+                                        id="hardware_key_generation_admin_pin_row">
+                                        <property name="title" translatable="yes">Hardware key admin PIN</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwPasswordEntryRow"
+                                        id="hardware_key_generation_user_pin_row">
+                                        <property name="title" translatable="yes">New hardware key PIN</property>
+                                        <property name="show-apply-button">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwStatusPage" id="hardware_key_generation_loading">
+                            <property name="title" translatable="yes">Setting up hardware key</property>
                             <property name="icon-name">dialog-password-symbolic</property>
                             <property name="hexpand">true</property>
                             <property name="vexpand">true</property>

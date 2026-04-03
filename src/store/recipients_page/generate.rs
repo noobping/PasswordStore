@@ -324,7 +324,10 @@ pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageS
     });
 }
 
-fn connect_generation_autofill_rows(name_row: &adw::EntryRow, email_row: &adw::EntryRow) {
+pub(super) fn connect_generation_autofill_rows(
+    name_row: &adw::EntryRow,
+    email_row: &adw::EntryRow,
+) {
     let name_row = name_row.clone();
     let email_row = email_row.clone();
     let syncing = Rc::new(Cell::new(false));

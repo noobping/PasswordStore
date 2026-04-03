@@ -51,6 +51,23 @@ mod tests {
     }
 
     #[test]
+    fn run_command_output_redacts_credentialed_urls() {
+        let marker = format!("url-redaction-test-{}", std::process::id());
+        let url = "https://user:secret@example.test/private/repo.git";
+        let mut cmd = Command::new("sh");
+        cmd.args(["-lc", &format!("printf '{url}'")]);
+
+        let output = run_command_output(&mut cmd, &marker, CommandLogOptions::DEFAULT)
+            .expect("command should run");
+
+        assert!(output.status.success());
+
+        let (_, _, text) = log_snapshot();
+        assert!(text.contains("https://redacted@example.test/private/repo.git"));
+        assert!(!text.contains("user:secret@example.test"));
+    }
+
+    #[test]
     fn run_command_output_can_accept_expected_non_zero_exit_codes() {
         let marker = format!("expected-exit-{}", std::process::id());
         let mut cmd = Command::new("sh");

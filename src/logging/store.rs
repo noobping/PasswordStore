@@ -1,4 +1,6 @@
+use regex::{Captures, Regex};
 use std::sync::{OnceLock, RwLock};
+use url::Url;
 
 #[derive(Debug, Default)]
 struct LogState {
@@ -33,7 +35,7 @@ fn with_log_state_write<T>(f: impl FnOnce(&mut LogState) -> T) -> T {
 }
 
 fn push_log_entry(level: &str, message: &str, is_error: bool) {
-    let message = message.trim_end();
+    let message = sanitize_log_message(message.trim_end());
     if message.is_empty() {
         return;
     }
@@ -45,12 +47,85 @@ fn push_log_entry(level: &str, message: &str, is_error: bool) {
         state.text.push('[');
         state.text.push_str(level);
         state.text.push_str("] ");
-        state.text.push_str(message);
+        state.text.push_str(&message);
         state.revision += 1;
         if is_error {
             state.error_revision = state.revision;
         }
     });
+}
+
+fn sanitize_log_message(message: &str) -> String {
+    redact_scp_like_credentials(&redact_url_credentials(message))
+}
+
+fn redact_url_credentials(message: &str) -> String {
+    credential_url_regex()
+        .replace_all(message, |captures: &Captures| {
+            let prefix = captures.name("prefix").map_or("", |value| value.as_str());
+            let url = captures.name("url").map_or("", |value| value.as_str());
+            format!("{prefix}{}", redact_url_credential_value(url))
+        })
+        .into_owned()
+}
+
+fn redact_scp_like_credentials(message: &str) -> String {
+    scp_remote_regex()
+        .replace_all(message, |captures: &Captures| {
+            let prefix = captures.name("prefix").map_or("", |value| value.as_str());
+            let host = captures.name("host").map_or("", |value| value.as_str());
+            let path = captures.name("path").map_or("", |value| value.as_str());
+            format!("{prefix}redacted@{host}:{path}")
+        })
+        .into_owned()
+}
+
+fn redact_url_credential_value(url: &str) -> String {
+    let (url, suffix) = split_trailing_punctuation(url);
+    let Ok(mut parsed) = Url::parse(url) else {
+        return format!("{url}{suffix}");
+    };
+    if parsed.username().is_empty() && parsed.password().is_none() {
+        return format!("{url}{suffix}");
+    }
+    if parsed.set_username("redacted").is_err() || parsed.set_password(None).is_err() {
+        return format!("{url}{suffix}");
+    }
+
+    format!("{}{suffix}", parsed.as_str())
+}
+
+fn split_trailing_punctuation(value: &str) -> (&str, &str) {
+    let mut end = value.len();
+    while end > 0 {
+        let Some(ch) = value[..end].chars().next_back() else {
+            break;
+        };
+        if !matches!(ch, '.' | ',' | ';' | ')' | ']' | '}') {
+            break;
+        }
+        end -= ch.len_utf8();
+    }
+
+    value.split_at(end)
+}
+
+fn credential_url_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r#"(?P<prefix>^|[\s'"(])(?P<url>[A-Za-z][A-Za-z0-9+.-]*://[^\s'"<>]+)"#)
+            .expect("credential URL regex should compile")
+    })
+}
+
+fn scp_remote_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(
+            r#"(?P<prefix>^|[\s'"(])[^@\s'"/:]+@(?P<host>[A-Za-z0-9._-]+):(?P<path>[^\s'"<>]*/[^\s'"<>]+)"#,
+        )
+        .expect("scp remote regex should compile")
+    })
 }
 
 pub fn log_info(message: impl Into<String>) {
@@ -65,4 +140,32 @@ pub fn log_error(message: impl Into<String>) {
 
 pub fn log_snapshot() -> (usize, usize, String) {
     with_log_state_read(|state| (state.revision, state.error_revision, state.text.clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_log_message;
+
+    #[test]
+    fn credentialed_urls_are_redacted() {
+        let message =
+            sanitize_log_message("git clone https://user:secret@example.test/private/repo.git");
+
+        assert_eq!(
+            message,
+            "git clone https://redacted@example.test/private/repo.git".to_string()
+        );
+        assert!(!message.contains("secret"));
+    }
+
+    #[test]
+    fn scp_like_remotes_are_redacted() {
+        let message = sanitize_log_message("git clone token@example.test:owner/repo.git");
+
+        assert_eq!(
+            message,
+            "git clone redacted@example.test:owner/repo.git".to_string()
+        );
+        assert!(!message.contains("token@"));
+    }
 }

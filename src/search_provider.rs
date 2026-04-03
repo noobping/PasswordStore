@@ -1,11 +1,13 @@
 use crate::logging::{log_error, log_info};
-use crate::password::list::search_password_entries;
-use crate::password::model::PassEntry;
+use crate::password::model::{
+    collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
+};
 use crate::store::labels::shortened_store_labels;
 
 use adw::gio::{self, BusNameOwnerFlags, BusType, DBusConnection, DBusInterfaceInfo, DBusNodeInfo};
 use adw::glib::{self, ExitCode, MainLoop, Variant};
 use adw::prelude::ToVariant;
+use sha2::{Digest, Sha256};
 
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -153,8 +155,7 @@ fn handle_get_initial_result_set(parameters: &Variant) -> Result<Option<Variant>
         return Ok(Some((Vec::<String>::new(),).to_variant()));
     };
 
-    let query = join_search_terms(&terms);
-    let result_ids = search_password_entries(&query, Some(SEARCH_PROVIDER_RESULT_LIMIT))
+    let result_ids = search_provider_entries(&terms, SEARCH_PROVIDER_RESULT_LIMIT)
         .into_iter()
         .map(|entry| encode_result_id(&entry))
         .collect::<Vec<_>>();
@@ -167,8 +168,7 @@ fn handle_get_subsearch_result_set(parameters: &Variant) -> Result<Option<Varian
         return Ok(Some((Vec::<String>::new(),).to_variant()));
     };
 
-    let query = join_search_terms(&terms);
-    let result_ids = search_password_entries(&query, Some(SEARCH_PROVIDER_RESULT_LIMIT))
+    let result_ids = search_provider_entries(&terms, SEARCH_PROVIDER_RESULT_LIMIT)
         .into_iter()
         .map(|entry| encode_result_id(&entry))
         .collect::<Vec<_>>();
@@ -200,7 +200,9 @@ fn handle_activate_result(parameters: &Variant) -> Result<Option<Variant>, glib:
     };
 
     match decode_result_id(&identifier) {
-        Some((store_path, label)) => {
+        Some(entry) => {
+            let store_path = entry.store_path.clone();
+            let label = entry.label();
             if let Err(err) = launch_app(
                 [
                     OsString::from("--open-entry"),
@@ -243,15 +245,14 @@ fn meta_for_identifier(
     identifier: &str,
     store_labels: &HashMap<String, String>,
 ) -> Option<HashMap<String, Variant>> {
-    let (store_path, label) = decode_result_id(identifier)?;
-    let entry = PassEntry::from_label(store_path.clone(), &label);
+    let entry = decode_result_id(identifier)?;
     let mut meta = HashMap::new();
     meta.insert("id".to_string(), identifier.to_variant());
     meta.insert("name".to_string(), entry.basename.to_variant());
-    meta.insert(
-        "description".to_string(),
-        entry_description(&entry, store_labels).to_variant(),
-    );
+    let description = entry_description(&entry, store_labels);
+    if !description.is_empty() {
+        meta.insert("description".to_string(), description.to_variant());
+    }
     meta.insert("gicon".to_string(), APP_ID.to_variant());
     Some(meta)
 }
@@ -259,18 +260,16 @@ fn meta_for_identifier(
 fn fallback_meta(identifier: &str) -> HashMap<String, Variant> {
     let mut meta = HashMap::new();
     meta.insert("id".to_string(), identifier.to_variant());
-    meta.insert("name".to_string(), identifier.to_variant());
+    meta.insert("name".to_string(), "Password entry".to_variant());
     meta.insert("gicon".to_string(), APP_ID.to_variant());
     meta
 }
 
 fn entry_description(entry: &PassEntry, store_labels: &HashMap<String, String>) -> String {
-    let label = entry.label();
-    if let Some(store_label) = store_labels.get(&entry.store_path) {
-        format!("{store_label}: {label}")
-    } else {
-        label
-    }
+    store_labels
+        .get(&entry.store_path)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn store_label_map() -> HashMap<String, String> {
@@ -307,39 +306,98 @@ fn launch_app(args: &[OsString]) -> Result<(), String> {
 }
 
 fn encode_result_id(entry: &PassEntry) -> String {
-    format!("{}{RESULT_ID_SEPARATOR}{}", entry.store_path, entry.label())
+    let mut digest = Sha256::new();
+    digest.update(entry.store_path.as_bytes());
+    digest.update([RESULT_ID_SEPARATOR as u8]);
+    digest.update(entry.label().as_bytes());
+    digest
+        .finalize()
+        .into_iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
-fn decode_result_id(identifier: &str) -> Option<(String, String)> {
-    let (store_path, label) = identifier.split_once(RESULT_ID_SEPARATOR)?;
-    if store_path.is_empty() || label.is_empty() {
+fn decode_result_id(identifier: &str) -> Option<PassEntry> {
+    if identifier.len() != 64 || !identifier.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
 
-    Some((store_path.to_string(), label.to_string()))
+    collect_all_password_items_with_options(CollectItemsOptions::default())
+        .into_iter()
+        .find(|entry| encode_result_id(entry) == identifier)
+}
+
+fn search_provider_entries(terms: &[String], limit: usize) -> Vec<PassEntry> {
+    let terms = normalized_search_terms(terms);
+    if terms.is_empty() {
+        return Vec::new();
+    }
+
+    let store_labels = store_label_map();
+    let mut matches = Vec::new();
+    for entry in collect_all_password_items_with_options(CollectItemsOptions::default()) {
+        if !search_provider_entry_matches(
+            &entry,
+            store_labels.get(&entry.store_path).map(String::as_str),
+            &terms,
+        ) {
+            continue;
+        }
+
+        matches.push(entry);
+        if matches.len() >= limit {
+            break;
+        }
+    }
+
+    matches
+}
+
+fn normalized_search_terms(terms: &[String]) -> Vec<String> {
+    terms
+        .iter()
+        .map(|term| term.trim().to_ascii_lowercase())
+        .filter(|term| !term.is_empty())
+        .collect()
+}
+
+fn search_provider_entry_matches(
+    entry: &PassEntry,
+    store_label: Option<&str>,
+    terms: &[String],
+) -> bool {
+    let label = entry.label().to_ascii_lowercase();
+    let store_label = store_label.unwrap_or_default().to_ascii_lowercase();
+    terms
+        .iter()
+        .all(|term| label.contains(term) || store_label.contains(term))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_result_id, encode_result_id, join_search_terms};
+    use super::{
+        decode_result_id, encode_result_id, join_search_terms, normalized_search_terms,
+        search_provider_entry_matches,
+    };
     use crate::password::model::PassEntry;
 
     #[test]
-    fn result_ids_round_trip() {
+    fn result_ids_are_opaque_hashes() {
         let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
         let identifier = encode_result_id(&entry);
 
-        assert_eq!(
-            decode_result_id(&identifier),
-            Some(("/tmp/store".to_string(), "work/alice/github".to_string()))
-        );
+        assert_eq!(identifier.len(), 64);
+        assert!(identifier.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(!identifier.contains("/tmp/store"));
+        assert!(!identifier.contains("work/alice/github"));
+        assert_eq!(decode_result_id(&identifier), None);
     }
 
     #[test]
     fn invalid_result_ids_are_rejected() {
         assert_eq!(decode_result_id(""), None);
         assert_eq!(decode_result_id("/tmp/store"), None);
-        assert_eq!(decode_result_id("\u{1f}label"), None);
+        assert_eq!(decode_result_id("xyz"), None);
     }
 
     #[test]
@@ -355,5 +413,29 @@ mod tests {
             ]),
             "find otp and user alice".to_string()
         );
+    }
+
+    #[test]
+    fn search_terms_normalization_drops_empty_values() {
+        assert_eq!(
+            normalized_search_terms(&["  Alice ".to_string(), "".to_string(), "Work".to_string()]),
+            vec!["alice".to_string(), "work".to_string()]
+        );
+    }
+
+    #[test]
+    fn shell_search_matches_labels_and_store_labels_only() {
+        let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
+
+        assert!(search_provider_entry_matches(
+            &entry,
+            Some("Work"),
+            &["alice".to_string(), "work".to_string()]
+        ));
+        assert!(!search_provider_entry_matches(
+            &entry,
+            Some("Work"),
+            &["example.com".to_string()]
+        ));
     }
 }

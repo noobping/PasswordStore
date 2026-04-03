@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -96,6 +96,23 @@ jobs:
         with:
           name: cargo-sources
           path: cargo-sources.yml
+
+  commit:
+    runs-on: ubuntu-latest
+    needs: generate
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download generated sources
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-sources
+          path: .
 
       - name: Commit and push if changed
         shell: bash

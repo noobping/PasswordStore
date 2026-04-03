@@ -118,7 +118,7 @@ fn run_command_output_inner(
                     context.to_string(),
                     command.clone(),
                     "stderr",
-                    false,
+                    options.redact_stderr,
                 )
             });
 
@@ -231,7 +231,7 @@ pub fn run_command_with_input(
             context.to_string(),
             command.clone(),
             "stderr",
-            false,
+            options.redact_stderr,
         )
     });
 

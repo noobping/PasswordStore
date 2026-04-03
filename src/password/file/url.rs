@@ -4,6 +4,7 @@ use crate::support::ui::flat_icon_button_with_tooltip;
 use crate::support::uri::launch_default_uri;
 use adw::prelude::*;
 use adw::{EntryRow, Toast, ToastOverlay};
+use url::Url;
 
 pub fn uri_to_open(value: &str) -> Option<String> {
     let value = value.trim();
@@ -11,10 +12,16 @@ pub fn uri_to_open(value: &str) -> Option<String> {
         return None;
     }
 
-    if value.contains("://") {
-        Some(value.to_string())
+    let uri = if value.contains("://") {
+        value.to_string()
     } else {
-        Some(format!("https://{value}"))
+        format!("https://{value}")
+    };
+    let parsed = Url::parse(&uri).ok()?;
+    if matches!(parsed.scheme(), "http" | "https") {
+        Some(parsed.into())
+    } else {
+        None
     }
 }
 
@@ -27,7 +34,7 @@ pub(super) fn add_open_url_suffix(
     let overlay = overlay.clone();
     button.connect_clicked(move |_| {
         let Some(uri) = uri_to_open(&text()) else {
-            overlay.add_toast(Toast::new(&gettext("Enter a URL.")));
+            overlay.add_toast(Toast::new(&gettext("Enter an HTTP or HTTPS URL.")));
             return;
         };
 

@@ -37,6 +37,10 @@ fn command_error(prefix: &str, output: &Output) -> String {
     }
 }
 
+fn sensitive_command_error(prefix: &str, output: &Output) -> String {
+    format!("{prefix}: {}", output.status)
+}
+
 // pass import always uses the configured host/custom pass command.
 fn custom_pass_command() -> Command {
     Preferences::new().command()
@@ -57,16 +61,8 @@ fn run_store_pass_command_with_input(
 ) -> Result<Output, String> {
     let mut cmd = Preferences::new().command_with_envs(&[("PASSWORD_STORE_DIR", store_root)]);
     configure(&mut cmd);
-    run_command_with_input(
-        &mut cmd,
-        context,
-        input,
-        CommandLogOptions {
-            redact_stdin: true,
-            ..CommandLogOptions::DEFAULT
-        },
-    )
-    .map_err(|err| format!("Failed to run the host backend command: {err}"))
+    run_command_with_input(&mut cmd, context, input, CommandLogOptions::SENSITIVE)
+        .map_err(|err| format!("Failed to run the host backend command: {err}"))
 }
 
 fn strip_ansi_escape_sequences(text: &str) -> String {
@@ -153,17 +149,18 @@ pub fn run_pass_import(request: &PassImportRequest) -> Result<(), String> {
     if output.status.success() {
         Ok(())
     } else {
-        Err(command_error("pass import failed", &output))
+        Err(sensitive_command_error("pass import failed", &output))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_optional_text, parse_import_sources, pass_import_stdin,
+        normalize_optional_text, parse_import_sources, pass_import_stdin, sensitive_command_error,
         strip_ansi_escape_sequences,
     };
     use secrecy::ExposeSecret;
+    use std::process::Command;
 
     #[test]
     fn ansi_sequences_are_removed_from_import_output() {
@@ -197,5 +194,22 @@ mod tests {
     fn pass_import_stdin_keeps_password_exact_and_ends_with_newline() {
         assert_eq!(pass_import_stdin("").expose_secret(), "\n");
         assert_eq!(pass_import_stdin(" secret ").expose_secret(), " secret \n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sensitive_command_errors_do_not_echo_importer_output() {
+        let output = Command::new("sh")
+            .args([
+                "-lc",
+                "printf 'secret stdout'; printf 'secret stderr' >&2; exit 7",
+            ])
+            .output()
+            .expect("run shell");
+
+        let message = sensitive_command_error("pass import failed", &output);
+
+        assert_eq!(message, "pass import failed: exit status: 7".to_string());
+        assert!(!message.contains("secret"));
     }
 }

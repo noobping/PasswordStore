@@ -102,11 +102,17 @@ mod tests {
     }
 
     #[test]
-    fn explicit_url_schemes_are_preserved() {
+    fn explicit_http_schemes_are_preserved() {
         assert_eq!(
             uri_to_open("https://example.com/path"),
             Some("https://example.com/path".to_string())
         );
+    }
+
+    #[test]
+    fn non_http_url_schemes_are_rejected() {
+        assert_eq!(uri_to_open("ftp://example.com/path"), None);
+        assert_eq!(uri_to_open("javascript://alert(1)"), None);
     }
 
     #[test]

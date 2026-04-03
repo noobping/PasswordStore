@@ -139,6 +139,16 @@ pub(super) fn present_additional_fido2_save_guidance_dialog(state: &StoreRecipie
 mod tests {
     use super::{needs_additional_fido2_save_guidance, saved_fido2_recipient_exists};
     use crate::backend::StoreRecipientsError;
+    use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
+
+    fn test_fido2_recipient(label: &str, credential_id: &[u8]) -> String {
+        build_fido2_recipient_string(
+            &derived_fido2_recipient_id(credential_id),
+            label,
+            credential_id,
+        )
+        .expect("build recipient")
+    }
 
     #[test]
     fn saved_fido2_recipient_detection_matches_store_type() {
@@ -146,23 +156,15 @@ mod tests {
         assert!(!saved_fido2_recipient_exists(&[
             "alice@example.com".to_string()
         ]));
-        assert!(saved_fido2_recipient_exists(&[
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4669727374:63726564"
-                .to_string(),
-        ]));
+        assert!(saved_fido2_recipient_exists(&[test_fido2_recipient(
+            "First", b"cred",
+        )]));
     }
 
     #[test]
     fn additional_fido2_save_guidance_is_only_used_for_extra_fido2_recipients() {
-        let saved = vec![
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4669727374:637265642d31"
-                .to_string(),
-        ];
-        let current = vec![
-            saved[0].clone(),
-            "keycord-fido2-recipient-v1=89abcdef0123456789abcdef0123456789abcdef:5365636f6e64:637265642d32"
-                .to_string(),
-        ];
+        let saved = vec![test_fido2_recipient("First", b"cred-1")];
+        let current = vec![saved[0].clone(), test_fido2_recipient("Second", b"cred-2")];
 
         assert!(needs_additional_fido2_save_guidance(
             &saved,

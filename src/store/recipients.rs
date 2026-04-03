@@ -201,6 +201,7 @@ mod tests {
         UNSUPPORTED_FIDOSTORE_MESSAGE,
     };
     use crate::backend::StoreRecipients;
+    use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
     use crate::i18n::gettext;
     use std::{
         cell::RefCell,
@@ -208,6 +209,15 @@ mod tests {
         rc::Rc,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    fn test_fido2_recipient(label: &str, credential_id: &[u8]) -> String {
+        build_fido2_recipient_string(
+            &derived_fido2_recipient_id(credential_id),
+            label,
+            credential_id,
+        )
+        .expect("build recipient")
+    }
 
     #[test]
     fn standard_recipients_are_trimmed_and_deduplicated() {
@@ -251,11 +261,11 @@ mod tests {
 
     #[test]
     fn fido2_recipient_metadata_lines_are_preserved() {
-        let value = "# keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564";
-        assert_eq!(
-            parse_fido2_recipients(value),
-            vec![value.trim_start_matches("# ").to_string()]
-        );
+        let recipient =
+            build_fido2_recipient_string(&derived_fido2_recipient_id(b"cred"), "Desk Key", b"cred")
+                .expect("build recipient");
+        let value = format!("# {recipient}");
+        assert_eq!(parse_fido2_recipients(&value), vec![recipient]);
     }
 
     #[test]
@@ -278,19 +288,12 @@ mod tests {
 
     #[test]
     fn store_recipients_are_split_by_type() {
-        let recipients = vec![
-            "alice@example.com".to_string(),
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564".to_string(),
-        ];
+        let recipient = test_fido2_recipient("Desk Key", b"cred");
+        let recipients = vec!["alice@example.com".to_string(), recipient.clone()];
 
         assert_eq!(
             split_store_recipients(&recipients),
-            StoreRecipients::new(
-                vec!["alice@example.com".to_string()],
-                vec![
-                    "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564".to_string()
-                ]
-            )
+            StoreRecipients::new(vec!["alice@example.com".to_string()], vec![recipient])
         );
     }
 
@@ -313,6 +316,7 @@ mod tests {
 
     #[test]
     fn store_fido2_usage_detection_follows_the_sidecar_file() {
+        let recipient = test_fido2_recipient("Desk Key", b"cred");
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock should be after epoch")
@@ -326,7 +330,7 @@ mod tests {
 
         fs::write(
             store_root.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+            format!("{recipient}\n"),
         )
         .expect("fido2 recipients file should be written");
 
@@ -339,6 +343,7 @@ mod tests {
 
     #[test]
     fn store_support_matches_the_fidostore_feature_flag() {
+        let recipient = test_fido2_recipient("Desk Key", b"cred");
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock should be after epoch")
@@ -347,7 +352,7 @@ mod tests {
         fs::create_dir_all(&store_root).expect("store root should be created");
         fs::write(
             store_root.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+            format!("{recipient}\n"),
         )
         .expect("fido2 recipients file should be written");
 
@@ -361,6 +366,7 @@ mod tests {
 
     #[test]
     fn unsupported_fido_store_subtitle_explains_the_build_limit() {
+        let recipient = test_fido2_recipient("Desk Key", b"cred");
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock should be after epoch")
@@ -370,7 +376,7 @@ mod tests {
         fs::create_dir_all(&store_root).expect("store root should be created");
         fs::write(
             store_root.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+            format!("{recipient}\n"),
         )
         .expect("fido2 recipients file should be written");
 

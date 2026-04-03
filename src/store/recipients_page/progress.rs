@@ -236,18 +236,24 @@ mod tests {
         should_present_fido2_save_progress_dialog, Fido2SaveReason,
     };
     use crate::backend::{StoreRecipientsSaveProgress, StoreRecipientsSaveStage};
+    use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
+
+    fn test_fido2_recipient(label: &str, credential_id: &[u8]) -> String {
+        build_fido2_recipient_string(
+            &derived_fido2_recipient_id(credential_id),
+            label,
+            credential_id,
+        )
+        .expect("build recipient")
+    }
 
     #[test]
     fn save_progress_dialog_is_only_used_when_fido2_recipients_change() {
         let standard = vec!["alice@example.com".to_string()];
-        let first_fido2 = vec![
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4669727374:63726564"
-                .to_string(),
-        ];
+        let first_fido2 = vec![test_fido2_recipient("First", b"cred")];
         let second_fido2 = vec![
             first_fido2[0].clone(),
-            "keycord-fido2-recipient-v1=89abcdef0123456789abcdef0123456789abcdef:5365636f6e64:637265642d32"
-                .to_string(),
+            test_fido2_recipient("Second", b"cred-2"),
         ];
 
         assert!(!should_present_fido2_save_progress_dialog(
@@ -265,14 +271,10 @@ mod tests {
 
     #[test]
     fn save_progress_reason_matches_add_remove_and_update() {
-        let first_fido2 = vec![
-            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4669727374:63726564"
-                .to_string(),
-        ];
+        let first_fido2 = vec![test_fido2_recipient("First", b"cred")];
         let second_fido2 = vec![
             first_fido2[0].clone(),
-            "keycord-fido2-recipient-v1=89abcdef0123456789abcdef0123456789abcdef:5365636f6e64:637265642d32"
-                .to_string(),
+            test_fido2_recipient("Second", b"cred-2"),
         ];
 
         assert_eq!(

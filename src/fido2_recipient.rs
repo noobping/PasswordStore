@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+
 const FIDO2_RECIPIENT_METADATA_PREFIX: &str = "keycord-fido2-recipient-v1=";
 const FIDO2_RECIPIENT_FALLBACK_LABEL: &str = "FIDO2 security key";
 pub const FIDO2_RECIPIENTS_FILE_NAME: &str = ".fido-id";
@@ -9,13 +11,30 @@ pub struct Fido2StoreRecipient {
     pub credential_id: Vec<u8>,
 }
 
+pub fn derived_fido2_recipient_id(credential_id: &[u8]) -> String {
+    let digest = Sha256::digest(credential_id);
+    let mut encoded = String::with_capacity(40);
+    for byte in &digest[..20] {
+        use std::fmt::Write as _;
+        write!(encoded, "{byte:02X}").expect("writing hex into a string should not fail");
+    }
+    encoded
+}
+
 pub fn build_fido2_recipient_string(
     id: &str,
     label: &str,
     credential_id: &[u8],
 ) -> Result<String, String> {
+    if credential_id.is_empty() {
+        return Err("Invalid FIDO2 store recipient.".to_string());
+    }
+    let id = normalize_fido2_recipient_id(id)?;
+    if id != derived_fido2_recipient_id(credential_id) {
+        return Err("Invalid FIDO2 store recipient.".to_string());
+    }
     let recipient = Fido2StoreRecipient {
-        id: normalize_fido2_recipient_id(id)?,
+        id,
         label: normalize_fido2_recipient_label(label),
         credential_id: credential_id.to_vec(),
     };
@@ -56,6 +75,9 @@ pub fn parse_fido2_recipient_string(value: &str) -> Result<Option<Fido2StoreReci
     };
     let credential_id = decode_hex(credential_hex)?;
     if credential_id.is_empty() {
+        return Err("Invalid FIDO2 store recipient.".to_string());
+    }
+    if id != derived_fido2_recipient_id(&credential_id) {
         return Err("Invalid FIDO2 store recipient.".to_string());
     }
 
@@ -147,36 +169,36 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_fido2_recipient_string, fido2_recipient_subtitle, fido2_recipient_title,
-        parse_fido2_recipient_metadata_line, parse_fido2_recipient_string, same_fido2_recipient,
+        build_fido2_recipient_string, derived_fido2_recipient_id, fido2_recipient_subtitle,
+        fido2_recipient_title, parse_fido2_recipient_metadata_line, parse_fido2_recipient_string,
+        same_fido2_recipient,
     };
 
     #[test]
     fn fido2_recipient_strings_round_trip() {
-        let encoded = build_fido2_recipient_string(
-            "0123456789abcdef0123456789abcdef01234567",
-            "Desk Key",
-            b"cred",
-        )
-        .expect("build recipient string");
+        let encoded =
+            build_fido2_recipient_string(&derived_fido2_recipient_id(b"cred"), "Desk Key", b"cred")
+                .expect("build recipient string");
         let parsed = parse_fido2_recipient_string(&encoded)
             .expect("parse recipient string")
             .expect("expected a FIDO2 recipient");
 
-        assert_eq!(parsed.id, "0123456789ABCDEF0123456789ABCDEF01234567");
+        assert_eq!(parsed.id, derived_fido2_recipient_id(b"cred"));
         assert_eq!(parsed.label, "Desk Key");
         assert_eq!(parsed.credential_id, b"cred");
         assert_eq!(fido2_recipient_title(&encoded).as_deref(), Some("Desk Key"));
+        let expected_subtitle =
+            format!("{} - FIDO2 recipient", derived_fido2_recipient_id(b"cred"));
         assert_eq!(
             fido2_recipient_subtitle(&encoded).as_deref(),
-            Some("0123456789ABCDEF0123456789ABCDEF01234567 - FIDO2 recipient")
+            Some(expected_subtitle.as_str())
         );
     }
 
     #[test]
     fn fido2_recipient_metadata_lines_are_recognized() {
         let encoded =
-            build_fido2_recipient_string("89abcdef0123456789abcdef0123456789abcdef", "", b"cred")
+            build_fido2_recipient_string(&derived_fido2_recipient_id(b"cred"), "", b"cred")
                 .expect("build recipient string");
 
         assert_eq!(
@@ -188,19 +210,26 @@ mod tests {
 
     #[test]
     fn same_fido2_recipient_matches_on_id() {
-        let left = build_fido2_recipient_string(
-            "0123456789abcdef0123456789abcdef01234567",
-            "Desk Key",
-            b"cred",
-        )
-        .expect("build left recipient");
+        let left =
+            build_fido2_recipient_string(&derived_fido2_recipient_id(b"cred"), "Desk Key", b"cred")
+                .expect("build left recipient");
         let right = build_fido2_recipient_string(
-            "0123456789abcdef0123456789abcdef01234567",
+            &derived_fido2_recipient_id(b"cred"),
             "Travel Key",
             b"cred",
         )
         .expect("build right recipient");
 
         assert!(same_fido2_recipient(&left, &right));
+    }
+
+    #[test]
+    fn mismatched_fido2_recipient_id_is_rejected() {
+        assert!(
+            parse_fido2_recipient_string(
+                "keycord-fido2-recipient-v1=0123456789ABCDEF0123456789ABCDEF01234567:4465736b204b6579:63726564"
+            )
+            .is_err()
+        );
     }
 }

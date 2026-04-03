@@ -2,7 +2,7 @@ use super::super::cache::{
     borrow_cached_fido2_pin, cache_fido2_pin, cache_pending_fido2_enrollment,
 };
 use crate::backend::PrivateKeyError;
-use crate::fido2_recipient::build_fido2_recipient_string;
+use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
 use rand::random;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
@@ -250,7 +250,7 @@ pub(super) fn create_fido2_binding(pin: Option<&str>) -> Result<String, PrivateK
         )
     })
     .map_err(private_key_error_from_fido2_error)?;
-    let id = direct_binding_id(&enrollment.credential_id);
+    let id = derived_fido2_recipient_id(&enrollment.credential_id);
     let label = direct_binding_label(&enrollment.device);
     cache_pending_fido2_enrollment(
         &id,
@@ -986,25 +986,6 @@ fn should_retry_direct_hmac_error(err: &Fido2TransportError) -> bool {
             | Fido2TransportError::UserActionTimeout
             | Fido2TransportError::TokenRemoved
     )
-}
-
-fn direct_binding_id(credential_id: &[u8]) -> String {
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    {
-        let digest = Sha256::digest(credential_id);
-        let mut encoded = String::with_capacity(40);
-        for byte in &digest[..20] {
-            use std::fmt::Write as _;
-            write!(encoded, "{byte:02X}").expect("writing hex into a string should not fail");
-        }
-        encoded
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    {
-        let _ = credential_id;
-        String::new()
-    }
 }
 
 fn direct_binding_label(device: &Fido2DeviceLabel) -> String {

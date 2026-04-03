@@ -189,9 +189,20 @@ mod tests {
         show_standard_private_key_choice, store_recipients_selection_mode,
         StoreRecipientsSelectionMode,
     };
+    use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
+
+    fn test_fido2_recipient(label: &str, credential_id: &[u8]) -> String {
+        build_fido2_recipient_string(
+            &derived_fido2_recipient_id(credential_id),
+            label,
+            credential_id,
+        )
+        .expect("build recipient")
+    }
 
     #[test]
     fn recipients_selection_mode_distinguishes_standard_fido2_and_mixed_stores() {
+        let recipient = test_fido2_recipient("Desk Key", b"cred");
         assert_eq!(
             store_recipients_selection_mode(&[]),
             StoreRecipientsSelectionMode::Empty
@@ -201,18 +212,11 @@ mod tests {
             StoreRecipientsSelectionMode::StandardOnly
         );
         assert_eq!(
-            store_recipients_selection_mode(&[
-                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
-                    .to_string(),
-            ]),
+            store_recipients_selection_mode(&[recipient.clone()]),
             StoreRecipientsSelectionMode::Fido2Only
         );
         assert_eq!(
-            store_recipients_selection_mode(&[
-                "alice@example.com".to_string(),
-                "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
-                    .to_string(),
-            ]),
+            store_recipients_selection_mode(&["alice@example.com".to_string(), recipient,]),
             StoreRecipientsSelectionMode::Mixed
         );
     }

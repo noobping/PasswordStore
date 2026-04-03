@@ -1089,7 +1089,17 @@ mod tests {
         PrivateKeyVerificationWarning,
     };
     use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
+    use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
     use crate::store::recipients_page::mode::StoreRecipientsSelectionMode;
+
+    fn test_fido2_recipient(label: &str, credential_id: &[u8]) -> String {
+        build_fido2_recipient_string(
+            &derived_fido2_recipient_id(credential_id),
+            label,
+            credential_id,
+        )
+        .expect("build recipient")
+    }
 
     #[test]
     fn merged_private_keys_prefer_managed_duplicates() {
@@ -1250,12 +1260,12 @@ mod tests {
 
     #[test]
     fn selected_available_private_key_count_ignores_fido2_when_backend_cannot_use_it() {
+        let recipient = test_fido2_recipient("Desk Key", b"cred");
         assert_eq!(
             selected_available_private_key_count(
                 &[
                     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
-                    "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564"
-                        .to_string(),
+                    recipient,
                 ],
                 &[AvailablePrivateKey::Managed(ManagedRipassoPrivateKey {
                     fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),

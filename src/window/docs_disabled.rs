@@ -10,7 +10,6 @@ pub struct DocumentationPageWidgets<'a>(PhantomData<&'a ()>);
 impl<'a> DocumentationPageWidgets<'a> {
     pub fn new(
         _navigation: &'a crate::window::navigation::WindowNavigationState,
-        _page: &'a NavigationPage,
         _search_entry: &'a SearchEntry,
         _list: &'a ListBox,
         _detail_page: &'a NavigationPage,

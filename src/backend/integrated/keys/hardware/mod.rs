@@ -3,20 +3,20 @@ use crate::backend::PrivateKeyError;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, OnceLock, RwLock};
 
-#[cfg(all(target_os = "linux", feature = "smartcard"))]
+#[cfg(feature = "smartcard")]
 mod crypto;
-#[cfg(all(target_os = "linux", feature = "smartcard"))]
+#[cfg(feature = "smartcard")]
 mod linux;
-#[cfg(not(all(target_os = "linux", feature = "smartcard")))]
+#[cfg(not(feature = "smartcard"))]
 mod unsupported;
 
-#[cfg(all(target_os = "linux", feature = "smartcard"))]
+#[cfg(feature = "smartcard")]
 use self::linux::RealHardwareTransport;
-#[cfg(all(target_os = "linux", feature = "smartcard"))]
+#[cfg(feature = "smartcard")]
 pub(in crate::backend::integrated) use self::linux::{HardwareSessionPolicy, HardwareUnlockMode};
-#[cfg(not(all(target_os = "linux", feature = "smartcard")))]
+#[cfg(not(feature = "smartcard"))]
 use self::unsupported::RealHardwareTransport;
-#[cfg(not(all(target_os = "linux", feature = "smartcard")))]
+#[cfg(not(feature = "smartcard"))]
 pub(in crate::backend::integrated) use self::unsupported::{
     HardwareSessionPolicy, HardwareUnlockMode,
 };

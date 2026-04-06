@@ -15,7 +15,7 @@ use crate::support::actions::activate_widget_action;
 use crate::support::runtime::{
     supports_docs_features, supports_host_command_features, supports_logging_features,
 };
-#[cfg(all(target_os = "linux", feature = "setup"))]
+#[cfg(feature = "setup")]
 use crate::support::ui::append_action_row_with_button;
 use crate::window::navigation::show_log_page;
 use adw::prelude::*;
@@ -103,12 +103,12 @@ pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
     Some(row)
 }
 
-#[cfg(not(all(target_os = "linux", feature = "setup")))]
+#[cfg(not(feature = "setup"))]
 pub(super) const fn append_optional_setup_row(_state: &ToolsPageState) -> Option<ActionRow> {
     None
 }
 
-#[cfg(all(target_os = "linux", feature = "setup"))]
+#[cfg(feature = "setup")]
 pub(super) fn sync_optional_setup_row(row: Option<&ActionRow>) {
     let Some(row) = row else {
         return;
@@ -117,7 +117,7 @@ pub(super) fn sync_optional_setup_row(row: Option<&ActionRow>) {
     row.set_title(&gettext(local_menu_action_label(is_installed_locally())));
 }
 
-#[cfg(not(all(target_os = "linux", feature = "setup")))]
+#[cfg(not(feature = "setup"))]
 pub(super) const fn sync_optional_setup_row(_row: Option<&ActionRow>) {}
 
 pub(super) fn append_optional_pass_import_row(

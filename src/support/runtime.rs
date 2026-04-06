@@ -47,7 +47,7 @@ pub const fn supports_host_command_features() -> bool {
 }
 
 pub const fn supports_logging_features() -> bool {
-    cfg!(all(target_os = "linux", feature = "logging"))
+    cfg!(feature = "logging")
 }
 
 pub const fn supports_docs_features() -> bool {
@@ -55,11 +55,11 @@ pub const fn supports_docs_features() -> bool {
 }
 
 pub const fn supports_smartcard_features() -> bool {
-    cfg!(all(target_os = "linux", feature = "smartcard"))
+    cfg!(feature = "smartcard")
 }
 
 pub const fn supports_hardwarekey_features() -> bool {
-    cfg!(all(target_os = "linux", feature = "hardwarekey"))
+    cfg!(feature = "hardwarekey")
 }
 
 pub const fn supports_fidostore_features() -> bool {

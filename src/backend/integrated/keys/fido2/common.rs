@@ -21,9 +21,9 @@ use fido2_rs::{
 use hmac::{Hmac, Mac};
 use openssl::symm::{Cipher, Crypter, Mode};
 use sha2::{Digest, Sha256};
-#[cfg(all(target_os = "linux", feature = "fidopin"))]
+#[cfg(feature = "fidopin")]
 use std::ffi::{CStr, CString};
-#[cfg(all(target_os = "linux", feature = "fidopin"))]
+#[cfg(feature = "fidopin")]
 use zeroize::Zeroizing;
 
 pub const FIDO2_RP_ID: &str = "io.github.noobping.keycord";
@@ -175,7 +175,7 @@ pub trait Fido2Transport: Send + Sync {
         excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError>;
 
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     fn set_new_pin(&self, _new_pin: &str) -> Result<(), Fido2TransportError> {
         Err(Fido2TransportError::PinUnsupported)
     }
@@ -739,7 +739,7 @@ fn direct_hmac_material_for_binding(
         .map_err(private_key_error_from_fido2_error)
 }
 
-#[cfg(not(all(target_os = "linux", feature = "fidopin")))]
+#[cfg(not(feature = "fidopin"))]
 pub fn set_fido2_security_key_pin(_new_pin: &str) -> Result<(), PrivateKeyError> {
     Err(PrivateKeyError::fido2_pin_unsupported(
         "Setting a FIDO2 security key PIN is only supported on Linux in this build.",
@@ -1438,7 +1438,7 @@ impl Fido2Transport for RealFido2Transport {
         Err(last_error.unwrap_or(Fido2TransportError::TokenNotPresent))
     }
 
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     fn set_new_pin(&self, new_pin: &str) -> Result<(), Fido2TransportError> {
         let mut devices = DeviceList::list_devices(16);
         let Some(info) = devices.next() else {

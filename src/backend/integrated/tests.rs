@@ -297,9 +297,9 @@ impl Drop for HardwareTransportGuard {
 struct MockFido2Transport {
     enrollments: Mutex<Vec<Result<Fido2Enrollment, Fido2TransportError>>>,
     assertions: Mutex<Vec<Result<Fido2AssertionOutput, Fido2TransportError>>>,
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     pin_setups: Mutex<Vec<Result<(), Fido2TransportError>>>,
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     observed_pin_setups: Mutex<Vec<String>>,
 }
 
@@ -327,7 +327,7 @@ impl MockFido2Transport {
         self
     }
 
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     fn with_pin_setup_result(mut self, result: Result<(), Fido2TransportError>) -> Self {
         self.pin_setups
             .get_mut()
@@ -350,7 +350,7 @@ impl MockFido2Transport {
             .remove(0)
     }
 
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     fn next_pin_setup(&self) -> Result<(), Fido2TransportError> {
         self.pin_setups
             .lock()
@@ -358,7 +358,7 @@ impl MockFido2Transport {
             .remove(0)
     }
 
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     fn observed_pin_setups(&self) -> Vec<String> {
         self.observed_pin_setups
             .lock()
@@ -391,7 +391,7 @@ impl Fido2Transport for MockFido2Transport {
         self.next_assertion()
     }
 
-    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    #[cfg(feature = "fidopin")]
     fn set_new_pin(&self, new_pin: &str) -> Result<(), Fido2TransportError> {
         self.observed_pin_setups
             .lock()

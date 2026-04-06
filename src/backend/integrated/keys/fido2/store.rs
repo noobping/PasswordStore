@@ -45,7 +45,7 @@ pub fn create_fido2_store_recipient(_pin: Option<&str>) -> Result<String, Privat
     ))
 }
 
-#[cfg(all(feature = "fidostore", any(target_os = "linux", target_os = "windows")))]
+#[cfg(feature = "fidostore")]
 fn unlock_fido2_binding_for_session(
     recipient: &str,
     pin: Option<&str>,
@@ -67,19 +67,6 @@ fn unlock_fido2_binding_for_session(
             .map_err(PrivateKeyError::other)?;
     }
     Ok(())
-}
-
-#[cfg(all(
-    feature = "fidostore",
-    not(any(target_os = "linux", target_os = "windows"))
-))]
-fn unlock_fido2_binding_for_session(
-    _recipient: &str,
-    _pin: Option<&str>,
-) -> Result<(), PrivateKeyError> {
-    Err(PrivateKeyError::unsupported_fido2_key(
-        super::common::FIDO2_PLATFORM_UNSUPPORTED_MESSAGE,
-    ))
 }
 
 #[cfg(feature = "fidostore")]

@@ -10,9 +10,9 @@ mod backend;
 mod clipboard;
 mod fido2_recipient;
 mod i18n;
-#[cfg(all(target_os = "linux", feature = "logging"))]
+#[cfg(feature = "logging")]
 mod logging;
-#[cfg(not(all(target_os = "linux", feature = "logging")))]
+#[cfg(not(feature = "logging"))]
 #[path = "logging/disabled.rs"]
 mod logging;
 mod password;
@@ -37,7 +37,7 @@ use crate::support::startup::{
     fatal_startup_error, prompt_startup_recovery_dialog, show_startup_error_dialog,
     StartupRecoveryChoice,
 };
-#[cfg(all(target_os = "linux", feature = "setup"))]
+#[cfg(feature = "setup")]
 use crate::support::theme::install_color_scheme_tracking;
 use crate::window::navigation::APP_WINDOW_TITLE;
 
@@ -87,7 +87,7 @@ fn main() -> ExitCode {
     let Some(display) = Display::default() else {
         return fatal_startup_error(APP_WINDOW_TITLE, "No display available.", "missing display");
     };
-    #[cfg(all(target_os = "linux", feature = "setup"))]
+    #[cfg(feature = "setup")]
     install_color_scheme_tracking(&display);
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);

@@ -1,5 +1,5 @@
 use super::{default_backend_kind, BackendKind, Preferences};
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use crate::support::runtime::has_host_permission;
 use crate::support::runtime::supports_host_command_features;
 use adw::gio::prelude::*;
@@ -33,12 +33,12 @@ pub(super) fn stored_backend_kind(preferences: &Preferences) -> BackendKind {
     effective_backend_kind(stored)
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn effective_backend_kind(stored: BackendKind) -> BackendKind {
     effective_backend_kind_for_host_permission(stored, has_host_permission())
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn effective_backend_kind_for_host_permission(
     stored: BackendKind,
     has_permission: bool,
@@ -50,7 +50,7 @@ fn effective_backend_kind_for_host_permission(
     }
 }
 
-#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 fn effective_backend_kind(stored: BackendKind) -> BackendKind {
     if stored.uses_host_command() && !supports_host_command_features() {
         BackendKind::Integrated
@@ -99,7 +99,7 @@ mod tests {
         );
     }
 
-    #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+    #[cfg(not(feature = "flatpak"))]
     #[test]
     fn non_linux_builds_disable_the_host_backend() {
         #[cfg(target_os = "linux")]
@@ -115,7 +115,7 @@ mod tests {
         );
     }
 
-    #[cfg(all(target_os = "linux", feature = "flatpak"))]
+    #[cfg(feature = "flatpak")]
     #[test]
     fn host_backend_falls_back_to_integrated_without_permission() {
         assert_eq!(
@@ -124,7 +124,7 @@ mod tests {
         );
     }
 
-    #[cfg(all(target_os = "linux", feature = "flatpak"))]
+    #[cfg(feature = "flatpak")]
     #[test]
     fn host_backend_is_kept_with_permission() {
         assert_eq!(

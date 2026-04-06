@@ -119,7 +119,7 @@ mod tests {
     fn linux_remote_git_uses_system_git() {
         let cmd = remote_git_command();
 
-        #[cfg(all(target_os = "linux", feature = "flatpak"))]
+        #[cfg(feature = "flatpak")]
         {
             assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
             assert_eq!(
@@ -131,7 +131,7 @@ mod tests {
             assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
         }
 
-        #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+        #[cfg(not(feature = "flatpak"))]
         {
             assert_eq!(cmd.get_program().to_string_lossy(), "git");
             assert_eq!(cmd.get_args().count(), 0);
@@ -152,7 +152,7 @@ mod tests {
         let cmd =
             crate::preferences::Preferences::new().host_program_command("gpg", &["--version"]);
 
-        #[cfg(all(target_os = "linux", feature = "flatpak"))]
+        #[cfg(feature = "flatpak")]
         {
             assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
             assert_eq!(
@@ -168,7 +168,7 @@ mod tests {
             assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/")));
         }
 
-        #[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+        #[cfg(not(feature = "flatpak"))]
         {
             assert_eq!(cmd.get_program().to_string_lossy(), "gpg");
             assert_eq!(

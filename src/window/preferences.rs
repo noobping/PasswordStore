@@ -8,7 +8,7 @@ use crate::private_key::sync::{
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
 use crate::support::actions::register_window_action;
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use crate::support::runtime::has_host_permission;
 use crate::support::runtime::supports_host_command_features;
 use crate::support::ui::{
@@ -112,7 +112,7 @@ const SYNC_PRIVATE_KEYS_UNAVAILABLE_SUBTITLE: &str =
     "Private-key sync with the host is only available on Linux.";
 
 fn host_private_key_sync_is_available() -> bool {
-    #[cfg(all(target_os = "linux", feature = "flatpak"))]
+    #[cfg(feature = "flatpak")]
     {
         has_host_permission()
     }

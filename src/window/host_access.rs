@@ -1,51 +1,51 @@
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use crate::preferences::Preferences;
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use crate::support::runtime::{
     has_fido2_permission, has_host_permission, has_smartcard_permission,
 };
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use crate::support::ui::{add_persistent_hide_button, flat_icon_button_with_tooltip};
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use adw::gtk::ListBox;
 use adw::prelude::*;
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use adw::{ActionRow, PreferencesGroup, Toast, ToastOverlay};
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 use std::rc::Rc;
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const FLATPAK_HOST_OVERRIDE_COMMAND: &str =
     "flatpak override --user --talk-name=org.freedesktop.Flatpak io.github.noobping.keycord";
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const FLATPAK_SMARTCARD_OVERRIDE_COMMAND: &str =
     "flatpak override --user --socket=pcsc io.github.noobping.keycord";
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const FLATPAK_FIDO2_OVERRIDE_COMMAND: &str =
     "flatpak override --user --device=all io.github.noobping.keycord";
 
 const FIDO2_BACKEND_REQUIRED_TOOLTIP: &str =
     "Switch to the Integrated backend to use FIDO2 security keys.";
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const FIDO2_PERMISSION_REQUIRED_TOOLTIP: &str = "Grant USB security key access first.";
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const OPTIONAL_FIDO2_ACCESS_ROW_NAME: &str = "keycord-optional-fido2-access-row";
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const OPTIONAL_SMARTCARD_ACCESS_ROW_NAME: &str = "keycord-optional-smartcard-access-row";
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const OPTIONAL_HOST_ACCESS_NOTICE_ID: &str = "optional-host-access";
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const OPTIONAL_SMARTCARD_ACCESS_NOTICE_ID: &str = "optional-smartcard-access";
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 const OPTIONAL_FIDO2_ACCESS_NOTICE_ID: &str = "optional-fido2-access";
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn build_optional_permission_row(
     overlay: &ToastOverlay,
     title: &str,
@@ -75,7 +75,7 @@ fn build_optional_permission_row(
     row
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn build_optional_host_access_row(overlay: &ToastOverlay) -> Option<ActionRow> {
     if has_host_permission() || Preferences::new().is_notice_hidden(OPTIONAL_HOST_ACCESS_NOTICE_ID)
     {
@@ -90,7 +90,7 @@ fn build_optional_host_access_row(overlay: &ToastOverlay) -> Option<ActionRow> {
     ))
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 pub fn append_optional_host_access_group_row(group: &PreferencesGroup, overlay: &ToastOverlay) {
     group.set_visible(false);
     if let Some(row) = build_optional_host_access_row(overlay) {
@@ -103,7 +103,7 @@ pub fn append_optional_host_access_group_row(group: &PreferencesGroup, overlay: 
     }
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 pub fn append_optional_host_access_row(list: &ListBox, overlay: &ToastOverlay) {
     if let Some(row) = build_optional_host_access_row(overlay) {
         add_persistent_hide_button(&row, OPTIONAL_HOST_ACCESS_NOTICE_ID, || {});
@@ -111,7 +111,7 @@ pub fn append_optional_host_access_row(list: &ListBox, overlay: &ToastOverlay) {
     }
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 pub fn append_optional_smartcard_access_row(
     list: &ListBox,
     overlay: &ToastOverlay,
@@ -139,7 +139,7 @@ pub fn append_optional_smartcard_access_row(
     row.set_visible(true);
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 pub fn append_optional_fido2_access_row(
     list: &ListBox,
     overlay: &ToastOverlay,
@@ -171,7 +171,7 @@ pub fn append_optional_fido2_access_row(
     row.set_visible(true);
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn find_optional_permission_row(list: &ListBox, widget_name: &str) -> Option<ActionRow> {
     let mut child = list.first_child();
     while let Some(widget) = child {
@@ -185,7 +185,7 @@ fn find_optional_permission_row(list: &ListBox, widget_name: &str) -> Option<Act
     None
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn ensure_optional_fido2_access_row(list: &ListBox, overlay: &ToastOverlay) -> ActionRow {
     if let Some(row) = find_optional_permission_row(list, OPTIONAL_FIDO2_ACCESS_ROW_NAME) {
         return row;
@@ -203,7 +203,7 @@ fn ensure_optional_fido2_access_row(list: &ListBox, overlay: &ToastOverlay) -> A
     row
 }
 
-#[cfg(all(target_os = "linux", feature = "flatpak"))]
+#[cfg(feature = "flatpak")]
 fn ensure_optional_smartcard_access_row(list: &ListBox, overlay: &ToastOverlay) -> ActionRow {
     if let Some(row) = find_optional_permission_row(list, OPTIONAL_SMARTCARD_ACCESS_ROW_NAME) {
         return row;
@@ -221,7 +221,7 @@ fn ensure_optional_smartcard_access_row(list: &ListBox, overlay: &ToastOverlay) 
     row
 }
 
-#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 pub fn append_optional_smartcard_access_row(
     _list: &adw::gtk::ListBox,
     _overlay: &adw::ToastOverlay,
@@ -230,7 +230,7 @@ pub fn append_optional_smartcard_access_row(
 ) {
 }
 
-#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 pub fn append_optional_fido2_access_row(
     _list: &adw::gtk::ListBox,
     _overlay: &adw::ToastOverlay,
@@ -244,7 +244,7 @@ pub fn append_optional_fido2_access_row(
     }
 }
 
-#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 pub fn append_optional_host_access_group_row(
     group: &adw::PreferencesGroup,
     _overlay: &adw::ToastOverlay,
@@ -252,5 +252,5 @@ pub fn append_optional_host_access_group_row(
     group.set_visible(false);
 }
 
-#[cfg(not(all(target_os = "linux", feature = "flatpak")))]
+#[cfg(not(feature = "flatpak"))]
 pub fn append_optional_host_access_row(_list: &adw::gtk::ListBox, _overlay: &adw::ToastOverlay) {}

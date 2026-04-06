@@ -96,7 +96,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_DOCS");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_SETUP");
 
-    #[cfg(all(target_os = "linux", not(feature = "setup")))]
+    #[cfg(not(feature = "setup"))]
     {
         desktop_file();
         search_provider_files();
@@ -1258,7 +1258,7 @@ fn collect_icon_assets(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
     }
 }
 
-#[cfg(all(target_os = "linux", not(feature = "setup")))]
+#[cfg(not(feature = "setup"))]
 fn desktop_file() {
     let app_id = app_id();
     let project = env!("CARGO_PKG_NAME");
@@ -1281,7 +1281,7 @@ StartupNotify=true
         .expect("Can not build desktop file");
 }
 
-#[cfg(all(target_os = "linux", not(feature = "setup")))]
+#[cfg(not(feature = "setup"))]
 fn search_provider_files() {
     let project = env!("CARGO_PKG_NAME");
     let dir = Path::new(".");

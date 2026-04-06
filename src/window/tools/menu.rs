@@ -1,11 +1,11 @@
 use super::ToolsPageState;
 use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
-#[cfg(all(target_os = "linux", feature = "setup"))]
+#[cfg(feature = "setup")]
 use crate::logging::log_error;
 use crate::logging::log_snapshot;
 use crate::preferences::Preferences;
-#[cfg(all(target_os = "linux", feature = "setup"))]
+#[cfg(feature = "setup")]
 use crate::setup::{
     can_install_locally, install_locally, is_installed_locally, local_menu_action_label,
     uninstall_locally,
@@ -70,8 +70,8 @@ pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
         .connect_clicked(move |_| copy_action());
 }
 
-#[cfg(all(target_os = "linux", feature = "setup"))]
-pub(super) fn append_optional_setup_row(state: &ToolsPageState) -> Option<ActionRow> {
+#[cfg(feature = "setup")]
+pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
     if !can_install_locally() {
         return None;
     }

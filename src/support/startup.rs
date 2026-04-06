@@ -24,6 +24,7 @@ pub fn fatal_startup_error(app_name: &str, context: &str, error: impl Display) -
 
     let log_path = persist_startup_error_log(app_name, &detail);
     let dialog_body = fatal_startup_dialog_body(app_name, &detail, log_path.as_deref());
+    #[cfg(target_os = "linux")]
     show_startup_error_dialog(app_name, &dialog_body);
 
     1.into()
@@ -68,93 +69,6 @@ fn fatal_startup_dialog_body(app_name: &str, detail: &str, log_path: Option<&Pat
         body.push_str(&path.to_string_lossy());
     }
     body
-}
-
-fn startup_recovery_dialog_body(detail: &str, log_path: Option<&Path>) -> String {
-    let mut body = String::from(
-        "Keycord found incompatible private-key data while preparing the app-managed key storage.\n\nQuit keeps the data untouched.\nContinue and remove incompatible data permanently deletes only the incompatible private-key files or folders so startup can continue.",
-    );
-    body.push_str("\n\nBlocked items:\n");
-    body.push_str(detail);
-    if let Some(path) = log_path {
-        body.push_str("\n\nA startup recovery log was written to:\n");
-        body.push_str(&path.to_string_lossy());
-    }
-    body
-}
-
-#[cfg(target_os = "windows")]
-pub fn show_startup_error_dialog(title: &str, body: &str) {
-    use std::ffi::c_void;
-    use std::os::windows::ffi::OsStrExt;
-
-    const MB_ICONERROR: u32 = 0x0000_0010;
-    const MB_OK: u32 = 0x0000_0000;
-
-    unsafe extern "system" {
-        fn MessageBoxW(hwnd: *mut c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
-    }
-
-    fn utf16_null_terminated(value: &str) -> Vec<u16> {
-        std::ffi::OsStr::new(value)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    }
-
-    let title = utf16_null_terminated(title);
-    let body = utf16_null_terminated(body);
-
-    unsafe {
-        let _ = MessageBoxW(
-            std::ptr::null_mut(),
-            body.as_ptr(),
-            title.as_ptr(),
-            MB_OK | MB_ICONERROR,
-        );
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn show_startup_recovery_dialog(title: &str, body: &str) -> StartupRecoveryChoice {
-    use std::ffi::c_void;
-    use std::os::windows::ffi::OsStrExt;
-
-    const IDYES: i32 = 6;
-    const MB_DEFBUTTON2: u32 = 0x0000_0100;
-    const MB_ICONWARNING: u32 = 0x0000_0030;
-    const MB_YESNO: u32 = 0x0000_0004;
-
-    unsafe extern "system" {
-        fn MessageBoxW(hwnd: *mut c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
-    }
-
-    fn utf16_null_terminated(value: &str) -> Vec<u16> {
-        std::ffi::OsStr::new(value)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
-    }
-
-    let title = utf16_null_terminated(title);
-    let body = utf16_null_terminated(&format!(
-        "{body}\n\nChoose Yes to continue and remove incompatible data.\nChoose No to quit without changing anything."
-    ));
-
-    let response = unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            body.as_ptr(),
-            title.as_ptr(),
-            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
-        )
-    };
-
-    if response == IDYES {
-        StartupRecoveryChoice::ContinueAndRemove
-    } else {
-        StartupRecoveryChoice::Quit
-    }
 }
 
 #[cfg(target_os = "linux")]

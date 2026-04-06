@@ -3,7 +3,7 @@
     windows_subsystem = "windows"
 )]
 
-#[cfg(all(target_os = "linux", feature = "setup"))]
+#[cfg(feature = "setup")]
 mod setup;
 
 mod backend;

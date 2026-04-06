@@ -33,6 +33,7 @@ use crate::preferences::Preferences;
 use crate::support::hardening::apply_process_hardening;
 use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
 use crate::support::runtime::handle_unsupported_host_command_invocation;
+#[cfg(target_os = "linux")]
 use crate::support::startup::{
     fatal_startup_error, prompt_startup_recovery_dialog, show_startup_error_dialog,
     StartupRecoveryChoice,

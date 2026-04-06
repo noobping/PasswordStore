@@ -1,9 +1,7 @@
 use crate::logging::log_error;
 use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use adw::glib;
-#[cfg(target_os = "linux")]
 use adw::prelude::*;
-#[cfg(target_os = "linux")]
 use adw::AlertDialog;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
@@ -24,7 +22,7 @@ pub fn fatal_startup_error(app_name: &str, context: &str, error: impl Display) -
 
     let log_path = persist_startup_error_log(app_name, &detail);
     let dialog_body = fatal_startup_dialog_body(app_name, &detail, log_path.as_deref());
-    #[cfg(target_os = "linux")]
+    
     show_startup_error_dialog(app_name, &dialog_body);
 
     1.into()
@@ -71,7 +69,6 @@ fn fatal_startup_dialog_body(app_name: &str, detail: &str, log_path: Option<&Pat
     body
 }
 
-#[cfg(target_os = "linux")]
 pub fn show_startup_error_dialog(title: &str, body: &str) {
     if adw::init().is_err() {
         return;
@@ -93,7 +90,6 @@ pub fn show_startup_error_dialog(title: &str, body: &str) {
     loop_.run();
 }
 
-#[cfg(target_os = "linux")]
 fn show_startup_recovery_dialog(title: &str, body: &str) -> StartupRecoveryChoice {
     if adw::init().is_err() {
         return StartupRecoveryChoice::Quit;

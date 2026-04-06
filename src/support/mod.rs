@@ -7,6 +7,7 @@ pub mod object_data;
 pub mod pass_import;
 pub mod runtime;
 pub mod secure_fs;
+#[cfg(target_os = "linux")]
 pub mod startup;
 #[cfg(feature = "setup")]
 pub mod theme;

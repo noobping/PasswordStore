@@ -278,7 +278,7 @@ fn create_fido2_binding(pin: Option<&str>) -> Result<String, PrivateKeyError> {
         .map_err(PrivateKeyError::other)
 }
 
-#[cfg_attr(not(feature = "fidokey"))]
+#[cfg(not(feature = "fidokey"))]
 pub(in crate::backend::integrated) fn create_fido2_private_key_binding(
     pin: Option<&str>,
 ) -> Result<String, PrivateKeyError> {
@@ -865,7 +865,7 @@ fn direct_binding_from_store_recipient_data(recipient: &Fido2StoreRecipient) -> 
     }
 }
 
-#[cfg_attr(not(feature = "fidostore"))]
+#[cfg(not(feature = "fidostore"))]
 fn direct_binding_id(credential_id: &[u8]) -> String {
     let digest = Sha256::digest(credential_id);
     let mut encoded = String::with_capacity(40);
@@ -876,7 +876,7 @@ fn direct_binding_id(credential_id: &[u8]) -> String {
     encoded
 }
 
-#[cfg_attr(not(feature = "fidostore"))]
+#[cfg(not(feature = "fidostore"))]
 fn direct_binding_label(device: &Fido2DeviceLabel) -> String {
     match (device.manufacturer.as_deref(), device.product.as_deref()) {
         (Some(manufacturer), Some(product))
@@ -1085,7 +1085,7 @@ pub(super) fn random_bytes<const N: usize>() -> [u8; N] {
     random::<[u8; N]>()
 }
 
-#[cfg_attr(not(feature = "fidostore"))]
+#[cfg(not(feature = "fidostore"))]
 fn enroll_with_passkey_fallback(
     mut enroll: impl FnMut(bool) -> Result<Fido2Enrollment, Fido2TransportError>,
 ) -> Result<Fido2Enrollment, Fido2TransportError> {
@@ -1222,7 +1222,7 @@ fn set_assert_client_data(
     }
 }
 
-#[cfg_attr(not(feature = "fidostore"))]
+#[cfg(not(feature = "fidostore"))]
 fn set_credential_client_data(
     device: &Device,
     credential: &mut Credential,
@@ -1239,7 +1239,7 @@ fn set_credential_client_data(
     }
 }
 
-#[cfg_attr(not(feature = "fidostore"))]
+#[cfg(not(feature = "fidostore"))]
 fn user_id() -> [u8; FIDO2_USER_ID_LEN] {
     random_bytes::<FIDO2_USER_ID_LEN>()
 }

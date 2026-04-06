@@ -37,6 +37,8 @@ use crate::support::startup::{
     fatal_startup_error, prompt_startup_recovery_dialog, show_startup_error_dialog,
     StartupRecoveryChoice,
 };
+#[cfg(all(target_os = "linux", feature = "setup"))]
+use crate::support::theme::install_color_scheme_tracking;
 use crate::window::navigation::APP_WINDOW_TITLE;
 
 use adw::gio::SimpleAction;
@@ -49,6 +51,8 @@ use adw::gtk::{
 use adw::prelude::*;
 use adw::Application;
 use std::ffi::OsString;
+#[cfg(target_os = "windows")]
+use std::path::PathBuf;
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
@@ -76,7 +80,6 @@ fn main() -> ExitCode {
         return fatal_startup_error(APP_WINDOW_TITLE, "Failed to register resources.", err);
     }
 
-    // Initialize libadwaita
     if let Err(err) = adw::init() {
         return fatal_startup_error(APP_WINDOW_TITLE, "Failed to initialize libadwaita.", err);
     }
@@ -84,8 +87,12 @@ fn main() -> ExitCode {
     let Some(display) = Display::default() else {
         return fatal_startup_error(APP_WINDOW_TITLE, "No display available.", "missing display");
     };
+    #[cfg(all(target_os = "linux", feature = "setup"))]
+    install_color_scheme_tracking(&display);
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);
+    #[cfg(target_os = "windows")]
+    add_windows_icon_search_path(&theme);
 
     match backend::prepare_startup() {
         Ok(backend::StartupPreparation::Ready) => {}
@@ -192,6 +199,21 @@ fn command_line_query(args: &[OsString]) -> Option<String> {
         .into_string()
         .ok()
         .filter(|query| !query.is_empty())
+}
+
+#[cfg(target_os = "windows")]
+fn add_windows_icon_search_path(theme: &IconTheme) {
+    if let Some(path) = windows_icon_search_path() {
+        theme.add_search_path(path);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_icon_search_path() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|dir| dir.join("share").join("icons")))
+        .filter(|path| path.is_dir())
 }
 
 fn register_app_actions(app: &Application) {

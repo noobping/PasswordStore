@@ -28,18 +28,18 @@
   </supports>
 
   <description>
-    <p>Works with password stores that use the standard pass layout, so existing data can stay in place and remain compatible with established workflows.</p>
+    <p>Works with password stores that use the standard <code>pass</code> layout, so you can keep using the password folders you already have.</p>
     <ul>
-      <li>Generate passwords and copy usernames, secrets, and one-time codes</li>
-      <li>Search across multiple password stores</li>
-      <li>Identify outdated accounts and weak passwords</li>
-      <li>Work with both structured fields and raw pass file text</li>
-      <li>Optionally sync with Git</li>
-      <li>Optionally sync with the system keyring</li>
-      <li>Optionally use layered encryption</li>
-      <li>Use password-protected or hardware-backed OpenPGP private keys</li>
-      <li>Manage recipients and private keys</li>
-      <li>Sign commits and manage Git remotes</li>
+      <li>Open, search, and edit one or more password stores</li>
+      <li>Make passwords and copy passwords, usernames, and one-time login codes</li>
+      <li>Edit entries with easy fields or as plain text</li>
+      <li>Check for weak passwords and see repeated details like usernames, emails, and web addresses</li>
+      <li>Add an existing store, make a new one, or restore one from Git</li>
+      <li>Import passwords from other apps on supported Linux setups</li>
+      <li>Choose which keys unlock a store, including password-protected keys, FIDO security keys, and OpenPGP smartcards</li>
+      <li>Create and import keys</li>
+      <li>Sync Git-backed stores, manage Git remotes, and sign Git commits</li>
+      <li>For extra-sensitive stores, require more than one key to open them</li>
     </ul>
   </description>
 
@@ -69,12 +69,28 @@
       <caption>Manage stores</caption>
     </screenshot>
     <screenshot>
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/164e9616788c84ca99f93b3bba3e821e3854babf/screenshots/recipients.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/3aedfc216face9e7142b6481455ba66273983955/screenshots/recipients.png</image>
       <caption>Manage private keys</caption>
     </screenshot>
   </screenshots>
 
   <releases>
+    <release version="0.9.9" date="2026-04-06">
+      <description>
+        <ul>
+          <li>Add a selector for nested <code>.gpg-id</code> files on the recipients page, so folder-specific recipients can be managed.</li>
+          <li>Keep recipient changes scoped to the selected folder-specific <code>.gpg-id</code> file instead of always rewriting only the root recipients file.</li>
+          <li>Prefer a usable local private key when multiple recipients are configured, instead of picking an unrelated coworker recipient first.</li>
+          <li>Harden search privacy so the GNOME search provider exposes less metadata and no longer matches against secret fields.</li>
+          <li>Reduce the risk of secrets leaking through failed commands and logs by redacting sensitive command output more aggressively.</li>
+          <li>Improve secret handling with safer private file writes, stronger process hardening, and tighter recipient validation.</li>
+          <li>Add a primary <code>Save and go back</code> action in the pass file editor.</li>
+          <li>Add an extra add-item and clear search row at the bottom of the pass file list.</li>
+          <li>Hide apply buttons until required input is filled in across the pass file editor, new-item popup, key dialogs and other related forms.</li>
+          <li>Improve keyboard navigation with better arrow-key support and smoother focus movement across the app.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.9.8" date="2026-04-01">
       <description>
         <ul>

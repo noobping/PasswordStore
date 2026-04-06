@@ -12,5 +12,5 @@ Security updates are not guaranteed.
 
 ## Reporting a Vulnerability
 
-If you discover a security issue, you can open an issue or pull request on GitHub.  
+If you discover a security issue, you can open an issue on GitHub.  
 There is no formal response timeline, but contributions are welcome and appreciated.

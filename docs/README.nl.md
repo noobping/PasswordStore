@@ -1,6 +1,6 @@
 # Keycord-documentatie
 
-Keycord is een GUI voor standaard [`pass`](https://www.passwordstore.org/) -opslagen. Het behoudt de opslagindeling op schijf en voegt zoeken, gestructureerd bewerken, OTP-afhandeling, ontvangerbeheer, Git-workflows en door de app beheerde OpenPGP-sleutels toe.
+Keycord is een GUI voor standaard [`pass`](https://www.passwordstore.org/) -opslagen. Het behoudt de opslagindeling op schijf en voegt zoeken, bewerken, OTP-codes, sleutelbeheer, Git-workflows en ondersteuning voor softwaresleutels, FIDO-beveiligingssleutels en OpenPGP-smartcards toe.
 
 ## Handleidingen
 
@@ -22,14 +22,16 @@ Keycord leest en schrijft gewone `pass`-opslagen:
 - latere `key: value`-regels als gestructureerde velden
 - `.gpg-id` voor opslagontvangers
 
-## Keycord-specifieke functies
+## Keycord functies
 
-- bladeren en zoeken over meerdere opslagen
-- gestructureerde editor plus editor voor ruwe pass-bestanden
-- live OTP-weergave vanuit `otpauth://`-gegevens
-- door de app beheerde privésleutels, inclusief Linux-sleutels met hardwareondersteuning
-- hulpmiddelen voor veldwaarden en zwakke wachtwoorden
-- gelaagde versleuteling voor opslagen
+- bladeren, zoeken en bewerken over meer dan een opslag
+- eenvoudige veldeneditor plus editor voor ruwe pass-bestanden
+- ingebouwde wachtwoordgenerator en live eenmalige inlogcodes
+- controles op zwakke wachtwoorden en hulpmiddelen voor terugkerende gebruikersnamen, e-mailadressen en URL's
+- bestaande opslagen toevoegen, nieuwe opslagen maken, wachtwoorden importeren en opslagen herstellen vanuit Git
+- sleutels voor een opslag kiezen, maken en importeren, inclusief FIDO-beveiligingssleutels en OpenPGP-smartcards
+- optionele Git-synchronisatie, beheer van remotes en ondertekening van commits
+- voor extra gevoelige opslagen kun je meer dan een sleutel verplicht maken
 
 ## Backendmatrix
 

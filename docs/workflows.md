@@ -27,7 +27,7 @@ From the list view:
 
 From the list view, `Ctrl+C` copies the selected entry's password line.
 
-## Edit Structured Fields Or The Raw Pass File
+## Edit Structured Fields Or Raw Text
 
 ### Structured editor
 
@@ -256,8 +256,14 @@ On Linux, if the Integrated backend needs a private key unlocked to re-encrypt e
 | --- | --- |
 | `Ctrl+N` | Open a new item |
 | `Ctrl+S` | Save current page, or sync from the home page when available |
-| `Ctrl+Shift+R` | Open raw pass file |
+| `Ctrl+Shift+R` | Open raw text |
+| `Ctrl+Shift+C` | Copy password |
+| `Ctrl+Shift+U` | Copy username |
+| `Ctrl+Shift+T` | Copy OTP |
+| `Ctrl+Shift+A` | Apply template |
+| `Ctrl+Shift+F` | Add field |
 | `Ctrl+Shift+O` | Add OTP field |
+| `Ctrl+Shift+P` | Password options |
 | `Ctrl+Shift+K` | Clean pass file |
 | `Ctrl+Shift+G` | Generate password |
 | `Ctrl+Z` | Undo or revert changes |

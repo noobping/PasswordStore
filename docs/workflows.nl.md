@@ -256,8 +256,14 @@ Op Linux kan de Integrated-backend vereisen dat een beheerde privésleutel is on
 | --- | --- |
 | `Ctrl+N` | Een nieuw item openen |
 | `Ctrl+S` | Huidige pagina opslaan, of synchroniseren vanaf de startpagina wanneer beschikbaar |
-| `Ctrl+Shift+R` | Ruw pass-bestand openen |
+| `Ctrl+Shift+R` | Ruwe tekst openen |
+| `Ctrl+Shift+C` | Wachtwoord kopiëren |
+| `Ctrl+Shift+U` | Gebruikersnaam kopiëren |
+| `Ctrl+Shift+T` | OTP kopiëren |
+| `Ctrl+Shift+A` | Sjabloon toepassen |
+| `Ctrl+Shift+F` | Veld toevoegen |
 | `Ctrl+Shift+O` | OTP-veld toevoegen |
+| `Ctrl+Shift+P` | Wachtwoordopties |
 | `Ctrl+Shift+K` | Pass-bestand opschonen |
 | `Ctrl+Shift+G` | Wachtwoord genereren |
 | `Ctrl+Z` | Wijzigingen ongedaan maken of terugzetten |

@@ -69,6 +69,19 @@ fn fatal_startup_dialog_body(app_name: &str, detail: &str, log_path: Option<&Pat
     body
 }
 
+fn startup_recovery_dialog_body(detail: &str, log_path: Option<&Path>) -> String {
+    let mut body = String::from(
+        "Keycord found incompatible private-key data while preparing the app-managed key storage.\n\nQuit keeps the data untouched.\nContinue and remove incompatible data permanently deletes only the incompatible private-key files or folders so startup can continue.",
+    );
+    body.push_str("\n\nBlocked items:\n");
+    body.push_str(detail);
+    if let Some(path) = log_path {
+        body.push_str("\n\nA startup recovery log was written to:\n");
+        body.push_str(&path.to_string_lossy());
+    }
+    body
+}
+
 pub fn show_startup_error_dialog(title: &str, body: &str) {
     if adw::init().is_err() {
         return;

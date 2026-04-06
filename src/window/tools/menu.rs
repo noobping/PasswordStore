@@ -71,7 +71,7 @@ pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
 }
 
 #[cfg(feature = "setup")]
-pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
+pub(super) fn append_optional_setup_row(state: &ToolsPageState) -> Option<ActionRow> {
     if !can_install_locally() {
         return None;
     }

@@ -1,21 +1,30 @@
-use super::{FieldValueRequest, ToolReadMode, ToolsPageState};
+use super::{FieldValueRequest, ToolsPageState};
 use crate::backend::{
-    read_password_entry, read_password_line, required_private_key_fingerprints_for_entry,
-    ripasso_private_key_requires_session_unlock, PasswordEntryError,
+    list_connected_smartcard_keys, list_ripasso_private_keys,
+    ripasso_private_key_requires_session_unlock,
 };
 use crate::fido2_recipient::{is_fido2_recipient_string, same_fido2_recipient};
 use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
+use crate::store::recipients::{
+    read_store_fido2_recipients_for_scope, read_store_standard_recipients_for_scope,
+    relevant_store_recipient_scopes, ROOT_STORE_RECIPIENTS_SCOPE,
+};
 use crate::support::background::spawn_result_task;
 use adw::{Toast, ToastOverlay};
 use std::rc::Rc;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AvailableToolKey {
+    fingerprint: String,
+    user_ids: Vec<String>,
+}
 
 impl ToolsPageState {
     pub(super) fn unlock_tool_keys_if_needed(
         &self,
         requests: Vec<FieldValueRequest>,
-        read_mode: ToolReadMode,
         on_ready: Rc<dyn Fn(Vec<FieldValueRequest>)>,
         on_abort: Rc<dyn Fn()>,
     ) {
@@ -30,7 +39,7 @@ impl ToolsPageState {
         let overlay_for_result = self.overlay.clone();
         let overlay_for_disconnect = self.overlay.clone();
         spawn_result_task(
-            move || collect_locked_tool_fingerprints(&requests_for_unlock, read_mode),
+            move || collect_locked_tool_fingerprints(&requests_for_unlock),
             move |fingerprints| {
                 if fingerprints.is_empty() {
                     on_ready_for_result(requests);
@@ -59,34 +68,131 @@ impl ToolsPageState {
     }
 }
 
-fn collect_locked_tool_fingerprints(
-    requests: &[FieldValueRequest],
-    read_mode: ToolReadMode,
-) -> Vec<String> {
+fn collect_locked_tool_fingerprints(requests: &[FieldValueRequest]) -> Vec<String> {
+    let mut fingerprints = collect_unlockable_standard_tool_fingerprints(requests);
+    append_unlockable_tool_fingerprints(
+        &mut fingerprints,
+        collect_available_tool_fido2_recipients(requests),
+    );
+    fingerprints
+}
+
+fn collect_unlockable_standard_tool_fingerprints(requests: &[FieldValueRequest]) -> Vec<String> {
+    let Ok(keys) = available_tool_keys() else {
+        return Vec::new();
+    };
+    let recipients = collect_tool_standard_recipients(requests);
     let mut fingerprints = Vec::new();
-    for request in requests {
-        let read_result = match read_mode {
-            ToolReadMode::PasswordContents => {
-                read_password_entry(&request.root, &request.label).map(|_| ())
-            }
-            ToolReadMode::PasswordLine => {
-                read_password_line(&request.root, &request.label).map(|_| ())
-            }
-        };
 
-        if !matches!(read_result, Err(PasswordEntryError::LockedPrivateKey(_))) {
-            continue;
+    for key in keys {
+        if recipients
+            .iter()
+            .any(|recipient| tool_recipient_matches_key(recipient, &key))
+        {
+            append_unlockable_tool_fingerprints(&mut fingerprints, vec![key.fingerprint]);
         }
-
-        let Ok(required_fingerprints) =
-            required_private_key_fingerprints_for_entry(&request.root, &request.label)
-        else {
-            continue;
-        };
-        append_unlockable_tool_fingerprints(&mut fingerprints, required_fingerprints);
     }
 
     fingerprints
+}
+
+fn collect_available_tool_fido2_recipients(requests: &[FieldValueRequest]) -> Vec<String> {
+    let mut recipients = Vec::new();
+    for store_root in tool_request_store_roots(requests) {
+        for scope in tool_request_store_scopes(&store_root) {
+            append_unlockable_tool_fingerprints(
+                &mut recipients,
+                read_store_fido2_recipients_for_scope(&store_root, &scope),
+            );
+        }
+    }
+    recipients
+}
+
+fn available_tool_keys() -> Result<Vec<AvailableToolKey>, String> {
+    let mut keys = Vec::new();
+
+    for key in list_ripasso_private_keys()? {
+        push_unique_available_tool_key(&mut keys, key.fingerprint, key.user_ids);
+    }
+
+    for key in list_connected_smartcard_keys()? {
+        push_unique_available_tool_key(&mut keys, key.fingerprint, key.user_ids);
+    }
+
+    Ok(keys)
+}
+
+fn push_unique_available_tool_key(
+    keys: &mut Vec<AvailableToolKey>,
+    fingerprint: String,
+    user_ids: Vec<String>,
+) {
+    if keys
+        .iter()
+        .any(|existing| existing.fingerprint.eq_ignore_ascii_case(&fingerprint))
+    {
+        return;
+    }
+
+    keys.push(AvailableToolKey {
+        fingerprint,
+        user_ids,
+    });
+}
+
+fn collect_tool_standard_recipients(requests: &[FieldValueRequest]) -> Vec<String> {
+    let mut recipients = Vec::new();
+    for store_root in tool_request_store_roots(requests) {
+        for scope in tool_request_store_scopes(&store_root) {
+            for recipient in read_store_standard_recipients_for_scope(&store_root, &scope) {
+                push_unique_standard_tool_recipient(&mut recipients, recipient);
+            }
+        }
+    }
+    recipients
+}
+
+fn push_unique_standard_tool_recipient(recipients: &mut Vec<String>, candidate: String) {
+    let candidate = candidate.trim();
+    if candidate.is_empty()
+        || recipients
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(candidate))
+    {
+        return;
+    }
+
+    recipients.push(candidate.to_string());
+}
+
+fn tool_request_store_roots(requests: &[FieldValueRequest]) -> Vec<String> {
+    let mut store_roots = Vec::new();
+    for request in requests {
+        if !store_roots.iter().any(|existing| existing == &request.root) {
+            store_roots.push(request.root.clone());
+        }
+    }
+    store_roots
+}
+
+fn tool_request_store_scopes(store_root: &str) -> Vec<String> {
+    let mut scopes = vec![ROOT_STORE_RECIPIENTS_SCOPE.to_string()];
+    for scope in relevant_store_recipient_scopes(store_root) {
+        if !scopes.iter().any(|existing| existing == &scope) {
+            scopes.push(scope);
+        }
+    }
+    scopes
+}
+
+fn tool_recipient_matches_key(recipient: &str, key: &AvailableToolKey) -> bool {
+    let recipient = recipient.trim();
+    recipient.eq_ignore_ascii_case(&key.fingerprint)
+        || key
+            .user_ids
+            .iter()
+            .any(|user_id| user_id.eq_ignore_ascii_case(recipient))
 }
 
 fn append_unlockable_tool_fingerprints(fingerprints: &mut Vec<String>, candidates: Vec<String>) {

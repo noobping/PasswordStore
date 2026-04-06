@@ -1,5 +1,7 @@
 use super::super::management::rebuild_stores_list;
-use super::super::recipients::{split_store_recipients, stores_with_preferred_first};
+use super::super::recipients::{
+    split_store_recipients, stores_with_preferred_first, ROOT_STORE_RECIPIENTS_SCOPE,
+};
 use super::guide::{
     close_additional_fido2_save_guidance_dialog, needs_additional_fido2_save_guidance,
     present_additional_fido2_save_guidance_dialog,
@@ -10,9 +12,11 @@ use super::progress::{
 };
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState, StoreRecipientsRequest};
 use crate::backend::{
-    save_store_recipients, save_store_recipients_with_progress,
-    store_recipients_private_key_requiring_unlock, StoreRecipients, StoreRecipientsError,
-    StoreRecipientsPrivateKeyRequirement, StoreRecipientsSaveProgress,
+    save_store_recipients, save_store_recipients_for_relative_dir,
+    save_store_recipients_with_progress, save_store_recipients_with_progress_for_relative_dir,
+    store_recipients_private_key_requiring_unlock,
+    store_recipients_private_key_requiring_unlock_for_relative_dir, StoreRecipients,
+    StoreRecipientsError, StoreRecipientsPrivateKeyRequirement, StoreRecipientsSaveProgress,
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
@@ -83,6 +87,7 @@ fn maybe_prompt_store_recipients_entry_unlock(
     stores_list: &ListBox,
     state: &StoreRecipientsPageState,
     store_root: &str,
+    relative_dir: &str,
     error: &StoreRecipientsError,
 ) -> bool {
     if !Preferences::new().uses_integrated_backend()
@@ -91,13 +96,17 @@ fn maybe_prompt_store_recipients_entry_unlock(
         return false;
     }
 
-    let fingerprint = match store_recipients_private_key_requiring_unlock(store_root) {
+    let fingerprint = match if relative_dir == ROOT_STORE_RECIPIENTS_SCOPE {
+        store_recipients_private_key_requiring_unlock(store_root)
+    } else {
+        store_recipients_private_key_requiring_unlock_for_relative_dir(store_root, relative_dir)
+    } {
         Ok(Some(fingerprint)) => fingerprint,
         Ok(None) => return false,
         Err(err) => {
             log_error(format!(
-                "Failed to resolve the locked private key for store recipients '{}': {err}",
-                store_root
+                "Failed to resolve the locked private key for store recipients '{}:{}': {err}",
+                store_root, relative_dir
             ));
             return false;
         }
@@ -135,6 +144,7 @@ fn save_store_recipients_async(
     let recipients = state.recipients.borrow().clone();
     let split_recipients = split_store_recipients(&recipients);
     let private_key_requirement = state.private_key_requirement.get();
+    let recipient_scope = state.current_recipient_scope();
     if split_recipients.is_empty() {
         return;
     }
@@ -160,6 +170,7 @@ fn save_store_recipients_async(
     state.save_queued.set(false);
 
     let store_for_thread = request.store.clone();
+    let recipient_scope_for_thread = recipient_scope.clone();
     let recipients_for_save = split_recipients.clone();
     let overlay = overlay.clone();
     let stores_list = stores_list.clone();
@@ -177,12 +188,22 @@ fn save_store_recipients_async(
                 let mut emit_progress = move |progress: StoreRecipientsSaveProgress| {
                     let _ = progress_tx.send(progress);
                 };
-                save_store_recipients_with_progress(
-                    &store_for_thread,
-                    &recipients_for_save,
-                    private_key_requirement,
-                    &mut emit_progress,
-                )
+                if recipient_scope_for_thread == ROOT_STORE_RECIPIENTS_SCOPE {
+                    save_store_recipients_with_progress(
+                        &store_for_thread,
+                        &recipients_for_save,
+                        private_key_requirement,
+                        &mut emit_progress,
+                    )
+                } else {
+                    save_store_recipients_with_progress_for_relative_dir(
+                        &store_for_thread,
+                        &recipient_scope_for_thread,
+                        &recipients_for_save,
+                        private_key_requirement,
+                        &mut emit_progress,
+                    )
+                }
             },
             move |progress| {
                 update_fido2_save_progress_dialog(&state_for_progress, &progress);
@@ -192,10 +213,14 @@ fn save_store_recipients_async(
                     close_fido2_save_progress_dialog(&state);
                     close_additional_fido2_save_guidance_dialog(&state);
                     let settings = Preferences::new();
-                    state.saved_recipients.borrow_mut().clone_from(&recipients);
-                    state
-                        .saved_private_key_requirement
-                        .set(private_key_requirement);
+                    if state.current_request().as_ref() == Some(&request)
+                        && state.current_recipient_scope() == recipient_scope
+                    {
+                        state.saved_recipients.borrow_mut().clone_from(&recipients);
+                        state
+                            .saved_private_key_requirement
+                            .set(private_key_requirement);
+                    }
                     let should_rebuild_store_list = if request.mode.creates_store() {
                         let stores =
                             stores_with_preferred_first(&settings.stores(), &request.store);
@@ -227,6 +252,7 @@ fn save_store_recipients_async(
                         &stores_list,
                         &state,
                         &request.store,
+                        &recipient_scope,
                         &err,
                     ) {
                         finish_store_recipients_save(&state, false);
@@ -263,20 +289,33 @@ fn save_store_recipients_async(
 
     spawn_result_task(
         move || {
-            save_store_recipients(
-                &store_for_thread,
-                &recipients_for_save,
-                private_key_requirement,
-            )
+            if recipient_scope_for_thread == ROOT_STORE_RECIPIENTS_SCOPE {
+                save_store_recipients(
+                    &store_for_thread,
+                    &recipients_for_save,
+                    private_key_requirement,
+                )
+            } else {
+                save_store_recipients_for_relative_dir(
+                    &store_for_thread,
+                    &recipient_scope_for_thread,
+                    &recipients_for_save,
+                    private_key_requirement,
+                )
+            }
         },
         move |result| match result {
             Ok(()) => {
                 close_additional_fido2_save_guidance_dialog(&state);
                 let settings = Preferences::new();
-                state.saved_recipients.borrow_mut().clone_from(&recipients);
-                state
-                    .saved_private_key_requirement
-                    .set(private_key_requirement);
+                if state.current_request().as_ref() == Some(&request)
+                    && state.current_recipient_scope() == recipient_scope
+                {
+                    state.saved_recipients.borrow_mut().clone_from(&recipients);
+                    state
+                        .saved_private_key_requirement
+                        .set(private_key_requirement);
+                }
                 let should_rebuild_store_list = if request.mode.creates_store() {
                     let stores = stores_with_preferred_first(&settings.stores(), &request.store);
                     if let Err(err) = settings.set_stores(stores) {
@@ -305,6 +344,7 @@ fn save_store_recipients_async(
                     &stores_list,
                     &state,
                     &request.store,
+                    &recipient_scope,
                     &err,
                 ) {
                     finish_store_recipients_save(&state, false);

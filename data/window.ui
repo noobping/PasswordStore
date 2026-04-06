@@ -22,39 +22,15 @@
                 <child>
                   <object class="GtkButton" id="add_button">
                     <property name="icon-name">list-add-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Add new item</property>
+                    <property name="tooltip-text" translatable="yes">Add item</property>
                     <property name="action-name">win.open-new-password</property>
                     <property name="visible">true</property>
                   </object>
                 </child>
                 <child>
-                  <object class="GtkPopover" id="add_button_popover">
-                    <property name="position">bottom</property>
-                    <property name="autohide">false</property>
-                    <child>
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkDropDown" id="new_password_store_dropdown">
-                            <property name="valign">center</property>
-                            <property name="visible">false</property>
-                            <property name="margin-bottom">6</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="AdwEntryRow" id="path_entry">
-                            <property name="title" translatable="yes">Path or name</property>
-                            <property name="show-apply-button">True</property>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
                   <object class="GtkButton" id="find_button">
                     <property name="icon-name">edit-find-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Find an item</property>
+                    <property name="tooltip-text" translatable="yes">Find item</property>
                     <property name="action-name">win.toggle-find</property>
                     <property name="visible">false</property>
                   </object>
@@ -62,7 +38,7 @@
                 <child>
                   <object class="GtkButton" id="save_button">
                     <property name="icon-name">document-save-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Save changes</property>
+                    <property name="tooltip-text" translatable="yes">Save</property>
                     <property name="action-name">win.save-password</property>
                     <property name="visible">false</property>
                   </object>
@@ -70,7 +46,7 @@
                 <child>
                   <object class="GtkButton" id="open_raw_button">
                     <property name="icon-name">text-x-generic-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Open raw pass file</property>
+                    <property name="tooltip-text" translatable="yes">Open raw text</property>
                     <property name="action-name">win.open-raw-pass-file</property>
                     <property name="visible">false</property>
                   </object>
@@ -78,7 +54,7 @@
                 <child>
                   <object class="GtkButton" id="git_button">
                     <property name="icon-name">git-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Restore password store from Git</property>
+                    <property name="tooltip-text" translatable="yes">Restore store</property>
                     <property name="action-name">win.open-git</property>
                     <property name="visible">false</property>
                   </object>
@@ -86,7 +62,7 @@
                 <child>
                   <object class="GtkButton" id="store_button">
                     <property name="icon-name">folder-new-symbolic</property>
-                    <property name="tooltip-text" translatable="yes">Add or create password store</property>
+                    <property name="tooltip-text" translatable="yes">Add or create store</property>
                     <property name="action-name">win.open-store-picker</property>
                     <property name="visible">false</property>
                   </object>
@@ -114,7 +90,6 @@
             <child>
               <object class="AdwNavigationView" id="navigation_view">
 
-                <!-- List page -->
                 <child>
                   <object class="AdwNavigationPage">
                     <property name="title" translatable="yes">Password List</property>
@@ -124,8 +99,8 @@
                         <child>
                           <object class="GtkSearchEntry" id="search_entry">
                             <property name="visible">false</property>
-                            <property name="placeholder-text" translatable="yes">find store work and email is $username or reg (?i)store: .+/work/.+</property>
-                            <property name="tooltip-text" translatable="yes">Use find for field searches like store work, store is not .../personal/.password-store, weak password, otp, or email is $username, and use reg for regular expressions across names, stores, and searchable fields. find also supports is, contains, matches/regex, NOT/AND/OR/with, quotes, $field references for exact matches, and (?i) for case-insensitive regex.</property>
+                            <property name="placeholder-text" translatable="yes">Search names, stores, or fields</property>
+                            <property name="tooltip-text" translatable="yes">Use find for fields. Use reg for patterns.</property>
                           </object>
                         </child>
 
@@ -175,7 +150,7 @@
 
                 <!-- Text editor page -->
                 <child>
-                  <object class="AdwNavigationPage" id="text_page">
+                  <object class="AdwNavigationPage" id="password_page">
                     <property name="title" translatable="yes">Text Editor</property>
                     <child>
                       <object class="GtkScrolledWindow">
@@ -215,7 +190,7 @@
                                         <property name="margin-end">15</property>
                                         <property name="margin-bottom">6</property>
                                         <child>
-                                          <object class="GtkButton" id="generate_password_button">
+                                          <object class="GtkButton">
                                             <property name="icon-name">view-refresh-symbolic</property>
                                             <property name="tooltip-text" translatable="yes">Generate password</property>
                                             <property name="action-name">win.generate-password</property>
@@ -227,7 +202,7 @@
                                         <child>
                                           <object class="GtkToggleButton" id="password_generator_settings_button">
                                             <property name="icon-name">emblem-system-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Password generation settings</property>
+                                            <property name="tooltip-text" translatable="yes">Password options</property>
                                             <style>
                                               <class name="flat" />
                                             </style>
@@ -444,25 +419,36 @@
                                         <child>
                                           <object class="GtkButton" id="apply_template_button">
                                             <property name="visible">false</property>
-                                            <property name="label" translatable="yes">Apply template</property>
-                                            <property name="tooltip-text" translatable="yes">Add any missing fields from the saved template</property>
+                                            <property name="icon-name">list-add-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Add missing fields</property>
                                             <property name="action-name">win.apply-pass-template</property>
                                           </object>
                                         </child>
                                         <child>
                                           <object class="GtkButton" id="clean_pass_file_button">
                                             <property name="visible">false</property>
-                                            <property name="label" translatable="yes">Clean</property>
-                                            <property name="tooltip-text" translatable="yes">Remove empty structured fields</property>
+                                            <property name="icon-name">edit-clear-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Remove empty fields</property>
                                             <property name="action-name">win.clean-pass-file</property>
                                           </object>
                                         </child>
                                         <child>
                                           <object class="GtkButton" id="add_otp_button">
                                             <property name="visible">false</property>
-                                            <property name="label" translatable="yes">Add OTP</property>
-                                            <property name="tooltip-text" translatable="yes">Add an OTP secret field</property>
+                                            <property name="icon-name">dialog-password-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Add OTP field</property>
                                             <property name="action-name">win.add-otp-secret</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkButton" id="editor_save_button">
+                                            <property name="visible">false</property>
+                                            <property name="label" translatable="yes">Save</property>
+                                            <property name="tooltip-text" translatable="yes">Save</property>
+                                            <property name="action-name">win.save-password</property>
+                                            <style>
+                                              <class name="suggested-action" />
+                                            </style>
                                           </object>
                                         </child>
                                       </object>
@@ -480,7 +466,7 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="raw_text_page">
-                    <property name="title" translatable="yes">Raw Pass File</property>
+                    <property name="title" translatable="yes">Raw text</property>
                     <child>
                       <object class="GtkScrolledWindow">
                         <property name="vscrollbar-policy">automatic</property>
@@ -843,6 +829,70 @@
                                     <style>
                                       <class name="boxed-list" />
                                     </style>
+                                    <child>
+                                      <object class="AdwActionRow" id="tools_field_values_row">
+                                        <property name="title" translatable="yes">Browse field values</property>
+                                        <property name="subtitle" translatable="yes">Browse unique field values from the current list.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkStack" id="tools_field_values_suffix_stack">
+                                            <property name="visible-child-name">arrow</property>
+                                            <child>
+                                              <object class="GtkStackPage">
+                                                <property name="name">arrow</property>
+                                                <property name="child">
+                                                  <object class="GtkImage">
+                                                    <property name="icon-name">go-next-symbolic</property>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkStackPage">
+                                                <property name="name">spinner</property>
+                                                <property name="child">
+                                                  <object class="GtkSpinner" id="tools_field_values_spinner">
+                                                    <property name="spinning">false</property>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="tools_weak_passwords_row">
+                                        <property name="title" translatable="yes">Find weak passwords</property>
+                                        <property name="subtitle" translatable="yes">Scan the current list for passwords that fail basic checks.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkStack" id="tools_weak_passwords_suffix_stack">
+                                            <property name="visible-child-name">arrow</property>
+                                            <child>
+                                              <object class="GtkStackPage">
+                                                <property name="name">arrow</property>
+                                                <property name="child">
+                                                  <object class="GtkImage">
+                                                    <property name="icon-name">go-next-symbolic</property>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkStackPage">
+                                                <property name="name">spinner</property>
+                                                <property name="child">
+                                                  <object class="GtkSpinner" id="tools_weak_passwords_spinner">
+                                                    <property name="spinning">false</property>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -856,6 +906,46 @@
                                     <style>
                                       <class name="boxed-list" />
                                     </style>
+                                    <child>
+                                      <object class="AdwActionRow" id="tools_docs_row">
+                                        <property name="title" translatable="yes">Documentation</property>
+                                        <property name="subtitle" translatable="yes">Open guides and reference.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="tools_logs_row">
+                                        <property name="title" translatable="yes">Open logs</property>
+                                        <property name="subtitle" translatable="yes">Inspect recent app and command output.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="tools_copy_logs_row">
+                                        <property name="title" translatable="yes">Copy logs</property>
+                                        <property name="subtitle" translatable="yes">Copy recent app and command output to the clipboard.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkButton" id="tools_copy_logs_button">
+                                            <property name="icon-name">edit-copy-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Copy logs</property>
+                                            <style>
+                                              <class name="flat" />
+                                            </style>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -1223,7 +1313,7 @@
                               <object class="AdwPreferencesGroup" id="store_recipients_fido2_info_group">
                                 <property name="visible">false</property>
                                 <child>
-                                  <object class="GtkListBox">
+                                  <object class="GtkListBox" id="store_recipients_fido2_info_list">
                                     <property name="selection-mode">none</property>
                                     <style>
                                       <class name="boxed-list" />
@@ -1240,6 +1330,29 @@
                                             <property name="icon-name">dialog-information-symbolic</property>
                                           </object>
                                         </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="store_recipients_scope_group">
+                                <property name="visible">false</property>
+                                <property name="title" translatable="yes">Keys for this store</property>
+                                <property name="description" translatable="yes">Select the private keys that can unlock passwords in this store.</property>
+                                <child>
+                                  <object class="GtkListBox" id="store_recipients_scope_list">
+                                    <property name="selection-mode">none</property>
+                                    <property name="visible">False</property>
+                                    <style>
+                                      <class name="boxed-list" />
+                                    </style>
+                                    <child>
+                                      <object class="AdwComboRow" id="store_recipients_scope_row">
+                                        <property name="visible">False</property>
+                                        <property name="title" translatable="yes">Recipients file</property>
+                                        <property name="subtitle" translatable="yes">Choose which folder-specific .gpg-id file to manage.</property>
                                       </object>
                                     </child>
                                   </object>
@@ -1277,8 +1390,7 @@
                                         <property name="subtitle" translatable="yes">Create a new password-protected key.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkImage"
-                                            id="store_recipients_generate_key_icon">
+                                          <object class="GtkImage">
                                             <property name="icon-name">go-next-symbolic</property>
                                           </object>
                                         </child>
@@ -1328,9 +1440,22 @@
                                     </child>
                                     <child>
                                       <object class="AdwActionRow"
+                                        id="store_recipients_setup_hardware_key_row">
+                                        <property name="title" translatable="yes">Set up new hardware key</property>
+                                        <property name="subtitle" translatable="yes">Create a new OpenPGP key on a blank connected smartcard or YubiKey.</property>
+                                        <property name="activatable">True</property>
+                                        <child type="suffix">
+                                          <object class="GtkImage">
+                                            <property name="icon-name">go-next-symbolic</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow"
                                         id="store_recipients_add_hardware_key_row">
                                         <property name="title" translatable="yes">Add hardware key</property>
-                                        <property name="subtitle" translatable="yes">Use a connected OpenPGP smartcard or YubiKey.</property>
+                                        <property name="subtitle" translatable="yes">Add the public key already stored on the connected OpenPGP smartcard or YubiKey.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
                                           <object class="GtkImage">
@@ -1359,8 +1484,7 @@
                                         <property name="subtitle" translatable="yes">Read an armored private key or FIDO2-protected private key from the clipboard.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkImage"
-                                            id="store_recipients_import_clipboard_icon">
+                                          <object class="GtkImage">
                                             <property name="icon-name">edit-paste-symbolic</property>
                                           </object>
                                         </child>
@@ -1373,8 +1497,7 @@
                                         <property name="subtitle" translatable="yes">Choose a private key file or FIDO2-protected private key file.</property>
                                         <property name="activatable">True</property>
                                         <child type="suffix">
-                                          <object class="GtkImage"
-                                            id="store_recipients_import_file_icon">
+                                          <object class="GtkImage">
                                             <property name="icon-name">document-open-symbolic</property>
                                           </object>
                                         </child>
@@ -1556,6 +1679,74 @@
                 </child>
 
                 <child>
+                  <object class="AdwNavigationPage" id="hardware_key_generation_page">
+                    <property name="title" translatable="yes">Set up new hardware key</property>
+                    <child>
+                      <object class="GtkStack" id="hardware_key_generation_stack">
+                        <child>
+                          <object class="GtkScrolledWindow" id="hardware_key_generation_form">
+                            <property name="vscrollbar-policy">automatic</property>
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="AdwPreferencesPage">
+                                <child>
+                                  <object class="AdwPreferencesGroup">
+                                    <child>
+                                      <object class="AdwEntryRow"
+                                        id="hardware_key_generation_name_row">
+                                        <property name="title" translatable="yes">Name</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwEntryRow"
+                                        id="hardware_key_generation_email_row">
+                                        <property name="title" translatable="yes">Email</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwPasswordEntryRow"
+                                        id="hardware_key_generation_admin_pin_row">
+                                        <property name="title" translatable="yes">Hardware key admin PIN</property>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwPasswordEntryRow"
+                                        id="hardware_key_generation_user_pin_row">
+                                        <property name="title" translatable="yes">New hardware key PIN</property>
+                                        <property name="show-apply-button">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwStatusPage" id="hardware_key_generation_loading">
+                            <property name="title" translatable="yes">Setting up hardware key</property>
+                            <property name="icon-name">dialog-password-symbolic</property>
+                            <property name="hexpand">true</property>
+                            <property name="vexpand">true</property>
+                            <child>
+                              <object class="GtkSpinner">
+                                <property name="spinning">true</property>
+                                <property name="margin-top">24</property>
+                                <property name="margin-bottom">24</property>
+                                <property name="margin-start">24</property>
+                                <property name="margin-end">24</property>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
                   <object class="AdwNavigationPage" id="log_page">
                     <property name="title" translatable="yes">Logs</property>
                     <child>
@@ -1587,7 +1778,7 @@
                     <child>
                       <object class="AdwStatusPage" id="git_busy_status">
                         <property name="title" translatable="yes">Working</property>
-                        <property name="description" translatable="yes">Please wait.</property>
+                        <property name="description" translatable="yes">Wait a moment.</property>
                         <property name="icon-name">git-symbolic</property>
                         <property name="hexpand">true</property>
                         <property name="vexpand">true</property>
@@ -1624,6 +1815,10 @@
   <menu id="primary_menu">
     <section>
       <item>
+        <attribute name="label" translatable="yes">_Add item</attribute>
+        <attribute name="action">win.open-new-password</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">_Find item</attribute>
         <attribute name="action">win.toggle-find</attribute>
       </item>
@@ -1635,11 +1830,6 @@
       <item>
         <attribute name="label" translatable="yes">_Tools</attribute>
         <attribute name="action">win.open-tools</attribute>
-      </item>
-      <item>
-        <attribute name="label" translatable="yes">_Documentation</attribute>
-        <attribute name="action">win.open-docs</attribute>
-        <attribute name="hidden-when">action-missing</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Preferences</attribute>

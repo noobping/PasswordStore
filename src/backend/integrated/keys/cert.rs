@@ -28,6 +28,13 @@ pub struct ManagedRipassoHardwareKey {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConnectedSmartcardKey {
+    pub fingerprint: String,
+    pub user_ids: Vec<String>,
+    pub hardware: ManagedRipassoHardwareKey,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManagedRipassoPrivateKey {
     pub fingerprint: String,
     pub user_ids: Vec<String>,
@@ -75,6 +82,16 @@ impl ManagedRipassoPrivateKey {
     }
 }
 
+impl ConnectedSmartcardKey {
+    pub fn title(&self) -> String {
+        self.user_ids
+            .first()
+            .cloned()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "Unnamed smartcard".to_string())
+    }
+}
+
 impl From<ManagedRipassoPrivateKeyProtection> for PrivateKeyUnlockKind {
     fn from(value: ManagedRipassoPrivateKeyProtection) -> Self {
         match value {
@@ -100,6 +117,32 @@ fn managed_private_key_from_cert(
             .collect(),
         protection,
         hardware,
+    }
+}
+
+pub(in crate::backend::integrated) fn connected_smartcard_key_from_cert(
+    cert: &Cert,
+    hardware: ManagedRipassoHardwareKey,
+) -> ConnectedSmartcardKey {
+    ConnectedSmartcardKey {
+        fingerprint: cert.fingerprint().to_hex(),
+        user_ids: cert
+            .userids()
+            .map(|user_id| user_id.userid().to_string())
+            .filter(|value| !value.trim().is_empty())
+            .collect(),
+        hardware,
+    }
+}
+
+impl From<ConnectedSmartcardKey> for ManagedRipassoPrivateKey {
+    fn from(value: ConnectedSmartcardKey) -> Self {
+        Self {
+            fingerprint: value.fingerprint,
+            user_ids: value.user_ids,
+            protection: ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard,
+            hardware: Some(value.hardware),
+        }
     }
 }
 

@@ -7,8 +7,6 @@ fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> C
     let mut cmd = if env::var("FLATPAK_ID").is_ok() {
         let mut cmd = Command::new("flatpak-spawn");
         cmd.arg("--host").arg(&program).args(&args);
-        // Host-spawned commands inherit the caller's cwd by default, which can
-        // be a sandbox-only path. Use a stable directory instead.
         cmd.current_dir("/");
         cmd
     } else {

@@ -5,9 +5,11 @@ use super::host_errors::{
     store_recipients_error_from_host_launch, HostStoreAction,
 };
 #[cfg(target_os = "linux")]
+use crate::backend::command::ensure_success;
+#[cfg(target_os = "linux")]
 use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
-    command::{ensure_success, run_store_command_output, run_store_command_with_input},
+    command::{run_store_command_output, run_store_command_with_input},
     PasswordEntryError, PasswordEntryWriteError, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
@@ -190,9 +192,54 @@ pub(super) fn save_store_recipients_with_progress(
     Ok(())
 }
 
+pub(super) fn save_store_recipients_with_progress_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
+    if matches!(relative_dir.trim(), "" | ".") {
+        return save_store_recipients_with_progress(
+            store_root,
+            recipients,
+            private_key_requirement,
+        );
+    }
+
+    Err(StoreRecipientsError::other(
+        "Managing nested .gpg-id files requires the Integrated backend.",
+    ))
+}
+
+pub(super) fn save_store_recipients_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
+    if matches!(relative_dir.trim(), "" | ".") {
+        return save_store_recipients(store_root, recipients, private_key_requirement);
+    }
+
+    Err(StoreRecipientsError::other(
+        "Managing nested .gpg-id files requires the Integrated backend.",
+    ))
+}
+
 pub(super) fn store_recipients_private_key_requiring_unlock(
     _store_root: &str,
 ) -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+pub(super) fn store_recipients_private_key_requiring_unlock_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+) -> Result<Option<String>, String> {
+    if matches!(relative_dir.trim(), "" | ".") {
+        return store_recipients_private_key_requiring_unlock(store_root);
+    }
+
     Ok(None)
 }
 

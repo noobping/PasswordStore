@@ -6,20 +6,22 @@ mod unlock;
 mod weak_passwords;
 
 use crate::i18n::gettext;
+use crate::password::list::password_list_render_generation;
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
+use crate::store::management::StoreImportToolRowState;
 use crate::store::support::StoreSupportCache;
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
 use crate::support::ui::{
-    append_action_row_with_button, append_info_row, append_spinner_row, clear_list_box,
-    reveal_navigation_page, visible_navigation_page_is,
+    append_info_row, append_spinner_row, connect_keyboard_focusable_search_list_arrow_navigation,
+    focus_first_keyboard_focusable_list_row, reveal_navigation_page, visible_navigation_page_is,
 };
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
 };
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::{ListBox, SearchEntry};
+use adw::gtk::{Button, ListBox, SearchEntry, Spinner, Stack};
 use adw::prelude::*;
 use adw::{ActionRow, ApplicationWindow, NavigationPage, ToastOverlay};
 use std::cell::RefCell;
@@ -27,8 +29,8 @@ use std::rc::Rc;
 
 use self::field_values::FieldValueBrowserState;
 use self::menu::{
-    append_optional_doc_row, append_optional_log_rows, append_optional_pass_import_row,
-    append_optional_setup_row,
+    append_optional_pass_import_row, append_optional_setup_row, configure_optional_doc_row,
+    configure_optional_log_rows, sync_optional_setup_row,
 };
 use self::weak_passwords::WeakPasswordToolState;
 
@@ -37,7 +39,6 @@ const TOOLS_PAGE_SUBTITLE: &str = "Utilities and maintenance";
 const FIELD_VALUES_TITLE: &str = "Browse field values";
 const FIELD_VALUES_FIELDS_SUBTITLE: &str = "Pick a field from the current list.";
 const FIELD_VALUES_VALUES_SUBTITLE: &str = "Pick a value from the current list.";
-const FIELD_VALUES_ROW_TITLE: &str = "Browse field values";
 const FIELD_VALUES_ROW_SUBTITLE: &str = "Browse unique field values from the current list.";
 const FIELD_VALUES_ROW_DISABLED_SUBTITLE: &str =
     "Unavailable because all configured stores use FIDO2 security keys.";
@@ -54,7 +55,6 @@ const VALUE_VALUES_FILTER_EMPTY_TITLE: &str = "No matching values";
 const VALUE_VALUES_FILTER_EMPTY_SUBTITLE: &str = "Try a different value filter.";
 const WEAK_PASSWORDS_TITLE: &str = "Find weak passwords";
 const WEAK_PASSWORDS_SUBTITLE: &str = "Scan the current list for passwords that fail basic checks.";
-const WEAK_PASSWORDS_ROW_TITLE: &str = "Find weak passwords";
 const WEAK_PASSWORDS_ROW_SUBTITLE: &str =
     "Scan the current list for passwords that fail basic checks.";
 const WEAK_PASSWORDS_ROW_DISABLED_SUBTITLE: &str =
@@ -66,42 +66,62 @@ const WEAK_PASSWORDS_EMPTY_SUBTITLE: &str =
     "No loaded pass files matched the current weak-password checks.";
 const WEAK_PASSWORDS_FILTER_EMPTY_TITLE: &str = "No matching results";
 const WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE: &str = "Try a different search term.";
+
+#[derive(Clone)]
+struct ToolSelectPageState {
+    page: NavigationPage,
+    list: ListBox,
+    logs_list: ListBox,
+    field_values_row: ActionRow,
+    field_values_suffix_stack: Stack,
+    field_values_spinner: Spinner,
+    weak_passwords_row: ActionRow,
+    weak_passwords_suffix_stack: Stack,
+    weak_passwords_spinner: Spinner,
+    docs_row: ActionRow,
+    logs_row: ActionRow,
+    copy_logs_row: ActionRow,
+    copy_logs_button: Button,
+    setup_row: Rc<RefCell<Option<ActionRow>>>,
+    pass_import_row: Rc<RefCell<Option<StoreImportToolRowState>>>,
+}
+
+#[derive(Clone)]
+struct ToolFieldBrowserPageState {
+    field_page: NavigationPage,
+    field_search_entry: SearchEntry,
+    field_list: ListBox,
+    value_page: NavigationPage,
+    value_search_entry: SearchEntry,
+    value_list: ListBox,
+    browser: Rc<FieldValueBrowserState>,
+}
+
+#[derive(Clone)]
+struct ToolWeakPasswordPageState {
+    page: NavigationPage,
+    search_entry: SearchEntry,
+    list: ListBox,
+    weak_passwords: Rc<WeakPasswordToolState>,
+}
+
 #[derive(Clone)]
 pub struct ToolsPageState {
-    pub window: ApplicationWindow,
-    pub navigation: WindowNavigationState,
-    pub page: NavigationPage,
-    pub list: ListBox,
-    pub logs_list: ListBox,
-    pub overlay: ToastOverlay,
-    pub password_page: PasswordPageState,
-    pub field_values_page: NavigationPage,
-    pub field_values_search_entry: SearchEntry,
-    pub field_values_list: ListBox,
-    pub value_values_page: NavigationPage,
-    pub value_values_search_entry: SearchEntry,
-    pub value_values_list: ListBox,
-    pub weak_passwords_page: NavigationPage,
-    pub weak_passwords_search_entry: SearchEntry,
-    pub weak_passwords_list: ListBox,
-    pub root_list: ListBox,
-    pub root_search_entry: SearchEntry,
-    browser: Rc<FieldValueBrowserState>,
-    weak_passwords: Rc<WeakPasswordToolState>,
-    field_values_tool_row: Rc<RefCell<Option<ActionRow>>>,
-    weak_passwords_tool_row: Rc<RefCell<Option<ActionRow>>>,
+    window: ApplicationWindow,
+    navigation: WindowNavigationState,
+    overlay: ToastOverlay,
+    password_page: PasswordPageState,
+    root_list: ListBox,
+    root_search_entry: SearchEntry,
+    select_page: ToolSelectPageState,
+    field_browser: ToolFieldBrowserPageState,
+    weak_password_page: ToolWeakPasswordPageState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FieldValueRequest {
     root: String,
     label: String,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ToolReadMode {
-    PasswordContents,
-    PasswordLine,
 }
 
 pub struct ToolBrowserWidgets<'a> {
@@ -115,7 +135,17 @@ pub struct ToolsPageWidgets<'a> {
     pub navigation: &'a WindowNavigationState,
     pub page: &'a NavigationPage,
     pub list: &'a ListBox,
+    pub field_values_row: &'a ActionRow,
+    pub field_values_suffix_stack: &'a Stack,
+    pub field_values_spinner: &'a Spinner,
+    pub weak_passwords_row: &'a ActionRow,
+    pub weak_passwords_suffix_stack: &'a Stack,
+    pub weak_passwords_spinner: &'a Spinner,
     pub logs_list: &'a ListBox,
+    pub docs_row: &'a ActionRow,
+    pub logs_row: &'a ActionRow,
+    pub copy_logs_row: &'a ActionRow,
+    pub copy_logs_button: &'a Button,
     pub overlay: &'a ToastOverlay,
     pub password_page: &'a PasswordPageState,
     pub field_values: ToolBrowserWidgets<'a>,
@@ -130,81 +160,98 @@ impl ToolsPageState {
         let state = Self {
             window: widgets.window.clone(),
             navigation: widgets.navigation.clone(),
-            page: widgets.page.clone(),
-            list: widgets.list.clone(),
-            logs_list: widgets.logs_list.clone(),
             overlay: widgets.overlay.clone(),
             password_page: widgets.password_page.clone(),
-            field_values_page: widgets.field_values.page.clone(),
-            field_values_search_entry: widgets.field_values.search_entry.clone(),
-            field_values_list: widgets.field_values.list.clone(),
-            value_values_page: widgets.value_values.page.clone(),
-            value_values_search_entry: widgets.value_values.search_entry.clone(),
-            value_values_list: widgets.value_values.list.clone(),
-            weak_passwords_page: widgets.weak_passwords.page.clone(),
-            weak_passwords_search_entry: widgets.weak_passwords.search_entry.clone(),
-            weak_passwords_list: widgets.weak_passwords.list.clone(),
             root_list: widgets.root_list.clone(),
             root_search_entry: widgets.root_search_entry.clone(),
-            browser: Rc::new(FieldValueBrowserState::default()),
-            weak_passwords: Rc::new(WeakPasswordToolState::default()),
-            field_values_tool_row: Rc::new(RefCell::new(None)),
-            weak_passwords_tool_row: Rc::new(RefCell::new(None)),
+            select_page: ToolSelectPageState {
+                page: widgets.page.clone(),
+                list: widgets.list.clone(),
+                field_values_row: widgets.field_values_row.clone(),
+                field_values_suffix_stack: widgets.field_values_suffix_stack.clone(),
+                field_values_spinner: widgets.field_values_spinner.clone(),
+                weak_passwords_row: widgets.weak_passwords_row.clone(),
+                weak_passwords_suffix_stack: widgets.weak_passwords_suffix_stack.clone(),
+                weak_passwords_spinner: widgets.weak_passwords_spinner.clone(),
+                logs_list: widgets.logs_list.clone(),
+                docs_row: widgets.docs_row.clone(),
+                logs_row: widgets.logs_row.clone(),
+                copy_logs_row: widgets.copy_logs_row.clone(),
+                copy_logs_button: widgets.copy_logs_button.clone(),
+                setup_row: Rc::new(RefCell::new(None)),
+                pass_import_row: Rc::new(RefCell::new(None)),
+            },
+            field_browser: ToolFieldBrowserPageState {
+                field_page: widgets.field_values.page.clone(),
+                field_search_entry: widgets.field_values.search_entry.clone(),
+                field_list: widgets.field_values.list.clone(),
+                value_page: widgets.value_values.page.clone(),
+                value_search_entry: widgets.value_values.search_entry.clone(),
+                value_list: widgets.value_values.list.clone(),
+                browser: Rc::new(FieldValueBrowserState::default()),
+            },
+            weak_password_page: ToolWeakPasswordPageState {
+                page: widgets.weak_passwords.page.clone(),
+                search_entry: widgets.weak_passwords.search_entry.clone(),
+                list: widgets.weak_passwords.list.clone(),
+                weak_passwords: Rc::new(WeakPasswordToolState::default()),
+            },
         };
+        state.initialize_select_page();
         state.connect_browser_handlers();
+        state.connect_browser_keyboard_handlers();
         state
     }
 
-    pub fn rebuild(&self) {
+    fn initialize_select_page(&self) {
+        let state = self.clone();
+        self.select_page
+            .field_values_row
+            .connect_activated(move |_| state.prepare_field_values_browser());
+
+        let state = self.clone();
+        self.select_page
+            .weak_passwords_row
+            .connect_activated(move |_| state.prepare_weak_passwords_browser());
+
+        configure_optional_doc_row(self);
+        configure_optional_log_rows(self);
+        *self.select_page.setup_row.borrow_mut() = append_optional_setup_row(self);
+        *self.select_page.pass_import_row.borrow_mut() = append_optional_pass_import_row(self);
         self.sync_action_availability();
-        clear_list_box(&self.list);
-        clear_list_box(&self.logs_list);
-        *self.field_values_tool_row.borrow_mut() = None;
-        *self.weak_passwords_tool_row.borrow_mut() = None;
-
-        let state = self.clone();
-        let field_values_row = append_action_row_with_button(
-            &self.list,
-            FIELD_VALUES_ROW_TITLE,
-            FIELD_VALUES_ROW_SUBTITLE,
-            "go-next-symbolic",
-            move || state.prepare_field_values_browser(),
-        );
-        *self.field_values_tool_row.borrow_mut() = Some(field_values_row);
-
-        let state = self.clone();
-        let weak_passwords_row = append_action_row_with_button(
-            &self.list,
-            WEAK_PASSWORDS_ROW_TITLE,
-            WEAK_PASSWORDS_ROW_SUBTITLE,
-            "go-next-symbolic",
-            move || state.prepare_weak_passwords_browser(),
-        );
-        *self.weak_passwords_tool_row.borrow_mut() = Some(weak_passwords_row);
         self.sync_tool_rows();
+        sync_optional_setup_row(self.select_page.setup_row.borrow().as_ref());
+    }
 
-        append_optional_doc_row(self);
-        append_optional_log_rows(self);
-        append_optional_setup_row(self);
-        append_optional_pass_import_row(self);
+    pub fn refresh_select_page(&self) {
+        self.invalidate_stale_tool_cache();
+        self.sync_action_availability();
+        self.sync_tool_rows();
+        sync_optional_setup_row(self.select_page.setup_row.borrow().as_ref());
+        if let Some(pass_import_row) = self.select_page.pass_import_row.borrow().as_ref() {
+            pass_import_row.refresh();
+        }
     }
 
     fn connect_browser_handlers(&self) {
         {
             let state = self.clone();
-            self.field_values_search_entry
+            self.field_browser
+                .field_search_entry
                 .connect_search_changed(move |_| state.render_field_list());
         }
 
         {
             let state = self.clone();
-            self.value_values_search_entry
+            self.field_browser
+                .value_search_entry
                 .connect_search_changed(move |_| state.render_value_list());
         }
 
         {
             let state = self.clone();
-            self.weak_passwords_search_entry
+            self.weak_password_page
+                .search_entry
                 .connect_search_changed(move |_| state.render_weak_passwords_list());
         }
 
@@ -218,56 +265,76 @@ impl ToolsPageState {
         }
     }
 
+    fn connect_browser_keyboard_handlers(&self) {
+        connect_keyboard_focusable_search_list_arrow_navigation(
+            &self.field_browser.field_list,
+            &self.field_browser.field_search_entry,
+        );
+        connect_keyboard_focusable_search_list_arrow_navigation(
+            &self.field_browser.value_list,
+            &self.field_browser.value_search_entry,
+        );
+        connect_keyboard_focusable_search_list_arrow_navigation(
+            &self.weak_password_page.list,
+            &self.weak_password_page.search_entry,
+        );
+    }
+
     fn handle_navigation_visibility_change(&self) {
-        if visible_navigation_page_is(&self.navigation.nav, &self.field_values_page) {
-            self.field_values_search_entry.grab_focus();
+        if visible_navigation_page_is(&self.navigation.nav, &self.weak_password_page.page) {
+            self.refresh_weak_passwords_browser_if_needed();
+            return;
         }
-        if visible_navigation_page_is(&self.navigation.nav, &self.value_values_page) {
-            self.value_values_search_entry.grab_focus();
+
+        if self.browser_flow_is_visible() {
+            return;
         }
-        if visible_navigation_page_is(&self.navigation.nav, &self.weak_passwords_page) {
-            self.weak_passwords_search_entry.grab_focus();
-        }
-        if !self.browser_flow_is_visible() && self.browser_has_state() {
-            self.reset_browser_state();
-            self.reset_weak_passwords_state();
-        }
+
+        self.reset_field_values_view();
+        self.clear_weak_passwords_cache();
+        self.invalidate_stale_tool_cache();
     }
 
     fn browser_flow_is_visible(&self) -> bool {
         tool_browser_flow_is_visible(
-            visible_navigation_page_is(&self.navigation.nav, &self.page),
-            visible_navigation_page_is(&self.navigation.nav, &self.field_values_page),
-            visible_navigation_page_is(&self.navigation.nav, &self.value_values_page),
-            visible_navigation_page_is(&self.navigation.nav, &self.weak_passwords_page),
+            visible_navigation_page_is(&self.navigation.nav, &self.select_page.page),
+            visible_navigation_page_is(&self.navigation.nav, &self.field_browser.field_page),
+            visible_navigation_page_is(&self.navigation.nav, &self.field_browser.value_page),
+            visible_navigation_page_is(&self.navigation.nav, &self.weak_password_page.page),
             visible_navigation_page_is(&self.navigation.nav, &self.password_page.page),
             visible_navigation_page_is(&self.navigation.nav, &self.password_page.raw_page),
         )
     }
 
-    fn browser_has_state(&self) -> bool {
-        self.browser.in_flight.get()
-            || self.browser.catalog.borrow().is_some()
-            || self.browser.selected_field.borrow().is_some()
-            || self.weak_passwords.in_flight.get()
-            || self.weak_passwords.results.borrow().is_some()
-            || !self.field_values_search_entry.text().is_empty()
-            || !self.value_values_search_entry.text().is_empty()
-            || !self.weak_passwords_search_entry.text().is_empty()
+    fn current_password_list_generation(&self) -> Option<u64> {
+        password_list_render_generation(&self.root_list)
+    }
+
+    fn field_values_cache_is_current(&self, generation: Option<u64>) -> bool {
+        self.field_browser.browser.source_generation.get() == generation
+            && self.field_browser.browser.catalog.borrow().is_some()
+    }
+
+    fn invalidate_stale_tool_cache(&self) {
+        let generation = self.current_password_list_generation();
+        if self.field_browser.browser.source_generation.get() != generation {
+            self.clear_field_values_cache();
+        }
     }
 
     fn set_field_values_tool_busy(&self, busy: bool) {
-        self.browser.tool_busy.set(busy);
+        self.field_browser.browser.tool_busy.set(busy);
         self.sync_tool_rows();
     }
 
     fn set_weak_passwords_tool_busy(&self, busy: bool) {
-        self.weak_passwords.tool_busy.set(busy);
+        self.weak_password_page.weak_passwords.tool_busy.set(busy);
         self.sync_tool_rows();
     }
 
     fn tools_are_busy(&self) -> bool {
-        self.browser.tool_busy.get() || self.weak_passwords.tool_busy.get()
+        self.field_browser.browser.tool_busy.get()
+            || self.weak_password_page.weak_passwords.tool_busy.get()
     }
 
     fn sync_tool_rows(&self) {
@@ -275,12 +342,15 @@ impl ToolsPageState {
             password_read_tools_available_for_store_roots(&Preferences::new().store_roots());
         let enabled = available
             && tool_rows_enabled(
-                self.browser.tool_busy.get(),
-                self.weak_passwords.tool_busy.get(),
+                self.field_browser.browser.tool_busy.get(),
+                self.weak_password_page.weak_passwords.tool_busy.get(),
             );
         set_password_tool_row_state(
-            self.field_values_tool_row.borrow().as_ref(),
+            &self.select_page.field_values_row,
+            &self.select_page.field_values_suffix_stack,
+            &self.select_page.field_values_spinner,
             enabled,
+            self.field_browser.browser.tool_busy.get(),
             if available {
                 FIELD_VALUES_ROW_SUBTITLE
             } else {
@@ -288,8 +358,11 @@ impl ToolsPageState {
             },
         );
         set_password_tool_row_state(
-            self.weak_passwords_tool_row.borrow().as_ref(),
+            &self.select_page.weak_passwords_row,
+            &self.select_page.weak_passwords_suffix_stack,
+            &self.select_page.weak_passwords_spinner,
             enabled,
+            self.weak_password_page.weak_passwords.tool_busy.get(),
             if available {
                 WEAK_PASSWORDS_ROW_SUBTITLE
             } else {
@@ -386,20 +459,27 @@ const fn tool_browser_flow_is_visible(
         || raw_password_page_visible
 }
 
-fn set_tool_row_enabled(row: Option<&ActionRow>, enabled: bool) {
-    let Some(row) = row else {
-        return;
-    };
+fn set_tool_row_enabled(row: &ActionRow, enabled: bool) {
     row.set_sensitive(enabled);
     row.set_activatable(enabled);
 }
 
-fn set_password_tool_row_state(row: Option<&ActionRow>, enabled: bool, subtitle: &str) {
-    let Some(row) = row else {
-        return;
-    };
+fn set_tool_row_suffix_loading(stack: &Stack, spinner: &Spinner, loading: bool) {
+    spinner.set_spinning(loading);
+    stack.set_visible_child_name(if loading { "spinner" } else { "arrow" });
+}
+
+fn set_password_tool_row_state(
+    row: &ActionRow,
+    suffix_stack: &Stack,
+    spinner: &Spinner,
+    enabled: bool,
+    loading: bool,
+    subtitle: &str,
+) {
     row.set_subtitle(&gettext(subtitle));
-    set_tool_row_enabled(Some(row), enabled);
+    set_tool_row_suffix_loading(suffix_stack, spinner, loading);
+    set_tool_row_enabled(row, enabled);
 }
 
 fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bool) {
@@ -421,8 +501,10 @@ pub fn register_open_tools_action(window: &ApplicationWindow, state: &ToolsPageS
     register_window_action(window, "open-tools", move || {
         let chrome = state.navigation.window_chrome();
         show_secondary_page_chrome(&chrome, TOOLS_PAGE_TITLE, TOOLS_PAGE_SUBTITLE, false);
-        state.rebuild();
-        reveal_navigation_page(&state.navigation.nav, &state.page);
+        state.refresh_select_page();
+        reveal_navigation_page(&state.navigation.nav, &state.select_page.page);
+        let _ = focus_first_keyboard_focusable_list_row(&state.select_page.list)
+            || focus_first_keyboard_focusable_list_row(&state.select_page.logs_list);
     });
     sync_tools_action_availability(window);
 }

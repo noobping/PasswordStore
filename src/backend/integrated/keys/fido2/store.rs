@@ -622,9 +622,13 @@ fn derive_direct_hmac_assertion(
 
 fn direct_fido2_store_message(fingerprint: &str, err: Fido2TransportError) -> String {
     match err {
+        Fido2TransportError::PinNotSet => "Set a PIN on the FIDO2 security key first.".to_string(),
         Fido2TransportError::PinRequired | Fido2TransportError::IncorrectPin => {
             let _ = clear_cached_fido2_pin(fingerprint);
             "A FIDO2 security key for this item is locked. Unlock it in Preferences.".to_string()
+        }
+        Fido2TransportError::PinUnsupported => {
+            "That FIDO2 security key must support PIN protection.".to_string()
         }
         Fido2TransportError::TokenNotPresent => {
             "Connect the matching FIDO2 security key.".to_string()

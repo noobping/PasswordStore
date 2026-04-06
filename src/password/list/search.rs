@@ -10,8 +10,8 @@ use self::index::{
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
 use super::{
-    password_list_folder_row_is_expanded, password_list_row_depth, password_list_row_is_folder,
-    password_list_row_store_path,
+    password_list_folder_row_is_expanded, password_list_row_action_kind, password_list_row_depth,
+    password_list_row_is_folder, password_list_row_store_path, PasswordListActionRowKind,
 };
 use crate::password::file::SearchablePassField;
 use crate::store::support::StoreSupportCache;
@@ -85,10 +85,25 @@ impl SearchFilterController {
         let query_is_empty = query.is_empty();
         let rows = collect_filterable_rows(list, &query);
         let visibility = password_list_row_visibility(&rows, query_is_empty);
+        let has_visible_results = visibility.iter().any(|(_, visible)| *visible);
 
         for (row, visible) in visibility {
             set_cloned_data(&row, SEARCH_VISIBILITY_KEY, visible);
         }
+
+        for_each_row(list, |row| match password_list_row_action_kind(&row) {
+            Some(PasswordListActionRowKind::NewPassword) => {
+                set_cloned_data(&row, SEARCH_VISIBILITY_KEY, query_is_empty);
+            }
+            Some(PasswordListActionRowKind::ClearSearch) => {
+                set_cloned_data(
+                    &row,
+                    SEARCH_VISIBILITY_KEY,
+                    !query_is_empty && has_visible_results,
+                );
+            }
+            None => {}
+        });
     }
 
     pub(super) fn matches_row(&self, row: &ListBoxRow) -> bool {
@@ -209,6 +224,10 @@ fn collect_filterable_rows(
     let mut store_support = StoreSupportCache::default();
     let uses_advanced_features = query.uses_advanced_features();
     for_each_row(list, |row| {
+        if password_list_row_action_kind(&row).is_some() {
+            return;
+        }
+
         let Some(store_path) = password_list_row_store_path(&row) else {
             set_cloned_data(&row, SEARCH_VISIBILITY_KEY, true);
             return;

@@ -7,7 +7,7 @@ use adw::{ApplicationWindow, EntryRow, NavigationPage, NavigationView, WindowTit
 #[derive(Clone)]
 pub struct WindowNavigationState {
     pub nav: NavigationView,
-    pub text_page: NavigationPage,
+    pub password_page: NavigationPage,
     pub raw_text_page: NavigationPage,
     pub settings_page: NavigationPage,
     pub tools_page: NavigationPage,

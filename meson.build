@@ -1,6 +1,6 @@
 project(
   'keycord',
-  version: '0.9.8',
+  version: '0.9.9',
   meson_version: '>=1.1.0',
 )
 
@@ -15,6 +15,9 @@ docs = get_option('docs')
 logging = get_option('logging')
 fidostore = get_option('fidostore')
 fidokey = get_option('fidokey')
+fidopin = get_option('fidopin')
+smartcard = get_option('smartcard')
+hardwarekey = get_option('hardwarekey')
 project_binary = 'keycord'
 cargo_command = 'cargo build'
 
@@ -24,6 +27,9 @@ foreach feature_name, enabled : {
   'logging': logging,
   'fidostore': fidostore,
   'fidokey': fidokey,
+  'fidopin': fidopin,
+  'smartcard': smartcard,
+  'hardwarekey': hardwarekey,
 }
   if enabled
     if effective_cargo_features == ''
@@ -59,7 +65,6 @@ if flatpak_spawn.found()
   flatpak_spawn_path = flatpak_spawn.full_path()
 endif
 
-# Prefer native cargo inside flatpak-builder. Fall back to host toolbox for Flatpak-hosted Builder sessions.
 cargo_wrapper_script = '''
 set -eu
 

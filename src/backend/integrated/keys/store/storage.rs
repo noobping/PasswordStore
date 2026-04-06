@@ -9,14 +9,19 @@ use super::super::cert::cert_can_decrypt_password_entries;
 #[cfg(feature = "fidokey")]
 use super::super::cert::parse_fido2_public_key_bytes;
 use super::super::cert::{
-    cert_has_transport_encryption_key, cert_requires_passphrase, fingerprint_from_string,
-    normalized_fingerprint, parse_hardware_public_key_bytes, parse_managed_private_key_bytes,
-    prepare_managed_private_key_bytes, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
-    ManagedRipassoPrivateKeyProtection,
+    cert_has_transport_encryption_key, cert_requires_passphrase, connected_smartcard_key_from_cert,
+    fingerprint_from_string, normalized_fingerprint, parse_hardware_public_key_bytes,
+    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, ConnectedSmartcardKey,
+    ManagedRipassoHardwareKey, ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection,
 };
+use super::super::hardware::list_hardware_tokens;
+#[cfg(feature = "hardwarekey")]
 use super::super::hardware::{
-    list_hardware_tokens, private_key_error_from_hardware_transport_error,
+    generate_hardware_key_material, private_key_error_from_hardware_transport_error,
+    HardwareKeyGenerationRequest,
 };
+#[cfg(feature = "hardwarekey")]
+use super::manifest::HardwarePrivateKeyManifest;
 #[cfg(feature = "fidokey")]
 use super::manifest::{
     fido2_private_key_manifest_contents, managed_fido2_private_key_from_cert,
@@ -25,23 +30,26 @@ use super::manifest::{
 };
 use super::manifest::{
     read_hardware_private_key_manifest, read_hardware_private_key_manifest_entry,
-    HardwarePrivateKeyManifest,
 };
 #[cfg(test)]
 use super::missing_private_key_error;
 #[cfg(feature = "fidokey")]
 use super::paths::ripasso_fido_keys_dir;
-use super::paths::{
-    hardware_manifest_path, hardware_public_key_path, ripasso_keys_dir, ripasso_keys_v2_dir,
-};
+#[cfg(feature = "hardwarekey")]
+use super::paths::{hardware_manifest_path, hardware_public_key_path};
+use super::paths::{ripasso_keys_dir, ripasso_keys_v2_dir};
 use super::private_key_not_stored_error;
 #[cfg(not(feature = "fidokey"))]
 use super::FIDO2_PRIVATE_KEY_FEATURE_DISABLED_ERROR;
+#[cfg(not(feature = "hardwarekey"))]
+const HARDWAREKEY_FEATURE_DISABLED_ERROR: &str =
+    "Managed hardware-key add/import/setup is disabled in this build of Keycord.";
 use crate::backend::PrivateKeyError;
 #[cfg(feature = "fidokey")]
 use crate::fido2_recipient::parse_fido2_recipient_string;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
+use crate::support::runtime::has_smartcard_permission;
 use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
 use sequoia_openpgp::{
@@ -75,6 +83,12 @@ pub(in crate::backend::integrated) struct StoredPrivateKeyEntry {
     pub(in crate::backend::integrated) cert: Option<Cert>,
     pub(in crate::backend::integrated) key: ManagedRipassoPrivateKey,
     pub(in crate::backend::integrated) location: StoredPrivateKeyLocation,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::backend::integrated) struct ConnectedSmartcardEntry {
+    pub(in crate::backend::integrated) cert: Cert,
+    pub(in crate::backend::integrated) key: ConnectedSmartcardKey,
 }
 
 pub(super) fn read_password_private_key_entry(
@@ -165,6 +179,114 @@ pub(in crate::backend::integrated) fn find_stored_private_key(
     Err(private_key_not_stored_error())
 }
 
+fn connected_smartcard_hardware(
+    token: &super::super::hardware::DiscoveredHardwareToken,
+) -> ManagedRipassoHardwareKey {
+    ManagedRipassoHardwareKey {
+        ident: token.ident.clone(),
+        signing_fingerprint: token.signing_fingerprint.clone(),
+        decryption_fingerprint: token.decryption_fingerprint.clone(),
+        reader_hint: token.reader_hint.clone(),
+    }
+}
+
+fn connected_smartcard_entry_from_token(
+    token: super::super::hardware::DiscoveredHardwareToken,
+) -> Result<Option<ConnectedSmartcardEntry>, String> {
+    let hardware = connected_smartcard_hardware(&token);
+    let Some(bytes) = token.cardholder_certificate.as_ref() else {
+        return Ok(None);
+    };
+    let (cert, _) =
+        parse_hardware_public_key_bytes(bytes, hardware.clone()).map_err(|err| err.to_string())?;
+    if !cert_has_transport_encryption_key(&cert) {
+        return Ok(None);
+    }
+
+    if let Some(expected) = hardware.decryption_fingerprint.as_ref() {
+        let expected = normalized_fingerprint(expected)?;
+        if !cert.keys().any(|key| {
+            key.key()
+                .fingerprint()
+                .to_hex()
+                .eq_ignore_ascii_case(&expected)
+        }) {
+            return Ok(None);
+        }
+    }
+
+    if let Some(expected) = hardware.signing_fingerprint.as_ref() {
+        let expected = normalized_fingerprint(expected)?;
+        if !cert.keys().any(|key| {
+            key.key()
+                .fingerprint()
+                .to_hex()
+                .eq_ignore_ascii_case(&expected)
+        }) {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(ConnectedSmartcardEntry {
+        key: connected_smartcard_key_from_cert(&cert, hardware),
+        cert,
+    }))
+}
+
+fn connected_smartcard_entries() -> Result<Vec<ConnectedSmartcardEntry>, String> {
+    if !has_smartcard_permission() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    for token in list_hardware_tokens().map_err(|err| err.to_string())? {
+        let ident = token.ident.clone();
+        match connected_smartcard_entry_from_token(token) {
+            Ok(Some(entry)) => {
+                if !entries.iter().any(|existing: &ConnectedSmartcardEntry| {
+                    existing
+                        .key
+                        .fingerprint
+                        .eq_ignore_ascii_case(&entry.key.fingerprint)
+                }) {
+                    entries.push(entry);
+                }
+            }
+            Ok(None) => {}
+            Err(err) => {
+                log_error(format!(
+                    "Failed to inspect connected smartcard '{ident}': {err}"
+                ));
+            }
+        }
+    }
+
+    entries.sort_by(|left, right| {
+        left.key
+            .title()
+            .to_ascii_lowercase()
+            .cmp(&right.key.title().to_ascii_lowercase())
+            .then_with(|| left.key.fingerprint.cmp(&right.key.fingerprint))
+    });
+    Ok(entries)
+}
+
+pub fn list_connected_smartcard_keys() -> Result<Vec<ConnectedSmartcardKey>, String> {
+    Ok(connected_smartcard_entries()?
+        .into_iter()
+        .map(|entry| entry.key)
+        .collect())
+}
+
+pub(in crate::backend::integrated) fn find_connected_smartcard_key(
+    fingerprint: &str,
+) -> Result<Option<ConnectedSmartcardEntry>, String> {
+    let requested = normalized_fingerprint(fingerprint)?;
+    Ok(connected_smartcard_entries()?
+        .into_iter()
+        .find(|entry| entry.key.fingerprint.eq_ignore_ascii_case(&requested)))
+}
+
 pub(in crate::backend::integrated) fn build_ripasso_crypto_from_key_ring(
     fingerprint: &str,
     key_ring: HashMap<[u8; 20], Arc<Cert>>,
@@ -215,11 +337,26 @@ pub(in crate::backend::integrated) fn load_stored_ripasso_key_ring(
     Ok(key_ring)
 }
 
+pub(in crate::backend::integrated) fn load_available_standard_key_ring(
+) -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
+    let mut key_ring = load_stored_ripasso_key_ring()?;
+
+    for entry in connected_smartcard_entries()? {
+        let fingerprint = slice_to_20_bytes(entry.cert.fingerprint().as_bytes())
+            .map_err(|err| err.to_string())?;
+        key_ring
+            .entry(fingerprint)
+            .or_insert_with(|| Arc::new(entry.cert));
+    }
+
+    Ok(key_ring)
+}
+
 pub(in crate::backend::integrated) fn load_ripasso_key_ring(
     fingerprint: &str,
 ) -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
     let user_key_id = fingerprint_from_string(fingerprint)?;
-    let mut key_ring = load_stored_ripasso_key_ring()?;
+    let mut key_ring = load_available_standard_key_ring()?;
 
     if let Some(cert) = borrow_unlocked_ripasso_private_key(fingerprint)? {
         key_ring.insert(user_key_id, cert);
@@ -234,6 +371,22 @@ pub(in crate::backend::integrated) fn imported_private_key_fingerprints(
         .into_iter()
         .map(|key| key.fingerprint)
         .collect())
+}
+
+pub(in crate::backend::integrated) fn available_private_key_fingerprints(
+) -> Result<Vec<String>, String> {
+    let mut fingerprints = imported_private_key_fingerprints()?;
+
+    for key in list_connected_smartcard_keys()? {
+        if !fingerprints
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&key.fingerprint))
+        {
+            fingerprints.push(key.fingerprint);
+        }
+    }
+
+    Ok(fingerprints)
 }
 
 pub(in crate::backend::integrated) fn selected_ripasso_own_fingerprint(
@@ -456,6 +609,7 @@ pub fn store_ripasso_private_key_bytes(
     Ok(key)
 }
 
+#[cfg(feature = "hardwarekey")]
 fn validate_hardware_key_material(
     cert: &Cert,
     hardware: &ManagedRipassoHardwareKey,
@@ -526,6 +680,7 @@ fn validate_hardware_key_material(
     Ok(())
 }
 
+#[cfg(feature = "hardwarekey")]
 pub fn store_ripasso_hardware_key_bytes(
     bytes: &[u8],
     hardware: ManagedRipassoHardwareKey,
@@ -553,6 +708,7 @@ pub fn store_ripasso_hardware_key_bytes(
     Ok(key)
 }
 
+#[cfg(feature = "hardwarekey")]
 pub fn import_ripasso_hardware_key_bytes(
     bytes: &[u8],
     hardware: ManagedRipassoHardwareKey,
@@ -560,9 +716,103 @@ pub fn import_ripasso_hardware_key_bytes(
     store_ripasso_hardware_key_bytes(bytes, hardware)
 }
 
+#[cfg(not(feature = "hardwarekey"))]
+pub fn import_ripasso_hardware_key_bytes(
+    _bytes: &[u8],
+    _hardware: ManagedRipassoHardwareKey,
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    Err(PrivateKeyError::unsupported_hardware_key(
+        HARDWAREKEY_FEATURE_DISABLED_ERROR,
+    ))
+}
+
+#[cfg(feature = "hardwarekey")]
 pub fn discover_ripasso_hardware_keys(
 ) -> Result<Vec<super::super::hardware::DiscoveredHardwareToken>, String> {
     list_hardware_tokens().map_err(|err| err.to_string())
+}
+
+#[cfg(not(feature = "hardwarekey"))]
+pub fn discover_ripasso_hardware_keys(
+) -> Result<Vec<super::super::hardware::DiscoveredHardwareToken>, String> {
+    Err(HARDWAREKEY_FEATURE_DISABLED_ERROR.to_string())
+}
+
+#[cfg(feature = "hardwarekey")]
+pub fn generate_ripasso_hardware_key(
+    ident: &str,
+    reader_hint: Option<&str>,
+    name: &str,
+    email: &str,
+    admin_pin: &str,
+    user_pin: &str,
+    replace_user_pin: bool,
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(PrivateKeyError::other("Enter a name for the hardware key."));
+    }
+
+    let email = email.trim();
+    if email.is_empty() {
+        return Err(PrivateKeyError::other(
+            "Enter an email address for the hardware key.",
+        ));
+    }
+
+    let admin_pin = admin_pin.trim();
+    if admin_pin.is_empty() {
+        return Err(PrivateKeyError::hardware_pin_required(
+            "Enter the hardware key admin PIN.",
+        ));
+    }
+
+    let user_pin = user_pin.trim();
+    if user_pin.is_empty() {
+        return Err(PrivateKeyError::hardware_pin_required(
+            if replace_user_pin {
+                "Enter the new hardware key PIN."
+            } else {
+                "Enter the hardware key PIN."
+            },
+        ));
+    }
+
+    let user_id = format!("{name} <{email}>");
+    let (token, public_key_bytes) = generate_hardware_key_material(&HardwareKeyGenerationRequest {
+        ident: ident.to_string(),
+        cardholder_name: name.to_string(),
+        user_id,
+        admin_pin: admin_pin.to_string(),
+        user_pin: user_pin.to_string(),
+        replace_user_pin,
+    })
+    .map_err(private_key_error_from_hardware_transport_error)?;
+    let hardware = ManagedRipassoHardwareKey {
+        ident: token.ident,
+        signing_fingerprint: token.signing_fingerprint,
+        decryption_fingerprint: token.decryption_fingerprint,
+        reader_hint: token
+            .reader_hint
+            .or_else(|| reader_hint.map(ToString::to_string)),
+    };
+
+    store_ripasso_hardware_key_bytes(&public_key_bytes, hardware)
+}
+
+#[cfg(not(feature = "hardwarekey"))]
+pub fn generate_ripasso_hardware_key(
+    _ident: &str,
+    _reader_hint: Option<&str>,
+    _name: &str,
+    _email: &str,
+    _admin_pin: &str,
+    _user_pin: &str,
+    _replace_user_pin: bool,
+) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
+    Err(PrivateKeyError::unsupported_hardware_key(
+        HARDWAREKEY_FEATURE_DISABLED_ERROR,
+    ))
 }
 
 #[cfg(feature = "fidokey")]
@@ -694,5 +944,11 @@ pub fn resolved_ripasso_own_fingerprint() -> Result<String, String> {
 }
 
 pub fn ripasso_private_key_title(fingerprint: &str) -> Result<String, String> {
-    Ok(find_stored_private_key(fingerprint)?.key.title())
+    if let Ok(entry) = find_stored_private_key(fingerprint) {
+        return Ok(entry.key.title());
+    }
+
+    find_connected_smartcard_key(fingerprint)?
+        .map(|entry| entry.key.title())
+        .ok_or_else(private_key_not_stored_error)
 }

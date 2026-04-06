@@ -26,14 +26,50 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
-                <property name="title" translatable="yes">Open raw pass file</property>
+                <property name="title" translatable="yes">Open raw text</property>
                 <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;r</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Copy password</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;c</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Copy username</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;u</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Copy OTP</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;t</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Apply template</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;a</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Add field</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;f</property>
               </object>
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Add OTP field</property>
                 <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;o</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Password options</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;p</property>
               </object>
             </child>
             <child>

@@ -7,7 +7,7 @@ use self::clone::append_store_clone_row;
 pub use self::clone::prompt_store_clone;
 pub use self::import::{
     initialize_store_import_page, schedule_store_import_row, StoreImportChrome,
-    StoreImportControls, StoreImportPageState, StoreImportPageWidgets,
+    StoreImportControls, StoreImportPageState, StoreImportPageWidgets, StoreImportToolRowState,
 };
 use super::recipients::{
     read_store_recipients, store_is_supported_in_current_build, store_recipients_subtitle,
@@ -139,15 +139,12 @@ pub fn rebuild_stores_list(
 }
 
 fn append_empty_store_list_row(list: &ListBox) {
-    let (title, subtitle) = empty_store_list_placeholder_copy();
+    let (title, subtitle) = empty_store_list_text();
     append_info_row(list, title, subtitle);
 }
 
-const fn empty_store_list_placeholder_copy() -> (&'static str, &'static str) {
-    (
-        "No password stores",
-        "Add an existing folder or create a new store.",
-    )
+const fn empty_store_list_text() -> (&'static str, &'static str) {
+    ("No password stores", "Add a folder.")
 }
 
 pub fn rebuild_store_actions_list(
@@ -241,7 +238,7 @@ fn append_store_picker_row(
     append_action_row_with_button(
         list,
         "Add or create store",
-        "Choose a folder. Empty folders become new stores.",
+        "Choose a folder. If it is empty, it becomes a store.",
         "folder-new-symbolic",
         move || {
             prompt_add_or_create_store(
@@ -270,7 +267,7 @@ pub fn prompt_add_or_create_store(
     let recipients_page = recipients_page.clone();
     open_store_folder_picker(
         &window,
-        "Choose password store folder",
+        "Choose store folder",
         "Select",
         true,
         &overlay,
@@ -335,9 +332,8 @@ pub fn register_open_store_picker_action(
 #[cfg(test)]
 mod tests {
     use super::{
-        empty_store_list_placeholder_copy, initial_recipients_for_store_creation,
-        selected_store_folder_mode, updated_stores_after_add, updated_stores_after_delete,
-        SelectedStoreFolderMode,
+        empty_store_list_text, initial_recipients_for_store_creation, selected_store_folder_mode,
+        updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
     };
 
     #[test]
@@ -391,13 +387,10 @@ mod tests {
     }
 
     #[test]
-    fn empty_store_list_has_placeholder_copy() {
+    fn empty_store_list_has_text() {
         assert_eq!(
-            empty_store_list_placeholder_copy(),
-            (
-                "No password stores",
-                "Add an existing folder or create a new store."
-            )
+            empty_store_list_text(),
+            ("No password stores", "Add a folder.")
         );
     }
 }

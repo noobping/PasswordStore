@@ -11,7 +11,10 @@ use crate::support::actions::register_window_action;
 #[cfg(all(target_os = "linux", feature = "flatpak"))]
 use crate::support::runtime::has_host_permission;
 use crate::support::runtime::supports_host_command_features;
-use crate::support::ui::push_navigation_page_if_needed;
+use crate::support::ui::{
+    connect_entry_row_apply_button_to_nonempty_text, focus_first_matching_list_row_in_order,
+    list_row_is_keyboard_focusable, push_navigation_page_if_needed,
+};
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowPageState, APP_WINDOW_TITLE,
 };
@@ -175,6 +178,7 @@ pub fn connect_pass_command_row(
     overlay: &ToastOverlay,
     preferences: &Preferences,
 ) {
+    connect_entry_row_apply_button_to_nonempty_text(pass_row);
     let overlay = overlay.clone();
     let preferences = preferences.clone();
     pass_row.connect_apply(move |row| {
@@ -640,6 +644,13 @@ pub fn register_open_preferences_action(
             &state.overlay,
             &state.recipients_page,
         );
+        if !focus_first_matching_list_row_in_order(
+            &[state.stores_list.clone(), state.store_actions_list.clone()],
+            list_row_is_keyboard_focusable,
+        ) && state.backend_row.is_visible()
+        {
+            state.backend_row.grab_focus();
+        }
     });
 }
 

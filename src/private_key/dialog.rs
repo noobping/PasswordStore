@@ -1,6 +1,9 @@
 use crate::backend::{PrivateKeyUnlockKind, PrivateKeyUnlockRequest};
 use crate::i18n::gettext;
-use crate::support::ui::{dialog_content_shell, wrapped_dialog_body};
+use crate::support::ui::{
+    connect_password_entry_row_apply_button_to_nonempty_text, dialog_content_shell,
+    wrapped_dialog_body,
+};
 use adw::gtk::{Align, Box as GtkBox, Button, Label, Orientation, Spinner};
 use adw::prelude::*;
 use adw::{
@@ -114,6 +117,25 @@ fn private_key_unlock_dialog_error_message(
     }
 }
 
+fn new_fido2_pin_dialog_error_message(pin: &str, confirm_pin: &str) -> Option<&'static str> {
+    if pin.trim().is_empty() {
+        return Some("Enter the new security key PIN.");
+    }
+    if confirm_pin.trim().is_empty() {
+        return Some("Confirm the new security key PIN.");
+    }
+    if pin != confirm_pin {
+        return Some("The security key PINs do not match.");
+    }
+    None
+}
+
+fn sync_fido2_pin_setup_apply_button(pin_row: &PasswordEntryRow, confirm_row: &PasswordEntryRow) {
+    confirm_row.set_show_apply_button(
+        !pin_row.text().trim().is_empty() && !confirm_row.text().trim().is_empty(),
+    );
+}
+
 pub fn present_private_key_password_dialog<F>(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
@@ -147,6 +169,7 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     let password_row = PasswordEntryRow::new();
     password_row.set_title(&gettext("Key password"));
     password_row.set_show_apply_button(true);
+    connect_password_entry_row_apply_button_to_nonempty_text(&password_row);
 
     let password_group = PreferencesGroup::builder().build();
     password_group.add(&password_row);
@@ -216,6 +239,119 @@ pub fn present_private_key_password_dialog_with_close_handler<F, G>(
     dialog.present(Some(window));
 }
 
+pub fn present_fido2_pin_setup_dialog_with_close_handler<F, G>(
+    window: &ApplicationWindow,
+    _overlay: &ToastOverlay,
+    title: &str,
+    subtitle: Option<&str>,
+    on_submit: F,
+    on_close: G,
+) where
+    F: Fn(SecretString) + 'static,
+    G: Fn() + 'static,
+{
+    let pin_row = PasswordEntryRow::new();
+    pin_row.set_title(&gettext("New security key PIN"));
+    pin_row.set_show_apply_button(false);
+
+    let confirm_row = PasswordEntryRow::new();
+    confirm_row.set_title(&gettext("Confirm new security key PIN"));
+    confirm_row.set_show_apply_button(false);
+
+    let pin_group = PreferencesGroup::builder().build();
+    pin_group.add(&pin_row);
+    pin_group.add(&confirm_row);
+
+    let page = PreferencesPage::new();
+    page.add(&pin_group);
+
+    let error_label = Label::new(None);
+    error_label.set_halign(Align::Start);
+    error_label.set_wrap(true);
+    error_label.add_css_class("error");
+    error_label.add_css_class("caption");
+    error_label.set_margin_top(6);
+    error_label.set_margin_start(18);
+    error_label.set_margin_end(18);
+    error_label.set_margin_bottom(18);
+    error_label.set_visible(false);
+
+    let content = GtkBox::new(Orientation::Vertical, 0);
+    content.append(&page);
+    content.append(&error_label);
+
+    let dialog = Dialog::builder()
+        .title(gettext(title))
+        .content_height(320)
+        .content_width(800)
+        .follows_content_size(true)
+        .child(&dialog_content_shell(title, subtitle, &content))
+        .build();
+    let submitted = Rc::new(Cell::new(false));
+    let dialog_handle = PrivateKeyDialogHandle::new(&dialog);
+
+    {
+        let confirm_row = confirm_row.clone();
+        pin_row.connect_changed(move |row| {
+            sync_fido2_pin_setup_apply_button(row, &confirm_row);
+        });
+    }
+    {
+        let pin_row = pin_row.clone();
+        confirm_row.connect_changed(move |row| {
+            sync_fido2_pin_setup_apply_button(&pin_row, row);
+        });
+    }
+
+    {
+        let error_label = error_label.clone();
+        pin_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
+    {
+        let error_label = error_label.clone();
+        confirm_row.connect_changed(move |_| {
+            error_label.set_visible(false);
+        });
+    }
+
+    let submitted_for_apply = submitted.clone();
+    let dialog_handle_for_apply = dialog_handle.clone();
+    let error_label_for_apply = error_label.clone();
+    let pin_row_for_apply = pin_row.clone();
+    confirm_row.connect_apply(move |row| {
+        let pin = SecretString::from(pin_row_for_apply.text().as_str());
+        let confirm_pin = row.text();
+        if let Some(message) =
+            new_fido2_pin_dialog_error_message(pin.expose_secret(), confirm_pin.as_str())
+        {
+            error_label_for_apply.set_label(&gettext(message));
+            error_label_for_apply.set_visible(true);
+            return;
+        }
+        error_label_for_apply.set_visible(false);
+
+        submitted_for_apply.set(true);
+        pin_row_for_apply.set_text("");
+        row.set_text("");
+        dialog_handle_for_apply.force_close();
+        on_submit(pin);
+    });
+
+    let pin_row_for_close = pin_row.clone();
+    let confirm_row_for_close = confirm_row.clone();
+    dialog.connect_closed(move |_| {
+        pin_row_for_close.set_text("");
+        confirm_row_for_close.set_text("");
+        if !submitted.get() {
+            on_close();
+        }
+    });
+
+    dialog.present(Some(window));
+}
+
 pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     window: &ApplicationWindow,
     _overlay: &ToastOverlay,
@@ -232,6 +368,7 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
     let password_row = PasswordEntryRow::new();
     password_row.set_title(&gettext(private_key_unlock_row_title(kind)));
     password_row.set_show_apply_button(true);
+    connect_password_entry_row_apply_button_to_nonempty_text(&password_row);
 
     let password_group = PreferencesGroup::builder().build();
     password_group.add(&password_row);
@@ -341,8 +478,9 @@ pub fn present_private_key_unlock_dialog_with_close_handler<F, G>(
 #[cfg(test)]
 mod tests {
     use super::{
-        private_key_password_dialog_error_message, private_key_unlock_dialog_error_message,
-        private_key_unlock_row_title, HARDWARE_EXTERNAL_BUTTON_LABEL,
+        new_fido2_pin_dialog_error_message, private_key_password_dialog_error_message,
+        private_key_unlock_dialog_error_message, private_key_unlock_row_title,
+        HARDWARE_EXTERNAL_BUTTON_LABEL,
     };
     use crate::backend::PrivateKeyUnlockKind;
 
@@ -397,5 +535,22 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn new_fido2_pin_dialog_requires_matching_nonempty_values() {
+        assert_eq!(
+            new_fido2_pin_dialog_error_message("", ""),
+            Some("Enter the new security key PIN.")
+        );
+        assert_eq!(
+            new_fido2_pin_dialog_error_message("123456", ""),
+            Some("Confirm the new security key PIN.")
+        );
+        assert_eq!(
+            new_fido2_pin_dialog_error_message("123456", "654321"),
+            Some("The security key PINs do not match.")
+        );
+        assert_eq!(new_fido2_pin_dialog_error_message("123456", "123456"), None);
     }
 }

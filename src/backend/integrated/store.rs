@@ -5,7 +5,7 @@ use super::keys::{clear_pending_fido2_enrollment, store_recipients_error_from_in
 use super::paths::{
     collect_password_entry_files, desired_entry_file_path, ensure_store_directory,
     fido2_recipients_file_for_recipients_path, label_from_entry_path, recipients_file_for_label,
-    with_updated_recipient_files,
+    recipients_file_for_relative_dir, with_updated_recipient_files,
 };
 use super::recipients::{
     fido2_recipient_file_contents, preferred_ripasso_private_key_fingerprint_for_entry,
@@ -15,7 +15,7 @@ use crate::backend::{
     PasswordEntryError, PasswordEntryReadProgress, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement, StoreRecipientsSaveProgress, StoreRecipientsSaveStage,
 };
-use crate::fido2_recipient::{parse_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME};
+use crate::fido2_recipient::parse_fido2_recipient_string;
 use crate::logging::log_error;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use crate::support::secure_fs::write_atomic_file;
@@ -98,10 +98,21 @@ fn clear_saved_fido2_enrollment_state(recipients: &StoreRecipients) {
 pub fn store_recipients_private_key_requiring_unlock(
     store_root: &str,
 ) -> Result<Option<String>, String> {
+    store_recipients_private_key_requiring_unlock_for_relative_dir(store_root, ".")
+}
+
+pub fn store_recipients_private_key_requiring_unlock_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+) -> Result<Option<String>, String> {
     let store_dir = ensure_store_directory(store_root)?;
+    let scoped_recipients_path = recipients_file_for_relative_dir(store_root, relative_dir)?;
 
     for entry_path in collect_password_entry_files(&store_dir)? {
         let label = label_from_entry_path(&store_dir, &entry_path)?;
+        if recipients_file_for_label(store_root, &label)? != scoped_recipients_path {
+            continue;
+        }
         if !matches!(
             read_password_entry(store_root, &label),
             Err(PasswordEntryError::LockedPrivateKey(_))
@@ -120,9 +131,19 @@ pub fn save_store_recipients(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
+    save_store_recipients_for_relative_dir(store_root, ".", recipients, private_key_requirement)
+}
+
+pub fn save_store_recipients_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
     let store_dir = ensure_store_directory(store_root)
         .map_err(store_recipients_error_from_integrated_message)?;
-    let recipients_path = store_dir.join(".gpg-id");
+    let recipients_path = recipients_file_for_relative_dir(store_root, relative_dir)
+        .map_err(store_recipients_error_from_integrated_message)?;
     let decrypted_entries =
         decrypted_store_entries_with_progress(&store_dir, store_root, &recipients_path, None)
             .map_err(store_recipients_error_from_integrated_message)?;
@@ -174,12 +195,19 @@ pub fn save_store_recipients(
     maybe_commit_git_paths(
         store_root,
         "Update password store recipients",
-        std::iter::once(".gpg-id".to_string())
-            .chain(
-                (!fido2_recipients_contents.trim().is_empty() || had_fido2_recipients_path)
-                    .then(|| FIDO2_RECIPIENTS_FILE_NAME.to_string()),
-            )
-            .chain(committed_entry_paths),
+        std::iter::once(
+            password_entry_git_path(&store_dir, &recipients_path)
+                .map_err(store_recipients_error_from_integrated_message)?,
+        )
+        .chain(
+            (!fido2_recipients_contents.trim().is_empty() || had_fido2_recipients_path)
+                .then(|| {
+                    password_entry_git_path(&store_dir, &fido2_recipients_path)
+                        .map_err(store_recipients_error_from_integrated_message)
+                })
+                .transpose()?,
+        )
+        .chain(committed_entry_paths),
         Some(context.fingerprint()),
     );
 
@@ -192,9 +220,26 @@ pub fn save_store_recipients_with_progress(
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
 ) -> Result<(), StoreRecipientsError> {
+    save_store_recipients_with_progress_for_relative_dir(
+        store_root,
+        ".",
+        recipients,
+        private_key_requirement,
+        report_progress,
+    )
+}
+
+pub fn save_store_recipients_with_progress_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+    report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
+) -> Result<(), StoreRecipientsError> {
     let store_dir = ensure_store_directory(store_root)
         .map_err(store_recipients_error_from_integrated_message)?;
-    let recipients_path = store_dir.join(".gpg-id");
+    let recipients_path = recipients_file_for_relative_dir(store_root, relative_dir)
+        .map_err(store_recipients_error_from_integrated_message)?;
     let decrypted_entries = decrypted_store_entries_with_progress(
         &store_dir,
         store_root,
@@ -271,12 +316,19 @@ pub fn save_store_recipients_with_progress(
     maybe_commit_git_paths(
         store_root,
         "Update password store recipients",
-        std::iter::once(".gpg-id".to_string())
-            .chain(
-                (!fido2_recipients_contents.trim().is_empty() || had_fido2_recipients_path)
-                    .then(|| FIDO2_RECIPIENTS_FILE_NAME.to_string()),
-            )
-            .chain(committed_entry_paths),
+        std::iter::once(
+            password_entry_git_path(&store_dir, &recipients_path)
+                .map_err(store_recipients_error_from_integrated_message)?,
+        )
+        .chain(
+            (!fido2_recipients_contents.trim().is_empty() || had_fido2_recipients_path)
+                .then(|| {
+                    password_entry_git_path(&store_dir, &fido2_recipients_path)
+                        .map_err(store_recipients_error_from_integrated_message)
+                })
+                .transpose()?,
+        )
+        .chain(committed_entry_paths),
         Some(context.fingerprint()),
     );
 

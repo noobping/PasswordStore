@@ -6,7 +6,7 @@ use super::keys::{
     decrypt_payload_from_any_managed_bundle, decrypt_with_hardware_session,
     encrypt_fido2_any_managed_bundle_with_progress, encrypt_fido2_direct_required_layer,
     ensure_ripasso_private_key_is_ready, extract_pgp_wrapped_dek_from_any_managed_bundle,
-    fingerprint_from_string, load_ripasso_key_ring, load_stored_ripasso_key_ring,
+    fingerprint_from_string, load_available_standard_key_ring, load_ripasso_key_ring,
     reencrypt_fido2_any_managed_bundle_with_progress, Fido2DirectBinding, Fido2ReadProgress,
     Fido2WriteProgress,
 };
@@ -87,7 +87,7 @@ impl IntegratedCryptoContext {
         standard_contents: &str,
         fido2_contents: &str,
     ) -> Result<Self, String> {
-        let key_ring = load_stored_ripasso_key_ring()?;
+        let key_ring = load_available_standard_key_ring()?;
         let resolved =
             resolved_recipients_from_contents(standard_contents, fido2_contents, &key_ring)?;
         let recipients = standard_recipients_from_resolved(&resolved);
@@ -122,7 +122,7 @@ impl IntegratedCryptoContext {
         standard_contents: &str,
         fido2_contents: &str,
     ) -> Result<String, String> {
-        let key_ring = load_stored_ripasso_key_ring()?;
+        let key_ring = load_available_standard_key_ring()?;
         encryption_context_fingerprint_from_contents(standard_contents, fido2_contents, &key_ring)
     }
 

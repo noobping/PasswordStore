@@ -1,8 +1,7 @@
 use super::keys::{
-    direct_binding_from_store_recipient, ensure_ripasso_private_key_is_ready,
-    fingerprint_from_string, imported_private_key_fingerprints, load_stored_ripasso_key_ring,
-    missing_private_key_error, ripasso_private_key_requires_session_unlock,
-    selected_ripasso_own_fingerprint, Fido2DirectBinding,
+    available_private_key_fingerprints, direct_binding_from_store_recipient,
+    ensure_ripasso_private_key_is_ready, fingerprint_from_string, load_available_standard_key_ring,
+    missing_private_key_error, selected_ripasso_own_fingerprint, Fido2DirectBinding,
 };
 use super::paths::{fido2_recipients_file_for_recipients_path, recipients_file_for_label};
 use crate::backend::{PasswordEntryError, StoreRecipientsPrivateKeyRequirement};
@@ -30,6 +29,8 @@ pub(super) enum ResolvedRecipient<'a> {
     },
 }
 
+type StandardRecipientMatch<'a> = ([u8; 20], &'a Arc<Cert>);
+
 impl ResolvedRecipient<'_> {
     pub(super) fn recipient_id(&self) -> String {
         match self {
@@ -56,7 +57,7 @@ impl ResolvedRecipient<'_> {
 fn resolve_recipient_cert<'a>(
     recipient_id: &str,
     key_ring: &'a HashMap<[u8; 20], Arc<Cert>>,
-) -> Result<Option<([u8; 20], &'a Arc<Cert>)>, String> {
+) -> Result<Option<StandardRecipientMatch<'a>>, String> {
     if let Ok(fingerprint) = fingerprint_from_string(recipient_id) {
         if let Some(cert) = key_ring.get(&fingerprint) {
             return Ok(Some((fingerprint, cert)));
@@ -94,8 +95,8 @@ fn resolve_recipient_cert<'a>(
 
 fn resolve_unique_standard_recipient_match<'a>(
     recipient_id: &str,
-    mut matches: impl Iterator<Item = ([u8; 20], &'a Arc<Cert>)>,
-) -> Result<Option<([u8; 20], &'a Arc<Cert>)>, String> {
+    mut matches: impl Iterator<Item = StandardRecipientMatch<'a>>,
+) -> Result<Option<StandardRecipientMatch<'a>>, String> {
     let Some(first) = matches.next() else {
         return Ok(None);
     };
@@ -362,19 +363,24 @@ pub(super) fn encryption_context_fingerprint_from_contents(
 ) -> Result<String, String> {
     let recipients =
         resolved_recipients_from_contents(standard_contents, fido2_contents, key_ring)?;
-    if let Some(selected) = selected_ripasso_own_fingerprint()? {
-        if recipients.iter().any(|recipient| {
-            recipient
-                .cert()
-                .is_some_and(|cert| cert.fingerprint().to_hex().eq_ignore_ascii_case(&selected))
-        }) {
-            return Ok(selected);
-        }
-    }
-
-    if let Some(fingerprint) = recipients
+    let standard_fingerprints = recipients
         .iter()
-        .find_map(|recipient| recipient.cert().map(|cert| cert.fingerprint().to_hex()))
+        .filter_map(|recipient| recipient.cert().map(|cert| cert.fingerprint().to_hex()))
+        .collect::<Vec<_>>();
+    let mut preferred_standard_fingerprints =
+        Vec::with_capacity(standard_fingerprints.len().saturating_add(1));
+    if let Some(selected) = selected_ripasso_own_fingerprint()?.filter(|selected| {
+        standard_fingerprints
+            .iter()
+            .any(|fingerprint| fingerprint.eq_ignore_ascii_case(selected))
+    }) {
+        preferred_standard_fingerprints.push(selected);
+    }
+    preferred_standard_fingerprints.extend(standard_fingerprints);
+
+    if let Some(fingerprint) = prioritized_unique_fingerprints(preferred_standard_fingerprints)
+        .into_iter()
+        .next()
     {
         return Ok(fingerprint);
     }
@@ -397,10 +403,52 @@ fn push_unique_fingerprint(fingerprints: &mut Vec<String>, candidate: String) {
     fingerprints.push(candidate);
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PrivateKeyUsePriority {
+    Ready,
+    Unlockable,
+    Unavailable,
+}
+
+fn private_key_use_priority(fingerprint: &str) -> PrivateKeyUsePriority {
+    if is_fido2_recipient_string(fingerprint) {
+        return PrivateKeyUsePriority::Unlockable;
+    }
+
+    match ensure_ripasso_private_key_is_ready(fingerprint) {
+        Ok(()) => PrivateKeyUsePriority::Ready,
+        Err(PasswordEntryError::LockedPrivateKey(_)) => PrivateKeyUsePriority::Unlockable,
+        Err(_) => PrivateKeyUsePriority::Unavailable,
+    }
+}
+
+fn prioritized_unique_fingerprints(candidates: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut unique = Vec::new();
+    for candidate in candidates {
+        push_unique_fingerprint(&mut unique, candidate);
+    }
+
+    let mut ready = Vec::new();
+    let mut unlockable = Vec::new();
+    let mut unavailable = Vec::new();
+
+    for candidate in unique {
+        match private_key_use_priority(&candidate) {
+            PrivateKeyUsePriority::Ready => ready.push(candidate),
+            PrivateKeyUsePriority::Unlockable => unlockable.push(candidate),
+            PrivateKeyUsePriority::Unavailable => unavailable.push(candidate),
+        }
+    }
+
+    ready.extend(unlockable);
+    ready.extend(unavailable);
+    ready
+}
+
 fn recipient_fingerprints_for_label(store_root: &str, label: &str) -> Result<Vec<String>, String> {
     let recipients_file = recipients_file_for_label(store_root, label)?;
     let (standard_contents, fido2_contents) = read_store_recipient_file_contents(&recipients_file)?;
-    let key_ring = load_stored_ripasso_key_ring()?;
+    let key_ring = load_available_standard_key_ring()?;
 
     required_private_key_fingerprints_from_contents(&standard_contents, &fido2_contents, &key_ring)
 }
@@ -444,7 +492,7 @@ pub fn password_entry_is_readable(store_root: &str, label: &str) -> bool {
     else {
         return false;
     };
-    let Ok(key_ring) = load_stored_ripasso_key_ring() else {
+    let Ok(key_ring) = load_available_standard_key_ring() else {
         return false;
     };
     let standard_recipient_ids = standard_recipient_ids_from_contents(&standard_contents);
@@ -519,40 +567,38 @@ pub(super) fn decryption_candidate_fingerprints_for_entry(
         return required_private_key_fingerprints_for_entry(store_root, label);
     }
 
-    let mut candidates = Vec::new();
+    let recipient_fingerprints =
+        recipient_fingerprints_for_label(store_root, label).unwrap_or_default();
+    let selected_fingerprint = selected_ripasso_own_fingerprint()?;
+    let available_fingerprints = available_private_key_fingerprints()?;
+    let mut candidates = Vec::with_capacity(
+        recipient_fingerprints
+            .len()
+            .saturating_add(available_fingerprints.len())
+            .saturating_add(2),
+    );
 
-    if let Ok(fingerprints) = recipient_fingerprints_for_label(store_root, label) {
-        for fingerprint in fingerprints {
-            push_unique_fingerprint(&mut candidates, fingerprint);
-        }
+    if let Some(selected) = selected_fingerprint.as_ref().filter(|selected| {
+        recipient_fingerprints
+            .iter()
+            .any(|fingerprint| fingerprint.eq_ignore_ascii_case(selected))
+    }) {
+        candidates.push(selected.clone());
     }
-
-    if let Some(fingerprint) = selected_ripasso_own_fingerprint()? {
-        push_unique_fingerprint(&mut candidates, fingerprint);
+    candidates.extend(recipient_fingerprints);
+    if let Some(selected) = selected_fingerprint {
+        candidates.push(selected);
     }
+    candidates.extend(available_fingerprints);
 
-    for fingerprint in imported_private_key_fingerprints()? {
-        push_unique_fingerprint(&mut candidates, fingerprint);
-    }
-
-    Ok(candidates)
+    Ok(prioritized_unique_fingerprints(candidates))
 }
 
 pub fn preferred_ripasso_private_key_fingerprint_for_entry(
     store_root: &str,
     label: &str,
 ) -> Result<String, String> {
-    let candidates = decryption_candidate_fingerprints_for_entry(store_root, label)?;
-    for fingerprint in &candidates {
-        if matches!(
-            ripasso_private_key_requires_session_unlock(fingerprint),
-            Ok(true)
-        ) {
-            return Ok(fingerprint.clone());
-        }
-    }
-
-    candidates
+    decryption_candidate_fingerprints_for_entry(store_root, label)?
         .into_iter()
         .next()
         .ok_or_else(missing_private_key_error)

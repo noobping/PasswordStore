@@ -73,19 +73,22 @@ pub use self::host::{
     armored_host_gpg_private_key, delete_host_gpg_private_key, import_host_gpg_private_key_bytes,
     list_host_gpg_private_keys, HostGpgPrivateKeySummary,
 };
+#[cfg(test)]
+pub use integrated::required_private_key_fingerprints_for_entry;
 #[cfg(target_os = "linux")]
 pub use integrated::store_ripasso_private_key_bytes;
 pub use integrated::{
     armored_ripasso_private_key, armored_ripasso_public_key, create_fido2_store_recipient,
-    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_private_key,
-    import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys,
+    discover_ripasso_hardware_keys, generate_fido2_private_key, generate_ripasso_hardware_key,
+    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
     preferred_ripasso_private_key_fingerprint_for_entry, remove_ripasso_private_key,
-    required_private_key_fingerprints_for_entry, ripasso_private_key_requires_passphrase,
-    ripasso_private_key_requires_session_unlock, ripasso_private_key_title,
+    ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
+    ripasso_private_key_title, set_fido2_security_key_pin,
     unlock_fido2_store_recipient_for_session, unlock_ripasso_private_key_for_session,
-    DiscoveredHardwareToken, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
-    ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
+    ConnectedSmartcardKey, DiscoveredHardwareToken, ManagedRipassoHardwareKey,
+    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind,
+    PrivateKeyUnlockRequest,
 };
 pub use integrated::{
     git_commit_private_key_requiring_unlock_for_entry,
@@ -100,6 +103,14 @@ fn dispatch_backend<T>(integrated: impl FnOnce() -> T, host: impl FnOnce() -> T)
     } else {
         host()
     }
+}
+
+pub const fn supports_first_time_fido2_pin_setup() -> bool {
+    cfg!(all(
+        target_os = "linux",
+        feature = "fidopin",
+        any(feature = "fidostore", feature = "fidokey")
+    ))
 }
 
 macro_rules! dispatch_backend_call {
@@ -135,6 +146,10 @@ dispatch_backend_call! {
         recipients: &StoreRecipients,
         private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     ) -> Result<(), StoreRecipientsError>;
+}
+
+pub fn list_connected_smartcard_keys() -> Result<Vec<ConnectedSmartcardKey>, String> {
+    dispatch_backend(integrated::list_connected_smartcard_keys, || Ok(Vec::new()))
 }
 
 pub fn save_password_entry_with_progress(
@@ -175,6 +190,57 @@ pub fn save_store_recipients_with_progress(
     }
 }
 
+pub fn save_store_recipients_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
+    dispatch_backend(
+        || {
+            integrated::save_store_recipients_for_relative_dir(
+                store_root,
+                relative_dir,
+                recipients,
+                private_key_requirement,
+            )
+        },
+        || {
+            host::save_store_recipients_for_relative_dir(
+                store_root,
+                relative_dir,
+                recipients,
+                private_key_requirement,
+            )
+        },
+    )
+}
+
+pub fn save_store_recipients_with_progress_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+    report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
+) -> Result<(), StoreRecipientsError> {
+    if Preferences::new().uses_integrated_backend() {
+        integrated::save_store_recipients_with_progress_for_relative_dir(
+            store_root,
+            relative_dir,
+            recipients,
+            private_key_requirement,
+            report_progress,
+        )
+    } else {
+        host::save_store_recipients_with_progress_for_relative_dir(
+            store_root,
+            relative_dir,
+            recipients,
+            private_key_requirement,
+        )
+    }
+}
+
 pub fn read_password_entry_with_progress(
     store_root: &str,
     label: &str,
@@ -207,6 +273,26 @@ pub fn store_recipients_private_key_requiring_unlock(
     dispatch_backend(
         || integrated::store_recipients_private_key_requiring_unlock(store_root),
         || host::store_recipients_private_key_requiring_unlock(store_root),
+    )
+}
+
+pub fn store_recipients_private_key_requiring_unlock_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+) -> Result<Option<String>, String> {
+    dispatch_backend(
+        || {
+            integrated::store_recipients_private_key_requiring_unlock_for_relative_dir(
+                store_root,
+                relative_dir,
+            )
+        },
+        || {
+            host::store_recipients_private_key_requiring_unlock_for_relative_dir(
+                store_root,
+                relative_dir,
+            )
+        },
     )
 }
 

@@ -15,8 +15,10 @@ use crate::backend::{
     save_password_entry, save_password_entry_with_progress, PasswordEntryError,
     PasswordEntryReadProgress, PasswordEntryWriteError, PasswordEntryWriteProgress,
 };
+use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::password::entry_files::normalize_password_entry_label;
 use crate::password::model::{OpenPassFile, UsernameFallbackError};
 use crate::password::opened::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
@@ -38,7 +40,8 @@ use std::string::ToString;
 
 use self::editor::{
     add_empty_dynamic_field, add_empty_otp_secret as add_empty_otp_secret_to_editor,
-    current_editor_contents, focus_field_add_row, structured_editor_contents, sync_editor_contents,
+    current_editor_contents, focus_field_add_row, focus_password_row, structured_editor_contents,
+    sync_editor_contents,
 };
 use self::linux as platform;
 use self::platform::handle_open_password_entry_error;
@@ -51,7 +54,7 @@ use self::state::{
 fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static str {
     error
         .and_then(PasswordEntryError::toast_message)
-        .unwrap_or("Couldn't open the item.")
+        .unwrap_or("Can't open this item.")
 }
 
 fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
@@ -62,16 +65,21 @@ const fn username_fallback_failure_message(error: UsernameFallbackError) -> &'st
     error.toast_message()
 }
 
-const fn password_save_status_copy(fido2_recipient_count: usize) -> (&'static str, &'static str) {
+const SAVE_STATUS_TITLE: &str = "Saving";
+const OPEN_STATUS_TITLE: &str = "Opening";
+const UNLOCK_STATUS_TITLE: &str = "Unlock key";
+const WAIT_A_MOMENT: &str = "Wait a moment.";
+const TOUCH_KEY_IF_IT_BLINKS: &str = "Touch your key if it blinks.";
+const TOUCH_EACH_KEY_IF_IT_BLINKS: &str = "Touch each key if it blinks.";
+const CHECK_KEYS_ONE_BY_ONE: &str = "Check each key one by one.";
+
+const fn password_save_status_text(fido2_recipient_count: usize) -> (&'static str, &'static str) {
     if fido2_recipient_count > 1 {
-        ("Saving item", "Security keys will be checked one by one.")
+        (SAVE_STATUS_TITLE, CHECK_KEYS_ONE_BY_ONE)
     } else if fido2_recipient_count == 1 {
-        (
-            "Saving item",
-            "Touch the security key if it starts blinking.",
-        )
+        (SAVE_STATUS_TITLE, TOUCH_KEY_IF_IT_BLINKS)
     } else {
-        ("Saving item", "Please wait.")
+        (SAVE_STATUS_TITLE, WAIT_A_MOMENT)
     }
 }
 
@@ -84,44 +92,32 @@ fn password_open_progress_description(progress: &PasswordEntryReadProgress) -> S
 }
 
 fn password_entry_progress_description(progress: &PasswordEntryReadProgress) -> String {
-    gettext("Step {current} of {total}: touch the security key if it starts blinking.")
+    gettext("Step {current}/{total}: touch your key if it blinks.")
         .replace("{current}", &progress.current_step.to_string())
         .replace("{total}", &progress.total_steps.to_string())
 }
 
-pub(super) const fn password_open_status_copy(
+pub(super) const fn password_open_status_text(
     fido2_recipient_count: usize,
 ) -> (&'static str, &'static str) {
     if fido2_recipient_count > 1 {
-        (
-            "Opening item",
-            "Touch each security key when it starts blinking.",
-        )
+        (OPEN_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS)
     } else if fido2_recipient_count == 1 {
-        (
-            "Opening item",
-            "Touch the security key if it starts blinking.",
-        )
+        (OPEN_STATUS_TITLE, TOUCH_KEY_IF_IT_BLINKS)
     } else {
-        ("Opening item", "Please wait.")
+        (OPEN_STATUS_TITLE, WAIT_A_MOMENT)
     }
 }
 
-pub(super) const fn password_unlock_status_copy(
+pub(super) const fn password_unlock_status_text(
     fido2_recipient_count: usize,
 ) -> (&'static str, &'static str) {
     if fido2_recipient_count > 1 {
-        (
-            "Unlock key",
-            "Touch each security key when it starts blinking.",
-        )
+        (UNLOCK_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS)
     } else if fido2_recipient_count == 1 {
-        (
-            "Unlock key",
-            "Touch the security key if it starts blinking.",
-        )
+        (UNLOCK_STATUS_TITLE, TOUCH_KEY_IF_IT_BLINKS)
     } else {
-        ("Unlock key", "Unlock your key to continue.")
+        (UNLOCK_STATUS_TITLE, "Unlock your key to continue.")
     }
 }
 
@@ -279,6 +275,7 @@ fn finish_password_save(
         );
     }
     state.overlay.add_toast(Toast::new(&gettext("Saved.")));
+    activate_widget_action(&state.nav, "win.back");
 }
 
 fn handle_password_save_result(
@@ -313,9 +310,9 @@ fn start_password_save_with_progress(
     save_context: PasswordSaveContext,
     fido2_recipient_count: usize,
 ) {
-    let (status_title, status_description) = password_save_status_copy(fido2_recipient_count);
+    let (status_title, status_description) = password_save_status_text(fido2_recipient_count);
     show_password_status_message(state, status_title, status_description);
-    state.save.set_sensitive(false);
+    set_password_save_buttons_sensitive(state, false);
 
     let store_root = save_context.pass_file.store_path().to_string();
     let label = save_context.pass_file.label();
@@ -345,28 +342,33 @@ fn start_password_save_with_progress(
             }
             show_password_status_message(
                 &state_for_progress,
-                "Saving item",
+                SAVE_STATUS_TITLE,
                 &password_save_progress_description(&progress),
             );
         },
         move |result| {
-            state_for_result.save.set_sensitive(true);
+            set_password_save_buttons_sensitive(&state_for_result, true);
             if !is_opened_pass_file(&state_for_result.nav, &pass_file_for_result) {
                 return;
             }
             handle_password_save_result(&state_for_result, &save_context, result);
         },
         move || {
-            state_for_disconnect.save.set_sensitive(true);
+            set_password_save_buttons_sensitive(&state_for_disconnect, true);
             if is_opened_pass_file(&state_for_disconnect.nav, &pass_file_for_disconnect) {
                 show_password_editor_fields(&state_for_disconnect);
             }
             log_error("Password save worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .overlay
-                .add_toast(Toast::new(&gettext("Couldn't save changes.")));
+                .add_toast(Toast::new(&gettext("Can't save changes.")));
         },
     );
+}
+
+fn set_password_save_buttons_sensitive(state: &PasswordPageState, sensitive: bool) {
+    state.save.set_sensitive(sensitive);
+    state.editor_save_button.set_sensitive(sensitive);
 }
 
 pub fn open_password_entry_page(
@@ -433,6 +435,7 @@ pub fn open_password_entry_page(
                     show_password_editor_fields(&state_for_result);
                     sync_editor_contents(&state_for_result, &output, updated_pass_file.as_ref());
                     sync_saved_password_state(&state_for_result, &output, true);
+                    focus_password_row(&state_for_result);
                 }
                 Err(err) => {
                     log_error(format!("Failed to open password entry: {err}"));
@@ -463,7 +466,8 @@ pub fn begin_new_password_entry(
     store_root: Option<String>,
     add_dialog: &Dialog,
 ) -> Result<(), &'static str> {
-    let path = path.trim();
+    let path = normalize_password_entry_label(path);
+    let path = path.as_str();
     if path.is_empty() {
         return Err("Enter a name.");
     }
@@ -489,6 +493,7 @@ pub fn begin_new_password_entry(
     add_dialog.force_close();
     sync_editor_contents(state, &template_contents, template_pass_file.as_ref());
     sync_saved_password_state(state, &template_contents, false);
+    focus_password_row(state);
     Ok(())
 }
 
@@ -500,7 +505,7 @@ pub fn show_raw_pass_file_page(state: &PasswordPageState) {
         || APP_WINDOW_TITLE.to_string(),
         |pass_file| pass_file.label(),
     );
-    show_password_editor_chrome(state, "Raw Pass File", &subtitle);
+    show_password_editor_chrome(state, "Raw text", &subtitle);
 
     push_navigation_page_if_needed(&state.nav, &state.raw_page);
 }
@@ -629,6 +634,53 @@ pub fn generate_password_entry(state: &PasswordPageState) {
     }
 }
 
+pub fn toggle_password_options(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.entry.is_visible() {
+        return;
+    }
+
+    state
+        .generator_settings_button
+        .set_active(!state.generator_settings_button.is_active());
+}
+
+pub fn copy_current_password(state: &PasswordPageState) {
+    let editing_structured = visible_navigation_page_is(&state.nav, &state.page);
+    let editing_raw = visible_navigation_page_is(&state.nav, &state.raw_page);
+    if (!editing_structured || !state.entry.is_visible()) && !editing_raw {
+        return;
+    }
+
+    let password = current_editor_contents(state)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    if set_clipboard_text(&password, &state.overlay, None) {
+        state.overlay.add_toast(Toast::new(&gettext("Copied.")));
+    }
+}
+
+pub fn copy_current_username(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.username.is_visible() {
+        return;
+    }
+
+    if set_clipboard_text(state.username.text().as_str(), &state.overlay, None) {
+        state.overlay.add_toast(Toast::new(&gettext("Copied.")));
+    }
+}
+
+pub fn copy_current_otp(state: &PasswordPageState) {
+    if !visible_navigation_page_is(&state.nav, &state.page) || !state.otp.row.is_visible() {
+        return;
+    }
+
+    if set_clipboard_text(state.otp.row.text().as_str(), &state.overlay, None) {
+        state.overlay.add_toast(Toast::new(&gettext("Copied.")));
+    }
+}
+
 fn save_current_password_entry_impl(state: &PasswordPageState, allow_git_unlock_prompt: bool) {
     let save_context = match prepare_password_save_context(state) {
         Ok(save_context) => save_context,
@@ -722,10 +774,12 @@ pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
 mod tests {
     use super::{
         password_open_failure_message, password_open_progress_description,
-        password_open_status_copy, password_save_failure_message,
-        password_save_progress_description, password_save_status_copy, password_unlock_status_copy,
+        password_open_status_text, password_save_failure_message,
+        password_save_progress_description, password_save_status_text, password_unlock_status_text,
         prepared_password_save_contents, should_retry_open_password_entry,
-        validate_password_save_contents, PasswordPageDisplay,
+        validate_password_save_contents, PasswordPageDisplay, CHECK_KEYS_ONE_BY_ONE,
+        OPEN_STATUS_TITLE, SAVE_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS, TOUCH_KEY_IF_IT_BLINKS,
+        UNLOCK_STATUS_TITLE, WAIT_A_MOMENT,
     };
     use crate::backend::{
         PasswordEntryError, PasswordEntryReadProgress, PasswordEntryWriteError,
@@ -760,13 +814,10 @@ mod tests {
 
     #[test]
     fn password_open_failure_message_falls_back_without_a_specific_error() {
-        assert_eq!(
-            password_open_failure_message(None),
-            "Couldn't open the item."
-        );
+        assert_eq!(password_open_failure_message(None), "Can't open this item.");
         assert_eq!(
             password_open_failure_message(Some(&PasswordEntryError::other("boom"))),
-            "Couldn't open the item."
+            "Can't open this item."
         );
     }
 
@@ -801,21 +852,18 @@ mod tests {
     }
 
     #[test]
-    fn password_save_status_copy_mentions_touch_for_fido2_saves() {
+    fn password_save_status_text_mentions_touch_for_fido2_saves() {
         assert_eq!(
-            password_save_status_copy(1),
-            (
-                "Saving item",
-                "Touch the security key if it starts blinking.",
-            )
+            password_save_status_text(1),
+            (SAVE_STATUS_TITLE, TOUCH_KEY_IF_IT_BLINKS)
         );
         assert_eq!(
-            password_save_status_copy(2),
-            ("Saving item", "Security keys will be checked one by one.",)
+            password_save_status_text(2),
+            (SAVE_STATUS_TITLE, CHECK_KEYS_ONE_BY_ONE,)
         );
         assert_eq!(
-            password_save_status_copy(0),
-            ("Saving item", "Please wait.")
+            password_save_status_text(0),
+            (SAVE_STATUS_TITLE, WAIT_A_MOMENT)
         );
     }
 
@@ -826,7 +874,7 @@ mod tests {
                 current_step: 2,
                 total_steps: 3,
             }),
-            "Step 2 of 3: touch the security key if it starts blinking."
+            "Step 2/3: touch your key if it blinks."
         );
     }
 
@@ -837,51 +885,39 @@ mod tests {
                 current_step: 1,
                 total_steps: 2,
             }),
-            "Step 1 of 2: touch the security key if it starts blinking."
+            "Step 1/2: touch your key if it blinks."
         );
     }
 
     #[test]
-    fn password_open_status_copy_mentions_touch_for_fido2_entries() {
+    fn password_open_status_text_mentions_touch_for_fido2_entries() {
         assert_eq!(
-            password_open_status_copy(2),
-            (
-                "Opening item",
-                "Touch each security key when it starts blinking.",
-            )
+            password_open_status_text(2),
+            (OPEN_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS,)
         );
         assert_eq!(
-            password_open_status_copy(1),
-            (
-                "Opening item",
-                "Touch the security key if it starts blinking.",
-            )
+            password_open_status_text(1),
+            (OPEN_STATUS_TITLE, TOUCH_KEY_IF_IT_BLINKS,)
         );
         assert_eq!(
-            password_open_status_copy(0),
-            ("Opening item", "Please wait.")
+            password_open_status_text(0),
+            (OPEN_STATUS_TITLE, WAIT_A_MOMENT)
         );
     }
 
     #[test]
-    fn password_unlock_status_copy_mentions_touch_for_fido2_entries() {
+    fn password_unlock_status_text_mentions_touch_for_fido2_entries() {
         assert_eq!(
-            password_unlock_status_copy(2),
-            (
-                "Unlock key",
-                "Touch each security key when it starts blinking."
-            )
+            password_unlock_status_text(2),
+            (UNLOCK_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS)
         );
         assert_eq!(
-            password_unlock_status_copy(1),
-            (
-                "Unlock key",
-                "Touch the security key if it starts blinking."
-            )
+            password_unlock_status_text(1),
+            (UNLOCK_STATUS_TITLE, TOUCH_KEY_IF_IT_BLINKS)
         );
         assert_eq!(
-            password_unlock_status_copy(0),
-            ("Unlock key", "Unlock your key to continue.")
+            password_unlock_status_text(0),
+            (UNLOCK_STATUS_TITLE, "Unlock your key to continue.")
         );
     }
 

@@ -1,14 +1,15 @@
 use crate::backend::{
-    list_ripasso_private_keys, ripasso_private_key_title, unlock_fido2_store_recipient_for_session,
-    unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey, PrivateKeyError,
-    PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
+    list_connected_smartcard_keys, list_ripasso_private_keys, ripasso_private_key_title,
+    set_fido2_security_key_pin, supports_first_time_fido2_pin_setup,
+    unlock_fido2_store_recipient_for_session, unlock_ripasso_private_key_for_session,
+    ManagedRipassoPrivateKey, PrivateKeyError, PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
 };
 use crate::fido2_recipient::{fido2_recipient_title, is_fido2_recipient_string};
 use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::private_key::dialog::{
-    build_private_key_progress_dialog, present_private_key_unlock_dialog_with_close_handler,
-    PrivateKeyDialogHandle,
+    build_private_key_progress_dialog, present_fido2_pin_setup_dialog_with_close_handler,
+    present_private_key_unlock_dialog_with_close_handler, PrivateKeyDialogHandle,
 };
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task_with_finalizer;
@@ -51,11 +52,23 @@ fn present_fido2_unlock_progress_dialog(
     ))
 }
 
+fn present_fido2_pin_setup_progress_dialog(
+    window: &ApplicationWindow,
+    subtitle: Option<&str>,
+) -> PrivateKeyDialogHandle {
+    PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
+        window,
+        "Set security key PIN",
+        subtitle,
+        private_key_unlock_progress_description(PrivateKeyUnlockKind::Fido2SecurityKey),
+    ))
+}
+
 const fn private_key_unlock_progress_description(kind: PrivateKeyUnlockKind) -> &'static str {
     match kind {
-        PrivateKeyUnlockKind::Fido2SecurityKey => "Touch the security key if it starts blinking.",
+        PrivateKeyUnlockKind::Fido2SecurityKey => "Touch your key if it blinks.",
         PrivateKeyUnlockKind::HardwareOpenPgpCard => "Unlock your key to continue.",
-        PrivateKeyUnlockKind::Password => "Please wait.",
+        PrivateKeyUnlockKind::Password => "Wait a moment.",
     }
 }
 
@@ -67,6 +80,33 @@ fn managed_fido2_unlock_enabled(kind: PrivateKeyUnlockKind) -> bool {
 #[cfg(not(feature = "fidokey"))]
 const fn managed_fido2_unlock_enabled(_kind: PrivateKeyUnlockKind) -> bool {
     false
+}
+
+fn prompt_fido2_pin_setup_dialog<F, G>(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    subtitle: Option<&str>,
+    on_submit: F,
+    on_close: G,
+) where
+    F: Fn(secrecy::SecretString) + 'static,
+    G: Fn() + 'static,
+{
+    present_fido2_pin_setup_dialog_with_close_handler(
+        window,
+        overlay,
+        "Set security key PIN",
+        subtitle,
+        on_submit,
+        on_close,
+    );
+}
+
+fn fido2_pin_from_request(request: &PrivateKeyUnlockRequest) -> Option<&str> {
+    match request {
+        PrivateKeyUnlockRequest::Fido2(pin) => pin.as_ref().map(|pin| pin.expose_secret()),
+        _ => None,
+    }
 }
 
 #[cfg(feature = "fidokey")]
@@ -119,8 +159,68 @@ fn handle_managed_fido2_unlock_retry(
     true
 }
 
+#[cfg(feature = "fidokey")]
+fn handle_managed_fido2_pin_setup_retry(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    fingerprint: &str,
+    allow_retry: bool,
+    after_unlock: &Rc<dyn Fn()>,
+    on_finish: &Rc<dyn Fn(bool)>,
+) -> bool {
+    if !allow_retry || !supports_first_time_fido2_pin_setup() {
+        return false;
+    }
+
+    let key_title = match ripasso_private_key_title(fingerprint) {
+        Ok(title) => Some(title),
+        Err(err) => {
+            log_error(format!(
+                "Failed to read private key title for '{fingerprint}': {err}"
+            ));
+            None
+        }
+    };
+    let overlay_for_submit = overlay.clone();
+    let fingerprint_for_submit = fingerprint.to_string();
+    let after_unlock_for_submit = after_unlock.clone();
+    let on_finish_for_submit = on_finish.clone();
+    let on_finish_for_close = on_finish.clone();
+    let window_for_dialog = window.clone();
+    let window_for_submit = window.clone();
+    prompt_fido2_pin_setup_dialog(
+        &window_for_dialog,
+        overlay,
+        key_title.as_deref(),
+        move |pin| {
+            start_private_key_fido2_pin_setup_for_action(
+                &window_for_submit,
+                &overlay_for_submit,
+                fingerprint_for_submit.clone(),
+                pin,
+                &after_unlock_for_submit,
+                &on_finish_for_submit,
+            );
+        },
+        move || on_finish_for_close(false),
+    );
+    true
+}
+
 #[cfg(not(feature = "fidokey"))]
 fn handle_managed_fido2_unlock_retry(
+    _window: &ApplicationWindow,
+    _overlay: &ToastOverlay,
+    _fingerprint: &str,
+    _allow_retry: bool,
+    _after_unlock: &Rc<dyn Fn()>,
+    _on_finish: &Rc<dyn Fn(bool)>,
+) -> bool {
+    false
+}
+
+#[cfg(not(feature = "fidokey"))]
+fn handle_managed_fido2_pin_setup_retry(
     _window: &ApplicationWindow,
     _overlay: &ToastOverlay,
     _fingerprint: &str,
@@ -137,18 +237,94 @@ fn private_key_unlock_kind(fingerprint: &str) -> PrivateKeyUnlockKind {
     }
 
     match list_ripasso_private_keys() {
-        Ok(keys) => keys
-            .into_iter()
-            .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
-            .map(|key| key.protection.into())
-            .unwrap_or(PrivateKeyUnlockKind::Password),
+        Ok(keys) => {
+            if let Some(kind) = keys
+                .into_iter()
+                .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+                .map(|key| key.protection.into())
+            {
+                return kind;
+            }
+        }
         Err(err) => {
             log_error(format!(
                 "Failed to read private key protection for '{fingerprint}': {err}"
             ));
+        }
+    }
+
+    match list_connected_smartcard_keys() {
+        Ok(keys) => keys
+            .into_iter()
+            .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+            .map(|_| PrivateKeyUnlockKind::HardwareOpenPgpCard)
+            .unwrap_or(PrivateKeyUnlockKind::Password),
+        Err(err) => {
+            log_error(format!(
+                "Failed to inspect connected smartcards for '{fingerprint}': {err}"
+            ));
             PrivateKeyUnlockKind::Password
         }
     }
+}
+
+#[cfg(feature = "fidokey")]
+fn start_private_key_fido2_pin_setup_for_action(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    fingerprint: String,
+    pin: secrecy::SecretString,
+    after_unlock: &Rc<dyn Fn()>,
+    on_finish: &Rc<dyn Fn(bool)>,
+) {
+    let key_title = match ripasso_private_key_title(&fingerprint) {
+        Ok(title) => Some(title),
+        Err(err) => {
+            log_error(format!(
+                "Failed to read private key title for '{fingerprint}': {err}"
+            ));
+            None
+        }
+    };
+    let overlay = overlay.clone();
+    let overlay_for_disconnect = overlay.clone();
+    let window_for_result = window.clone();
+    let after_unlock_for_result = after_unlock.clone();
+    let on_finish_for_result = on_finish.clone();
+    let on_finish_for_disconnect = on_finish.clone();
+    let fingerprint_for_worker = fingerprint.clone();
+    let progress_dialog = present_fido2_pin_setup_progress_dialog(window, key_title.as_deref());
+    glib::idle_add_local_once(move || {
+        spawn_result_task_with_finalizer(
+            move || {
+                set_fido2_security_key_pin(pin.expose_secret())?;
+                unlock_ripasso_private_key_for_session(
+                    &fingerprint_for_worker,
+                    PrivateKeyUnlockRequest::Fido2(Some(pin)),
+                )
+            },
+            move || progress_dialog.force_close(),
+            move |result: Result<ManagedRipassoPrivateKey, PrivateKeyError>| match result {
+                Ok(_) => {
+                    finish_unlock_success(
+                        &window_for_result,
+                        &after_unlock_for_result,
+                        &on_finish_for_result,
+                    );
+                }
+                Err(err) => {
+                    log_error(format!("Failed to set FIDO2 security key PIN: {err}"));
+                    overlay.add_toast(Toast::new(&gettext(err.unlock_message())));
+                    on_finish_for_result(false);
+                }
+            },
+            move || {
+                log_error("FIDO2 PIN setup worker disconnected unexpectedly.".to_string());
+                show_unlock_failure_toast(&overlay_for_disconnect);
+                on_finish_for_disconnect(false);
+            },
+        );
+    });
 }
 
 fn start_private_key_unlock_for_action(
@@ -178,7 +354,7 @@ fn start_private_key_unlock_for_action(
     let allow_fido2_retry = matches!(request, PrivateKeyUnlockRequest::Fido2(None));
     let fingerprint_for_worker = fingerprint.clone();
     let progress_dialog = present_fido2_unlock_progress_dialog(window, key_title.as_deref(), kind);
-    // Let GTK show the dialog before the hardware unlock flow starts.
+
     glib::idle_add_local_once(move || {
         spawn_result_task_with_finalizer(
             move || unlock_ripasso_private_key_for_session(&fingerprint_for_worker, request),
@@ -187,6 +363,16 @@ fn start_private_key_unlock_for_action(
                 Ok(_) => {
                     finish_unlock_success(&window_for_result, &after_unlock, &on_finish_for_result);
                 }
+                Err(err)
+                    if err.is_fido2_pin_not_set()
+                        && handle_managed_fido2_pin_setup_retry(
+                            &window_for_result,
+                            &overlay,
+                            &fingerprint,
+                            allow_fido2_retry,
+                            &after_unlock,
+                            &on_finish_for_result,
+                        ) => {}
                 Err(err)
                     if (err.is_fido2_pin_required() || err.is_fido2_token_not_present())
                         && handle_managed_fido2_unlock_retry(
@@ -205,6 +391,56 @@ fn start_private_key_unlock_for_action(
             },
             move || {
                 log_error("Private key unlock worker disconnected unexpectedly.".to_string());
+                show_unlock_failure_toast(&overlay_for_disconnect);
+                on_finish_for_disconnect(false);
+            },
+        );
+    });
+}
+
+fn start_fido2_recipient_pin_setup_for_action(
+    window: &ApplicationWindow,
+    overlay: &ToastOverlay,
+    recipient: String,
+    pin: secrecy::SecretString,
+    after_unlock: &Rc<dyn Fn()>,
+    on_finish: &Rc<dyn Fn(bool)>,
+) {
+    let key_title = fido2_recipient_title(&recipient);
+    let overlay = overlay.clone();
+    let overlay_for_disconnect = overlay.clone();
+    let window_for_result = window.clone();
+    let after_unlock_for_result = after_unlock.clone();
+    let on_finish_for_result = on_finish.clone();
+    let on_finish_for_disconnect = on_finish.clone();
+    let recipient_for_worker = recipient.clone();
+    let progress_dialog = present_fido2_pin_setup_progress_dialog(window, key_title.as_deref());
+    glib::idle_add_local_once(move || {
+        spawn_result_task_with_finalizer(
+            move || {
+                set_fido2_security_key_pin(pin.expose_secret())?;
+                unlock_fido2_store_recipient_for_session(
+                    &recipient_for_worker,
+                    Some(pin.expose_secret()),
+                )
+            },
+            move || progress_dialog.force_close(),
+            move |result: Result<(), PrivateKeyError>| match result {
+                Ok(()) => {
+                    finish_unlock_success(
+                        &window_for_result,
+                        &after_unlock_for_result,
+                        &on_finish_for_result,
+                    );
+                }
+                Err(err) => {
+                    log_error(format!("Failed to set FIDO2 security key PIN: {err}"));
+                    overlay.add_toast(Toast::new(&gettext(err.unlock_message())));
+                    on_finish_for_result(false);
+                }
+            },
+            move || {
+                log_error("FIDO2 PIN setup worker disconnected unexpectedly.".to_string());
                 show_unlock_failure_toast(&overlay_for_disconnect);
                 on_finish_for_disconnect(false);
             },
@@ -238,13 +474,10 @@ fn start_fido2_recipient_unlock_for_action(
     glib::idle_add_local_once(move || {
         spawn_result_task_with_finalizer(
             move || {
-                let pin = match &request {
-                    PrivateKeyUnlockRequest::Fido2(pin) => {
-                        pin.as_ref().map(|pin| pin.expose_secret())
-                    }
-                    _ => None,
-                };
-                unlock_fido2_store_recipient_for_session(&recipient, pin)
+                unlock_fido2_store_recipient_for_session(
+                    &recipient,
+                    fido2_pin_from_request(&request),
+                )
             },
             move || progress_dialog.force_close(),
             move |result: Result<(), PrivateKeyError>| match result {
@@ -253,6 +486,35 @@ fn start_fido2_recipient_unlock_for_action(
                         &window_for_retry,
                         &after_unlock_for_result,
                         &on_finish_for_result,
+                    );
+                }
+                Err(err)
+                    if err.is_fido2_pin_not_set()
+                        && allow_pin_retry
+                        && supports_first_time_fido2_pin_setup() =>
+                {
+                    let key_title = fido2_recipient_title(&recipient_for_result);
+                    let overlay_for_submit = overlay.clone();
+                    let recipient_for_submit = recipient_for_result.clone();
+                    let after_unlock_for_submit = after_unlock_for_result.clone();
+                    let on_finish_for_close = on_finish_for_result.clone();
+                    let window_for_dialog = window_for_retry.clone();
+                    let window_for_submit = window_for_retry.clone();
+                    prompt_fido2_pin_setup_dialog(
+                        &window_for_dialog,
+                        &overlay,
+                        key_title.as_deref(),
+                        move |pin| {
+                            start_fido2_recipient_pin_setup_for_action(
+                                &window_for_submit,
+                                &overlay_for_submit,
+                                recipient_for_submit.clone(),
+                                pin,
+                                &after_unlock_for_submit,
+                                &on_finish_for_result,
+                            );
+                        },
+                        move || on_finish_for_close(false),
                     );
                 }
                 Err(err) if err.is_fido2_pin_required() && allow_pin_retry => {
@@ -381,7 +643,7 @@ mod tests {
     fn unlock_progress_copy_is_fido_specific_only_for_fido_keys() {
         assert_eq!(
             private_key_unlock_progress_description(PrivateKeyUnlockKind::Fido2SecurityKey),
-            "Touch the security key if it starts blinking."
+            "Touch your key if it blinks."
         );
         assert_eq!(
             private_key_unlock_progress_description(PrivateKeyUnlockKind::HardwareOpenPgpCard),
@@ -389,7 +651,7 @@ mod tests {
         );
         assert_eq!(
             private_key_unlock_progress_description(PrivateKeyUnlockKind::Password),
-            "Please wait."
+            "Wait a moment."
         );
     }
 }

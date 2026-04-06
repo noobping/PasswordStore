@@ -123,6 +123,23 @@ enum VisibleContextPage {
     Other,
 }
 
+fn visible_context_page(
+    navigation: &WindowNavigationState,
+    recipients_page: &NavigationPage,
+) -> VisibleContextPage {
+    if visible_navigation_page_is(&navigation.nav, &navigation.password_page)
+        || visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page)
+    {
+        VisibleContextPage::Password
+    } else if visible_navigation_page_is(&navigation.nav, recipients_page) {
+        VisibleContextPage::StoreRecipients
+    } else if navigation_stack_is_root(&navigation.nav) {
+        VisibleContextPage::Root
+    } else {
+        VisibleContextPage::Other
+    }
+}
+
 const fn context_save_target_from_page(
     page: VisibleContextPage,
     has_host_permission: bool,
@@ -139,19 +156,10 @@ fn context_save_target(
     navigation: &WindowNavigationState,
     recipients_page: &NavigationPage,
 ) -> ContextSaveTarget {
-    let page = if visible_navigation_page_is(&navigation.nav, &navigation.text_page)
-        || visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page)
-    {
-        VisibleContextPage::Password
-    } else if visible_navigation_page_is(&navigation.nav, recipients_page) {
-        VisibleContextPage::StoreRecipients
-    } else if navigation_stack_is_root(&navigation.nav) {
-        VisibleContextPage::Root
-    } else {
-        VisibleContextPage::Other
-    };
-
-    context_save_target_from_page(page, has_host_permission())
+    context_save_target_from_page(
+        visible_context_page(navigation, recipients_page),
+        has_host_permission(),
+    )
 }
 
 const fn context_reload_target_from_page(page: VisibleContextPage) -> ContextReloadTarget {
@@ -166,19 +174,7 @@ fn context_reload_target(
     navigation: &WindowNavigationState,
     recipients_page: &NavigationPage,
 ) -> ContextReloadTarget {
-    let page = if visible_navigation_page_is(&navigation.nav, recipients_page) {
-        VisibleContextPage::StoreRecipients
-    } else if navigation_stack_is_root(&navigation.nav) {
-        VisibleContextPage::Root
-    } else if visible_navigation_page_is(&navigation.nav, &navigation.text_page)
-        || visible_navigation_page_is(&navigation.nav, &navigation.raw_text_page)
-    {
-        VisibleContextPage::Password
-    } else {
-        VisibleContextPage::Other
-    };
-
-    context_reload_target_from_page(page)
+    context_reload_target_from_page(visible_context_page(navigation, recipients_page))
 }
 
 fn configure_platform_shortcuts(app: &Application) {
@@ -270,12 +266,10 @@ fn reload_password_list(
 pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextUndoActionState) {
     let state = state.clone();
     register_window_action(window, "context-undo", move || {
-        let editing_password =
-            visible_navigation_page_is(&state.navigation.nav, &state.navigation.text_page)
-                || visible_navigation_page_is(
-                    &state.navigation.nav,
-                    &state.navigation.raw_text_page,
-                );
+        let editing_password = matches!(
+            visible_context_page(&state.navigation, &state.recipients_page.page),
+            VisibleContextPage::Password
+        );
         if editing_password && password_page_has_unsaved_changes(&state.password_page) {
             let _ = revert_unsaved_password_changes(&state.password_page);
             return;
@@ -341,7 +335,7 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
                 state_for_disconnect
                     .password_page
                     .overlay
-                    .add_toast(adw::Toast::new(&gettext("Couldn't undo the last change.")));
+                    .add_toast(adw::Toast::new(&gettext("Can't undo the last change.")));
             },
         );
     });
@@ -448,9 +442,15 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-new-password", &["<primary>n"]);
     app.set_accels_for_action("win.open-store-picker", &["<primary><shift>n"]);
     app.set_accels_for_action("win.open-raw-pass-file", &["<primary><shift>r"]);
+    app.set_accels_for_action("win.copy-password", &["<primary><shift>c"]);
+    app.set_accels_for_action("win.copy-username", &["<primary><shift>u"]);
+    app.set_accels_for_action("win.copy-otp", &["<primary><shift>t"]);
+    app.set_accels_for_action("win.apply-pass-template", &["<primary><shift>a"]);
+    app.set_accels_for_action("win.add-pass-field", &["<primary><shift>f"]);
     app.set_accels_for_action("win.add-otp-secret", &["<primary><shift>o"]);
     app.set_accels_for_action("win.clean-pass-file", &["<primary><shift>k"]);
     app.set_accels_for_action("win.generate-password", &["<primary><shift>g"]);
+    app.set_accels_for_action("win.toggle-password-options", &["<primary><shift>p"]);
     app.set_accels_for_action("win.open-git", &["<primary>g"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>comma"]);
     app.set_accels_for_action("win.open-tools", &["<primary>t"]);

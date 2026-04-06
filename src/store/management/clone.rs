@@ -7,7 +7,10 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::support::background::spawn_result_task;
 use crate::support::runtime::supports_host_command_features;
-use crate::support::ui::{append_action_row_with_button, dialog_content_shell, dim_label_icon};
+use crate::support::ui::{
+    append_action_row_with_button, connect_entry_row_apply_button_to_nonempty_text,
+    dialog_content_shell, dim_label_icon,
+};
 use crate::window::clone_store_repository;
 use adw::gtk::{Align, Box as GtkBox, Label, ListBox, Orientation};
 use adw::prelude::*;
@@ -22,7 +25,7 @@ fn build_clone_progress_dialog(window: &ApplicationWindow, store: &str) -> Dialo
         window,
         "Restoring password store",
         Some(store),
-        "Please wait.",
+        "Wait a moment.",
     )
 }
 
@@ -37,6 +40,7 @@ where
     let url_row = EntryRow::new();
     url_row.set_title(&gettext("Repository URL"));
     url_row.set_show_apply_button(true);
+    connect_entry_row_apply_button_to_nonempty_text(&url_row);
 
     let group = PreferencesGroup::builder().build();
     group.add(&url_row);
@@ -107,7 +111,7 @@ where
     let picker_overlay = overlay.clone();
     open_store_folder_picker(
         &picker_window,
-        "Choose password store folder to restore",
+        "Choose store folder to restore",
         "Select",
         true,
         &picker_overlay,

@@ -4,11 +4,14 @@ use super::mode::{
     StoreRecipientsSelectionMode,
 };
 use super::sync::{sync_private_keys_from_host_if_enabled, sync_private_keys_to_host_if_enabled};
-use super::{queue_store_recipients_autosave, StoreRecipientsPageState};
+use super::{
+    load_store_recipients_scope, queue_store_recipients_autosave, StoreRecipientsPageState,
+};
 use crate::backend::{
-    is_ripasso_private_key_unlocked, list_ripasso_private_keys, remove_ripasso_private_key,
-    ripasso_private_key_requires_session_unlock, ManagedRipassoPrivateKey,
-    ManagedRipassoPrivateKeyProtection, StoreRecipientsPrivateKeyRequirement,
+    is_ripasso_private_key_unlocked, list_connected_smartcard_keys, list_ripasso_private_keys,
+    remove_ripasso_private_key, ripasso_private_key_requires_session_unlock, ConnectedSmartcardKey,
+    ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection,
+    StoreRecipientsPrivateKeyRequirement,
 };
 #[cfg(target_os = "linux")]
 use crate::backend::{list_host_gpg_private_keys, HostGpgPrivateKeySummary};
@@ -22,11 +25,13 @@ use crate::logging::log_error;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
 use crate::store::git_page::rebuild_store_recipients_git_row;
+use crate::store::recipients::{relevant_store_recipient_scopes, ROOT_STORE_RECIPIENTS_SCOPE};
 use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
     add_persistent_hide_button, append_info_row, clear_list_box, dim_label_icon,
     flat_icon_button_with_tooltip,
 };
+use adw::gtk::StringList;
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
 use std::collections::HashSet;
@@ -58,6 +63,7 @@ fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, String>
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum AvailablePrivateKey {
     Managed(ManagedRipassoPrivateKey),
+    ConnectedSmartcard(ConnectedSmartcardKey),
     HostOnly(HostGpgPrivateKeySummary),
 }
 
@@ -69,6 +75,9 @@ enum PrivateKeyVerificationWarning {
 
 const HOST_GPG_WARNING_NOTICE_ID: &str = "store-recipients-host-gpg-warning";
 const ALL_FIDO2_KEYS_REQUIRED_NOTICE_ID: &str = "store-recipients-all-fido2-keys-required";
+const STORE_RECIPIENTS_KEYS_GROUP_TITLE: &str = "Keys for this store";
+const STORE_RECIPIENTS_KEYS_GROUP_DESCRIPTION: &str =
+    "Select the private keys that can unlock passwords in this store.";
 
 impl PrivateKeyVerificationWarning {
     const fn title(self) -> &'static str {
@@ -92,6 +101,7 @@ impl AvailablePrivateKey {
     fn fingerprint(&self) -> &str {
         match self {
             Self::Managed(key) => &key.fingerprint,
+            Self::ConnectedSmartcard(key) => &key.fingerprint,
             Self::HostOnly(key) => &key.fingerprint,
         }
     }
@@ -99,6 +109,7 @@ impl AvailablePrivateKey {
     fn user_ids(&self) -> &[String] {
         match self {
             Self::Managed(key) => &key.user_ids,
+            Self::ConnectedSmartcard(key) => &key.user_ids,
             Self::HostOnly(key) => &key.user_ids,
         }
     }
@@ -106,6 +117,7 @@ impl AvailablePrivateKey {
     fn title(&self) -> String {
         match self {
             Self::Managed(key) => key.title(),
+            Self::ConnectedSmartcard(key) => key.title(),
             Self::HostOnly(key) => key.title(),
         }
     }
@@ -228,6 +240,10 @@ fn selected_available_private_key_count(
 fn private_key_is_currently_usable(key: &AvailablePrivateKey) -> bool {
     match key {
         AvailablePrivateKey::Managed(key) => {
+            let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
+            unlocked || !requires_unlock
+        }
+        AvailablePrivateKey::ConnectedSmartcard(key) => {
             let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
             unlocked || !requires_unlock
         }
@@ -379,6 +395,106 @@ fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipien
     }
 }
 
+fn available_recipient_scopes(state: &StoreRecipientsPageState) -> Vec<String> {
+    let Some(request) = state.current_request() else {
+        return vec![ROOT_STORE_RECIPIENTS_SCOPE.to_string()];
+    };
+    if !Preferences::new().uses_integrated_backend() {
+        return vec![ROOT_STORE_RECIPIENTS_SCOPE.to_string()];
+    }
+
+    let scopes = relevant_store_recipient_scopes(&request.store);
+    if scopes.is_empty() {
+        vec![ROOT_STORE_RECIPIENTS_SCOPE.to_string()]
+    } else {
+        scopes
+    }
+}
+
+fn show_recipient_scope_selector(scopes: &[String]) -> bool {
+    scopes.len() > 1
+}
+
+fn recipient_scope_label(scope: &str) -> String {
+    if scope == ROOT_STORE_RECIPIENTS_SCOPE {
+        gettext("Default")
+    } else {
+        scope.to_string()
+    }
+}
+
+fn scope_row_model(scopes: &[String]) -> StringList {
+    let labels = scopes
+        .iter()
+        .map(|scope| recipient_scope_label(scope))
+        .collect::<Vec<_>>();
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    StringList::new(&label_refs)
+}
+
+fn sync_recipient_group_headers(state: &StoreRecipientsPageState, show_scope_selector: bool) {
+    state.platform.scope_group.set_visible(show_scope_selector);
+    if show_scope_selector {
+        state.platform.keys_group.set_title("");
+        state.platform.keys_group.set_description(None);
+    } else {
+        state
+            .platform
+            .keys_group
+            .set_title(&gettext(STORE_RECIPIENTS_KEYS_GROUP_TITLE));
+        state
+            .platform
+            .keys_group
+            .set_description(Some(&gettext(STORE_RECIPIENTS_KEYS_GROUP_DESCRIPTION)));
+    }
+}
+
+fn sync_recipient_scope_row(state: &StoreRecipientsPageState) {
+    let scopes = available_recipient_scopes(state);
+    let current_scope = state.current_recipient_scope();
+    let selected_scope = if scopes.iter().any(|scope| scope == &current_scope) {
+        current_scope
+    } else {
+        scopes
+            .first()
+            .cloned()
+            .unwrap_or_else(|| ROOT_STORE_RECIPIENTS_SCOPE.to_string())
+    };
+    let show_scope_selector = show_recipient_scope_selector(&scopes);
+    let scopes_changed = *state.recipient_scope_dirs.borrow() != scopes;
+
+    if scopes_changed {
+        *state.recipient_scope_dirs.borrow_mut() = scopes.clone();
+        let model = scope_row_model(&scopes);
+        state.platform.scope_row.set_model(Some(&model));
+    }
+    sync_recipient_group_headers(state, show_scope_selector);
+    state.platform.scope_list.set_visible(show_scope_selector);
+    state.platform.scope_row.set_visible(show_scope_selector);
+    state
+        .platform
+        .scope_row
+        .set_sensitive(show_scope_selector && !state.save_in_flight.get());
+
+    let selected_position = scopes
+        .iter()
+        .position(|scope| scope == &selected_scope)
+        .unwrap_or(0);
+    if state.platform.scope_row.selected() != selected_position as u32 {
+        state
+            .platform
+            .scope_row
+            .set_selected(selected_position as u32);
+    }
+
+    if selected_scope != state.current_recipient_scope() {
+        let Some(request) = state.current_request() else {
+            return;
+        };
+        load_store_recipients_scope(state, &request.store, &selected_scope);
+    }
+}
+
 fn show_require_all_private_keys_option(
     selection_mode: StoreRecipientsSelectionMode,
     has_keys: bool,
@@ -393,8 +509,8 @@ fn show_all_fido2_keys_required_info(
     matches!(selection_mode, StoreRecipientsSelectionMode::Fido2Only) && selected_fido2_keys > 1
 }
 
-fn show_store_options_title_above_git_row(show_require_all: bool, show_git: bool) -> bool {
-    show_git && !show_require_all
+fn show_store_options_title_above_git_row(show_options_group: bool, show_git: bool) -> bool {
+    show_git && !show_options_group
 }
 
 fn sync_private_key_requirement_row(
@@ -565,6 +681,31 @@ pub(super) fn connect_private_key_requirement_control(state: &StoreRecipientsPag
     });
 }
 
+pub(super) fn connect_recipient_scope_control(state: &StoreRecipientsPageState) {
+    let row = state.platform.scope_row.clone();
+    let page_state = state.clone();
+    row.connect_selected_notify(move |row| {
+        if page_state.save_in_flight.get() {
+            super::rebuild_store_recipients_list(&page_state);
+            return;
+        }
+
+        let Some(request) = page_state.current_request() else {
+            return;
+        };
+        let scopes = page_state.recipient_scope_dirs.borrow().clone();
+        let Some(scope) = scopes.get(row.selected() as usize).cloned() else {
+            return;
+        };
+        if scope == page_state.current_recipient_scope() {
+            return;
+        }
+
+        load_store_recipients_scope(&page_state, &request.store, &scope);
+        super::rebuild_store_recipients_list(&page_state);
+    });
+}
+
 pub(super) fn connect_dismissible_notice_controls(state: &StoreRecipientsPageState) {
     let host_warning_group = state.platform.host_gpg_warning_group.clone();
     add_persistent_hide_button(
@@ -583,6 +724,7 @@ pub(super) fn connect_dismissible_notice_controls(state: &StoreRecipientsPageSta
 
 fn merge_available_private_keys(
     managed_keys: Vec<ManagedRipassoPrivateKey>,
+    connected_smartcards: Vec<ConnectedSmartcardKey>,
     host_keys: Vec<HostGpgPrivateKeySummary>,
 ) -> Vec<AvailablePrivateKey> {
     let mut seen_fingerprints: HashSet<String> = managed_keys
@@ -593,6 +735,12 @@ fn merge_available_private_keys(
         .into_iter()
         .map(AvailablePrivateKey::Managed)
         .collect();
+
+    for key in connected_smartcards {
+        if seen_fingerprints.insert(key.fingerprint.to_ascii_lowercase()) {
+            keys.push(AvailablePrivateKey::ConnectedSmartcard(key));
+        }
+    }
 
     for key in host_keys {
         if seen_fingerprints.insert(key.fingerprint.to_ascii_lowercase()) {
@@ -629,30 +777,28 @@ fn private_key_verification_warning(
 
 fn load_available_private_keys(
     managed_keys: Vec<ManagedRipassoPrivateKey>,
+    connected_smartcards: Vec<ConnectedSmartcardKey>,
     uses_host_backend: bool,
 ) -> (Vec<AvailablePrivateKey>, bool) {
     if !uses_host_backend {
         return (
-            managed_keys
-                .into_iter()
-                .map(AvailablePrivateKey::Managed)
-                .collect(),
+            merge_available_private_keys(managed_keys, connected_smartcards, Vec::new()),
             false,
         );
     }
 
     let host_keys = list_host_gpg_private_keys();
     match host_keys {
-        Ok(host_keys) => (merge_available_private_keys(managed_keys, host_keys), false),
+        Ok(host_keys) => (
+            merge_available_private_keys(managed_keys, connected_smartcards, host_keys),
+            false,
+        ),
         Err(err) => {
             log_error(format!(
                 "Failed to inspect host GPG private keys for recipients: {err}"
             ));
             (
-                managed_keys
-                    .into_iter()
-                    .map(AvailablePrivateKey::Managed)
-                    .collect(),
+                merge_available_private_keys(managed_keys, connected_smartcards, Vec::new()),
                 true,
             )
         }
@@ -675,6 +821,9 @@ fn show_available_private_key_choice(
                 show_standard_private_key_choice(selection_mode, active)
             }
         },
+        AvailablePrivateKey::ConnectedSmartcard(_) => {
+            show_standard_private_key_choice(selection_mode, active)
+        }
         AvailablePrivateKey::HostOnly(_) => {
             show_standard_private_key_choice(selection_mode, active)
         }
@@ -686,6 +835,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     rebuild_store_recipients_git_row(state);
     sync_private_key_verification_warning(state, StoreRecipientsSelectionMode::Empty, None);
     let _ = sync_private_keys_from_host_if_enabled(state);
+    sync_recipient_scope_row(state);
     let current_recipients = state.recipients.borrow().clone();
 
     let preferences = Preferences::new();
@@ -710,8 +860,21 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     };
 
     let managed_key_count = managed_keys.len();
+    let connected_smartcards = if uses_integrated_backend {
+        match list_connected_smartcard_keys() {
+            Ok(keys) => keys,
+            Err(err) => {
+                log_error(format!(
+                    "Failed to inspect connected smartcards for recipients: {err}"
+                ));
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
     let (keys, host_key_inspection_failed) =
-        load_available_private_keys(managed_keys, uses_host_backend);
+        load_available_private_keys(managed_keys, connected_smartcards, uses_host_backend);
     let fido2_recipients = selected_fido2_recipients(&current_recipients, &keys);
     let selected_fido2_keys = selected_fido2_key_count(&current_recipients);
     let unresolved_recipients = unresolved_private_key_recipients(&current_recipients, &keys);
@@ -773,6 +936,12 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
         match key {
             AvailablePrivateKey::Managed(key) => append_managed_private_key_row(
+                state,
+                &key,
+                selected_available_keys,
+                selected_usable_keys,
+            ),
+            AvailablePrivateKey::ConnectedSmartcard(key) => append_connected_smartcard_row(
                 state,
                 &key,
                 selected_available_keys,
@@ -897,7 +1066,7 @@ fn append_managed_private_key_row(
     };
     let (row, toggle) =
         append_private_key_row_shell(&key.title(), &subtitle, active, toggle_blocked_message);
-    append_private_key_status_suffixes(state, key, &row, unlocked, requires_unlock);
+    append_private_key_unlock_suffix(state, &key.fingerprint, &row, unlocked, requires_unlock);
 
     let copy_button = flat_icon_button_with_tooltip(
         "edit-copy-symbolic",
@@ -979,9 +1148,9 @@ fn append_host_private_key_row(
     });
 }
 
-fn append_private_key_status_suffixes(
+fn append_private_key_unlock_suffix(
     state: &StoreRecipientsPageState,
-    key: &ManagedRipassoPrivateKey,
+    fingerprint: &str,
     row: &ActionRow,
     unlocked: bool,
     requires_unlock: bool,
@@ -994,7 +1163,7 @@ fn append_private_key_status_suffixes(
         let unlock_button = flat_icon_button_with_tooltip("changes-prevent-symbolic", "Unlock key");
         row.add_suffix(&unlock_button);
         let state = state.clone();
-        let fingerprint = key.fingerprint.clone();
+        let fingerprint = fingerprint.to_string();
         let finish_button = unlock_button.clone();
         unlock_button.connect_clicked(move |_| {
             finish_button.set_sensitive(false);
@@ -1020,6 +1189,23 @@ fn append_private_key_status_suffixes(
                 on_finish,
             );
         });
+    }
+}
+
+fn connected_smartcard_subtitle(key: &ConnectedSmartcardKey) -> String {
+    let detail = key
+        .hardware
+        .reader_hint
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| key.hardware.ident.clone());
+    if detail.trim().is_empty() {
+        gettext("{fingerprint} - Security token").replace("{fingerprint}", &key.fingerprint)
+    } else {
+        gettext("{fingerprint} - Security token ({detail})")
+            .replace("{fingerprint}", &key.fingerprint)
+            .replace("{detail}", &detail)
     }
 }
 
@@ -1077,18 +1263,82 @@ fn connect_managed_private_key_row_actions(
     });
 }
 
+fn append_connected_smartcard_row(
+    state: &StoreRecipientsPageState,
+    key: &ConnectedSmartcardKey,
+    selected_available_keys: usize,
+    selected_usable_keys: usize,
+) {
+    let active = state
+        .recipients
+        .borrow()
+        .iter()
+        .any(|recipient| recipient_matches_parts(recipient, &key.fingerprint, &key.user_ids));
+    let (unlocked, requires_unlock) = inspect_private_key_lock_state(&key.fingerprint);
+    let toggle_blocked_message = private_key_toggle_block_message(
+        active,
+        unlocked || !requires_unlock,
+        matches!(
+            state.private_key_requirement.get(),
+            StoreRecipientsPrivateKeyRequirement::AllManagedKeys
+        ),
+        selected_available_keys,
+        selected_usable_keys,
+    );
+    let (row, toggle) = append_private_key_row_shell(
+        &key.title(),
+        &connected_smartcard_subtitle(key),
+        active,
+        toggle_blocked_message,
+    );
+    append_private_key_unlock_suffix(state, &key.fingerprint, &row, unlocked, requires_unlock);
+
+    let copy_button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy fingerprint");
+    row.add_suffix(&copy_button);
+    state.list.append(&row);
+
+    let state_for_toggle = state.clone();
+    let fingerprint_for_toggle = key.fingerprint.clone();
+    let user_ids_for_toggle = key.user_ids.clone();
+    toggle.connect_toggled(move |button| {
+        if set_private_key_recipient_enabled(
+            &state_for_toggle,
+            &fingerprint_for_toggle,
+            &user_ids_for_toggle,
+            button.is_active(),
+        ) {
+            super::rebuild_store_recipients_list(&state_for_toggle);
+            queue_store_recipients_autosave(&state_for_toggle);
+        }
+    });
+
+    let overlay = state.platform.overlay.clone();
+    let fingerprint_for_copy = key.fingerprint.clone();
+    let copy_button_for_click = copy_button.clone();
+    copy_button.connect_clicked(move |_| {
+        let _ = set_clipboard_text(
+            &fingerprint_for_copy,
+            &overlay,
+            Some(&copy_button_for_click),
+        );
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         effective_private_key_verification_warning, fido2_recipient_remove_block_message,
         merge_available_private_keys, private_key_delete_block_message,
-        private_key_toggle_block_message, private_key_verification_warning,
+        private_key_toggle_block_message, private_key_verification_warning, recipient_scope_label,
         selected_available_private_key_count, show_all_fido2_keys_required_info,
-        show_require_all_private_keys_option, show_store_options_title_above_git_row,
-        unresolved_private_key_recipients, AvailablePrivateKey, HostGpgPrivateKeySummary,
-        PrivateKeyVerificationWarning,
+        show_recipient_scope_selector, show_require_all_private_keys_option,
+        show_store_options_title_above_git_row, unresolved_private_key_recipients,
+        AvailablePrivateKey, HostGpgPrivateKeySummary, PrivateKeyVerificationWarning,
     };
-    use crate::backend::{ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection};
+    use crate::backend::{
+        ConnectedSmartcardKey, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
+        ManagedRipassoPrivateKeyProtection,
+    };
     use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
     use crate::store::recipients_page::mode::StoreRecipientsSelectionMode;
 
@@ -1109,8 +1359,19 @@ mod tests {
             protection: ManagedRipassoPrivateKeyProtection::Password,
             hardware: None,
         };
+        let connected = ConnectedSmartcardKey {
+            fingerprint: managed.fingerprint.clone(),
+            user_ids: vec!["Connected User <token@example.com>".to_string()],
+            hardware: ManagedRipassoHardwareKey {
+                ident: "token-a".to_string(),
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+                reader_hint: Some("Reader A".to_string()),
+            },
+        };
         let merged = merge_available_private_keys(
             vec![managed.clone()],
+            vec![connected],
             vec![
                 HostGpgPrivateKeySummary {
                     fingerprint: managed.fingerprint.clone(),
@@ -1136,6 +1397,33 @@ mod tests {
     }
 
     #[test]
+    fn merged_private_keys_include_connected_smartcards_before_host_only_keys() {
+        let connected = ConnectedSmartcardKey {
+            fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+            user_ids: vec!["Token User <token@example.com>".to_string()],
+            hardware: ManagedRipassoHardwareKey {
+                ident: "token-a".to_string(),
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+                reader_hint: Some("Reader A".to_string()),
+            },
+        };
+        let merged = merge_available_private_keys(
+            Vec::new(),
+            vec![connected.clone()],
+            vec![HostGpgPrivateKeySummary {
+                fingerprint: connected.fingerprint.clone(),
+                user_ids: vec!["Host Duplicate <host@example.com>".to_string()],
+            }],
+        );
+
+        assert_eq!(
+            merged,
+            vec![AvailablePrivateKey::ConnectedSmartcard(connected)]
+        );
+    }
+
+    #[test]
     fn unresolved_recipients_consider_host_only_keys() {
         let unresolved = unresolved_private_key_recipients(
             &[
@@ -1146,6 +1434,30 @@ mod tests {
                 fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
                 user_ids: vec!["Host User <host@example.com>".to_string()],
             })],
+        );
+
+        assert_eq!(unresolved, vec!["missing@example.com".to_string()]);
+    }
+
+    #[test]
+    fn unresolved_recipients_consider_connected_smartcards() {
+        let unresolved = unresolved_private_key_recipients(
+            &[
+                "Token User <token@example.com>".to_string(),
+                "missing@example.com".to_string(),
+            ],
+            &[AvailablePrivateKey::ConnectedSmartcard(
+                ConnectedSmartcardKey {
+                    fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                    user_ids: vec!["Token User <token@example.com>".to_string()],
+                    hardware: ManagedRipassoHardwareKey {
+                        ident: "token-a".to_string(),
+                        signing_fingerprint: None,
+                        decryption_fingerprint: None,
+                        reader_hint: Some("Reader A".to_string()),
+                    },
+                },
+            )],
         );
 
         assert_eq!(unresolved, vec!["missing@example.com".to_string()]);
@@ -1230,6 +1542,21 @@ mod tests {
     }
 
     #[test]
+    fn recipient_scope_selector_only_shows_for_multiple_relevant_scopes() {
+        assert!(!show_recipient_scope_selector(&[".".to_string()]));
+        assert!(show_recipient_scope_selector(&[
+            ".".to_string(),
+            "team".to_string()
+        ]));
+    }
+
+    #[test]
+    fn root_recipient_scope_uses_default_label() {
+        assert_eq!(recipient_scope_label("."), "Default".to_string());
+        assert_eq!(recipient_scope_label("team"), "team".to_string());
+    }
+
+    #[test]
     fn selected_available_private_key_count_only_tracks_matching_keys() {
         let keys = vec![
             AvailablePrivateKey::Managed(ManagedRipassoPrivateKey {
@@ -1255,6 +1582,29 @@ mod tests {
                 true,
             ),
             2
+        );
+    }
+
+    #[test]
+    fn selected_available_private_key_count_treats_connected_smartcards_as_standard_keys() {
+        assert_eq!(
+            selected_available_private_key_count(
+                &["Token User <token@example.com>".to_string()],
+                &[AvailablePrivateKey::ConnectedSmartcard(
+                    ConnectedSmartcardKey {
+                        fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+                        user_ids: vec!["Token User <token@example.com>".to_string()],
+                        hardware: ManagedRipassoHardwareKey {
+                            ident: "token-a".to_string(),
+                            signing_fingerprint: None,
+                            decryption_fingerprint: None,
+                            reader_hint: Some("Reader A".to_string()),
+                        },
+                    }
+                )],
+                true,
+            ),
+            1
         );
     }
 

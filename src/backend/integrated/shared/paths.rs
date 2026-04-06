@@ -8,6 +8,19 @@ use crate::password::entry_files::{
 };
 use crate::support::secure_fs::write_atomic_file;
 
+pub(super) fn validated_relative_directory_path(relative_dir: &str) -> Result<PathBuf, String> {
+    let mut relative = PathBuf::new();
+    for component in Path::new(relative_dir).components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => {}
+            _ => return Err("Invalid recipients file path.".to_string()),
+        }
+    }
+
+    Ok(relative)
+}
+
 pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String> {
     let mut relative = PathBuf::new();
     for component in Path::new(label).components() {
@@ -23,6 +36,15 @@ pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String>
     }
 
     Ok(relative)
+}
+
+pub(super) fn recipients_file_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+) -> Result<PathBuf, String> {
+    Ok(PathBuf::from(store_root)
+        .join(validated_relative_directory_path(relative_dir)?)
+        .join(".gpg-id"))
 }
 
 fn secret_entry_relative_path_with_extension(

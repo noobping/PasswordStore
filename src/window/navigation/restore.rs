@@ -15,7 +15,7 @@ use adw::prelude::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RestoredPageKind {
     Root,
-    Text,
+    Password,
     Raw,
     Settings,
     Tools,
@@ -85,9 +85,9 @@ pub fn restore_window_for_current_page(
 
     state.save.set_visible(matches!(
         page_kind,
-        RestoredPageKind::Text | RestoredPageKind::Raw
+        RestoredPageKind::Password | RestoredPageKind::Raw
     ));
-    if page_kind == RestoredPageKind::Text {
+    if page_kind == RestoredPageKind::Password {
         if let Some(pass_file) = get_opened_pass_file(&state.nav) {
             let label = pass_file.label();
             show_secondary_page_chrome(&chrome, pass_file.title(), &label, true);
@@ -102,7 +102,7 @@ pub fn restore_window_for_current_page(
             || APP_WINDOW_TITLE.to_string(),
             |pass_file| pass_file.label(),
         );
-        show_secondary_page_chrome(&chrome, "Raw Pass File", &subtitle, true);
+        show_secondary_page_chrome(&chrome, "Raw text", &subtitle, true);
     } else if page_kind == RestoredPageKind::Settings {
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
     } else if page_kind == RestoredPageKind::Tools {
@@ -154,8 +154,8 @@ fn visible_secondary_page_kind(
     recipients_page: &StoreRecipientsPageState,
     store_git_page: &StoreGitPageState,
 ) -> Option<RestoredPageKind> {
-    if visible_navigation_page_is(&state.nav, &state.text_page) {
-        return Some(RestoredPageKind::Text);
+    if visible_navigation_page_is(&state.nav, &state.password_page) {
+        return Some(RestoredPageKind::Password);
     }
     if visible_navigation_page_is(&state.nav, &state.raw_text_page) {
         return Some(RestoredPageKind::Raw);
@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(
             restored_page_kind(RestoredPageState {
                 at_root: true,
-                current_page: Some(RestoredPageKind::Text),
+                current_page: Some(RestoredPageKind::Password),
             }),
             RestoredPageKind::Root
         );
@@ -241,9 +241,9 @@ mod tests {
         assert_eq!(
             restored_page_kind(RestoredPageState {
                 at_root: false,
-                current_page: Some(RestoredPageKind::Text),
+                current_page: Some(RestoredPageKind::Password),
             }),
-            RestoredPageKind::Text
+            RestoredPageKind::Password
         );
         assert_eq!(
             restored_page_kind(RestoredPageState {

@@ -36,6 +36,12 @@ pub fn unlock_fido2_store_recipient_for_session(
     ))
 }
 
+pub fn set_fido2_security_key_pin(_new_pin: &str) -> Result<(), PrivateKeyError> {
+    Err(PrivateKeyError::unsupported_fido2_key(
+        FIDO2_FEATURE_DISABLED_MESSAGE,
+    ))
+}
+
 pub(in crate::backend::integrated) fn direct_binding_from_store_recipient(
     recipient: &str,
 ) -> Result<Option<Fido2DirectBinding>, String> {

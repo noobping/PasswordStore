@@ -1,6 +1,6 @@
 use super::{
     append_loading_rows, collect_loaded_entry_requests, next_generation, FieldValueRequest,
-    ToolReadMode, ToolsPageState, FIELD_VALUES_EMPTY_SUBTITLE, FIELD_VALUES_EMPTY_TITLE,
+    ToolsPageState, FIELD_VALUES_EMPTY_SUBTITLE, FIELD_VALUES_EMPTY_TITLE,
     FIELD_VALUES_FIELDS_SUBTITLE, FIELD_VALUES_FILTER_EMPTY_SUBTITLE,
     FIELD_VALUES_FILTER_EMPTY_TITLE, FIELD_VALUES_LOADING_SUBTITLE, FIELD_VALUES_LOADING_TITLE,
     FIELD_VALUES_TITLE, FIELD_VALUES_VALUES_SUBTITLE, VALUE_VALUES_EMPTY_SUBTITLE,
@@ -29,6 +29,7 @@ pub(super) struct FieldValueBrowserState {
     pub(super) generation: Cell<u64>,
     pub(super) in_flight: Cell<bool>,
     pub(super) tool_busy: Cell<bool>,
+    pub(super) source_generation: Cell<Option<u64>>,
     pub(super) catalog: RefCell<Option<FieldValueCatalog>>,
     pub(super) selected_field: RefCell<Option<String>>,
 }
@@ -64,28 +65,46 @@ impl ToolsPageState {
             return;
         }
 
+        self.invalidate_stale_tool_cache();
+        self.reset_field_values_view();
+
+        let source_generation = self.current_password_list_generation();
+        if self.field_values_cache_is_current(source_generation) {
+            self.field_browser.browser.in_flight.set(false);
+            self.render_field_list();
+            self.render_value_list();
+            self.show_field_values_browser_page();
+            return;
+        }
+
         self.set_field_values_tool_busy(true);
         let requests = collect_loaded_entry_requests(&self.root_list);
-        let state = self.clone();
+        let generation = next_generation(self.field_browser.browser.generation.get());
+        self.field_browser.browser.generation.set(generation);
+        self.field_browser
+            .browser
+            .source_generation
+            .set(source_generation);
+        self.field_browser.browser.in_flight.set(true);
+        *self.field_browser.browser.catalog.borrow_mut() = None;
+        self.render_field_list();
+        self.render_value_list();
+        self.show_field_values_browser_page();
+
         self.unlock_tool_keys_if_needed(
             requests,
-            ToolReadMode::PasswordContents,
-            Rc::new(move |requests| state.open_field_values_browser_with_requests(requests)),
             Rc::new({
                 let state = self.clone();
-                move || state.set_field_values_tool_busy(false)
+                move |requests| state.open_field_values_browser_with_requests(generation, requests)
+            }),
+            Rc::new({
+                let state = self.clone();
+                move || state.handle_field_catalog_disconnect(generation)
             }),
         );
     }
 
-    fn open_field_values_browser_with_requests(&self, requests: Vec<FieldValueRequest>) {
-        self.reset_weak_passwords_state();
-        self.clear_browser_state();
-        let generation = next_generation(self.browser.generation.get());
-        self.browser.generation.set(generation);
-        self.browser.in_flight.set(true);
-        self.render_field_list();
-
+    fn show_field_values_browser_page(&self) {
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(
             &chrome,
@@ -93,8 +112,17 @@ impl ToolsPageState {
             FIELD_VALUES_FIELDS_SUBTITLE,
             false,
         );
-        reveal_navigation_page(&self.navigation.nav, &self.field_values_page);
-        self.field_values_search_entry.grab_focus();
+        reveal_navigation_page(&self.navigation.nav, &self.field_browser.field_page);
+    }
+
+    fn open_field_values_browser_with_requests(
+        &self,
+        generation: u64,
+        requests: Vec<FieldValueRequest>,
+    ) {
+        if generation != self.field_browser.browser.generation.get() {
+            return;
+        }
 
         if requests.is_empty() {
             self.apply_field_catalog_batch(FieldValueCatalogBatch {
@@ -114,10 +142,16 @@ impl ToolsPageState {
     }
 
     fn open_value_values_browser(&self, field_key: &str) {
-        let field_changed = self.browser.selected_field.borrow().as_deref() != Some(field_key);
-        *self.browser.selected_field.borrow_mut() = Some(field_key.to_string());
-        if field_changed && !self.value_values_search_entry.text().is_empty() {
-            self.value_values_search_entry.set_text("");
+        let field_changed = self
+            .field_browser
+            .browser
+            .selected_field
+            .borrow()
+            .as_deref()
+            != Some(field_key);
+        *self.field_browser.browser.selected_field.borrow_mut() = Some(field_key.to_string());
+        if field_changed && !self.field_browser.value_search_entry.text().is_empty() {
+            self.field_browser.value_search_entry.set_text("");
         }
         self.render_value_list();
 
@@ -128,55 +162,54 @@ impl ToolsPageState {
             FIELD_VALUES_VALUES_SUBTITLE,
             false,
         );
-        reveal_navigation_page(&self.navigation.nav, &self.value_values_page);
-        self.value_values_search_entry.grab_focus();
+        reveal_navigation_page(&self.navigation.nav, &self.field_browser.value_page);
     }
 
     fn apply_field_catalog_batch(&self, batch: FieldValueCatalogBatch) {
-        if batch.generation != self.browser.generation.get() {
+        if batch.generation != self.field_browser.browser.generation.get() {
             return;
         }
 
-        self.browser.in_flight.set(false);
+        self.field_browser.browser.in_flight.set(false);
         self.set_field_values_tool_busy(false);
-        *self.browser.catalog.borrow_mut() = Some(batch.catalog);
+        *self.field_browser.browser.catalog.borrow_mut() = Some(batch.catalog);
         self.render_field_list();
         self.render_value_list();
     }
 
     fn handle_field_catalog_disconnect(&self, generation: u64) {
-        if generation != self.browser.generation.get() {
+        if generation != self.field_browser.browser.generation.get() {
             return;
         }
 
-        self.browser.in_flight.set(false);
+        self.field_browser.browser.in_flight.set(false);
         self.set_field_values_tool_busy(false);
         self.render_field_list();
         self.render_value_list();
     }
 
     pub(super) fn render_field_list(&self) {
-        clear_list_box(&self.field_values_list);
+        clear_list_box(&self.field_browser.field_list);
 
-        if self.browser.in_flight.get() {
+        if self.field_browser.browser.in_flight.get() {
             append_loading_rows(
-                &self.field_values_list,
+                &self.field_browser.field_list,
                 FIELD_VALUES_LOADING_TITLE,
                 FIELD_VALUES_LOADING_SUBTITLE,
             );
             return;
         }
 
-        let Some(catalog) = self.browser.catalog.borrow().clone() else {
+        let Some(catalog) = self.field_browser.browser.catalog.borrow().clone() else {
             append_info_row(
-                &self.field_values_list,
+                &self.field_browser.field_list,
                 FIELD_VALUES_EMPTY_TITLE,
                 FIELD_VALUES_EMPTY_SUBTITLE,
             );
             return;
         };
 
-        let query = self.field_values_search_entry.text();
+        let query = self.field_browser.field_search_entry.text();
         let query = query.as_str().trim().to_lowercase();
         let fields = catalog
             .fields
@@ -187,7 +220,7 @@ impl ToolsPageState {
 
         if fields.is_empty() {
             append_info_row(
-                &self.field_values_list,
+                &self.field_browser.field_list,
                 if query.is_empty() {
                     FIELD_VALUES_EMPTY_TITLE
                 } else {
@@ -207,7 +240,7 @@ impl ToolsPageState {
             let state = self.clone();
             let field_key = field.key.clone();
             append_action_row_with_button(
-                &self.field_values_list,
+                &self.field_browser.field_list,
                 &field.key,
                 &subtitle,
                 "go-next-symbolic",
@@ -217,27 +250,28 @@ impl ToolsPageState {
     }
 
     pub(super) fn render_value_list(&self) {
-        clear_list_box(&self.value_values_list);
+        clear_list_box(&self.field_browser.value_list);
 
-        let Some(selected_field) = self.browser.selected_field.borrow().clone() else {
+        let Some(selected_field) = self.field_browser.browser.selected_field.borrow().clone()
+        else {
             append_info_row(
-                &self.value_values_list,
+                &self.field_browser.value_list,
                 VALUE_VALUES_EMPTY_TITLE,
                 VALUE_VALUES_EMPTY_SUBTITLE,
             );
             return;
         };
 
-        let Some(catalog) = self.browser.catalog.borrow().clone() else {
-            if self.browser.in_flight.get() {
+        let Some(catalog) = self.field_browser.browser.catalog.borrow().clone() else {
+            if self.field_browser.browser.in_flight.get() {
                 append_loading_rows(
-                    &self.value_values_list,
+                    &self.field_browser.value_list,
                     FIELD_VALUES_LOADING_TITLE,
                     FIELD_VALUES_LOADING_SUBTITLE,
                 );
             } else {
                 append_info_row(
-                    &self.value_values_list,
+                    &self.field_browser.value_list,
                     VALUE_VALUES_EMPTY_TITLE,
                     VALUE_VALUES_EMPTY_SUBTITLE,
                 );
@@ -245,7 +279,7 @@ impl ToolsPageState {
             return;
         };
 
-        let query = self.value_values_search_entry.text();
+        let query = self.field_browser.value_search_entry.text();
         let query = query.as_str().trim().to_lowercase();
         let values = catalog
             .values_by_field
@@ -258,7 +292,7 @@ impl ToolsPageState {
 
         if values.is_empty() {
             append_info_row(
-                &self.value_values_list,
+                &self.field_browser.value_list,
                 if query.is_empty() {
                     VALUE_VALUES_EMPTY_TITLE
                 } else {
@@ -279,7 +313,7 @@ impl ToolsPageState {
             let field = selected_field.clone();
             let display_value = value.display_value.clone();
             append_action_row_with_button(
-                &self.value_values_list,
+                &self.field_browser.value_list,
                 &value.display_value,
                 &subtitle,
                 "go-next-symbolic",
@@ -289,7 +323,7 @@ impl ToolsPageState {
     }
 
     fn apply_root_search(&self, query: &str) {
-        self.reset_browser_state();
+        self.reset_field_values_view();
         pop_navigation_to_root(&self.navigation.nav);
         clear_opened_pass_file(&self.navigation.nav);
 
@@ -303,28 +337,27 @@ impl ToolsPageState {
         self.root_search_entry.grab_focus();
     }
 
-    pub(super) fn clear_browser_state(&self) {
-        self.browser
-            .generation
-            .set(next_generation(self.browser.generation.get()));
-        self.browser.in_flight.set(false);
-        *self.browser.catalog.borrow_mut() = None;
-        *self.browser.selected_field.borrow_mut() = None;
+    pub(super) fn reset_field_values_view(&self) {
+        *self.field_browser.browser.selected_field.borrow_mut() = None;
 
-        if !self.field_values_search_entry.text().is_empty() {
-            self.field_values_search_entry.set_text("");
+        if !self.field_browser.field_search_entry.text().is_empty() {
+            self.field_browser.field_search_entry.set_text("");
         }
-        if !self.value_values_search_entry.text().is_empty() {
-            self.value_values_search_entry.set_text("");
+        if !self.field_browser.value_search_entry.text().is_empty() {
+            self.field_browser.value_search_entry.set_text("");
         }
-
-        clear_list_box(&self.field_values_list);
-        clear_list_box(&self.value_values_list);
     }
 
-    pub(super) fn reset_browser_state(&self) {
-        self.clear_browser_state();
+    pub(super) fn clear_field_values_cache(&self) {
+        self.field_browser
+            .browser
+            .generation
+            .set(next_generation(self.field_browser.browser.generation.get()));
+        self.field_browser.browser.in_flight.set(false);
+        self.field_browser.browser.source_generation.set(None);
+        *self.field_browser.browser.catalog.borrow_mut() = None;
         self.set_field_values_tool_busy(false);
+        self.reset_field_values_view();
     }
 }
 

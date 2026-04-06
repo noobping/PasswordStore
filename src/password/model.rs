@@ -1,4 +1,6 @@
-use crate::password::entry_files::label_from_password_entry_path;
+use crate::password::entry_files::{
+    label_from_password_entry_path, normalize_password_entry_label,
+};
 use crate::preferences::{PasswordListSortMode, Preferences, UsernameFallbackMode};
 use crate::store::recipients::store_is_supported_in_current_build;
 
@@ -30,7 +32,8 @@ impl PassEntry {
     }
 
     pub fn from_label(store_path: impl Into<String>, label: impl AsRef<str>) -> Self {
-        let label = label.as_ref();
+        let label = normalize_password_entry_label(label.as_ref());
+        let label = label.as_str();
         let (relative_path, basename) = match label.rsplit_once('/') {
             Some((dir, name)) => (format!("{dir}/"), name.to_string()),
             None => (String::new(), label.to_string()),
@@ -83,7 +86,7 @@ impl PassEntry {
         if username.is_empty() {
             return Err(UsernameFallbackError::EmptyFilename);
         }
-        if username.contains('/') {
+        if username.contains(['/', '\\']) {
             return Err(UsernameFallbackError::NestedFilename);
         }
 
@@ -503,6 +506,10 @@ mod tests {
             opened.updated_label_from_username("team/gitlab"),
             Err(UsernameFallbackError::NestedFilename)
         );
+        assert_eq!(
+            opened.updated_label_from_username(r"team\gitlab"),
+            Err(UsernameFallbackError::NestedFilename)
+        );
     }
 
     #[test]
@@ -510,6 +517,14 @@ mod tests {
         let entry = PassEntry::from_label("/tmp/store", "chat/matrix.org");
         assert_eq!(entry.basename, "matrix.org");
         assert_eq!(entry.label(), "chat/matrix.org");
+    }
+
+    #[test]
+    fn labels_with_backslashes_are_normalized() {
+        let entry = PassEntry::from_label("/tmp/store", r"work\alice\github");
+        assert_eq!(entry.relative_path, "work/alice/");
+        assert_eq!(entry.basename, "github");
+        assert_eq!(entry.label(), "work/alice/github");
     }
 
     #[test]

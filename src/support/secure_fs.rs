@@ -11,12 +11,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::os::windows::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_INSUFFICIENT_BUFFER,
+    CloseHandle, GetLastError, LocalFree, ERROR_INSUFFICIENT_BUFFER, HANDLE,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-    SE_FILE_OBJECT,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::{
@@ -283,7 +282,7 @@ fn current_user_sid_string() -> io::Result<String> {
 
 #[cfg(target_os = "windows")]
 fn current_process_token() -> io::Result<OwnedHandle> {
-    let mut handle = 0isize;
+    let mut handle = std::ptr::null_mut();
     let result = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut handle) };
     if result == 0 {
         Err(last_windows_error())
@@ -319,13 +318,13 @@ fn apply_security_descriptor(path: &Path, sddl: &str) -> io::Result<()> {
         return Err(last_windows_error());
     }
 
-    let security_descriptor = LocalBuffer(security_descriptor.cast());
+    let security_descriptor: LocalBuffer<core::ffi::c_void> = LocalBuffer(security_descriptor);
     let path_wide = wide_path(path);
     if unsafe {
         SetFileSecurityW(
             path_wide.as_ptr(),
             DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
-            security_descriptor.0.cast(),
+            security_descriptor.0,
         )
     } == 0
     {
@@ -360,12 +359,12 @@ fn last_windows_error() -> io::Error {
 }
 
 #[cfg(target_os = "windows")]
-struct OwnedHandle(isize);
+struct OwnedHandle(HANDLE);
 
 #[cfg(target_os = "windows")]
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
-        if self.0 != 0 {
+        if !self.0.is_null() {
             unsafe {
                 CloseHandle(self.0);
             }

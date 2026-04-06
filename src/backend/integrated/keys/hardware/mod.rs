@@ -3,20 +3,20 @@ use crate::backend::PrivateKeyError;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, OnceLock, RwLock};
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "smartcard"))]
 mod crypto;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "smartcard"))]
 mod linux;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "smartcard")))]
 mod unsupported;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "smartcard"))]
 use self::linux::RealHardwareTransport;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "smartcard"))]
 pub(in crate::backend::integrated) use self::linux::{HardwareSessionPolicy, HardwareUnlockMode};
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "smartcard")))]
 use self::unsupported::RealHardwareTransport;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", feature = "smartcard")))]
 pub(in crate::backend::integrated) use self::unsupported::{
     HardwareSessionPolicy, HardwareUnlockMode,
 };
@@ -30,12 +30,30 @@ pub struct DiscoveredHardwareToken {
     pub decryption_fingerprint: Option<String>,
 }
 
+#[cfg(feature = "hardwarekey")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HardwareKeyGenerationRequest {
+    pub ident: String,
+    pub cardholder_name: String,
+    pub user_id: String,
+    pub admin_pin: String,
+    pub user_pin: String,
+    pub replace_user_pin: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HardwareTransportError {
+    #[cfg(feature = "smartcard")]
     TokenNotPresent(String),
+    #[cfg(feature = "smartcard")]
     TokenMismatch(String),
+    #[cfg(feature = "smartcard")]
     PinRequired(String),
+    #[cfg(feature = "smartcard")]
     IncorrectPin(String),
+    #[cfg(feature = "smartcard")]
+    PinBlocked(String),
+    #[cfg(feature = "smartcard")]
     TokenRemoved(String),
     Unsupported(String),
     Other(String),
@@ -44,13 +62,17 @@ pub enum HardwareTransportError {
 impl Display for HardwareTransportError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            #[cfg(feature = "smartcard")]
             Self::TokenNotPresent(message)
             | Self::TokenMismatch(message)
             | Self::PinRequired(message)
             | Self::IncorrectPin(message)
+            | Self::PinBlocked(message)
             | Self::TokenRemoved(message)
             | Self::Unsupported(message)
             | Self::Other(message) => write!(f, "{message}"),
+            #[cfg(not(feature = "smartcard"))]
+            Self::Unsupported(message) | Self::Other(message) => write!(f, "{message}"),
         }
     }
 }
@@ -81,6 +103,11 @@ impl HardwareSessionPolicy {
 
 pub trait HardwareTransport: Send + Sync {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError>;
+    #[cfg(feature = "hardwarekey")]
+    fn generate_key_material(
+        &self,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError>;
     fn verify_session(&self, session: &HardwareSessionPolicy)
         -> Result<(), HardwareTransportError>;
     fn decrypt_ciphertext(
@@ -139,6 +166,13 @@ pub(in crate::backend::integrated) fn list_hardware_tokens(
     with_hardware_transport_read(|transport| transport.list_tokens())
 }
 
+#[cfg(feature = "hardwarekey")]
+pub(in crate::backend::integrated) fn generate_hardware_key_material(
+    request: &HardwareKeyGenerationRequest,
+) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+    with_hardware_transport_read(|transport| transport.generate_key_material(request))
+}
+
 pub(in crate::backend::integrated) fn decrypt_with_hardware_session(
     session: &HardwareSessionPolicy,
     ciphertext: &[u8],
@@ -163,18 +197,27 @@ pub(in crate::backend::integrated) fn private_key_error_from_hardware_transport_
     err: HardwareTransportError,
 ) -> PrivateKeyError {
     match err {
+        #[cfg(feature = "smartcard")]
         HardwareTransportError::TokenNotPresent(message) => {
             PrivateKeyError::hardware_token_not_present(message)
         }
+        #[cfg(feature = "smartcard")]
         HardwareTransportError::TokenMismatch(message) => {
             PrivateKeyError::hardware_token_mismatch(message)
         }
+        #[cfg(feature = "smartcard")]
         HardwareTransportError::PinRequired(message) => {
             PrivateKeyError::hardware_pin_required(message)
         }
+        #[cfg(feature = "smartcard")]
         HardwareTransportError::IncorrectPin(message) => {
             PrivateKeyError::incorrect_hardware_pin(message)
         }
+        #[cfg(feature = "smartcard")]
+        HardwareTransportError::PinBlocked(message) => {
+            PrivateKeyError::hardware_pin_blocked(message)
+        }
+        #[cfg(feature = "smartcard")]
         HardwareTransportError::TokenRemoved(message) => {
             PrivateKeyError::hardware_token_removed(message)
         }

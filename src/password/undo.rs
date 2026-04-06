@@ -9,7 +9,7 @@ use crate::window::session::WindowSessionState;
 use adw::gtk::Widget;
 use adw::prelude::*;
 
-const UNAVAILABLE_UNDO_MESSAGE: &str = "Undo unavailable for that change.";
+const UNAVAILABLE_UNDO_MESSAGE: &str = "Can't undo that change.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UndoAction {
@@ -55,9 +55,7 @@ pub enum UndoError {
 impl UndoError {
     pub fn toast_message(&self) -> &'static str {
         match self {
-            Self::Read(err) => err
-                .toast_message()
-                .unwrap_or("Couldn't undo the last change."),
+            Self::Read(err) => err.toast_message().unwrap_or("Can't undo the last change."),
             Self::Write(PasswordEntryWriteError::EntryAlreadyExists(_)) => {
                 "An item with that name already exists."
             }
@@ -84,7 +82,7 @@ impl UndoError {
             } => "This key can't open your items.",
             Self::Delete(err) => err.delete_toast_message(),
             Self::Rename(err) => err.rename_toast_message(),
-            Self::Write(_) | Self::Rollback { .. } => "Couldn't undo the last change.",
+            Self::Write(_) | Self::Rollback { .. } => "Can't undo the last change.",
         }
     }
 }
@@ -399,7 +397,7 @@ mod tests {
 
         assert_eq!(
             unavailable_undo_message(&action),
-            Some("Undo unavailable for that change.")
+            Some("Can't undo that change.")
         );
         assert_eq!(undo_action_restored_entry(&action), None);
     }

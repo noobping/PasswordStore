@@ -1,7 +1,8 @@
 use crate::logging::log_error;
 use crate::support::actions::register_window_action;
 use crate::support::ui::{
-    append_info_row, clear_list_box, push_navigation_page_if_needed, visible_navigation_page_is,
+    append_info_row, clear_list_box, connect_keyboard_focusable_search_list_arrow_navigation,
+    push_navigation_page_if_needed,
 };
 use crate::support::uri::launch_default_uri;
 use crate::window::navigation::{show_docs_page, show_secondary_page_chrome, HasWindowChrome};
@@ -46,7 +47,6 @@ include!(concat!(env!("OUT_DIR"), "/docs_manifest.rs"));
 #[derive(Clone)]
 pub struct DocumentationPageState {
     navigation: crate::window::navigation::WindowNavigationState,
-    page: NavigationPage,
     search_entry: SearchEntry,
     list: ListBox,
     detail_page: NavigationPage,
@@ -122,7 +122,6 @@ struct ParsedListItem<'a> {
 
 pub struct DocumentationPageWidgets<'a> {
     pub navigation: &'a crate::window::navigation::WindowNavigationState,
-    pub page: &'a NavigationPage,
     pub search_entry: &'a SearchEntry,
     pub list: &'a ListBox,
     pub detail_page: &'a NavigationPage,
@@ -133,7 +132,6 @@ pub struct DocumentationPageWidgets<'a> {
 impl<'a> DocumentationPageWidgets<'a> {
     pub fn new(
         navigation: &'a crate::window::navigation::WindowNavigationState,
-        page: &'a NavigationPage,
         search_entry: &'a SearchEntry,
         list: &'a ListBox,
         detail_page: &'a NavigationPage,
@@ -142,7 +140,6 @@ impl<'a> DocumentationPageWidgets<'a> {
     ) -> Self {
         Self {
             navigation,
-            page,
             search_entry,
             list,
             detail_page,
@@ -156,7 +153,6 @@ impl DocumentationPageState {
     pub fn new(widgets: DocumentationPageWidgets<'_>) -> Self {
         let state = Self {
             navigation: widgets.navigation.clone(),
-            page: widgets.page.clone(),
             search_entry: widgets.search_entry.clone(),
             list: widgets.list.clone(),
             detail_page: widgets.detail_page.clone(),
@@ -170,28 +166,18 @@ impl DocumentationPageState {
     }
 
     fn connect_handlers(&self) {
+        connect_keyboard_focusable_search_list_arrow_navigation(&self.list, &self.search_entry);
+
         {
             let state = self.clone();
             self.search_entry
                 .connect_search_changed(move |_| state.render_search_results());
-        }
-
-        {
-            let state = self.clone();
-            self.navigation
-                .nav
-                .connect_notify_local(Some("visible-page"), move |_, _| {
-                    if visible_navigation_page_is(&state.navigation.nav, &state.page) {
-                        state.search_entry.grab_focus();
-                    }
-                });
         }
     }
 
     pub fn open(&self) {
         self.render_search_results();
         show_docs_page(&self.navigation);
-        self.search_entry.grab_focus();
     }
 
     fn render_search_results(&self) {
@@ -1031,11 +1017,15 @@ fn scroll_to_widget(scrolled: &ScrolledWindow, widget: &Widget) {
 }
 
 fn open_external_link(uri: &str) {
-    if let Err(error) = launch_default_uri(uri) {
-        log_error(format!(
-            "Failed to open documentation link.\nURL: {uri}\nerror: {error}"
-        ));
-    }
+    let uri = uri.to_string();
+    let uri_for_log = uri.clone();
+    launch_default_uri(&uri, move |result| {
+        if let Err(error) = result {
+            log_error(format!(
+                "Failed to open documentation link.\nURL: {uri_for_log}\nerror: {error}"
+            ));
+        }
+    });
 }
 
 fn encode_link_target(target: &DocumentationLinkTarget) -> String {

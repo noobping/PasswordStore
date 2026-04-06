@@ -3,14 +3,15 @@ use super::mode::ensure_standard_recipient_actions_allowed;
 use super::sync::sync_private_keys_to_host_if_enabled;
 use super::{sync_store_recipients_page_header, StoreRecipientsPageState};
 use crate::backend::{
-    generate_fido2_private_key, generate_ripasso_private_key, ManagedRipassoPrivateKey,
-    PrivateKeyError, PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
+    generate_fido2_private_key, generate_ripasso_private_key, set_fido2_security_key_pin,
+    supports_first_time_fido2_pin_setup, ManagedRipassoPrivateKey, PrivateKeyError,
+    PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::private_key::dialog::{
-    build_private_key_progress_dialog, present_private_key_unlock_dialog_with_close_handler,
-    PrivateKeyDialogHandle,
+    build_private_key_progress_dialog, present_fido2_pin_setup_dialog_with_close_handler,
+    present_private_key_unlock_dialog_with_close_handler, PrivateKeyDialogHandle,
 };
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task_with_finalizer;
@@ -77,6 +78,32 @@ fn validate_private_key_generation_request(
         email,
         passphrase: SecretString::from(passphrase),
     })
+}
+
+fn private_key_generation_apply_enabled(
+    name: &str,
+    email: &str,
+    passphrase: &str,
+    confirmation: &str,
+) -> bool {
+    !name.trim().is_empty()
+        && !email.trim().is_empty()
+        && !passphrase.trim().is_empty()
+        && !confirmation.trim().is_empty()
+}
+
+fn sync_private_key_generation_apply_button(
+    name_row: &adw::EntryRow,
+    email_row: &adw::EntryRow,
+    password_row: &adw::PasswordEntryRow,
+    confirm_row: &adw::PasswordEntryRow,
+) {
+    confirm_row.set_show_apply_button(private_key_generation_apply_enabled(
+        &name_row.text(),
+        &email_row.text(),
+        &password_row.text(),
+        &confirm_row.text(),
+    ));
 }
 
 fn suggested_name_from_email(email: &str) -> Option<String> {
@@ -192,7 +219,7 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
         &state.window,
         "Generating FIDO2-protected key",
         None,
-        "Touch it if it starts blinking.",
+        "Touch your key if it blinks.",
     ));
     let state_for_disconnect = state.clone();
     let pin_was_supplied = pin.is_some();
@@ -200,6 +227,13 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
         move || generate_fido2_private_key(pin.as_ref().map(|pin| pin.expose_secret())),
         move || progress_dialog.force_close(),
         move |result| match result {
+            Err(err)
+                if err.is_fido2_pin_not_set()
+                    && !pin_was_supplied
+                    && supports_first_time_fido2_pin_setup() =>
+            {
+                prompt_fido2_private_key_pin_setup(&state);
+            }
             Err(err) if err.is_fido2_pin_required() && !pin_was_supplied => {
                 prompt_fido2_private_key_pin(&state);
             }
@@ -209,6 +243,36 @@ fn start_fido2_private_key_generation(state: &StoreRecipientsPageState, pin: Opt
             log_error(
                 "FIDO2-protected key generation worker disconnected unexpectedly.".to_string(),
             );
+            state_for_disconnect
+                .platform
+                .overlay
+                .add_toast(Toast::new(&gettext("Couldn't generate the key.")));
+        },
+    );
+}
+
+fn start_fido2_private_key_pin_setup(state: &StoreRecipientsPageState, pin: SecretString) {
+    if !ensure_standard_recipient_actions_allowed(state) {
+        return;
+    }
+
+    let state = state.clone();
+    let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
+        &state.window,
+        "Set security key PIN",
+        None,
+        "Touch your key if it blinks.",
+    ));
+    let state_for_disconnect = state.clone();
+    spawn_result_task_with_finalizer(
+        move || {
+            set_fido2_security_key_pin(pin.expose_secret())?;
+            generate_fido2_private_key(Some(pin.expose_secret()))
+        },
+        move || progress_dialog.force_close(),
+        move |result| finish_fido2_private_key_generation(&state, result),
+        move || {
+            log_error("FIDO2 PIN setup worker disconnected unexpectedly.".to_string());
             state_for_disconnect
                 .platform
                 .overlay
@@ -233,6 +297,22 @@ fn prompt_fido2_private_key_pin(state: &StoreRecipientsPageState) {
                 _ => None,
             };
             start_fido2_private_key_generation(&state, pin);
+        },
+        || {},
+    );
+}
+
+fn prompt_fido2_private_key_pin_setup(state: &StoreRecipientsPageState) {
+    let window = state.window.clone();
+    let overlay = state.platform.overlay.clone();
+    let state = state.clone();
+    present_fido2_pin_setup_dialog_with_close_handler(
+        &window,
+        &overlay,
+        "Set security key PIN",
+        None,
+        move |pin| {
+            start_fido2_private_key_pin_setup(&state, pin);
         },
         || {},
     );
@@ -306,6 +386,68 @@ pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageS
     let confirm_row = state.platform.private_key_generation_confirm_row.clone();
     let confirm_row_for_apply = confirm_row.clone();
 
+    sync_private_key_generation_apply_button(&name_row, &email_row, &password_row, &confirm_row);
+    {
+        let name_row_for_signal = name_row.clone();
+        let name_row_for_sync = name_row.clone();
+        let email_row_for_sync = email_row.clone();
+        let password_row_for_sync = password_row.clone();
+        let confirm_row_for_sync = confirm_row.clone();
+        name_row_for_signal.connect_changed(move |_| {
+            sync_private_key_generation_apply_button(
+                &name_row_for_sync,
+                &email_row_for_sync,
+                &password_row_for_sync,
+                &confirm_row_for_sync,
+            );
+        });
+    }
+    {
+        let email_row_for_signal = email_row.clone();
+        let name_row_for_sync = name_row.clone();
+        let email_row_for_sync = email_row.clone();
+        let password_row_for_sync = password_row.clone();
+        let confirm_row_for_sync = confirm_row.clone();
+        email_row_for_signal.connect_changed(move |_| {
+            sync_private_key_generation_apply_button(
+                &name_row_for_sync,
+                &email_row_for_sync,
+                &password_row_for_sync,
+                &confirm_row_for_sync,
+            );
+        });
+    }
+    {
+        let password_row_for_signal = password_row.clone();
+        let name_row_for_sync = name_row.clone();
+        let email_row_for_sync = email_row.clone();
+        let password_row_for_sync = password_row.clone();
+        let confirm_row_for_sync = confirm_row.clone();
+        password_row_for_signal.connect_changed(move |_| {
+            sync_private_key_generation_apply_button(
+                &name_row_for_sync,
+                &email_row_for_sync,
+                &password_row_for_sync,
+                &confirm_row_for_sync,
+            );
+        });
+    }
+    {
+        let confirm_row_for_signal = confirm_row.clone();
+        let name_row_for_sync = name_row.clone();
+        let email_row_for_sync = email_row.clone();
+        let password_row_for_sync = password_row.clone();
+        let confirm_row_for_sync = confirm_row.clone();
+        confirm_row_for_signal.connect_changed(move |_| {
+            sync_private_key_generation_apply_button(
+                &name_row_for_sync,
+                &email_row_for_sync,
+                &password_row_for_sync,
+                &confirm_row_for_sync,
+            );
+        });
+    }
+
     confirm_row.connect_apply(move |_| {
         let request = match validate_private_key_generation_request(
             &name_row.text(),
@@ -324,7 +466,10 @@ pub(super) fn connect_private_key_generation_submit(state: &StoreRecipientsPageS
     });
 }
 
-fn connect_generation_autofill_rows(name_row: &adw::EntryRow, email_row: &adw::EntryRow) {
+pub(super) fn connect_generation_autofill_rows(
+    name_row: &adw::EntryRow,
+    email_row: &adw::EntryRow,
+) {
     let name_row = name_row.clone();
     let email_row = email_row.clone();
     let syncing = Rc::new(Cell::new(false));
@@ -409,8 +554,8 @@ pub(super) fn connect_private_key_generate_controls(state: &StoreRecipientsPageS
 #[cfg(test)]
 mod tests {
     use super::{
-        next_autofilled_value, suggested_email_from_name, suggested_name_from_email,
-        validate_private_key_generation_request,
+        next_autofilled_value, private_key_generation_apply_enabled, suggested_email_from_name,
+        suggested_name_from_email, validate_private_key_generation_request,
     };
 
     #[test]
@@ -459,5 +604,36 @@ mod tests {
             suggested_email_from_name("Alice Example").as_deref(),
             Some("Alice Example@pass.store")
         );
+    }
+
+    #[test]
+    fn generation_apply_requires_all_nonempty_fields() {
+        assert!(!private_key_generation_apply_enabled(
+            "",
+            "user@example.com",
+            "hunter2",
+            "hunter2"
+        ));
+        assert!(!private_key_generation_apply_enabled(
+            "User", "", "hunter2", "hunter2"
+        ));
+        assert!(!private_key_generation_apply_enabled(
+            "User",
+            "user@example.com",
+            "",
+            "hunter2"
+        ));
+        assert!(!private_key_generation_apply_enabled(
+            "User",
+            "user@example.com",
+            "hunter2",
+            ""
+        ));
+        assert!(private_key_generation_apply_enabled(
+            "User",
+            "user@example.com",
+            "hunter2",
+            "hunter2"
+        ));
     }
 }

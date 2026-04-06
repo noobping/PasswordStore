@@ -1,6 +1,6 @@
 use super::{
     append_loading_rows, collect_loaded_entry_requests, next_generation, FieldValueRequest,
-    ToolReadMode, ToolsPageState, WEAK_PASSWORDS_EMPTY_SUBTITLE, WEAK_PASSWORDS_EMPTY_TITLE,
+    ToolsPageState, WEAK_PASSWORDS_EMPTY_SUBTITLE, WEAK_PASSWORDS_EMPTY_TITLE,
     WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE, WEAK_PASSWORDS_FILTER_EMPTY_TITLE,
     WEAK_PASSWORDS_LOADING_SUBTITLE, WEAK_PASSWORDS_LOADING_TITLE, WEAK_PASSWORDS_SUBTITLE,
     WEAK_PASSWORDS_TITLE,
@@ -47,28 +47,58 @@ impl ToolsPageState {
             return;
         }
 
+        self.invalidate_stale_tool_cache();
+        self.start_weak_passwords_scan(true);
+    }
+
+    pub(super) fn refresh_weak_passwords_browser_if_needed(&self) {
+        if self.tools_are_busy()
+            || self.weak_password_page.weak_passwords.in_flight.get()
+            || self
+                .weak_password_page
+                .weak_passwords
+                .results
+                .borrow()
+                .is_some()
+        {
+            return;
+        }
+
+        self.start_weak_passwords_scan(false);
+    }
+
+    fn start_weak_passwords_scan(&self, reset_search: bool) {
+        if reset_search {
+            self.reset_weak_passwords_view();
+        }
         self.set_weak_passwords_tool_busy(true);
         let requests = collect_loaded_entry_requests(&self.root_list);
-        let state = self.clone();
+        let generation = next_generation(self.weak_password_page.weak_passwords.generation.get());
+        self.weak_password_page
+            .weak_passwords
+            .generation
+            .set(generation);
+        self.weak_password_page.weak_passwords.in_flight.set(true);
+        *self.weak_password_page.weak_passwords.results.borrow_mut() = None;
+        self.render_weak_passwords_list();
+        self.show_weak_passwords_browser_page();
+
         self.unlock_tool_keys_if_needed(
             requests,
-            ToolReadMode::PasswordLine,
-            Rc::new(move |requests| state.open_weak_passwords_browser_with_requests(requests)),
             Rc::new({
                 let state = self.clone();
-                move || state.set_weak_passwords_tool_busy(false)
+                move |requests| {
+                    state.open_weak_passwords_browser_with_requests(generation, requests)
+                }
+            }),
+            Rc::new({
+                let state = self.clone();
+                move || state.handle_weak_password_disconnect(generation)
             }),
         );
     }
 
-    fn open_weak_passwords_browser_with_requests(&self, requests: Vec<FieldValueRequest>) {
-        self.clear_browser_state();
-        self.clear_weak_passwords_state();
-        let generation = next_generation(self.weak_passwords.generation.get());
-        self.weak_passwords.generation.set(generation);
-        self.weak_passwords.in_flight.set(true);
-        self.render_weak_passwords_list();
-
+    fn show_weak_passwords_browser_page(&self) {
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(
             &chrome,
@@ -76,8 +106,17 @@ impl ToolsPageState {
             WEAK_PASSWORDS_SUBTITLE,
             false,
         );
-        reveal_navigation_page(&self.navigation.nav, &self.weak_passwords_page);
-        self.weak_passwords_search_entry.grab_focus();
+        reveal_navigation_page(&self.navigation.nav, &self.weak_password_page.page);
+    }
+
+    fn open_weak_passwords_browser_with_requests(
+        &self,
+        generation: u64,
+        requests: Vec<FieldValueRequest>,
+    ) {
+        if generation != self.weak_password_page.weak_passwords.generation.get() {
+            return;
+        }
 
         if requests.is_empty() {
             self.apply_weak_password_batch(WeakPasswordBatch {
@@ -97,48 +136,54 @@ impl ToolsPageState {
     }
 
     fn apply_weak_password_batch(&self, batch: WeakPasswordBatch) {
-        if batch.generation != self.weak_passwords.generation.get() {
+        if batch.generation != self.weak_password_page.weak_passwords.generation.get() {
             return;
         }
 
-        self.weak_passwords.in_flight.set(false);
+        self.weak_password_page.weak_passwords.in_flight.set(false);
         self.set_weak_passwords_tool_busy(false);
-        *self.weak_passwords.results.borrow_mut() = Some(batch.results);
+        *self.weak_password_page.weak_passwords.results.borrow_mut() = Some(batch.results);
         self.render_weak_passwords_list();
     }
 
     fn handle_weak_password_disconnect(&self, generation: u64) {
-        if generation != self.weak_passwords.generation.get() {
+        if generation != self.weak_password_page.weak_passwords.generation.get() {
             return;
         }
 
-        self.weak_passwords.in_flight.set(false);
+        self.weak_password_page.weak_passwords.in_flight.set(false);
         self.set_weak_passwords_tool_busy(false);
         self.render_weak_passwords_list();
     }
 
     pub(super) fn render_weak_passwords_list(&self) {
-        clear_list_box(&self.weak_passwords_list);
+        clear_list_box(&self.weak_password_page.list);
 
-        if self.weak_passwords.in_flight.get() {
+        if self.weak_password_page.weak_passwords.in_flight.get() {
             append_loading_rows(
-                &self.weak_passwords_list,
+                &self.weak_password_page.list,
                 WEAK_PASSWORDS_LOADING_TITLE,
                 WEAK_PASSWORDS_LOADING_SUBTITLE,
             );
             return;
         }
 
-        let Some(results) = self.weak_passwords.results.borrow().clone() else {
+        let Some(results) = self
+            .weak_password_page
+            .weak_passwords
+            .results
+            .borrow()
+            .clone()
+        else {
             append_info_row(
-                &self.weak_passwords_list,
+                &self.weak_password_page.list,
                 WEAK_PASSWORDS_EMPTY_TITLE,
                 WEAK_PASSWORDS_EMPTY_SUBTITLE,
             );
             return;
         };
 
-        let query = self.weak_passwords_search_entry.text();
+        let query = self.weak_password_page.search_entry.text();
         let query = query.as_str().trim().to_lowercase();
         let results = results
             .into_iter()
@@ -151,7 +196,7 @@ impl ToolsPageState {
 
         if results.is_empty() {
             append_info_row(
-                &self.weak_passwords_list,
+                &self.weak_password_page.list,
                 if query.is_empty() {
                     WEAK_PASSWORDS_EMPTY_TITLE
                 } else {
@@ -171,7 +216,7 @@ impl ToolsPageState {
             let root = result.root.clone();
             let label = result.label.clone();
             append_action_row_with_button(
-                &self.weak_passwords_list,
+                &self.weak_password_page.list,
                 &result.label,
                 &result.reason,
                 "go-next-symbolic",
@@ -181,6 +226,7 @@ impl ToolsPageState {
     }
 
     fn open_weak_password_entry(&self, root: &str, label: &str) {
+        self.mark_weak_passwords_stale();
         open_password_entry_page(
             &self.password_page,
             OpenPassFile::from_label(root, label),
@@ -188,23 +234,27 @@ impl ToolsPageState {
         );
     }
 
-    pub(super) fn clear_weak_passwords_state(&self) {
-        self.weak_passwords
-            .generation
-            .set(next_generation(self.weak_passwords.generation.get()));
-        self.weak_passwords.in_flight.set(false);
-        *self.weak_passwords.results.borrow_mut() = None;
-
-        if !self.weak_passwords_search_entry.text().is_empty() {
-            self.weak_passwords_search_entry.set_text("");
+    pub(super) fn reset_weak_passwords_view(&self) {
+        if !self.weak_password_page.search_entry.text().is_empty() {
+            self.weak_password_page.search_entry.set_text("");
         }
-
-        clear_list_box(&self.weak_passwords_list);
     }
 
-    pub(super) fn reset_weak_passwords_state(&self) {
-        self.clear_weak_passwords_state();
+    fn mark_weak_passwords_stale(&self) {
+        self.weak_password_page
+            .weak_passwords
+            .generation
+            .set(next_generation(
+                self.weak_password_page.weak_passwords.generation.get(),
+            ));
+        self.weak_password_page.weak_passwords.in_flight.set(false);
+        *self.weak_password_page.weak_passwords.results.borrow_mut() = None;
+    }
+
+    pub(super) fn clear_weak_passwords_cache(&self) {
+        self.mark_weak_passwords_stale();
         self.set_weak_passwords_tool_busy(false);
+        self.reset_weak_passwords_view();
     }
 }
 

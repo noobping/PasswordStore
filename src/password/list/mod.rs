@@ -6,7 +6,8 @@ use self::placeholder::{
     register_placeholder_state, show_loading_placeholder, show_resolved_placeholder,
 };
 use self::row::{
-    activate_selected_password_row_action, append_password_folder_row, append_password_row,
+    activate_selected_password_row_action, append_clear_search_action_row,
+    append_new_password_action_row, append_password_folder_row, append_password_row,
     SelectedPasswordRowAction,
 };
 use self::search::{search_controller_for_list, SearchFilterController};
@@ -21,10 +22,10 @@ use crate::support::background::spawn_result_task;
 use crate::support::git::password_store_git_state_summary;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
 use crate::support::runtime::has_host_permission;
-use crate::support::ui::clear_list_box;
+use crate::support::ui::{clear_list_box, connect_search_list_arrow_navigation};
 use adw::glib::{self, Propagation};
 use adw::gtk::{
-    gdk, Button, EventControllerKey, ListBox, ListBoxRow, PropagationPhase, SearchEntry,
+    gdk, Button, EventControllerKey, ListBox, ListBoxRow, PropagationPhase, SearchEntry, Widget,
 };
 use adw::prelude::*;
 use adw::ToastOverlay;
@@ -114,6 +115,23 @@ const PASSWORD_LIST_ROW_STORE_PATH_KEY: &str = "password-list-row-store-path";
 const PASSWORD_LIST_ROW_EXPANDED_KEY: &str = "password-list-row-expanded";
 const PASSWORD_LIST_ROW_KIND_ENTRY: &str = "entry";
 const PASSWORD_LIST_ROW_KIND_FOLDER: &str = "folder";
+const PASSWORD_LIST_ROW_KIND_NEW_PASSWORD_ACTION: &str = "new-password-action";
+const PASSWORD_LIST_ROW_KIND_CLEAR_SEARCH_ACTION: &str = "clear-search-action";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PasswordListActionRowKind {
+    NewPassword,
+    ClearSearch,
+}
+
+impl PasswordListActionRowKind {
+    const fn storage_key(self) -> &'static str {
+        match self {
+            Self::NewPassword => PASSWORD_LIST_ROW_KIND_NEW_PASSWORD_ACTION,
+            Self::ClearSearch => PASSWORD_LIST_ROW_KIND_CLEAR_SEARCH_ACTION,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RenderedPasswordListRow {
@@ -133,6 +151,14 @@ enum RenderedPasswordListRow {
 struct PasswordFolderTree {
     folders: BTreeMap<String, PasswordFolderTree>,
     entries: Vec<(PassEntry, bool)>,
+}
+
+#[derive(Clone)]
+struct PasswordListRenderContext {
+    store_labels: Rc<HashMap<String, String>>,
+    sort_mode: PasswordListSortMode,
+    has_store_dirs: bool,
+    generation: u64,
 }
 
 const fn list_action_visibility(context: ListActionContext) -> ListActionVisibility {
@@ -180,6 +206,32 @@ const fn should_show_root_git_button(context: ListActionContext) -> bool {
 const fn should_show_root_store_button(context: ListActionContext) -> bool {
     matches!(context.actions, ListActionsMode::Visible)
         && matches!(context.stores, StoreSetup::Missing)
+}
+
+const fn list_action_context(
+    show_list_actions: bool,
+    has_store_dirs: bool,
+    contents: ListContents,
+    git_available: bool,
+) -> ListActionContext {
+    ListActionContext {
+        actions: if show_list_actions {
+            ListActionsMode::Visible
+        } else {
+            ListActionsMode::Hidden
+        },
+        stores: if has_store_dirs {
+            StoreSetup::Present
+        } else {
+            StoreSetup::Missing
+        },
+        contents,
+        git: if git_available {
+            GitAvailability::Available
+        } else {
+            GitAvailability::Unavailable
+        },
+    }
 }
 
 pub fn load_passwords_async(
@@ -236,35 +288,26 @@ pub fn load_passwords_async(
                 return;
             }
 
-            let context = ListActionContext {
-                actions: if show_list_actions {
-                    ListActionsMode::Visible
-                } else {
-                    ListActionsMode::Hidden
-                },
-                stores: if has_store_dirs {
-                    StoreSetup::Present
-                } else {
-                    StoreSetup::Missing
-                },
-                contents: if items.is_empty() {
+            let context = list_action_context(
+                show_list_actions,
+                has_store_dirs,
+                if items.is_empty() {
                     ListContents::Empty
                 } else {
                     ListContents::Populated
                 },
-                git: if git_available {
-                    GitAvailability::Available
-                } else {
-                    GitAvailability::Unavailable
-                },
-            };
+                git_available,
+            );
             render_password_rows_in_batches(
                 &list_clone,
                 &overlay_clone,
                 items,
-                store_labels.clone(),
-                sort_mode,
-                render_generation,
+                PasswordListRenderContext {
+                    store_labels: store_labels.clone(),
+                    sort_mode,
+                    has_store_dirs,
+                    generation: render_generation,
+                },
                 {
                     let list = list_clone.clone();
                     let actions = actions_clone.clone();
@@ -281,6 +324,7 @@ pub fn load_passwords_async(
                                 has_store_dirs,
                             );
                         }
+                        autofocus_first_password_list_row_if_needed(&list);
                     }
                 },
             );
@@ -290,24 +334,12 @@ pub fn load_passwords_async(
                 return;
             }
 
-            let context = ListActionContext {
-                actions: if show_list_actions {
-                    ListActionsMode::Visible
-                } else {
-                    ListActionsMode::Hidden
-                },
-                stores: if has_store_dirs {
-                    StoreSetup::Present
-                } else {
-                    StoreSetup::Missing
-                },
-                contents: ListContents::Empty,
-                git: if git_available {
-                    GitAvailability::Available
-                } else {
-                    GitAvailability::Unavailable
-                },
-            };
+            let context = list_action_context(
+                show_list_actions,
+                has_store_dirs,
+                ListContents::Empty,
+                git_available,
+            );
             if show_list_actions {
                 update_list_actions(&actions_for_disconnect, context);
             }
@@ -324,12 +356,13 @@ fn render_password_rows_in_batches(
     list: &ListBox,
     overlay: &ToastOverlay,
     items: Vec<(PassEntry, bool)>,
-    store_labels: Rc<HashMap<String, String>>,
-    sort_mode: PasswordListSortMode,
-    generation: u64,
+    render_context: PasswordListRenderContext,
     on_complete: impl FnOnce() + 'static,
 ) {
-    let rows = build_password_list_rows(items, sort_mode);
+    let rows = build_password_list_rows(items, render_context.sort_mode);
+    let show_new_password_action =
+        should_append_new_password_action_row(render_context.has_store_dirs, !rows.is_empty());
+    let show_clear_search_action = should_append_clear_search_action_row(!rows.is_empty());
     if rows.is_empty() {
         on_complete();
         return;
@@ -337,7 +370,8 @@ fn render_password_rows_in_batches(
 
     let list = list.clone();
     let overlay = overlay.clone();
-    let store_labels = store_labels.clone();
+    let store_labels = render_context.store_labels;
+    let generation = render_context.generation;
     let mut rows = rows.into_iter();
     let mut on_complete = Some(on_complete);
     glib::idle_add_local(move || {
@@ -347,6 +381,12 @@ fn render_password_rows_in_batches(
 
         for _ in 0..PASSWORD_ROW_RENDER_BATCH_SIZE {
             let Some(row) = rows.next() else {
+                if show_new_password_action {
+                    append_new_password_action_row(&list);
+                }
+                if show_clear_search_action {
+                    append_clear_search_action_row(&list);
+                }
                 if let Some(on_complete) = on_complete.take() {
                     on_complete();
                 }
@@ -487,6 +527,17 @@ fn password_list_folder_subtitle(store_label: &str, folder_path: &str) -> String
     }
 }
 
+const fn should_append_new_password_action_row(
+    has_store_dirs: bool,
+    has_password_rows: bool,
+) -> bool {
+    has_store_dirs && has_password_rows
+}
+
+const fn should_append_clear_search_action_row(has_password_rows: bool) -> bool {
+    has_password_rows
+}
+
 const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> CollectItemsOptions {
     CollectItemsOptions {
         show_hidden,
@@ -497,6 +548,7 @@ const fn collect_items_options(show_hidden: bool, show_duplicates: bool) -> Coll
 pub fn setup_search_filter(
     list: &ListBox,
     search_entry: &SearchEntry,
+    header_focus_target: &Widget,
     placeholder_stack: &adw::gtk::Stack,
     placeholder_status: &adw::StatusPage,
     placeholder_spinner: &adw::gtk::Spinner,
@@ -525,7 +577,19 @@ pub fn setup_search_filter(
         controller_for_entry.update_placeholder(&list_for_entry);
     });
 
-    connect_search_arrow_navigation(list, search_entry);
+    connect_search_list_arrow_navigation(list, search_entry, password_list_row_is_focusable);
+    connect_home_list_up_navigation(list, search_entry, header_focus_target);
+}
+
+pub fn clear_password_search(search_entry: &SearchEntry, list: &ListBox) {
+    if search_entry.text().is_empty() {
+        return;
+    }
+
+    search_entry.set_text("");
+    if !focus_first_password_list_row(list) {
+        search_entry.grab_focus();
+    }
 }
 
 pub fn connect_selected_pass_file_shortcuts(list: &ListBox, overlay: &ToastOverlay) {
@@ -546,40 +610,91 @@ pub fn connect_selected_pass_file_shortcuts(list: &ListBox, overlay: &ToastOverl
     list.add_controller(controller);
 }
 
-fn connect_search_arrow_navigation(list: &ListBox, search_entry: &SearchEntry) {
-    let search_controller = EventControllerKey::new();
-    search_controller.set_propagation_phase(PropagationPhase::Capture);
-    let list_for_search = list.clone();
-    search_controller.connect_key_pressed(move |_, key, _, _| {
-        if matches!(key, gdk::Key::Down | gdk::Key::KP_Down)
-            && focus_first_visible_row(&list_for_search)
-        {
-            return Propagation::Stop;
-        }
+pub fn focus_first_password_list_row(list: &ListBox) -> bool {
+    let Some(row) = first_password_list_row(list) else {
+        return false;
+    };
 
-        Propagation::Proceed
-    });
-    search_entry.add_controller(search_controller);
+    list.select_row(Some(&row));
+    list.grab_focus();
+    row.grab_focus();
+    true
+}
 
+fn autofocus_first_password_list_row_if_needed(list: &ListBox) {
+    let Some(root) = list.root() else {
+        return;
+    };
+    let Some(focus) = adw::gtk::prelude::RootExt::focus(&root) else {
+        let _ = focus_first_password_list_row(list);
+        return;
+    };
+    if focus.is_ancestor(list)
+        || focus.is::<SearchEntry>()
+        || focus.ancestor(SearchEntry::static_type()).is_some()
+    {
+        return;
+    }
+
+    let _ = focus_first_password_list_row(list);
+}
+
+fn connect_home_list_up_navigation(
+    list: &ListBox,
+    search_entry: &SearchEntry,
+    header_focus_target: &Widget,
+) {
+    let header_focus_target = header_focus_target.clone();
     let list_controller = EventControllerKey::new();
     list_controller.set_propagation_phase(PropagationPhase::Capture);
     let list_for_keys = list.clone();
     let search_entry_for_list = search_entry.clone();
     list_controller.connect_key_pressed(move |_, key, _, _| {
-        if !search_entry_for_list.is_visible() {
+        if search_entry_for_list.is_visible() {
             return Propagation::Proceed;
         }
 
         if matches!(key, gdk::Key::Up | gdk::Key::KP_Up)
-            && selected_row_is_first_visible(&list_for_keys)
+            && focused_password_list_row_is_first(&list_for_keys)
         {
-            search_entry_for_list.grab_focus();
+            header_focus_target.grab_focus();
             return Propagation::Stop;
         }
 
         Propagation::Proceed
     });
     list.add_controller(list_controller);
+}
+
+fn focused_password_list_row_is_first(list: &ListBox) -> bool {
+    let Some(root) = list.root() else {
+        return false;
+    };
+    let Some(focus) = adw::gtk::prelude::RootExt::focus(&root) else {
+        return false;
+    };
+    let Some(focused_row) = focus
+        .ancestor(ListBoxRow::static_type())
+        .and_then(|widget| widget.downcast::<ListBoxRow>().ok())
+    else {
+        return false;
+    };
+    let Some(first_row) = first_password_list_row(list) else {
+        return false;
+    };
+
+    focused_row.is_ancestor(list) && focused_row.index() == first_row.index()
+}
+
+fn first_password_list_row(list: &ListBox) -> Option<ListBoxRow> {
+    let mut index = 0;
+    loop {
+        let row = list.row_at_index(index)?;
+        if password_list_row_is_focusable(&row) {
+            return Some(row);
+        }
+        index += 1;
+    }
 }
 
 fn selected_pass_file_shortcut_action(
@@ -621,41 +736,23 @@ fn has_plain_shortcut_modifiers(modifiers: gdk::ModifierType) -> bool {
         && !modifiers.contains(gdk::ModifierType::META_MASK)
 }
 
-fn focus_first_visible_row(list: &ListBox) -> bool {
-    let Some(row) = first_visible_row(list) else {
-        return false;
-    };
-
-    list.select_row(Some(&row));
-    list.grab_focus();
-    row.grab_focus();
-    true
-}
-
-fn selected_row_is_first_visible(list: &ListBox) -> bool {
-    let Some(selected_row) = list.selected_row() else {
-        return false;
-    };
-    let Some(first_row) = first_visible_row(list) else {
-        return false;
-    };
-
-    selected_row.index() == first_row.index()
-}
-
-fn first_visible_row(list: &ListBox) -> Option<ListBoxRow> {
-    let mut index = 0;
-    loop {
-        let row = list.row_at_index(index)?;
-        if row.is_child_visible() && password_list_row_is_focusable(&row) {
-            return Some(row);
-        }
-        index += 1;
-    }
-}
-
 fn password_list_row_is_focusable(row: &ListBoxRow) -> bool {
-    non_null_to_string_option(row, "openable").is_some() || password_list_row_is_folder(row)
+    row.is_child_visible()
+        && (non_null_to_string_option(row, "openable").is_some()
+            || password_list_row_is_folder(row)
+            || password_list_row_action_kind(row).is_some())
+}
+
+pub(crate) fn password_list_row_action_kind(row: &ListBoxRow) -> Option<PasswordListActionRowKind> {
+    match non_null_to_string_option(row, PASSWORD_LIST_ROW_KIND_KEY).as_deref() {
+        Some(kind) if kind == PasswordListActionRowKind::NewPassword.storage_key() => {
+            Some(PasswordListActionRowKind::NewPassword)
+        }
+        Some(kind) if kind == PasswordListActionRowKind::ClearSearch.storage_key() => {
+            Some(PasswordListActionRowKind::ClearSearch)
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn refresh_password_list_filter(list: &ListBox) {
@@ -743,6 +840,10 @@ fn start_password_list_render_cycle(list: &ListBox) -> u64 {
     generation
 }
 
+pub(crate) fn password_list_render_generation(list: &ListBox) -> Option<u64> {
+    cloned_data(list, PASSWORD_LIST_RENDER_GENERATION_KEY)
+}
+
 fn password_list_render_cycle_is_current(list: &ListBox, generation: u64) -> bool {
     cloned_data(list, PASSWORD_LIST_RENDER_GENERATION_KEY) == Some(generation)
 }
@@ -774,9 +875,10 @@ mod tests {
     use super::{
         build_password_list_rows, collect_items_options, list_action_visibility,
         next_password_list_render_generation, password_list_folder_segments,
-        selected_pass_file_shortcut_action, should_show_root_git_button,
-        should_show_root_store_button, GitAvailability, ListActionContext, ListActionVisibility,
-        ListActionsMode, ListContents, RenderedPasswordListRow, StoreSetup, Visibility,
+        selected_pass_file_shortcut_action, should_append_new_password_action_row,
+        should_show_root_git_button, should_show_root_store_button, GitAvailability,
+        ListActionContext, ListActionVisibility, ListActionsMode, ListContents,
+        RenderedPasswordListRow, StoreSetup, Visibility,
     };
     use crate::password::list::row::SelectedPasswordRowAction;
     use crate::password::model::{CollectItemsOptions, PassEntry};
@@ -844,6 +946,13 @@ mod tests {
             contents: ListContents::Empty,
             git: GitAvailability::Unavailable,
         }));
+    }
+
+    #[test]
+    fn bottom_add_row_requires_visible_store_items() {
+        assert!(should_append_new_password_action_row(true, true));
+        assert!(!should_append_new_password_action_row(true, false));
+        assert!(!should_append_new_password_action_row(false, true));
     }
 
     #[test]

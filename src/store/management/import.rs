@@ -55,7 +55,7 @@ impl PassImportSourceState {
 }
 
 #[derive(Clone)]
-struct PassImportRowState {
+pub struct StoreImportToolRowState {
     settings: Preferences,
     window: ApplicationWindow,
     overlay: ToastOverlay,
@@ -63,13 +63,12 @@ struct PassImportRowState {
     source_state: Rc<RefCell<PassImportSourceState>>,
 }
 
-impl PassImportRowState {
-    fn new(
+impl StoreImportToolRowState {
+    fn append_to(
         list: &ListBox,
         settings: &Preferences,
         window: &ApplicationWindow,
         overlay: &ToastOverlay,
-        stores: &[String],
     ) -> Self {
         let row = ActionRow::builder()
             .title(gettext("Import passwords"))
@@ -85,7 +84,7 @@ impl PassImportRowState {
             row,
             source_state: Rc::new(RefCell::new(PassImportSourceState::Checking)),
         };
-        state.sync(stores);
+        state.refresh();
 
         let open_state = state.clone();
         connect_row_action(&state.row, move || open_state.open());
@@ -114,6 +113,34 @@ impl PassImportRowState {
     fn set_source_state(&self, source_state: PassImportSourceState, stores: &[String]) {
         *self.source_state.borrow_mut() = source_state;
         self.sync(stores);
+    }
+
+    pub fn refresh(&self) {
+        let refresh_id = next_store_list_refresh_id();
+        set_string_data(&self.row, STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
+
+        let stores = self.settings.stores();
+        self.sync(&stores);
+
+        let row_for_result = self.row.clone();
+        let stores_for_result = stores;
+        let refresh_id_for_result = refresh_id;
+        let row_state_for_result = self.clone();
+        spawn_result_task(
+            available_pass_import_sources,
+            move |result| {
+                if !stores_list_refresh_is_current(&row_for_result, &refresh_id_for_result) {
+                    return;
+                }
+
+                let source_state = result.map_or(
+                    PassImportSourceState::Unavailable,
+                    PassImportSourceState::Available,
+                );
+                row_state_for_result.set_source_state(source_state, &stores_for_result);
+            },
+            move || {},
+        );
     }
 
     fn sync(&self, stores: &[String]) {
@@ -167,8 +194,8 @@ fn next_store_list_refresh_id() -> String {
         .to_string()
 }
 
-fn stores_list_refresh_is_current(list: &ListBox, refresh_id: &str) -> bool {
-    non_null_to_string_option(list, STORE_LIST_REFRESH_ID_KEY).as_deref() == Some(refresh_id)
+fn stores_list_refresh_is_current<O: adw::prelude::ObjectExt>(obj: &O, refresh_id: &str) -> bool {
+    non_null_to_string_option(obj, STORE_LIST_REFRESH_ID_KEY).as_deref() == Some(refresh_id)
 }
 
 #[derive(Clone)]
@@ -489,36 +516,14 @@ pub fn schedule_store_import_row(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
-) {
+) -> Option<StoreImportToolRowState> {
     if !supports_host_command_features() {
-        return;
+        return None;
     }
 
-    let refresh_id = next_store_list_refresh_id();
-    set_string_data(list, STORE_LIST_REFRESH_ID_KEY, refresh_id.clone());
-
-    let stores = settings.stores();
-    let row_state = PassImportRowState::new(list, settings, window, overlay, &stores);
-
-    let list_for_result = list.clone();
-    let stores_for_result = stores;
-    let refresh_id_for_result = refresh_id;
-    let row_state_for_result = row_state;
-    spawn_result_task(
-        available_pass_import_sources,
-        move |result| {
-            if !stores_list_refresh_is_current(&list_for_result, &refresh_id_for_result) {
-                return;
-            }
-
-            let source_state = result.map_or(
-                PassImportSourceState::Unavailable,
-                PassImportSourceState::Available,
-            );
-            row_state_for_result.set_source_state(source_state, &stores_for_result);
-        },
-        move || {},
-    );
+    Some(StoreImportToolRowState::append_to(
+        list, settings, window, overlay,
+    ))
 }
 
 #[cfg(test)]

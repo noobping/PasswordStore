@@ -106,6 +106,17 @@ pub(super) fn focus_field_add_row(state: &PasswordPageState) {
     }
 }
 
+pub(super) fn focus_password_row(state: &PasswordPageState) {
+    if let Some(delegate) = state.entry.delegate() {
+        glib::idle_add_local_once(move || {
+            delegate.grab_focus();
+            delegate.select_region(0, -1);
+        });
+    } else {
+        state.entry.grab_focus();
+    }
+}
+
 fn sync_otp_add_button(state: &PasswordPageState) {
     state.otp_add_button.set_visible(!state.otp.has_otp());
 }

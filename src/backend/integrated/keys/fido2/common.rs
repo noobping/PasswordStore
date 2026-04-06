@@ -22,10 +22,16 @@ use fido2_rs::{
 };
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use hmac::{digest::KeyInit, Hmac, Mac};
+#[cfg(all(target_os = "linux", feature = "fidopin"))]
+use libfido2_sys as ffi;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use openssl::symm::{Cipher, Crypter, Mode};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use sha2::{Digest, Sha256};
+#[cfg(all(target_os = "linux", feature = "fidopin"))]
+use std::ffi::{CStr, CString};
+#[cfg(all(target_os = "linux", feature = "fidopin"))]
+use zeroize::Zeroizing;
 
 pub const FIDO2_RP_ID: &str = "io.github.noobping.keycord";
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
@@ -81,8 +87,10 @@ pub struct Fido2DeviceLabel {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Fido2TransportError {
+    PinNotSet,
     PinRequired,
     IncorrectPin,
+    PinUnsupported,
     TokenNotPresent,
     UserActionTimeout,
     TokenRemoved,
@@ -93,8 +101,12 @@ pub enum Fido2TransportError {
 impl Display for Fido2TransportError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::PinNotSet => write!(f, "Set a PIN on the FIDO2 security key first."),
             Self::PinRequired => write!(f, "Enter the FIDO2 security key PIN."),
             Self::IncorrectPin => write!(f, "The FIDO2 security key PIN is incorrect."),
+            Self::PinUnsupported => {
+                write!(f, "That FIDO2 security key must support PIN protection.")
+            }
             Self::TokenNotPresent => write!(f, "Connect the matching FIDO2 security key."),
             Self::UserActionTimeout => write!(f, "Touch the FIDO2 security key and try again."),
             Self::TokenRemoved => write!(f, "Reconnect the FIDO2 security key and try again."),
@@ -172,6 +184,11 @@ pub trait Fido2Transport: Send + Sync {
         salt: &[u8],
         excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError>;
+
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    fn set_new_pin(&self, _new_pin: &str) -> Result<(), Fido2TransportError> {
+        Err(Fido2TransportError::PinUnsupported)
+    }
 }
 
 fn transport_cell() -> &'static RwLock<Arc<dyn Fido2Transport>> {
@@ -215,12 +232,18 @@ pub(in crate::backend::integrated) fn reset_fido2_transport_for_tests() {
 
 pub(super) fn private_key_error_from_fido2_error(err: Fido2TransportError) -> PrivateKeyError {
     match err {
+        Fido2TransportError::PinNotSet => {
+            PrivateKeyError::fido2_pin_not_set("Set a PIN on the FIDO2 security key first.")
+        }
         Fido2TransportError::PinRequired => {
             PrivateKeyError::fido2_pin_required("Enter the FIDO2 security key PIN.")
         }
         Fido2TransportError::IncorrectPin => {
             PrivateKeyError::incorrect_fido2_pin("The FIDO2 security key PIN is incorrect.")
         }
+        Fido2TransportError::PinUnsupported => PrivateKeyError::fido2_pin_unsupported(
+            "That FIDO2 security key must support PIN protection.",
+        ),
         Fido2TransportError::TokenNotPresent => {
             PrivateKeyError::fido2_token_not_present("Connect the matching FIDO2 security key.")
         }
@@ -270,6 +293,26 @@ pub(super) fn create_fido2_binding(pin: Option<&str>) -> Result<String, PrivateK
 pub(super) fn create_fido2_binding(_pin: Option<&str>) -> Result<String, PrivateKeyError> {
     Err(PrivateKeyError::unsupported_fido2_key(
         FIDO2_PLATFORM_UNSUPPORTED_MESSAGE,
+    ))
+}
+
+#[cfg(all(target_os = "linux", feature = "fidopin"))]
+pub fn set_fido2_security_key_pin(new_pin: &str) -> Result<(), PrivateKeyError> {
+    let trimmed = new_pin.trim();
+    if trimmed.is_empty() {
+        return Err(PrivateKeyError::fido2_pin_required(
+            "Enter the FIDO2 security key PIN.",
+        ));
+    }
+
+    with_fido2_transport_read(|transport| transport.set_new_pin(trimmed))
+        .map_err(private_key_error_from_fido2_error)
+}
+
+#[cfg(not(all(target_os = "linux", feature = "fidopin")))]
+pub fn set_fido2_security_key_pin(_new_pin: &str) -> Result<(), PrivateKeyError> {
+    Err(PrivateKeyError::fido2_pin_unsupported(
+        "Setting a FIDO2 security key PIN is only supported on Linux in this build.",
     ))
 }
 
@@ -582,10 +625,9 @@ fn map_fido2_library_error(err: Fido2LibraryError) -> Fido2TransportError {
 fn map_fido2_error_message(message: &str) -> Fido2TransportError {
     let lowered = message.to_ascii_lowercase();
     let normalized = lowered.replace('_', " ");
-    if normalized.contains("pin required")
-        || normalized.contains("pin not set")
-        || normalized.contains("uv invalid")
-    {
+    if normalized.contains("pin not set") {
+        Fido2TransportError::PinNotSet
+    } else if normalized.contains("pin required") || normalized.contains("uv invalid") {
         Fido2TransportError::PinRequired
     } else if normalized.contains("pin invalid")
         || normalized.contains("pin auth invalid")
@@ -615,13 +657,15 @@ fn map_fido2_error_message(message: &str) -> Fido2TransportError {
 
 fn transport_error_rank(err: &Fido2TransportError) -> usize {
     match err {
-        Fido2TransportError::PinRequired => 0,
-        Fido2TransportError::IncorrectPin => 1,
-        Fido2TransportError::UserActionTimeout => 2,
-        Fido2TransportError::TokenRemoved => 3,
-        Fido2TransportError::Unsupported => 4,
-        Fido2TransportError::Other(_) => 5,
-        Fido2TransportError::TokenNotPresent => 6,
+        Fido2TransportError::PinNotSet => 0,
+        Fido2TransportError::PinRequired => 1,
+        Fido2TransportError::IncorrectPin => 2,
+        Fido2TransportError::PinUnsupported => 3,
+        Fido2TransportError::UserActionTimeout => 4,
+        Fido2TransportError::TokenRemoved => 5,
+        Fido2TransportError::Unsupported => 6,
+        Fido2TransportError::Other(_) => 7,
+        Fido2TransportError::TokenNotPresent => 8,
     }
 }
 
@@ -739,6 +783,66 @@ fn owned_device_label(info: DeviceInfo<'_>) -> Fido2DeviceLabel {
 
 struct RealFido2Transport;
 
+fn ensure_device_pin_is_ready(device: &Device) -> Result<(), Fido2TransportError> {
+    if !device.supports_pin() {
+        return Err(Fido2TransportError::PinUnsupported);
+    }
+    if !device.has_pin() {
+        return Err(Fido2TransportError::PinNotSet);
+    }
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", feature = "fidopin"))]
+fn libfido2_error(code: i32) -> Fido2TransportError {
+    let message = unsafe {
+        let ptr = ffi::fido_strerr(code);
+        CStr::from_ptr(ptr).to_string_lossy().into_owned()
+    };
+    map_fido2_error_message(&message)
+}
+
+#[cfg(all(target_os = "linux", feature = "fidopin"))]
+fn set_pin_on_device_path(device_path: &str, new_pin: &str) -> Result<(), Fido2TransportError> {
+    let device_path = CString::new(device_path)
+        .map_err(|err| Fido2TransportError::Other(format!("Invalid FIDO2 device path: {err}")))?;
+    let mut pin = Zeroizing::new(new_pin.as_bytes().to_vec());
+    if pin.contains(&0) {
+        return Err(Fido2TransportError::Other(
+            "The FIDO2 security key PIN contains an unsupported NUL byte.".to_string(),
+        ));
+    }
+    pin.push(0);
+
+    let mut device = unsafe { ffi::fido_dev_new() };
+    if device.is_null() {
+        return Err(Fido2TransportError::Other(
+            "Couldn't initialize the FIDO2 security key.".to_string(),
+        ));
+    }
+
+    let open_result = unsafe { ffi::fido_dev_open(device, device_path.as_ptr()) };
+    if open_result != 0 {
+        unsafe {
+            ffi::fido_dev_free(&mut device);
+        }
+        return Err(libfido2_error(open_result));
+    }
+
+    let set_pin_result =
+        unsafe { ffi::fido_dev_set_pin(device, pin.as_ptr().cast(), std::ptr::null()) };
+    unsafe {
+        ffi::fido_dev_close(device);
+        ffi::fido_dev_free(&mut device);
+    }
+
+    if set_pin_result == 0 {
+        Ok(())
+    } else {
+        Err(libfido2_error(set_pin_result))
+    }
+}
+
 struct EnrollmentRequest<'a> {
     label: &'a Fido2DeviceLabel,
     rp_id: &'a str,
@@ -773,6 +877,7 @@ impl RealFido2Transport {
         pin: Option<&str>,
         salt: &[u8],
     ) -> Result<Vec<u8>, Fido2TransportError> {
+        ensure_device_pin_is_ready(device)?;
         let mut request = AssertRequest::new();
         request.set_rp(rp_id).map_err(map_fido2_library_error)?;
         set_assert_client_data(device, &mut request, rp_id)?;
@@ -807,6 +912,7 @@ impl RealFido2Transport {
         device: &Device,
         request: EnrollmentRequest<'_>,
     ) -> Result<Fido2Enrollment, Fido2TransportError> {
+        ensure_device_pin_is_ready(device)?;
         let mut credential = Credential::new();
         set_credential_client_data(device, &mut credential, request.user_name)?;
         credential
@@ -929,6 +1035,31 @@ impl Fido2Transport for RealFido2Transport {
 
         Err(last_error.unwrap_or(Fido2TransportError::TokenNotPresent))
     }
+
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    fn set_new_pin(&self, new_pin: &str) -> Result<(), Fido2TransportError> {
+        let mut devices = DeviceList::list_devices(16);
+        let Some(info) = devices.next() else {
+            return Err(Fido2TransportError::TokenNotPresent);
+        };
+        if devices.next().is_some() {
+            return Err(Fido2TransportError::Other(
+                "Connect only one FIDO2 security key before continuing.".to_string(),
+            ));
+        }
+
+        {
+            let device = info.open().map_err(map_fido2_library_error)?;
+            if !device.supports_pin() {
+                return Err(Fido2TransportError::PinUnsupported);
+            }
+            if device.has_pin() {
+                return Ok(());
+            }
+        }
+
+        set_pin_on_device_path(&info.path.to_string_lossy(), new_pin)
+    }
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
@@ -1045,6 +1176,14 @@ mod tests {
     }
 
     #[test]
+    fn fido2_error_mapping_distinguishes_pin_not_set_strings() {
+        let err = map_fido2_error_message(
+            "libfido2: Error { code: 53, message: \"FIDO_ERR_PIN_NOT_SET\" }",
+        );
+        assert!(matches!(err, Fido2TransportError::PinNotSet));
+    }
+
+    #[test]
     fn fido2_error_mapping_understands_action_timeout_strings() {
         let err = map_fido2_error_message(
             "libfido2: Error { code: 47, message: \"FIDO_ERR_USER_ACTION_TIMEOUT\" }",
@@ -1068,6 +1207,16 @@ mod tests {
         )
         .expect("preferred error");
         assert!(matches!(preferred, Fido2TransportError::PinRequired));
+    }
+
+    #[test]
+    fn transport_error_preference_keeps_pin_not_set_over_pin_required() {
+        let preferred = prefer_transport_error(
+            Some(Fido2TransportError::PinRequired),
+            Fido2TransportError::PinNotSet,
+        )
+        .expect("preferred error");
+        assert!(matches!(preferred, Fido2TransportError::PinNotSet));
     }
 
     #[test]

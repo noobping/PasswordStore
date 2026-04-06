@@ -1,13 +1,26 @@
+#[cfg(feature = "hardwarekey")]
+use super::crypto::{build_public_cert, public_key_material_and_fp_to_key, public_to_fingerprint};
 use super::crypto::{decrypt_with_card_transaction, sign_with_card_transaction};
+#[cfg(feature = "hardwarekey")]
+use super::HardwareKeyGenerationRequest;
 use super::{DiscoveredHardwareToken, HardwareTransport, HardwareTransportError};
 use crate::backend::integrated::keys::cert::ManagedRipassoHardwareKey;
 use card_backend_pcsc::PcscBackend;
 use openpgp_card::ocard::KeyType;
+#[cfg(feature = "hardwarekey")]
+use openpgp_card::ocard::StatusBytes;
+#[cfg(feature = "hardwarekey")]
+use openpgp_card::Error as OpenPgpCardError;
 use openpgp_card::{state, Card};
 use secrecy::SecretString;
+#[cfg(feature = "hardwarekey")]
+use sequoia_openpgp::serialize::Serialize;
 use sequoia_openpgp::Cert;
 use std::sync::Arc;
 use zeroize::Zeroizing;
+
+#[cfg(feature = "hardwarekey")]
+const DEFAULT_OPENPGP_CARD_USER_PIN: &str = "123456";
 
 #[derive(Clone)]
 pub(in crate::backend::integrated) enum HardwareUnlockMode {
@@ -57,6 +70,144 @@ fn fingerprint_matches(actual: Option<&str>, expected: &str) -> bool {
 }
 
 impl RealHardwareTransport {
+    #[cfg(feature = "hardwarekey")]
+    fn step_error(step: &str, err: impl std::fmt::Display) -> HardwareTransportError {
+        map_hardware_transport_message(format!("{step}: {err}"))
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn should_retry_user_pin_change(err: &OpenPgpCardError) -> bool {
+        matches!(
+            err,
+            OpenPgpCardError::CardStatus(
+                StatusBytes::SecurityStatusNotSatisfied | StatusBytes::ConditionOfUseNotSatisfied
+            )
+        )
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn set_requested_user_pin(
+        admin: &mut Card<state::Admin<'_, '_>>,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(), HardwareTransportError> {
+        if !request.replace_user_pin {
+            return Ok(());
+        }
+
+        let new_pin = SecretString::from(request.user_pin.clone());
+        match admin.reset_user_pin(new_pin.clone()) {
+            Ok(()) => Ok(()),
+            Err(err) if Self::should_retry_user_pin_change(&err) => admin
+                .as_transaction()
+                .change_user_pin(SecretString::from(DEFAULT_OPENPGP_CARD_USER_PIN), new_pin)
+                .map_err(card_error),
+            Err(err) => Err(card_error(err)),
+        }
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn should_retry_generated_cert_signing(message: &str) -> bool {
+        let lowered = message.to_ascii_lowercase();
+        lowered.contains("security status not satisfied")
+            || lowered.contains("condition of use not satisfied")
+            || lowered.contains("password not checked")
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn build_generated_public_cert(
+        card: &mut Card<state::Open>,
+        signing_key: sequoia_openpgp::packet::key::Key<
+            sequoia_openpgp::packet::key::PublicParts,
+            sequoia_openpgp::packet::key::UnspecifiedRole,
+        >,
+        decryption_key: sequoia_openpgp::packet::key::Key<
+            sequoia_openpgp::packet::key::PublicParts,
+            sequoia_openpgp::packet::key::UnspecifiedRole,
+        >,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<Cert, HardwareTransportError> {
+        let mut candidate_pins = vec![request.user_pin.as_str()];
+        if request.replace_user_pin && request.user_pin != DEFAULT_OPENPGP_CARD_USER_PIN {
+            candidate_pins.push(DEFAULT_OPENPGP_CARD_USER_PIN);
+        }
+
+        let mut last_error = None;
+        for (index, pin) in candidate_pins.iter().enumerate() {
+            let mut transaction = card.transaction().map_err(card_error)?;
+            match build_public_cert(
+                &mut transaction,
+                signing_key.clone(),
+                Some(decryption_key.clone()),
+                None,
+                Some(pin),
+                &|| {},
+                &|| {},
+                std::slice::from_ref(&request.user_id),
+            ) {
+                Ok(cert) => return Ok(cert.strip_secret_key_material()),
+                Err(err) => {
+                    let message = err.to_string();
+                    let can_retry = index + 1 < candidate_pins.len()
+                        && Self::should_retry_generated_cert_signing(&message);
+                    last_error = Some(map_hardware_transport_message(message));
+                    if can_retry {
+                        continue;
+                    }
+                    break;
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            HardwareTransportError::Other(
+                "Couldn't create the public key certificate on the hardware key.".to_string(),
+            )
+        }))
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn requested_user_pin_is_active(
+        card: &mut Card<state::Open>,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<bool, HardwareTransportError> {
+        let mut transaction = card.transaction().map_err(card_error)?;
+        match transaction.verify_user_pin(SecretString::from(request.user_pin.clone())) {
+            Ok(()) => Ok(true),
+            Err(err) if Self::should_retry_user_pin_change(&err) => Ok(false),
+            Err(err) => Err(card_error(err)),
+        }
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn ensure_requested_user_pin_is_active(
+        card: &mut Card<state::Open>,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(), HardwareTransportError> {
+        if !request.replace_user_pin {
+            return Ok(());
+        }
+
+        if Self::requested_user_pin_is_active(card, request)? {
+            return Ok(());
+        }
+
+        {
+            let mut transaction = card.transaction().map_err(card_error)?;
+            let mut admin = transaction
+                .to_admin_card(SecretString::from(request.admin_pin.clone()))
+                .map_err(card_error)?;
+            Self::set_requested_user_pin(&mut admin, request)?;
+        }
+
+        if Self::requested_user_pin_is_active(card, request)? {
+            Ok(())
+        } else {
+            Err(HardwareTransportError::IncorrectPin(
+                "The hardware key did not accept the requested new PIN.".to_string(),
+            ))
+        }
+    }
+
     fn matching_fingerprint(
         tx: &mut Card<state::Transaction<'_>>,
         key_type: KeyType,
@@ -105,6 +256,120 @@ impl RealHardwareTransport {
         Ok(pin_string(pin)?.into())
     }
 
+    #[cfg(feature = "hardwarekey")]
+    fn generated_public_cert(
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        let mut card = Self::open_card(&request.ident)?;
+        let requested_pin_active = Self::requested_user_pin_is_active(&mut card, request)?;
+        {
+            let mut transaction = card.transaction().map_err(card_error)?;
+            let mut admin = transaction
+                .to_admin_card(SecretString::from(request.admin_pin.clone()))
+                .map_err(|err| {
+                    Self::step_error("Couldn't verify the hardware key admin PIN", err)
+                })?;
+            admin
+                .set_cardholder_name(&request.cardholder_name)
+                .map_err(|err| {
+                    Self::step_error("Couldn't set the hardware key cardholder name", err)
+                })?;
+            if !requested_pin_active {
+                Self::set_requested_user_pin(&mut admin, request).map_err(|err| {
+                    Self::step_error("Couldn't set the hardware key user PIN", err)
+                })?;
+            }
+        }
+
+        let (signing_material, signing_time, decryption_material, decryption_time) = {
+            let mut transaction = card.transaction().map_err(card_error)?;
+            let mut admin = transaction
+                .to_admin_card(SecretString::from(request.admin_pin.clone()))
+                .map_err(|err| {
+                    Self::step_error("Couldn't reopen the hardware key admin session", err)
+                })?;
+            let (signing_material, signing_time) = admin
+                .generate_key(public_to_fingerprint, KeyType::Signing)
+                .map_err(|err| {
+                    Self::step_error("Couldn't generate the hardware signing key", err)
+                })?;
+            let (decryption_material, decryption_time) = admin
+                .generate_key(public_to_fingerprint, KeyType::Decryption)
+                .map_err(|err| {
+                    Self::step_error("Couldn't generate the hardware decryption key", err)
+                })?;
+            (
+                signing_material,
+                signing_time,
+                decryption_material,
+                decryption_time,
+            )
+        };
+
+        let (signing_fingerprint, decryption_fingerprint, signing_key, decryption_key) = {
+            let mut transaction = card.transaction().map_err(card_error)?;
+            let signing_fingerprint = transaction
+                .fingerprint(KeyType::Signing)
+                .map_err(card_error)?
+                .ok_or_else(|| {
+                    HardwareTransportError::Other(
+                        "The hardware key did not return a signing fingerprint.".to_string(),
+                    )
+                })?;
+            let decryption_fingerprint = transaction
+                .fingerprint(KeyType::Decryption)
+                .map_err(card_error)?
+                .ok_or_else(|| {
+                    HardwareTransportError::Other(
+                        "The hardware key did not return a decryption fingerprint.".to_string(),
+                    )
+                })?;
+            let signing_key = public_key_material_and_fp_to_key(
+                &signing_material,
+                KeyType::Signing,
+                &signing_time,
+                &signing_fingerprint,
+            )
+            .map_err(|err| HardwareTransportError::Other(err.to_string()))?;
+            let decryption_key = public_key_material_and_fp_to_key(
+                &decryption_material,
+                KeyType::Decryption,
+                &decryption_time,
+                &decryption_fingerprint,
+            )
+            .map_err(|err| HardwareTransportError::Other(err.to_string()))?;
+            (
+                signing_fingerprint,
+                decryption_fingerprint,
+                signing_key,
+                decryption_key,
+            )
+        };
+        let cert =
+            Self::build_generated_public_cert(&mut card, signing_key, decryption_key, request)
+                .map_err(|err| {
+                    Self::step_error("Couldn't certify the generated hardware key", err)
+                })?;
+        Self::ensure_requested_user_pin_is_active(&mut card, request).map_err(|err| {
+            Self::step_error("Couldn't verify the requested hardware key PIN", err)
+        })?;
+        let mut bytes = Vec::new();
+        cert.serialize(&mut bytes).map_err(|err| {
+            Self::step_error("Couldn't serialize the generated hardware public key", err)
+        })?;
+
+        Ok((
+            DiscoveredHardwareToken {
+                ident: request.ident.clone(),
+                reader_hint: None,
+                cardholder_certificate: Some(bytes.clone()),
+                signing_fingerprint: Some(signing_fingerprint.to_string()),
+                decryption_fingerprint: Some(decryption_fingerprint.to_string()),
+            },
+            bytes,
+        ))
+    }
+
     fn verify_user_access(
         tx: &mut Card<state::Transaction<'_>>,
         session: &HardwareSessionPolicy,
@@ -129,6 +394,39 @@ impl RealHardwareTransport {
                 tx.verify_user_signing_pinpad(&|| {}).map_err(card_error)
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "hardwarekey"))]
+mod tests {
+    use super::RealHardwareTransport;
+    use openpgp_card::ocard::StatusBytes;
+    use openpgp_card::Error as OpenPgpCardError;
+
+    #[test]
+    fn security_status_retry_is_enabled_for_blank_card_pin_setup() {
+        assert!(RealHardwareTransport::should_retry_user_pin_change(
+            &OpenPgpCardError::CardStatus(StatusBytes::SecurityStatusNotSatisfied),
+        ));
+        assert!(RealHardwareTransport::should_retry_user_pin_change(
+            &OpenPgpCardError::CardStatus(StatusBytes::ConditionOfUseNotSatisfied),
+        ));
+        assert!(!RealHardwareTransport::should_retry_user_pin_change(
+            &OpenPgpCardError::CardStatus(StatusBytes::AuthenticationMethodBlocked),
+        ));
+    }
+
+    #[test]
+    fn generated_cert_signing_retry_is_enabled_for_auth_state_errors() {
+        assert!(RealHardwareTransport::should_retry_generated_cert_signing(
+            "OpenPGP card error status: Security status not satisfied",
+        ));
+        assert!(RealHardwareTransport::should_retry_generated_cert_signing(
+            "OpenPGP card error status: Password not checked, 3 allowed retries",
+        ));
+        assert!(!RealHardwareTransport::should_retry_generated_cert_signing(
+            "OpenPGP card error status: Authentication method blocked",
+        ));
     }
 }
 
@@ -161,6 +459,24 @@ impl HardwareTransport for RealHardwareTransport {
         }
 
         Ok(tokens)
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn generate_key_material(
+        &self,
+        request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        if request.user_pin.trim().is_empty() {
+            return Err(HardwareTransportError::PinRequired(
+                if request.replace_user_pin {
+                    "Enter the new hardware key PIN."
+                } else {
+                    "Enter the hardware key PIN."
+                }
+                .to_string(),
+            ));
+        }
+        Self::generated_public_cert(request)
     }
 
     fn verify_session(
@@ -232,8 +548,9 @@ fn map_hardware_transport_message(message: String) -> HardwareTransportError {
         || lowered.contains("context error")
     {
         HardwareTransportError::TokenNotPresent(message)
+    } else if lowered.contains("authentication method blocked") {
+        HardwareTransportError::PinBlocked(message)
     } else if lowered.contains("password not checked")
-        || lowered.contains("authentication method blocked")
         || lowered.contains("security status not satisfied")
         || lowered.contains("pin invalid")
         || lowered.contains("incorrect")

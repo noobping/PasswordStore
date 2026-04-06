@@ -1,8 +1,3 @@
-#![expect(
-    clippy::significant_drop_tightening,
-    reason = "SystemBackendTestEnv intentionally stays alive through each test to preserve the temp workspace and test env vars."
-)]
-
 use super::crypto::IntegratedCryptoContext;
 use super::entries::{
     delete_password_entry, password_entry_is_readable, read_password_entry, rename_password_entry,
@@ -19,18 +14,26 @@ use super::git::{
 };
 #[cfg(feature = "fidokey")]
 use super::keys::generate_fido2_private_key;
+#[cfg(all(
+    any(feature = "fidostore", feature = "fidokey"),
+    feature = "fidopin",
+    target_os = "linux"
+))]
+use super::keys::set_fido2_security_key_pin;
+#[cfg(feature = "hardwarekey")]
+use super::keys::store_ripasso_hardware_key_bytes;
 use super::keys::{
     armored_ripasso_private_key, clear_cached_unlocked_ripasso_private_keys,
     discover_ripasso_hardware_keys, ensure_ripasso_private_key_is_ready,
-    generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
-    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked, list_ripasso_private_keys,
-    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
+    generate_ripasso_hardware_key, generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
+    import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
+    list_connected_smartcard_keys, list_ripasso_private_keys, parse_managed_private_key_bytes,
+    prepare_managed_private_key_bytes, remove_ripasso_private_key,
     reset_hardware_transport_for_tests, resolved_ripasso_own_fingerprint, ripasso_keys_dir,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
-    set_hardware_transport_for_tests, store_ripasso_hardware_key_bytes,
-    unlock_ripasso_private_key_for_session, DiscoveredHardwareToken, HardwareSessionPolicy,
-    HardwareTransport, HardwareTransportError, ManagedRipassoHardwareKey,
-    ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
+    set_hardware_transport_for_tests, unlock_ripasso_private_key_for_session,
+    DiscoveredHardwareToken, HardwareSessionPolicy, HardwareTransport, HardwareTransportError,
+    ManagedRipassoHardwareKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use super::keys::{
@@ -46,11 +49,14 @@ use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 use super::store::save_store_recipients_with_progress as save_split_store_recipients_with_progress;
 use super::store::{
     save_store_recipients as save_split_store_recipients,
+    save_store_recipients_for_relative_dir as save_split_store_recipients_for_relative_dir,
     store_recipients_private_key_requiring_unlock,
 };
 use crate::backend::{
-    test_support::SystemBackendTestEnv, PasswordEntryError, PasswordEntryWriteError,
-    PrivateKeyError, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
+    preferred_ripasso_private_key_fingerprint_for_entry,
+    required_private_key_fingerprints_for_entry, test_support::SystemBackendTestEnv,
+    PasswordEntryError, PasswordEntryWriteError, PrivateKeyError, StoreRecipientsError,
+    StoreRecipientsPrivateKeyRequirement,
 };
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use crate::backend::{
@@ -120,6 +126,21 @@ fn save_store_recipients(
     save_split_store_recipients(store_root, &recipients, private_key_requirement)
 }
 
+fn save_store_recipients_for_relative_dir(
+    store_root: &str,
+    relative_dir: &str,
+    recipients: &[String],
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<(), StoreRecipientsError> {
+    let recipients = split_store_recipients(recipients);
+    save_split_store_recipients_for_relative_dir(
+        store_root,
+        relative_dir,
+        &recipients,
+        private_key_requirement,
+    )
+}
+
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 fn save_store_recipients_with_progress(
     store_root: &str,
@@ -149,9 +170,17 @@ fn git_commit_private_key_requiring_unlock_for_store_recipients(
     )
 }
 
+#[cfg(feature = "hardwarekey")]
+type MockHardwareGenerationResult =
+    Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError>;
+
 #[derive(Default)]
 struct MockHardwareTransport {
     tokens: Mutex<Vec<DiscoveredHardwareToken>>,
+    #[cfg(feature = "hardwarekey")]
+    generation_result: Mutex<Option<MockHardwareGenerationResult>>,
+    #[cfg(feature = "hardwarekey")]
+    generation_requests: Mutex<Vec<super::keys::HardwareKeyGenerationRequest>>,
     decrypt_response: Mutex<Option<String>>,
     sign_response: Mutex<Option<String>>,
 }
@@ -160,9 +189,22 @@ impl MockHardwareTransport {
     fn with_tokens(tokens: Vec<DiscoveredHardwareToken>) -> Self {
         Self {
             tokens: Mutex::new(tokens),
+            #[cfg(feature = "hardwarekey")]
+            generation_result: Mutex::new(None),
+            #[cfg(feature = "hardwarekey")]
+            generation_requests: Mutex::new(Vec::new()),
             decrypt_response: Mutex::new(None),
             sign_response: Mutex::new(None),
         }
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn with_generation_result(mut self, result: MockHardwareGenerationResult) -> Self {
+        self.generation_result
+            .get_mut()
+            .expect("generation mutex poisoned")
+            .replace(result);
+        self
     }
 
     fn with_decrypt_response(mut self, plaintext: &str) -> Self {
@@ -177,6 +219,26 @@ impl MockHardwareTransport {
 impl HardwareTransport for MockHardwareTransport {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
         Ok(self.tokens.lock().expect("tokens mutex poisoned").clone())
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn generate_key_material(
+        &self,
+        request: &super::keys::HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        self.generation_requests
+            .lock()
+            .expect("generation request mutex poisoned")
+            .push(request.clone());
+        self.generation_result
+            .lock()
+            .expect("generation mutex poisoned")
+            .clone()
+            .ok_or_else(|| {
+                HardwareTransportError::Other(
+                    "No mock hardware generation result configured.".to_string(),
+                )
+            })?
     }
 
     fn verify_session(
@@ -235,6 +297,10 @@ impl Drop for HardwareTransportGuard {
 struct MockFido2Transport {
     enrollments: Mutex<Vec<Result<Fido2Enrollment, Fido2TransportError>>>,
     assertions: Mutex<Vec<Result<Fido2AssertionOutput, Fido2TransportError>>>,
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    pin_setups: Mutex<Vec<Result<(), Fido2TransportError>>>,
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    observed_pin_setups: Mutex<Vec<String>>,
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -261,6 +327,15 @@ impl MockFido2Transport {
         self
     }
 
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    fn with_pin_setup_result(mut self, result: Result<(), Fido2TransportError>) -> Self {
+        self.pin_setups
+            .get_mut()
+            .expect("pin setup mutex poisoned")
+            .push(result);
+        self
+    }
+
     fn next_enrollment(&self) -> Result<Fido2Enrollment, Fido2TransportError> {
         self.enrollments
             .lock()
@@ -273,6 +348,22 @@ impl MockFido2Transport {
             .lock()
             .expect("assertion mutex poisoned")
             .remove(0)
+    }
+
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    fn next_pin_setup(&self) -> Result<(), Fido2TransportError> {
+        self.pin_setups
+            .lock()
+            .expect("pin setup mutex poisoned")
+            .remove(0)
+    }
+
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    fn observed_pin_setups(&self) -> Vec<String> {
+        self.observed_pin_setups
+            .lock()
+            .expect("observed pin setup mutex poisoned")
+            .clone()
     }
 }
 
@@ -298,6 +389,15 @@ impl Fido2Transport for MockFido2Transport {
         _excluded_devices: &[Fido2DeviceLabel],
     ) -> Result<Fido2AssertionOutput, Fido2TransportError> {
         self.next_assertion()
+    }
+
+    #[cfg(all(target_os = "linux", feature = "fidopin"))]
+    fn set_new_pin(&self, new_pin: &str) -> Result<(), Fido2TransportError> {
+        self.observed_pin_setups
+            .lock()
+            .expect("observed pin setup mutex poisoned")
+            .push(new_pin.to_string());
+        self.next_pin_setup()
     }
 }
 
@@ -841,6 +941,7 @@ fn protected_private_keys_can_be_unlocked_for_ripasso_storage() {
 }
 
 #[test]
+#[cfg(feature = "hardwarekey")]
 fn hardware_public_keys_can_be_stored_and_unlocked_for_a_session() {
     let env = SystemBackendTestEnv::new();
     env.activate_profile("hardware-key-store");
@@ -885,6 +986,96 @@ fn hardware_public_keys_can_be_stored_and_unlocked_for_a_session() {
 }
 
 #[test]
+#[cfg(feature = "hardwarekey")]
+fn blank_hardware_tokens_can_generate_a_managed_openpgp_key() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("hardware-key-generate");
+    let public_bytes = public_cert_bytes("Generated Hardware <generated@example.com>");
+    let generated_token = DiscoveredHardwareToken {
+        ident: "mock-token".to_string(),
+        reader_hint: Some("Mock Reader".to_string()),
+        cardholder_certificate: Some(public_bytes.clone()),
+        signing_fingerprint: None,
+        decryption_fingerprint: None,
+    };
+    let _guard = HardwareTransportGuard::install(Arc::new(
+        MockHardwareTransport::with_tokens(vec![generated_token.clone()])
+            .with_generation_result(Ok((generated_token, public_bytes))),
+    ));
+
+    let generated = generate_ripasso_hardware_key(
+        "mock-token",
+        Some("Mock Reader"),
+        "Generated Hardware",
+        "generated@example.com",
+        "12345678",
+        "123456",
+        true,
+    )
+    .expect("generate hardware-backed key");
+
+    assert_eq!(
+        generated.protection,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+    );
+    assert_eq!(
+        generated
+            .hardware
+            .as_ref()
+            .and_then(|hardware| hardware.reader_hint.as_deref()),
+        Some("Mock Reader")
+    );
+}
+
+#[test]
+#[cfg(feature = "hardwarekey")]
+fn hardware_key_generation_can_keep_existing_user_pin() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("hardware-key-generate-existing-pin");
+    let public_bytes = public_cert_bytes("Existing Hardware <existing@example.com>");
+    let transport = Arc::new(
+        MockHardwareTransport::with_tokens(vec![DiscoveredHardwareToken {
+            ident: "mock-token".to_string(),
+            reader_hint: Some("Mock Reader".to_string()),
+            cardholder_certificate: Some(public_bytes.clone()),
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+        }])
+        .with_generation_result(Ok((
+            DiscoveredHardwareToken {
+                ident: "mock-token".to_string(),
+                reader_hint: Some("Mock Reader".to_string()),
+                cardholder_certificate: Some(public_bytes.clone()),
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+            },
+            public_bytes,
+        ))),
+    );
+    let _guard = HardwareTransportGuard::install(transport.clone());
+
+    generate_ripasso_hardware_key(
+        "mock-token",
+        Some("Mock Reader"),
+        "Existing Hardware",
+        "existing@example.com",
+        "12345678",
+        "654321",
+        false,
+    )
+    .expect("generate hardware-backed key while keeping user pin");
+
+    let requests = transport
+        .generation_requests
+        .lock()
+        .expect("generation request mutex poisoned");
+    assert_eq!(requests.len(), 1);
+    assert!(!requests[0].replace_user_pin);
+    assert_eq!(requests[0].user_pin, "654321");
+}
+
+#[test]
+#[cfg(feature = "hardwarekey")]
 fn hardware_keys_can_decrypt_password_entries_after_unlock() {
     let env = SystemBackendTestEnv::new();
     env.activate_profile("hardware-key-decrypt");
@@ -935,6 +1126,150 @@ fn hardware_keys_can_decrypt_password_entries_after_unlock() {
             .expect("read hardware-backed entry"),
         "supersecret\nusername: alice"
     );
+}
+
+#[test]
+fn connected_smartcards_can_unlock_read_rewrite_and_save_recipients_without_import() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("connected-smartcard");
+    let public_bytes = public_cert_bytes("Token User <token@example.com>");
+    let transport = Arc::new(
+        MockHardwareTransport::with_tokens(vec![DiscoveredHardwareToken {
+            ident: "mock-token".to_string(),
+            reader_hint: Some("Mock Reader".to_string()),
+            cardholder_certificate: Some(public_bytes),
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+        }])
+        .with_decrypt_response("supersecret\nusername: alice"),
+    );
+    let _guard = HardwareTransportGuard::install(transport.clone());
+
+    let connected = list_connected_smartcard_keys().expect("list connected smartcards");
+    assert_eq!(connected.len(), 1);
+    assert!(list_ripasso_private_keys()
+        .expect("list stored keys")
+        .into_iter()
+        .all(|key| key.fingerprint != connected[0].fingerprint));
+
+    let fingerprint = connected[0].fingerprint.clone();
+    let store_root = env.store_root().to_string_lossy().to_string();
+    fs::write(env.store_root().join(".gpg-id"), format!("{fingerprint}\n"))
+        .expect("write recipients");
+
+    assert_eq!(
+        required_private_key_fingerprints_for_entry(&store_root, "team/service")
+            .expect("resolve direct smartcard recipient"),
+        vec![fingerprint.clone()]
+    );
+
+    save_password_entry(
+        &store_root,
+        "team/service",
+        "supersecret\nusername: alice",
+        true,
+    )
+    .expect("save entry for direct smartcard");
+
+    assert!(matches!(
+        read_password_entry(&store_root, "team/service"),
+        Err(PasswordEntryError::LockedPrivateKey(_))
+    ));
+    assert_eq!(
+        store_recipients_private_key_requiring_unlock(&store_root)
+            .expect("resolve locked direct smartcard"),
+        Some(fingerprint.clone())
+    );
+    assert!(ripasso_private_key_requires_session_unlock(&fingerprint)
+        .expect("inspect direct smartcard lock state"));
+
+    let unlocked = unlock_ripasso_private_key_for_session(
+        &fingerprint,
+        PrivateKeyUnlockRequest::HardwareExternal,
+    )
+    .expect("unlock direct smartcard");
+    assert_eq!(
+        unlocked.protection,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+    );
+    assert!(is_ripasso_private_key_unlocked(&fingerprint).expect("inspect unlocked state"));
+    assert_eq!(
+        read_password_entry(&store_root, "team/service").expect("read direct smartcard entry"),
+        "supersecret\nusername: alice"
+    );
+
+    transport
+        .decrypt_response
+        .lock()
+        .expect("decrypt mutex poisoned")
+        .replace("updated\nusername: bob".to_string());
+    save_password_entry(&store_root, "team/service", "updated\nusername: bob", true)
+        .expect("rewrite direct smartcard entry");
+    assert_eq!(
+        read_password_entry(&store_root, "team/service").expect("read rewritten entry"),
+        "updated\nusername: bob"
+    );
+
+    save_store_recipients(
+        &store_root,
+        std::slice::from_ref(&fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("save recipients with direct smartcard");
+}
+
+#[test]
+fn connected_smartcards_without_cardholder_certificates_are_not_exposed() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("connected-smartcard-no-cert");
+    let _guard =
+        HardwareTransportGuard::install(Arc::new(MockHardwareTransport::with_tokens(vec![
+            DiscoveredHardwareToken {
+                ident: "mock-token".to_string(),
+                reader_hint: Some("Mock Reader".to_string()),
+                cardholder_certificate: None,
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+            },
+        ])));
+
+    assert!(list_connected_smartcard_keys()
+        .expect("list connected smartcards")
+        .is_empty());
+}
+
+#[cfg(not(feature = "hardwarekey"))]
+#[test]
+fn smartcard_only_build_keeps_managed_hardware_key_entry_points_disabled() {
+    let public_bytes = public_cert_bytes("Token User <token@example.com>");
+
+    assert!(discover_ripasso_hardware_keys()
+        .expect_err("hardware-key discovery should stay disabled")
+        .contains("disabled"));
+    assert!(matches!(
+        import_ripasso_hardware_key_bytes(
+            &public_bytes,
+            ManagedRipassoHardwareKey {
+                ident: "mock-token".to_string(),
+                signing_fingerprint: None,
+                decryption_fingerprint: None,
+                reader_hint: Some("Mock Reader".to_string()),
+            },
+        ),
+        Err(PrivateKeyError::UnsupportedHardwareKey(_))
+    ));
+    assert!(matches!(
+        generate_ripasso_hardware_key(
+            "mock-token",
+            Some("Mock Reader"),
+            "Generated Hardware",
+            "generated@example.com",
+            "12345678",
+            "123456",
+            true,
+        ),
+        Err(PrivateKeyError::UnsupportedHardwareKey(_))
+    ));
 }
 
 #[test]
@@ -1086,6 +1421,41 @@ fn fido2_private_key_unlocks_via_the_fidokey_feature() {
 
 #[cfg(feature = "fidokey")]
 #[test]
+fn generating_a_fido2_private_key_reports_when_the_security_key_has_no_pin() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default().with_enrollment_result(Err(Fido2TransportError::PinNotSet)),
+    ));
+
+    let err = generate_fido2_private_key(None).expect_err("missing PIN setup should be reported");
+
+    assert!(matches!(err, PrivateKeyError::Fido2PinNotSet(_)));
+}
+
+#[cfg(all(feature = "fidokey", feature = "fidopin", target_os = "linux"))]
+#[test]
+fn setting_a_new_fido2_pin_allows_generating_a_private_key() {
+    let _env = SystemBackendTestEnv::new();
+    let transport = Arc::new(
+        MockFido2Transport::default()
+            .with_pin_setup_result(Ok(()))
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"new-fidokey-secret"))),
+    );
+    let _guard = Fido2TransportGuard::install(transport.clone());
+
+    set_fido2_security_key_pin("123456").expect("set FIDO2 security key PIN");
+    let generated =
+        generate_fido2_private_key(Some("123456")).expect("generate FIDO2-protected key");
+
+    assert_eq!(transport.observed_pin_setups(), vec!["123456".to_string()]);
+    assert_eq!(
+        generated.protection,
+        ManagedRipassoPrivateKeyProtection::Fido2HmacSecret
+    );
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
 fn exported_fido2_private_keys_import_as_managed_keys() {
     let _env = SystemBackendTestEnv::new();
     let _guard = Fido2TransportGuard::install(Arc::new(
@@ -1207,6 +1577,40 @@ fn pure_fido2_recipients_can_retry_after_pin_required() {
 
     unlock_fido2_store_recipient_for_session(&recipient, Some("123456"))
         .expect("unlock FIDO2 recipient with PIN");
+}
+
+#[cfg(feature = "fidostore")]
+#[test]
+fn creating_a_fido2_recipient_reports_when_the_security_key_has_no_pin() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default().with_enrollment_result(Err(Fido2TransportError::PinNotSet)),
+    ));
+
+    let err = create_fido2_store_recipient(None).expect_err("missing PIN setup should be reported");
+
+    assert!(matches!(err, PrivateKeyError::Fido2PinNotSet(_)));
+}
+
+#[cfg(all(feature = "fidostore", feature = "fidopin", target_os = "linux"))]
+#[test]
+fn setting_a_new_fido2_pin_allows_creating_a_store_recipient() {
+    let _env = SystemBackendTestEnv::new();
+    let transport = Arc::new(
+        MockFido2Transport::default()
+            .with_pin_setup_result(Ok(()))
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"new-store-fido-secret"))),
+    );
+    let _guard = Fido2TransportGuard::install(transport.clone());
+
+    set_fido2_security_key_pin("123456").expect("set FIDO2 security key PIN");
+    let recipient =
+        create_fido2_store_recipient(Some("123456")).expect("create FIDO2 store recipient");
+
+    assert_eq!(transport.observed_pin_setups(), vec!["123456".to_string()]);
+    assert!(direct_binding_from_store_recipient(&recipient)
+        .expect("parse FIDO2 store recipient")
+        .is_some());
 }
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -2680,6 +3084,78 @@ fn store_recipient_updates_leave_nested_gpg_id_entries_on_their_own_recipients()
 }
 
 #[test]
+fn store_recipient_updates_can_target_a_nested_gpg_id_scope() {
+    let env = SystemBackendTestEnv::new();
+    let root_key = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Root Key <root-scope@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import root key");
+    let nested_key = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Nested Key <nested-scope@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import nested key");
+    let replacement_nested_key = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Replacement Nested <replacement-nested@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import replacement nested key");
+
+    let store = env.root_dir().join("scoped-store");
+    fs::create_dir_all(store.join("team")).expect("create nested store dir");
+    fs::write(store.join(".gpg-id"), format!("{}\n", root_key.fingerprint))
+        .expect("write root recipients");
+    fs::write(
+        store.join("team/.gpg-id"),
+        format!("{}\n", nested_key.fingerprint),
+    )
+    .expect("write nested recipients");
+
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "root-entry",
+        "root secret",
+        true,
+    )
+    .expect("save root entry");
+    save_password_entry(
+        store.to_string_lossy().as_ref(),
+        "team/service",
+        "nested secret",
+        true,
+    )
+    .expect("save nested entry");
+
+    save_store_recipients_for_relative_dir(
+        store.to_string_lossy().as_ref(),
+        "team",
+        std::slice::from_ref(&replacement_nested_key.fingerprint),
+        StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
+    )
+    .expect("update nested recipients");
+
+    assert_eq!(
+        fs::read_to_string(store.join(".gpg-id")).expect("read root recipients"),
+        format!("{}\n", root_key.fingerprint)
+    );
+    assert_eq!(
+        fs::read_to_string(store.join("team/.gpg-id")).expect("read nested recipients"),
+        format!("{}\n", replacement_nested_key.fingerprint)
+    );
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "root-entry")
+            .expect("read root entry after nested update"),
+        "root secret".to_string()
+    );
+    assert_eq!(
+        read_password_entry(store.to_string_lossy().as_ref(), "team/service")
+            .expect("read nested entry after nested update"),
+        "nested secret".to_string()
+    );
+}
+
+#[test]
 fn store_recipients_work_without_a_selected_default_key() {
     let env = SystemBackendTestEnv::new();
     let password: Password = "hunter2".into();
@@ -2776,6 +3252,84 @@ fn store_recipients_save_can_decrypt_with_a_non_selected_imported_key() {
         read_password_entry(store.to_string_lossy().as_ref(), "team/service")
             .expect("read re-encrypted entry"),
         "supersecret\nusername: alice".to_string()
+    );
+}
+
+#[test]
+fn preferred_entry_key_uses_a_ready_private_key_before_a_locked_coworker_key() {
+    let env = SystemBackendTestEnv::new();
+    let coworker = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Coworker Key <coworker@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import coworker private key");
+    let mine = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("My Key <me@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import own private key");
+    clear_cached_unlocked_ripasso_private_keys();
+    unlock_ripasso_private_key_for_session(
+        &mine.fingerprint,
+        PrivateKeyUnlockRequest::Password("hunter2".into()),
+    )
+    .expect("unlock own private key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(None)
+        .expect("clear selected fingerprint");
+
+    let store = env.root_dir().join("shared-store");
+    fs::create_dir_all(&store).expect("create store");
+    let store_root = store.to_string_lossy().to_string();
+    fs::write(
+        store.join(".gpg-id"),
+        format!("{}\n{}\n", coworker.fingerprint, mine.fingerprint),
+    )
+    .expect("write recipients");
+
+    assert_eq!(
+        preferred_ripasso_private_key_fingerprint_for_entry(&store_root, "team/service")
+            .expect("resolve preferred private key"),
+        mine.fingerprint
+    );
+}
+
+#[test]
+fn integrated_backend_uses_the_first_usable_private_key_before_a_coworker_recipient() {
+    let env = SystemBackendTestEnv::new();
+    let coworker = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("Coworker Entry <coworker-entry@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import coworker private key");
+    let mine = import_ripasso_private_key_bytes(
+        &protected_cert_bytes("My Entry <my-entry@example.com>"),
+        Some("hunter2"),
+    )
+    .expect("import own private key");
+    clear_cached_unlocked_ripasso_private_keys();
+    unlock_ripasso_private_key_for_session(
+        &mine.fingerprint,
+        PrivateKeyUnlockRequest::Password("hunter2".into()),
+    )
+    .expect("unlock own private key");
+    Preferences::new()
+        .set_ripasso_own_fingerprint(None)
+        .expect("clear selected fingerprint");
+
+    let store = env.root_dir().join("team-store");
+    fs::create_dir_all(&store).expect("create store");
+    let store_root = store.to_string_lossy().to_string();
+    fs::write(
+        store.join(".gpg-id"),
+        format!("{}\n{}\n", coworker.fingerprint, mine.fingerprint),
+    )
+    .expect("write recipients");
+
+    assert_eq!(
+        IntegratedCryptoContext::fingerprint_for_label(&store_root, "team/service")
+            .expect("resolve crypto context fingerprint"),
+        mine.fingerprint
     );
 }
 

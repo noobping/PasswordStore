@@ -15,7 +15,7 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, host-access={}, smartcard={}, fidostore={}, fidokey={}.",
+            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
             feature_status(cfg!(debug_assertions)),
             feature_status(cfg!(feature = "setup")),
             feature_status(cfg!(feature = "flatpak")),
@@ -23,6 +23,7 @@ pub fn log_runtime_capabilities_once() {
             feature_status(supports_logging_features()),
             feature_status(has_host_permission()),
             feature_status(has_smartcard_permission()),
+            feature_status(supports_hardwarekey_features()),
             feature_status(supports_fidostore_features() && has_fido2_permission()),
             feature_status(supports_fidokey_features() && has_fido2_permission()),
         ));
@@ -54,7 +55,11 @@ pub const fn supports_docs_features() -> bool {
 }
 
 pub const fn supports_smartcard_features() -> bool {
-    cfg!(target_os = "linux")
+    cfg!(all(target_os = "linux", feature = "smartcard"))
+}
+
+pub const fn supports_hardwarekey_features() -> bool {
+    cfg!(all(target_os = "linux", feature = "hardwarekey"))
 }
 
 pub const fn supports_fidostore_features() -> bool {

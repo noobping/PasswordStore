@@ -10,60 +10,46 @@ use crate::setup::{
     can_install_locally, install_locally, is_installed_locally, local_menu_action_label,
     uninstall_locally,
 };
-use crate::store::management::schedule_store_import_row;
+use crate::store::management::{schedule_store_import_row, StoreImportToolRowState};
 use crate::support::actions::activate_widget_action;
 use crate::support::runtime::{
     supports_docs_features, supports_host_command_features, supports_logging_features,
 };
-use crate::support::ui::{append_action_row_with_button, flat_icon_button_with_tooltip};
+#[cfg(all(target_os = "linux", feature = "setup"))]
+use crate::support::ui::append_action_row_with_button;
 use crate::window::navigation::show_log_page;
 use adw::prelude::*;
 use adw::{ActionRow, Toast};
 use std::rc::Rc;
 
-pub(super) fn append_optional_doc_row(state: &ToolsPageState) {
-    if !supports_docs_features() {
-        return;
-    }
-
+pub(super) fn configure_optional_doc_row(state: &ToolsPageState) {
+    state
+        .select_page
+        .docs_row
+        .set_visible(supports_docs_features());
     let window = state.window.clone();
-    append_action_row_with_button(
-        &state.logs_list,
-        "Documentation",
-        "Open guides and reference.",
-        "go-next-symbolic",
-        move || activate_widget_action(&window, "win.open-docs"),
-    );
+    state
+        .select_page
+        .docs_row
+        .connect_activated(move |_| activate_widget_action(&window, "win.open-docs"));
 }
 
-pub(super) fn append_optional_log_rows(state: &ToolsPageState) {
-    if !supports_logging_features() {
-        return;
-    }
+pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
+    let logging_supported = supports_logging_features();
+    state.select_page.logs_row.set_visible(logging_supported);
+    state
+        .select_page
+        .copy_logs_row
+        .set_visible(logging_supported);
 
     let navigation = state.navigation.clone();
-    append_action_row_with_button(
-        &state.logs_list,
-        "Open logs",
-        "Inspect recent app and command output.",
-        "go-next-symbolic",
-        move || show_log_page(&navigation),
-    );
-
-    let title = gettext("Copy logs");
-    let subtitle = gettext("Copy recent app and command output to the clipboard.");
-    let row = ActionRow::builder()
-        .title(&title)
-        .subtitle(&subtitle)
-        .build();
-    row.set_activatable(true);
-
-    let button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy logs");
-    row.add_suffix(&button);
-    state.logs_list.append(&row);
+    state
+        .select_page
+        .logs_row
+        .connect_activated(move |_| show_log_page(&navigation));
 
     let overlay = state.overlay.clone();
-    let feedback_button = button.clone();
+    let feedback_button = state.select_page.copy_logs_button.clone();
     let copy_action = Rc::new(move || {
         let (_, _, text) = log_snapshot();
         if set_clipboard_text(&text, &overlay, Some(&feedback_button)) {
@@ -73,23 +59,28 @@ pub(super) fn append_optional_log_rows(state: &ToolsPageState) {
 
     {
         let copy_action = copy_action.clone();
-        row.connect_activated(move |_| copy_action());
+        state
+            .select_page
+            .copy_logs_row
+            .connect_activated(move |_| copy_action());
     }
-    button.connect_clicked(move |_| copy_action());
+    state
+        .select_page
+        .copy_logs_button
+        .connect_clicked(move |_| copy_action());
 }
 
 #[cfg(all(target_os = "linux", feature = "setup"))]
-pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
+pub(super) fn append_optional_setup_row(state: &ToolsPageState) -> Option<ActionRow> {
     if !can_install_locally() {
-        return;
+        return None;
     }
 
-    let title = local_menu_action_label(is_installed_locally());
     let overlay = state.overlay.clone();
     let refresh_state = state.clone();
-    append_action_row_with_button(
-        &state.list,
-        title,
+    let row = append_action_row_with_button(
+        &state.select_page.list,
+        local_menu_action_label(is_installed_locally()),
         "Add or remove this build from the local app menu.",
         "emblem-system-symbolic",
         move || {
@@ -101,7 +92,7 @@ pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
             };
 
             match result {
-                Ok(()) => refresh_state.rebuild(),
+                Ok(()) => refresh_state.refresh_select_page(),
                 Err(err) => {
                     log_error(format!("Failed to update local app menu entry: {err}"));
                     overlay.add_toast(Toast::new(&gettext("Couldn't update the app menu.")));
@@ -109,16 +100,38 @@ pub(super) fn append_optional_setup_row(state: &ToolsPageState) {
             }
         },
     );
+    Some(row)
 }
 
-#[cfg(not(feature = "setup"))]
-pub(super) const fn append_optional_setup_row(_state: &ToolsPageState) {}
+#[cfg(not(all(target_os = "linux", feature = "setup")))]
+pub(super) const fn append_optional_setup_row(_state: &ToolsPageState) -> Option<ActionRow> {
+    None
+}
 
-pub(super) fn append_optional_pass_import_row(state: &ToolsPageState) {
-    if !supports_host_command_features() {
+#[cfg(all(target_os = "linux", feature = "setup"))]
+pub(super) fn sync_optional_setup_row(row: Option<&ActionRow>) {
+    let Some(row) = row else {
         return;
+    };
+
+    row.set_title(&gettext(local_menu_action_label(is_installed_locally())));
+}
+
+#[cfg(not(all(target_os = "linux", feature = "setup")))]
+pub(super) const fn sync_optional_setup_row(_row: Option<&ActionRow>) {}
+
+pub(super) fn append_optional_pass_import_row(
+    state: &ToolsPageState,
+) -> Option<StoreImportToolRowState> {
+    if !supports_host_command_features() {
+        return None;
     }
 
     let settings = Preferences::new();
-    schedule_store_import_row(&state.list, &settings, &state.window, &state.overlay);
+    schedule_store_import_row(
+        &state.select_page.list,
+        &settings,
+        &state.window,
+        &state.overlay,
+    )
 }

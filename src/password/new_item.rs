@@ -2,7 +2,7 @@ use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use crate::store::labels::shortened_store_labels;
 use crate::support::actions::register_window_action;
-use crate::support::ui::dialog_content_shell;
+use crate::support::ui::{connect_entry_row_apply_button_to_nonempty_text, dialog_content_shell};
 use adw::gtk::{Align, Box as GtkBox, Label, StringList, INVALID_LIST_POSITION};
 use adw::prelude::*;
 use adw::{ApplicationWindow, ComboRow, Dialog, EntryRow, PreferencesGroup, PreferencesPage};
@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone)]
-pub struct NewPasswordPopoverState {
+pub struct NewPasswordDialogState {
     pub dialog: Dialog,
     pub path_entry: EntryRow,
     pub store_dropdown: ComboRow,
@@ -26,6 +26,7 @@ pub(crate) fn build_new_password_dialog() -> (Dialog, ComboRow, EntryRow, Label)
     let path_entry = EntryRow::new();
     path_entry.set_title(&gettext("Path or name"));
     path_entry.set_show_apply_button(true);
+    connect_entry_row_apply_button_to_nonempty_text(&path_entry);
 
     let group = PreferencesGroup::new();
     group.add(&store_dropdown);
@@ -87,7 +88,7 @@ fn selected_store_position(stores: &[String], selected: Option<&str>) -> u32 {
         .unwrap_or(INVALID_LIST_POSITION)
 }
 
-pub fn sync_new_password_store_selector(state: &NewPasswordPopoverState) {
+pub fn sync_new_password_store_selector(state: &NewPasswordDialogState) {
     let stores = available_store_roots();
     let labels = shortened_store_labels(&stores);
     let selected = selected_new_password_store(state);
@@ -103,7 +104,7 @@ pub fn sync_new_password_store_selector(state: &NewPasswordPopoverState) {
         .set_selected(selected_store_position(&stores, selected.as_deref()));
 }
 
-pub fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<String> {
+pub fn selected_new_password_store(state: &NewPasswordDialogState) -> Option<String> {
     let stores = state.store_roots.borrow();
     stores
         .get(state.store_dropdown.selected() as usize)
@@ -113,7 +114,7 @@ pub fn selected_new_password_store(state: &NewPasswordPopoverState) -> Option<St
 
 pub fn register_open_new_password_action(
     window: &ApplicationWindow,
-    state: &NewPasswordPopoverState,
+    state: &NewPasswordDialogState,
 ) {
     let window_for_action = window.clone();
     let window_for_dialog = window.clone();
@@ -127,12 +128,12 @@ pub fn register_open_new_password_action(
     });
 }
 
-pub fn show_new_password_dialog_error(state: &NewPasswordPopoverState, message: &str) {
+pub fn show_new_password_dialog_error(state: &NewPasswordDialogState, message: &str) {
     state.error_label.set_label(&gettext(message));
     state.error_label.set_visible(true);
 }
 
-pub fn clear_new_password_dialog_error(state: &NewPasswordPopoverState) {
+pub fn clear_new_password_dialog_error(state: &NewPasswordDialogState) {
     state.error_label.set_visible(false);
 }
 

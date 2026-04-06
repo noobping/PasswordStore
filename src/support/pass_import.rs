@@ -41,7 +41,6 @@ fn sensitive_command_error(prefix: &str, output: &Output) -> String {
     format!("{prefix}: {}", output.status)
 }
 
-// pass import always uses the configured host/custom pass command.
 fn custom_pass_command() -> Command {
     Preferences::new().command()
 }

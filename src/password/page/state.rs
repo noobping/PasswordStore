@@ -3,7 +3,7 @@ use super::super::file::{
 };
 use super::super::generation::PasswordGenerationControls;
 use super::super::otp::PasswordOtpState;
-use super::password_open_status_copy;
+use super::password_open_status_text;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::gtk::{Box as GtkBox, Button, ListBox, Revealer, TextView, ToggleButton};
 use adw::prelude::*;
@@ -33,6 +33,7 @@ pub struct PasswordPageState {
     pub template_button: Button,
     pub clean_button: Button,
     pub otp_add_button: Button,
+    pub editor_save_button: Button,
     pub generator_settings_button: ToggleButton,
     pub generator_settings_revealer: Revealer,
     pub generator_controls: PasswordGenerationControls,
@@ -50,17 +51,28 @@ pub(super) fn show_password_editor_chrome(state: &PasswordPageState, title: &str
     show_secondary_page_chrome(&chrome, title, subtitle, true);
 }
 
+fn set_password_editor_action_visibility(
+    state: &PasswordPageState,
+    field_add_row: bool,
+    clean_button: bool,
+    editor_save_button: bool,
+    raw: bool,
+) {
+    state.field_add_row.set_visible(field_add_row);
+    state.template_button.set_visible(false);
+    state.clean_button.set_visible(clean_button);
+    state.otp_add_button.set_visible(false);
+    state.editor_save_button.set_visible(editor_save_button);
+    state.raw.set_visible(raw);
+}
+
 fn hide_password_editor_fields(state: &PasswordPageState) {
     state.entry.set_visible(false);
     state.username.set_visible(false);
     state.otp.clear();
-    state.field_add_row.set_visible(false);
-    state.template_button.set_visible(false);
-    state.clean_button.set_visible(false);
-    state.otp_add_button.set_visible(false);
+    set_password_editor_action_visibility(state, false, false, false, false);
     hide_password_generator_settings(state);
     state.dynamic_box.set_visible(false);
-    state.raw.set_visible(false);
 }
 
 pub(super) fn show_password_status_message(
@@ -82,18 +94,14 @@ pub(super) fn show_password_loading_state(
 ) {
     state.username.set_text("");
     show_password_editor_chrome(state, title, subtitle);
-    let (status_title, status_description) = password_open_status_copy(fido2_recipient_count);
+    let (status_title, status_description) = password_open_status_text(fido2_recipient_count);
     show_password_status_message(state, status_title, status_description);
 }
 
 pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
     state.status.set_visible(false);
     state.entry.set_visible(true);
-    state.raw.set_visible(true);
-    state.field_add_row.set_visible(true);
-    state.template_button.set_visible(false);
-    state.clean_button.set_visible(true);
-    state.otp_add_button.set_visible(false);
+    set_password_editor_action_visibility(state, true, true, true, true);
     hide_password_generator_settings(state);
 }
 
@@ -102,14 +110,10 @@ pub(super) fn reset_password_editor(state: &PasswordPageState) {
     sync_username_row(&state.username, None);
     state.otp.clear();
     state.field_add_row.set_text("");
-    state.field_add_row.set_visible(false);
-    state.template_button.set_visible(false);
-    state.clean_button.set_visible(false);
-    state.otp_add_button.set_visible(false);
+    set_password_editor_action_visibility(state, false, false, false, false);
     hide_password_generator_settings(state);
     clear_box_children(&state.dynamic_box);
     state.dynamic_box.set_visible(false);
-    state.raw.set_visible(false);
     state.structured_templates.borrow_mut().clear();
     state.dynamic_rows.borrow_mut().clear();
     state.text.buffer().set_text("");

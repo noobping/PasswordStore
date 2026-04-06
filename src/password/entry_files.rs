@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path};
 
 pub const STANDARD_PASSWORD_ENTRY_EXTENSION: &str = "gpg";
 pub const FIDO2_PASSWORD_ENTRY_EXTENSION: &str = "keycord";
@@ -29,6 +29,30 @@ pub fn label_from_password_entry_path(store_root: &Path, entry_path: &Path) -> O
     label_from_password_entry_relative_path(relative)
 }
 
+pub fn normalize_password_entry_label(label: &str) -> String {
+    let mut normalized = String::with_capacity(label.len());
+    let mut previous_was_separator = true;
+
+    for ch in label.trim().chars() {
+        if matches!(ch, '/' | '\\') {
+            if !previous_was_separator {
+                normalized.push('/');
+                previous_was_separator = true;
+            }
+            continue;
+        }
+
+        normalized.push(ch);
+        previous_was_separator = false;
+    }
+
+    if normalized.ends_with('/') {
+        normalized.pop();
+    }
+
+    normalized
+}
+
 pub fn label_from_password_entry_relative_path(relative: &Path) -> Option<String> {
     let extension = relative.extension().and_then(|value| value.to_str())?;
     if !is_password_entry_extension(extension) {
@@ -37,15 +61,24 @@ pub fn label_from_password_entry_relative_path(relative: &Path) -> Option<String
 
     let mut label = relative.to_path_buf();
     label.set_extension("");
-    Some(label.to_string_lossy().to_string())
+    let mut components = Vec::new();
+    for component in label.components() {
+        match component {
+            Component::Normal(part) => components.push(part.to_string_lossy().into_owned()),
+            Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(components.join("/"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         is_password_entry_file, label_from_password_entry_path,
-        label_from_password_entry_relative_path, password_entry_extension,
-        FIDO2_PASSWORD_ENTRY_EXTENSION, STANDARD_PASSWORD_ENTRY_EXTENSION,
+        label_from_password_entry_relative_path, normalize_password_entry_label,
+        password_entry_extension, FIDO2_PASSWORD_ENTRY_EXTENSION,
+        STANDARD_PASSWORD_ENTRY_EXTENSION,
     };
     use std::path::Path;
 
@@ -78,6 +111,18 @@ mod tests {
             )
             .as_deref(),
             Some("team/service")
+        );
+    }
+
+    #[test]
+    fn password_entry_labels_normalize_separator_variants() {
+        assert_eq!(
+            normalize_password_entry_label(r"team\\service"),
+            "team/service"
+        );
+        assert_eq!(
+            normalize_password_entry_label(r"/team\/service/"),
+            "team/service"
         );
     }
 

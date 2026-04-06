@@ -10,6 +10,8 @@ mod store;
 mod transport_test;
 
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+pub use self::common::set_fido2_security_key_pin;
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
 pub(in crate::backend::integrated) use self::common::{
     ciphertext_is_any_managed_bundle, extract_pgp_wrapped_dek_from_any_managed_bundle,
     Fido2DirectBinding, Fido2ReadProgress, Fido2WriteProgress,
@@ -47,4 +49,7 @@ pub(in crate::backend::integrated) use self::disabled::{
     Fido2WriteProgress,
 };
 #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
-pub use self::disabled::{create_fido2_store_recipient, unlock_fido2_store_recipient_for_session};
+pub use self::disabled::{
+    create_fido2_store_recipient, set_fido2_security_key_pin,
+    unlock_fido2_store_recipient_for_session,
+};

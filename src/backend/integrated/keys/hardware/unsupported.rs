@@ -1,8 +1,11 @@
+#[cfg(feature = "hardwarekey")]
+use super::HardwareKeyGenerationRequest;
 use super::{DiscoveredHardwareToken, HardwareTransport, HardwareTransportError};
 use crate::backend::integrated::keys::cert::ManagedRipassoHardwareKey;
 use sequoia_openpgp::Cert;
 
-const UNSUPPORTED_MESSAGE: &str = "Hardware OpenPGP keys are not supported on this platform.";
+const UNSUPPORTED_MESSAGE: &str =
+    "Hardware OpenPGP keys are not supported in this build or on this platform.";
 
 #[derive(Clone)]
 pub(in crate::backend::integrated) enum HardwareUnlockMode {
@@ -33,6 +36,16 @@ pub(super) struct RealHardwareTransport;
 
 impl HardwareTransport for RealHardwareTransport {
     fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
+        Err(HardwareTransportError::Unsupported(
+            UNSUPPORTED_MESSAGE.to_string(),
+        ))
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn generate_key_material(
+        &self,
+        _request: &HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
         Err(HardwareTransportError::Unsupported(
             UNSUPPORTED_MESSAGE.to_string(),
         ))

@@ -1,10 +1,10 @@
 #[cfg(feature = "fidokey")]
 use super::super::cert::parse_fido2_public_key_bytes;
+#[cfg(any(feature = "hardwarekey", feature = "fidokey", test))]
+use super::super::cert::ManagedRipassoPrivateKey;
 #[cfg(feature = "fidokey")]
 use super::super::cert::{normalized_fingerprint, ManagedRipassoPrivateKeyProtection};
-use super::super::cert::{
-    parse_hardware_public_key_bytes, ManagedRipassoHardwareKey, ManagedRipassoPrivateKey,
-};
+use super::super::cert::{parse_hardware_public_key_bytes, ManagedRipassoHardwareKey};
 #[cfg(feature = "fidokey")]
 use crate::backend::PrivateKeyError;
 #[cfg(feature = "fidokey")]
@@ -42,6 +42,7 @@ pub(super) struct Fido2PrivateKeyManifest {
 }
 
 impl HardwarePrivateKeyManifest {
+    #[cfg(any(feature = "hardwarekey", test))]
     pub(super) fn from_key(
         key: &ManagedRipassoPrivateKey,
         hardware: &ManagedRipassoHardwareKey,

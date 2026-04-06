@@ -21,6 +21,20 @@ option(
 )
 
 option(
+  'smartcard',
+  type: 'boolean',
+  value: false,
+  description: 'Enable direct OpenPGP smartcard and security-token recipient support.',
+)
+
+option(
+  'hardwarekey',
+  type: 'boolean',
+  value: false,
+  description: 'Enable managed OpenPGP hardware-key add/import/setup flows.',
+)
+
+option(
   'docs',
   type: 'boolean',
   value: true,
@@ -39,4 +53,11 @@ option(
   type: 'boolean',
   value: false,
   description: 'Enable FIDO2-protected OpenPGP private key support.',
+)
+
+option(
+  'fidopin',
+  type: 'boolean',
+  value: false,
+  description: 'Enable Linux-only first-time FIDO2 security-key PIN setup support.',
 )

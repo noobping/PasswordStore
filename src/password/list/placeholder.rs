@@ -8,7 +8,7 @@ use adw::StatusPage;
 const APP_ID: &str = env!("APP_ID");
 const PLACEHOLDER_STATE_KEY: &str = "password-list-placeholder-state";
 const LOADING_TITLE: &str = "Loading";
-const LOADING_DESCRIPTION: &str = "Building the pass file list from your stores.";
+const LOADING_DESCRIPTION: &str = "Loading your items.";
 
 #[derive(Clone)]
 pub(super) struct PasswordListPlaceholderState {
@@ -34,14 +34,14 @@ impl PasswordListPlaceholderState {
                 PlaceholderPresentation {
                     icon_name: APP_ID,
                     title: "No items yet",
-                    description: Some("Create a new item to get started."),
+                    description: Some("Add an item to get started."),
                     spinner: false,
                 }
             } else {
                 PlaceholderPresentation {
                     icon_name: APP_ID,
                     title: "No folders added",
-                    description: Some("Open Preferences to add a password store folder."),
+                    description: Some("Open Preferences to add a store folder."),
                     spinner: false,
                 }
             }
@@ -167,12 +167,12 @@ fn build_empty_password_list_placeholder(symbolic: &str, has_store_dirs: bool) -
     if has_store_dirs {
         builder
             .title(gettext("No items yet"))
-            .description(gettext("Create a new item to get started."))
+            .description(gettext("Add an item to get started."))
             .build()
     } else {
         builder
             .title(gettext("No folders added"))
-            .description(gettext("Open Preferences to add a password store folder."))
+            .description(gettext("Open Preferences to add a store folder."))
             .build()
     }
 }

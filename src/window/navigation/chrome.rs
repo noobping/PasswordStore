@@ -9,7 +9,7 @@ pub const APP_WINDOW_SUBTITLE: &str = "Browse and edit password stores";
 
 pub fn set_save_button_for_password(save: &Button) {
     save.set_action_name(Some("win.save-password"));
-    save.set_tooltip_text(Some(&gettext("Save changes")));
+    save.set_tooltip_text(Some(&gettext("Save")));
 }
 
 pub fn show_primary_page_chrome(chrome: &WindowChrome<'_>, has_store_dirs: bool) {

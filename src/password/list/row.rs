@@ -1,13 +1,14 @@
 use super::search::{SearchRowFieldIndexState, SEARCH_FIELDS_KEY};
 use super::{
-    refresh_password_list_filter, PASSWORD_LIST_ROW_DEPTH_KEY, PASSWORD_LIST_ROW_EXPANDED_KEY,
-    PASSWORD_LIST_ROW_KIND_ENTRY, PASSWORD_LIST_ROW_KIND_FOLDER, PASSWORD_LIST_ROW_KIND_KEY,
-    PASSWORD_LIST_ROW_STORE_PATH_KEY,
+    refresh_password_list_filter, PasswordListActionRowKind, PASSWORD_LIST_ROW_DEPTH_KEY,
+    PASSWORD_LIST_ROW_EXPANDED_KEY, PASSWORD_LIST_ROW_KIND_ENTRY, PASSWORD_LIST_ROW_KIND_FOLDER,
+    PASSWORD_LIST_ROW_KIND_KEY, PASSWORD_LIST_ROW_STORE_PATH_KEY,
 };
 use crate::backend::rename_password_entry;
 use crate::clipboard::copy_password_entry_to_clipboard;
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::password::entry_files::normalize_password_entry_label;
 use crate::password::model::{OpenPassFile, PassEntry};
 use crate::password::undo::{
     delete_entry_with_optional_undo, move_entry_between_stores_action, move_entry_to_store,
@@ -68,6 +69,13 @@ fn password_row_menu_entries(readable: bool) -> Vec<(&'static str, &'static str)
     entries.push(("Open in File Manager", "entry.open-in-file-manager"));
     entries.push(("Delete", "entry.delete"));
     entries
+}
+
+fn text_edit_apply_button_visible(mode: TextEditMode, value: &str) -> bool {
+    match mode {
+        TextEditMode::RenameFile => !value.trim().is_empty(),
+        TextEditMode::MoveWithinStore => true,
+    }
 }
 
 #[derive(Clone)]
@@ -227,6 +235,54 @@ pub(super) fn append_password_folder_row(
     list.append(&row);
 }
 
+pub(super) fn append_new_password_action_row(list: &ListBox) {
+    append_password_list_action_row(
+        list,
+        PasswordListActionRowKind::NewPassword,
+        "Add item",
+        "list-add-symbolic",
+        None,
+    );
+}
+
+pub(super) fn append_clear_search_action_row(list: &ListBox) {
+    append_password_list_action_row(
+        list,
+        PasswordListActionRowKind::ClearSearch,
+        "Clear search",
+        "edit-clear-symbolic",
+        Some(SearchRowFieldIndexState::Unavailable),
+    );
+}
+
+fn append_password_list_action_row(
+    list: &ListBox,
+    kind: PasswordListActionRowKind,
+    title: &str,
+    icon_name: &str,
+    search_state: Option<SearchRowFieldIndexState>,
+) {
+    let row = ListBoxRow::new();
+    row.set_activatable(true);
+
+    let action_row = ActionRow::builder()
+        .title(gettext(title))
+        .activatable(true)
+        .build();
+    action_row.add_prefix(&dim_label_icon(icon_name));
+
+    row.set_child(Some(&action_row));
+    set_string_data(
+        &row,
+        PASSWORD_LIST_ROW_KIND_KEY,
+        kind.storage_key().to_string(),
+    );
+    if let Some(search_state) = search_state {
+        set_cloned_data(&row, SEARCH_FIELDS_KEY, search_state);
+    }
+    list.append(&row);
+}
+
 pub(super) fn toggle_password_folder_row(row: &ListBoxRow) -> bool {
     let Some(state): Option<PasswordFolderRowState> =
         cloned_data(row, PASSWORD_FOLDER_ROW_STATE_KEY)
@@ -336,6 +392,9 @@ fn enter_text_edit_mode(state: &PasswordRowState, mode: TextEditMode, value: &st
     };
     state.text_edit_row.set_title(&title);
     state.text_edit_row.set_text(value);
+    state
+        .text_edit_row
+        .set_show_apply_button(text_edit_apply_button_visible(mode, value));
     state.stack.set_visible_child_name("text-edit");
     state.text_edit_row.grab_focus();
 }
@@ -355,6 +414,15 @@ fn connect_text_edit_actions(
     let list = list.clone();
     let overlay = overlay.clone();
     let text_edit_row = state.text_edit_row.clone();
+    {
+        let state = state.clone();
+        text_edit_row.connect_changed(move |row| {
+            row.set_show_apply_button(text_edit_apply_button_visible(
+                *state.text_edit_mode.borrow(),
+                &row.text(),
+            ));
+        });
+    }
     text_edit_row.connect_apply(move |row| {
         let entry = state.item.borrow().clone();
         let new_label = match *state.text_edit_mode.borrow() {
@@ -558,7 +626,7 @@ fn renamed_file_label(entry: &PassEntry, new_name: &str) -> Result<Option<String
     if new_name.is_empty() {
         return Err("Enter a name.");
     }
-    if new_name.contains('/') {
+    if new_name.contains(['/', '\\']) {
         return Err("Use a single file name.");
     }
 
@@ -571,7 +639,8 @@ fn renamed_file_label(entry: &PassEntry, new_name: &str) -> Result<Option<String
 }
 
 fn moved_file_label(entry: &PassEntry, new_location: &str) -> Option<String> {
-    let new_location = new_location.trim().trim_matches('/');
+    let new_location = normalize_password_entry_label(new_location);
+    let new_location = new_location.as_str();
     let new_label = if new_location.is_empty() {
         entry.basename.clone()
     } else {
@@ -659,12 +728,16 @@ fn build_unreadable_password_icon(visible: bool) -> Image {
 
 fn open_entry_in_file_manager(entry: &PassEntry, overlay: &ToastOverlay) {
     let folder_uri = adw::gio::File::for_path(entry_parent_directory(entry)).uri();
-    if let Err(error) = launch_default_uri(&folder_uri) {
-        log_error(format!(
-            "Failed to open entry folder in the file manager.\nfolder: {folder_uri}\nerror: {error}"
-        ));
-        overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
-    }
+    let overlay = overlay.clone();
+    let folder_uri_for_log = folder_uri.clone();
+    launch_default_uri(&folder_uri, move |result| {
+        if let Err(error) = result {
+            log_error(format!(
+                "Failed to open entry folder in the file manager.\nfolder: {folder_uri_for_log}\nerror: {error}"
+            ));
+            overlay.add_toast(Toast::new(&gettext("Couldn't open the folder.")));
+        }
+    });
 }
 
 fn open_entry_in_new_window(state: &PasswordRowState, overlay: &ToastOverlay) {
@@ -762,7 +835,7 @@ fn push_row_undo_action(
 mod tests {
     use super::{
         entry_parent_directory, moved_file_label, password_row_menu_entries, password_row_subtitle,
-        renamed_file_label, OPEN_IN_NEW_WINDOW_LABEL,
+        renamed_file_label, text_edit_apply_button_visible, TextEditMode, OPEN_IN_NEW_WINDOW_LABEL,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use crate::password::model::PassEntry;
@@ -798,6 +871,26 @@ mod tests {
     }
 
     #[test]
+    fn rename_text_edit_apply_hides_for_empty_values() {
+        assert!(!text_edit_apply_button_visible(
+            TextEditMode::RenameFile,
+            ""
+        ));
+        assert!(!text_edit_apply_button_visible(
+            TextEditMode::RenameFile,
+            "   "
+        ));
+        assert!(text_edit_apply_button_visible(
+            TextEditMode::RenameFile,
+            "github"
+        ));
+        assert!(text_edit_apply_button_visible(
+            TextEditMode::MoveWithinStore,
+            ""
+        ));
+    }
+
+    #[test]
     fn password_row_subtitle_combines_store_and_relative_path() {
         assert_eq!(
             password_row_subtitle("work/alice/", ".../work/.password-store"),
@@ -830,7 +923,7 @@ mod tests {
         assert_eq!(error.toast_message(), "Add a private key in Preferences.");
 
         let error = UndoError::Read(PasswordEntryError::other("missing"));
-        assert_eq!(error.toast_message(), "Couldn't undo the last change.");
+        assert_eq!(error.toast_message(), "Can't undo the last change.");
     }
 
     #[test]

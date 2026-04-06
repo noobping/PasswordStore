@@ -2,7 +2,7 @@ use super::widgets::WindowWidgets;
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::password::file::{DynamicFieldRow, StructuredPassLine};
 use crate::password::generation::PasswordGenerationControls;
-use crate::password::new_item::NewPasswordPopoverState;
+use crate::password::new_item::NewPasswordDialogState;
 use crate::password::otp::PasswordOtpState;
 use crate::password::page::PasswordPageState;
 use crate::store::git_page::StoreGitPageState;
@@ -19,10 +19,10 @@ use crate::window::preferences::PreferencesActionState;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-pub(super) fn new_password_popover_state(_widgets: &WindowWidgets) -> NewPasswordPopoverState {
+pub(super) fn new_password_dialog_state(_widgets: &WindowWidgets) -> NewPasswordDialogState {
     let (dialog, store_dropdown, path_entry, error_label) =
         crate::password::new_item::build_new_password_dialog();
-    NewPasswordPopoverState {
+    NewPasswordDialogState {
         dialog,
         path_entry,
         store_dropdown,
@@ -37,7 +37,7 @@ pub(super) fn password_page_state(
 ) -> PasswordPageState {
     PasswordPageState {
         nav: widgets.navigation_view.clone(),
-        page: widgets.text_page.clone(),
+        page: widgets.password_page.clone(),
         raw_page: widgets.raw_text_page.clone(),
         list: widgets.list.clone(),
         back: widgets.back_button.clone(),
@@ -56,6 +56,7 @@ pub(super) fn password_page_state(
         template_button: widgets.apply_template_button.clone(),
         clean_button: widgets.clean_pass_file_button.clone(),
         otp_add_button: widgets.add_otp_button.clone(),
+        editor_save_button: widgets.editor_save_button.clone(),
         generator_settings_button: widgets.password_generator_settings_button.clone(),
         generator_settings_revealer: widgets.password_generator_settings_revealer.clone(),
         generator_controls: PasswordGenerationControls::new(
@@ -105,14 +106,23 @@ fn build_store_recipients_platform_state(
     StoreRecipientsPlatformState {
         overlay: widgets.toast_overlay.clone(),
         host_gpg_warning_group: widgets.store_recipients_host_gpg_warning_group.clone(),
+        host_gpg_warning_list: widgets.store_recipients_host_gpg_warning_list.clone(),
         host_gpg_warning_row: widgets.store_recipients_host_gpg_warning_row.clone(),
         fido2_info_group: widgets.store_recipients_fido2_info_group.clone(),
+        fido2_info_list: widgets.store_recipients_fido2_info_list.clone(),
+        scope_group: widgets.store_recipients_scope_group.clone(),
+        keys_group: widgets.store_recipients_keys_group.clone(),
+        scope_list: widgets.store_recipients_scope_list.clone(),
         add_group: widgets.store_recipients_add_group.clone(),
         add_list: widgets.store_recipients_add_list.clone(),
         create_group: widgets.store_recipients_create_group.clone(),
+        create_list: widgets.store_recipients_create_list.clone(),
         options_group: widgets.store_recipients_options_group.clone(),
+        options_list: widgets.store_recipients_options_list.clone(),
+        scope_row: widgets.store_recipients_scope_row.clone(),
         git_group: widgets.store_recipients_git_group.clone(),
         git_list: widgets.store_recipients_git_list.clone(),
+        setup_hardware_key_row: widgets.store_recipients_setup_hardware_key_row.clone(),
         add_hardware_key_row: widgets.store_recipients_add_hardware_key_row.clone(),
         add_fido2_key_row: widgets.store_recipients_add_fido2_key_row.clone(),
         store_git_page: store_git_page.clone(),
@@ -133,6 +143,18 @@ fn build_store_recipients_platform_state(
         private_key_generation_password_row: widgets.private_key_generation_password_row.clone(),
         private_key_generation_confirm_row: widgets.private_key_generation_confirm_row.clone(),
         private_key_generation_in_flight: Rc::new(Cell::new(false)),
+        hardware_key_generation_page: widgets.hardware_key_generation_page.clone(),
+        hardware_key_generation_stack: widgets.hardware_key_generation_stack.clone(),
+        hardware_key_generation_form: widgets.hardware_key_generation_form.clone(),
+        hardware_key_generation_loading: widgets.hardware_key_generation_loading.clone(),
+        hardware_key_generation_name_row: widgets.hardware_key_generation_name_row.clone(),
+        hardware_key_generation_email_row: widgets.hardware_key_generation_email_row.clone(),
+        hardware_key_generation_admin_pin_row: widgets
+            .hardware_key_generation_admin_pin_row
+            .clone(),
+        hardware_key_generation_user_pin_row: widgets.hardware_key_generation_user_pin_row.clone(),
+        hardware_key_generation_token: Rc::new(RefCell::new(None)),
+        hardware_key_generation_in_flight: Rc::new(Cell::new(false)),
     }
 }
 
@@ -143,6 +165,8 @@ fn build_store_recipients_page_state(
     let request = Rc::new(RefCell::new(None::<StoreRecipientsRequest>));
     let recipients = Rc::new(RefCell::new(Vec::<String>::new()));
     let saved_recipients = Rc::new(RefCell::new(Vec::<String>::new()));
+    let recipient_scope_dirs = Rc::new(RefCell::new(Vec::<String>::new()));
+    let selected_recipient_scope = Rc::new(RefCell::new(".".to_string()));
     let private_key_requirement = Rc::new(Cell::new(
         StoreRecipientsPrivateKeyRequirement::AnyManagedKey,
     ));
@@ -171,6 +195,8 @@ fn build_store_recipients_page_state(
         request,
         recipients,
         saved_recipients,
+        recipient_scope_dirs,
+        selected_recipient_scope,
         private_key_requirement,
         saved_private_key_requirement,
         save_in_flight,
@@ -193,7 +219,7 @@ pub(super) fn store_recipients_page_state(
 pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigationState {
     WindowNavigationState {
         nav: widgets.navigation_view.clone(),
-        text_page: widgets.text_page.clone(),
+        password_page: widgets.password_page.clone(),
         raw_text_page: widgets.raw_text_page.clone(),
         settings_page: widgets.settings_page.clone(),
         tools_page: widgets.tools_page.clone(),

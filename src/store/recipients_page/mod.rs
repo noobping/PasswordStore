@@ -1,19 +1,23 @@
 use super::recipients::{
-    read_store_private_key_requirement, read_store_recipients, store_is_supported_in_current_build,
-    UNSUPPORTED_FIDOSTORE_MESSAGE,
+    read_store_private_key_requirement, read_store_private_key_requirement_for_scope,
+    read_store_recipients, read_store_recipients_for_scope, store_is_supported_in_current_build,
+    ROOT_STORE_RECIPIENTS_SCOPE, UNSUPPORTED_FIDOSTORE_MESSAGE,
 };
+use crate::backend::DiscoveredHardwareToken;
 use crate::backend::StoreRecipientsPrivateKeyRequirement;
 use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
 use crate::support::actions::register_window_action;
-use crate::support::ui::reveal_navigation_page;
+use crate::support::ui::{
+    focus_first_matching_list_row_in_order, list_row_is_keyboard_focusable, reveal_navigation_page,
+};
 use crate::window::navigation::{
     set_save_button_for_password, show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE,
 };
 use adw::gtk::{Button, CheckButton, ListBox, ScrolledWindow, Stack};
 use adw::prelude::*;
 use adw::{
-    ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
+    ActionRow, ApplicationWindow, ComboRow, Dialog, EntryRow, NavigationPage, NavigationView,
     PasswordEntryRow, PreferencesGroup, StatusPage, Toast, ToastOverlay, WindowTitle,
 };
 use std::cell::{Cell, RefCell};
@@ -105,6 +109,8 @@ pub struct StoreRecipientsPageState {
     pub request: Rc<RefCell<Option<StoreRecipientsRequest>>>,
     pub recipients: Rc<RefCell<Vec<String>>>,
     pub saved_recipients: Rc<RefCell<Vec<String>>>,
+    pub recipient_scope_dirs: Rc<RefCell<Vec<String>>>,
+    pub selected_recipient_scope: Rc<RefCell<String>>,
     pub private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
     pub saved_private_key_requirement: Rc<Cell<StoreRecipientsPrivateKeyRequirement>>,
     pub save_in_flight: Rc<Cell<bool>>,
@@ -118,14 +124,23 @@ pub struct StoreRecipientsPageState {
 pub struct StoreRecipientsPlatformState {
     pub overlay: ToastOverlay,
     pub host_gpg_warning_group: PreferencesGroup,
+    pub host_gpg_warning_list: ListBox,
     pub host_gpg_warning_row: ActionRow,
     pub fido2_info_group: PreferencesGroup,
+    pub fido2_info_list: ListBox,
+    pub scope_group: PreferencesGroup,
+    pub keys_group: PreferencesGroup,
+    pub scope_list: ListBox,
     pub add_group: PreferencesGroup,
     pub add_list: ListBox,
     pub create_group: PreferencesGroup,
+    pub create_list: ListBox,
     pub options_group: PreferencesGroup,
+    pub options_list: ListBox,
+    pub scope_row: ComboRow,
     pub git_group: PreferencesGroup,
     pub git_list: ListBox,
+    pub setup_hardware_key_row: ActionRow,
     pub add_hardware_key_row: ActionRow,
     pub add_fido2_key_row: ActionRow,
     pub store_git_page: StoreGitPageState,
@@ -146,11 +161,25 @@ pub struct StoreRecipientsPlatformState {
     pub private_key_generation_password_row: PasswordEntryRow,
     pub private_key_generation_confirm_row: PasswordEntryRow,
     pub private_key_generation_in_flight: Rc<Cell<bool>>,
+    pub hardware_key_generation_page: NavigationPage,
+    pub hardware_key_generation_stack: Stack,
+    pub hardware_key_generation_form: ScrolledWindow,
+    pub hardware_key_generation_loading: StatusPage,
+    pub hardware_key_generation_name_row: EntryRow,
+    pub hardware_key_generation_email_row: EntryRow,
+    pub hardware_key_generation_admin_pin_row: PasswordEntryRow,
+    pub hardware_key_generation_user_pin_row: PasswordEntryRow,
+    pub hardware_key_generation_token: Rc<RefCell<Option<DiscoveredHardwareToken>>>,
+    pub hardware_key_generation_in_flight: Rc<Cell<bool>>,
 }
 
 impl StoreRecipientsPageState {
     pub fn current_request(&self) -> Option<StoreRecipientsRequest> {
         self.request.borrow().clone()
+    }
+
+    pub fn current_recipient_scope(&self) -> String {
+        self.selected_recipient_scope.borrow().clone()
     }
 
     pub fn recipients_are_dirty(&self) -> bool {
@@ -159,9 +188,47 @@ impl StoreRecipientsPageState {
     }
 }
 
+fn ordered_store_recipients_lists(state: &StoreRecipientsPageState) -> [ListBox; 8] {
+    [
+        state.platform.host_gpg_warning_list.clone(),
+        state.platform.fido2_info_list.clone(),
+        state.platform.scope_list.clone(),
+        state.list.clone(),
+        state.platform.create_list.clone(),
+        state.platform.add_list.clone(),
+        state.platform.options_list.clone(),
+        state.platform.git_list.clone(),
+    ]
+}
+
+pub(super) fn load_store_recipients_scope(
+    state: &StoreRecipientsPageState,
+    store_root: &str,
+    scope: &str,
+) {
+    let normalized_scope = if scope.trim().is_empty() {
+        ROOT_STORE_RECIPIENTS_SCOPE
+    } else {
+        scope
+    };
+    let recipients = read_store_recipients_for_scope(store_root, normalized_scope);
+    let private_key_requirement =
+        read_store_private_key_requirement_for_scope(store_root, normalized_scope);
+    *state.selected_recipient_scope.borrow_mut() = normalized_scope.to_string();
+    *state.recipients.borrow_mut() = recipients.clone();
+    *state.saved_recipients.borrow_mut() = recipients;
+    state.private_key_requirement.set(private_key_requirement);
+    state
+        .saved_private_key_requirement
+        .set(private_key_requirement);
+}
+
 pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
     import::connect_private_key_import_controls(state);
+    import::connect_hardware_key_generation_autofill(state);
+    import::connect_hardware_key_generation_submit(state);
     generate::connect_private_key_generate_controls(state);
+    list::connect_recipient_scope_control(state);
     list::connect_private_key_requirement_control(state);
     list::connect_dismissible_notice_controls(state);
     generate::connect_private_key_generation_autofill(state);
@@ -206,11 +273,12 @@ fn show_store_recipients_page(
     initial_recipients: Vec<String>,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) {
-    let saved_recipients = read_store_recipients(&request.store);
     let mode = request.mode;
     *state.request.borrow_mut() = Some(request);
-    *state.recipients.borrow_mut() = initial_recipients;
-    *state.saved_recipients.borrow_mut() = saved_recipients;
+    *state.recipient_scope_dirs.borrow_mut() = Vec::new();
+    *state.selected_recipient_scope.borrow_mut() = ROOT_STORE_RECIPIENTS_SCOPE.to_string();
+    *state.recipients.borrow_mut() = initial_recipients.clone();
+    *state.saved_recipients.borrow_mut() = initial_recipients;
     state.private_key_requirement.set(private_key_requirement);
     state
         .saved_private_key_requirement
@@ -226,6 +294,11 @@ fn show_store_recipients_page(
     if !reveal_navigation_page(&state.nav, &state.page) {
         return;
     }
+
+    let _ = focus_first_matching_list_row_in_order(
+        &ordered_store_recipients_lists(state),
+        list_row_is_keyboard_focusable,
+    );
 
     if mode.creates_store() {
         queue_store_recipients_autosave(state);

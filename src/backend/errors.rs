@@ -3,6 +3,10 @@ use thiserror::Error;
 fn save_toast_message_for_fido2_store_message(message: &str) -> Option<&'static str> {
     if message.contains("Enter the FIDO2 security key PIN.") {
         Some("Enter the FIDO2 security key PIN.")
+    } else if message.contains("Set a PIN on the FIDO2 security key first.") {
+        Some("Set a PIN on the FIDO2 security key first.")
+    } else if message.contains("That FIDO2 security key must support PIN protection.") {
+        Some("That FIDO2 security key must support PIN protection.")
     } else if message.contains("Touch the FIDO2 security key and try again.") {
         Some("Touch the FIDO2 security key and try again.")
     } else if message.contains("Reconnect the FIDO2 security key and try again.") {
@@ -180,16 +184,23 @@ pub enum PrivateKeyError {
     RequiresPasswordProtection(String),
     #[error("{0}")]
     Incompatible(String),
+    #[cfg(feature = "smartcard")]
     #[error("{0}")]
     HardwareTokenNotPresent(String),
+    #[cfg(feature = "smartcard")]
     #[error("{0}")]
     HardwareTokenMismatch(String),
     #[error("{0}")]
     HardwarePinRequired(String),
+    #[cfg(feature = "smartcard")]
     #[error("{0}")]
     IncorrectHardwarePin(String),
+    #[cfg(feature = "smartcard")]
+    #[error("{0}")]
+    HardwarePinBlocked(String),
     #[error("{0}")]
     UnsupportedHardwareKey(String),
+    #[cfg(feature = "smartcard")]
     #[error("{0}")]
     HardwareTokenRemoved(String),
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -197,10 +208,16 @@ pub enum PrivateKeyError {
     Fido2TokenNotPresent(String),
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
+    Fido2PinNotSet(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+    #[error("{0}")]
     Fido2PinRequired(String),
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     #[error("{0}")]
     IncorrectFido2Pin(String),
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+    #[error("{0}")]
+    Fido2PinUnsupported(String),
     #[error("{0}")]
     UnsupportedFido2Key(String),
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
@@ -238,10 +255,12 @@ impl PrivateKeyError {
         Self::Incompatible(message.into())
     }
 
+    #[cfg(feature = "smartcard")]
     pub fn hardware_token_not_present(message: impl Into<String>) -> Self {
         Self::HardwareTokenNotPresent(message.into())
     }
 
+    #[cfg(feature = "smartcard")]
     pub fn hardware_token_mismatch(message: impl Into<String>) -> Self {
         Self::HardwareTokenMismatch(message.into())
     }
@@ -250,14 +269,21 @@ impl PrivateKeyError {
         Self::HardwarePinRequired(message.into())
     }
 
+    #[cfg(feature = "smartcard")]
     pub fn incorrect_hardware_pin(message: impl Into<String>) -> Self {
         Self::IncorrectHardwarePin(message.into())
+    }
+
+    #[cfg(feature = "smartcard")]
+    pub fn hardware_pin_blocked(message: impl Into<String>) -> Self {
+        Self::HardwarePinBlocked(message.into())
     }
 
     pub fn unsupported_hardware_key(message: impl Into<String>) -> Self {
         Self::UnsupportedHardwareKey(message.into())
     }
 
+    #[cfg(feature = "smartcard")]
     pub fn hardware_token_removed(message: impl Into<String>) -> Self {
         Self::HardwareTokenRemoved(message.into())
     }
@@ -268,6 +294,11 @@ impl PrivateKeyError {
     }
 
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+    pub fn fido2_pin_not_set(message: impl Into<String>) -> Self {
+        Self::Fido2PinNotSet(message.into())
+    }
+
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn fido2_pin_required(message: impl Into<String>) -> Self {
         Self::Fido2PinRequired(message.into())
     }
@@ -275,6 +306,11 @@ impl PrivateKeyError {
     #[cfg(any(feature = "fidostore", feature = "fidokey"))]
     pub fn incorrect_fido2_pin(message: impl Into<String>) -> Self {
         Self::IncorrectFido2Pin(message.into())
+    }
+
+    #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+    pub fn fido2_pin_unsupported(message: impl Into<String>) -> Self {
+        Self::Fido2PinUnsupported(message.into())
     }
 
     pub fn unsupported_fido2_key(message: impl Into<String>) -> Self {
@@ -307,6 +343,18 @@ impl PrivateKeyError {
         }
     }
 
+    pub const fn is_fido2_pin_not_set(&self) -> bool {
+        #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+        {
+            matches!(self, Self::Fido2PinNotSet(_))
+        }
+
+        #[cfg(not(any(feature = "fidostore", feature = "fidokey")))]
+        {
+            false
+        }
+    }
+
     pub const fn is_fido2_token_not_present(&self) -> bool {
         #[cfg(any(feature = "fidostore", feature = "fidokey"))]
         {
@@ -322,19 +370,29 @@ impl PrivateKeyError {
     pub const fn unlock_message(&self) -> &'static str {
         match self {
             Self::Incompatible(_) => "This key can't open your items.",
+            #[cfg(feature = "smartcard")]
             Self::HardwareTokenNotPresent(_) => "Connect the hardware key and try again.",
+            #[cfg(feature = "smartcard")]
             Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
-            Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
-                "Couldn't unlock the hardware key."
-            }
+            #[cfg(feature = "smartcard")]
+            Self::HardwarePinRequired(_)
+            | Self::IncorrectHardwarePin(_)
+            | Self::HardwarePinBlocked(_) => "Couldn't unlock the hardware key.",
+            #[cfg(not(feature = "smartcard"))]
+            Self::HardwarePinRequired(_) => "Couldn't unlock the hardware key.",
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
+            #[cfg(feature = "smartcard")]
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+            Self::Fido2PinNotSet(_) => "Set a PIN on the FIDO2 security key first.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2PinRequired(_) | Self::IncorrectFido2Pin(_) => {
                 "Couldn't unlock the FIDO2 security key."
             }
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+            Self::Fido2PinUnsupported(_) => "That FIDO2 security key must support PIN protection.",
             Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2UserActionTimeout(_) => "Touch the FIDO2 security key and try again.",
@@ -349,19 +407,31 @@ impl PrivateKeyError {
             Self::MissingPrivateKeyMaterial(_) => "That file does not contain a private key.",
             Self::RequiresPasswordProtection(_) => "Add a password to that key first.",
             Self::Incompatible(_) => "This key can't open your items.",
+            #[cfg(feature = "smartcard")]
             Self::HardwareTokenNotPresent(_) => "Connect the hardware key first.",
+            #[cfg(feature = "smartcard")]
             Self::HardwareTokenMismatch(_) => "Use the matching hardware key.",
+            #[cfg(feature = "smartcard")]
             Self::HardwarePinRequired(_) | Self::IncorrectHardwarePin(_) => {
                 "Couldn't unlock the hardware key."
             }
+            #[cfg(not(feature = "smartcard"))]
+            Self::HardwarePinRequired(_) => "Couldn't unlock the hardware key.",
+            #[cfg(feature = "smartcard")]
+            Self::HardwarePinBlocked(_) => "The hardware key PIN is blocked.",
             Self::UnsupportedHardwareKey(_) => "This hardware key can't open your items.",
+            #[cfg(feature = "smartcard")]
             Self::HardwareTokenRemoved(_) => "Reconnect the hardware key and try again.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2TokenNotPresent(_) => "Connect the FIDO2 security key first.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+            Self::Fido2PinNotSet(_) => "Set a PIN on the FIDO2 security key first.",
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2PinRequired(_) | Self::IncorrectFido2Pin(_) => {
                 "Couldn't unlock the FIDO2 security key."
             }
+            #[cfg(any(feature = "fidostore", feature = "fidokey"))]
+            Self::Fido2PinUnsupported(_) => "That FIDO2 security key must support PIN protection.",
             Self::UnsupportedFido2Key(_) => "This FIDO2 security key can't open your items.",
             #[cfg(any(feature = "fidostore", feature = "fidokey"))]
             Self::Fido2UserActionTimeout(_) => "Touch the FIDO2 security key and try again.",

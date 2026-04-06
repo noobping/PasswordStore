@@ -90,7 +90,7 @@ jobs:
         run: rustup target add x86_64-pc-windows-gnu
 
       - name: Build
-        run: cargo build --release --features fidokey --target x86_64-pc-windows-gnu
+        run: cargo build --release --no-default-features --features fidokey --target x86_64-pc-windows-gnu
 
       - name: Bundle
         shell: pwsh
@@ -115,8 +115,15 @@ jobs:
           Write-Host "Copying DLLs from: $mingwBin"
           Get-ChildItem -Path $mingwBin -Filter '*.dll' |
           Copy-Item -Destination $bundleDir -Force
+          $iconThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
+          $appIconDir = Join-Path $iconThemeDir '256x256\apps'
+          New-Item -ItemType Directory -Path $appIconDir -Force | Out-Null
+          $appIcon = Join-Path $workspace 'data\256x256\apps\io.github.noobping.keycord.png'
+          Copy-Item $appIcon $appIconDir -Force
+          $indexTheme = Join-Path $workspace 'data\windows\share\icons\hicolor\index.theme'
+          Copy-Item $indexTheme $iconThemeDir -Force
           Write-Host "Bundle contents:"
-          Get-ChildItem $bundleDir
+          Get-ChildItem $bundleDir -Recurse
           $zip = Join-Path $workspace 'keycord-windows.zip'
           if (Test-Path $zip) {
            Remove-Item $zip -Force

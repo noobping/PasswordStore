@@ -13,6 +13,7 @@ cargo_variant = get_option('cargo_variant')
 cargo_features = get_option('cargo_features')
 docs = get_option('docs')
 logging = get_option('logging')
+audit = get_option('audit')
 fidostore = get_option('fidostore')
 fidokey = get_option('fidokey')
 fidopin = get_option('fidopin')
@@ -25,6 +26,7 @@ effective_cargo_features = cargo_features
 foreach feature_name, enabled : {
   'docs': docs,
   'logging': logging,
+  'audit': audit,
   'fidostore': fidostore,
   'fidokey': fidokey,
   'fidopin': fidopin,

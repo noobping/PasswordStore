@@ -394,6 +394,20 @@ impl Preferences {
         )
     }
 
+    pub fn audit_use_commit_history_recipients(&self) -> bool {
+        self.read_preference(
+            |settings| settings.boolean("audit-use-commit-history-recipients"),
+            |cfg| cfg.audit_use_commit_history_recipients.unwrap_or(false),
+        )
+    }
+
+    pub fn set_audit_use_commit_history_recipients(&self, enabled: bool) -> Result<(), BoolError> {
+        self.write_preference(
+            |settings| settings.set_boolean("audit-use-commit-history-recipients", enabled),
+            |cfg| cfg.audit_use_commit_history_recipients = Some(enabled),
+        )
+    }
+
     pub fn hidden_notices(&self) -> Vec<String> {
         Self::normalized_hidden_notices(self.read_preference(
             |settings| {
@@ -590,6 +604,11 @@ mod tests {
     #[test]
     fn private_key_sync_defaults_to_disabled() {
         assert!(!Preferences::new().sync_private_keys_with_host());
+    }
+
+    #[test]
+    fn audit_history_recipient_fallback_defaults_to_disabled() {
+        assert!(!Preferences::new().audit_use_commit_history_recipients());
     }
 
     #[test]

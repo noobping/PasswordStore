@@ -22,7 +22,7 @@ pub fn fatal_startup_error(app_name: &str, context: &str, error: impl Display) -
 
     let log_path = persist_startup_error_log(app_name, &detail);
     let dialog_body = fatal_startup_dialog_body(app_name, &detail, log_path.as_deref());
-    
+
     show_startup_error_dialog(app_name, &dialog_body);
 
     1.into()

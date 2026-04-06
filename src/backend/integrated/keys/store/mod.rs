@@ -51,6 +51,8 @@ pub(crate) use migration::{
 };
 #[cfg(test)]
 pub(in crate::backend) use paths::ripasso_keys_dir;
+#[cfg(feature = "audit")]
+pub(in crate::backend) use storage::available_standard_public_certs;
 #[cfg(test)]
 pub use storage::resolved_ripasso_own_fingerprint;
 pub(in crate::backend::integrated) use storage::{

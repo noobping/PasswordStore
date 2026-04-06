@@ -24,6 +24,7 @@ enum RestoredPageKind {
     ToolFieldValues,
     ToolValueValues,
     ToolWeakPasswords,
+    ToolAudit,
     Recipients,
     StoreGit,
     Log,
@@ -137,6 +138,9 @@ pub fn restore_window_for_current_page(
             "Scan the current list for passwords that fail basic checks.",
             false,
         );
+    } else if page_kind == RestoredPageKind::ToolAudit {
+        show_secondary_page_chrome(&chrome, "Audit", "Git history and verification", false);
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::Recipients {
         set_save_button_for_password(&state.save);
         sync_store_recipients_page_header(recipients_page);
@@ -180,6 +184,9 @@ fn visible_secondary_page_kind(
     }
     if visible_navigation_page_is(&state.nav, &state.tools_weak_passwords_page) {
         return Some(RestoredPageKind::ToolWeakPasswords);
+    }
+    if visible_navigation_page_is(&state.nav, &state.tools_audit_page) {
+        return Some(RestoredPageKind::ToolAudit);
     }
     if visible_navigation_page_is(&state.nav, &recipients_page.page) {
         return Some(RestoredPageKind::Recipients);

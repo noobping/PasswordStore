@@ -6,6 +6,9 @@ mod integrated;
 #[cfg(test)]
 mod test_support;
 
+#[cfg(feature = "audit")]
+use sequoia_openpgp::Cert;
+
 pub use self::errors::PasswordEntryError;
 pub use self::errors::PrivateKeyError;
 pub use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
@@ -94,6 +97,11 @@ pub use integrated::{
     git_commit_private_key_requiring_unlock_for_entry,
     git_commit_private_key_requiring_unlock_for_store_recipients,
 };
+
+#[cfg(feature = "audit")]
+pub fn available_standard_public_certs() -> Result<Vec<Cert>, String> {
+    integrated::available_standard_public_certs()
+}
 
 use crate::preferences::Preferences;
 

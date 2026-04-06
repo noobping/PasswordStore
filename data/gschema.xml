@@ -129,6 +129,14 @@
       </description>
     </key>
 
+    <key name="audit-use-commit-history-recipients" type="b">
+      <default>false</default>
+      <summary>Use commit-history recipients for audit verification</summary>
+      <description>
+        When enabled, the audit tool falls back to recipient files from a commit's tree if the current branch recipients cannot authorize the signer.
+      </description>
+    </key>
+
     <key name="hidden-notices" type="as">
       <default>[]</default>
       <summary>Hidden notices</summary>

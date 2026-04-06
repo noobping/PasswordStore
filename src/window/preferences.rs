@@ -10,7 +10,7 @@ use crate::support::actions::activate_widget_action;
 use crate::support::actions::register_window_action;
 #[cfg(feature = "flatpak")]
 use crate::support::runtime::has_host_permission;
-use crate::support::runtime::supports_host_command_features;
+use crate::support::runtime::{supports_audit_features, supports_host_command_features};
 use crate::support::ui::{
     connect_entry_row_apply_button_to_nonempty_text, focus_first_matching_list_row_in_order,
     list_row_is_keyboard_focusable, push_navigation_page_if_needed,
@@ -30,6 +30,8 @@ fn sync_backend_preferences_rows(
     pass_row: &EntryRow,
     sync_row: &ActionRow,
     sync_check: &CheckButton,
+    audit_row: &ActionRow,
+    audit_check: &CheckButton,
     preferences: &Preferences,
 ) {
     let backend = preferences.backend_kind();
@@ -40,6 +42,7 @@ fn sync_backend_preferences_rows(
     backend_row.set_visible(backend_row_is_visible());
     pass_row.set_visible(host_command_preferences_visible(preferences));
     sync_private_key_sync_row(sync_row, sync_check, preferences);
+    sync_audit_history_recipient_row(audit_row, audit_check, preferences);
 }
 
 #[cfg(target_os = "linux")]
@@ -88,11 +91,21 @@ pub fn initialize_backend_row(
     pass_row: &EntryRow,
     sync_row: &ActionRow,
     sync_check: &CheckButton,
+    audit_row: &ActionRow,
+    audit_check: &CheckButton,
     preferences: &Preferences,
 ) {
     let model = backend_row_model();
     backend_row.set_model(Some(&model));
-    sync_backend_preferences_rows(backend_row, pass_row, sync_row, sync_check, preferences);
+    sync_backend_preferences_rows(
+        backend_row,
+        pass_row,
+        sync_row,
+        sync_check,
+        audit_row,
+        audit_check,
+        preferences,
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -146,6 +159,25 @@ fn sync_private_key_sync_row(row: &ActionRow, check: &CheckButton, preferences: 
     };
     row.set_subtitle(&subtitle);
 
+    if check.is_active() != enabled {
+        check.set_active(enabled);
+    }
+}
+
+fn sync_audit_history_recipient_row(
+    row: &ActionRow,
+    check: &CheckButton,
+    preferences: &Preferences,
+) {
+    let supported = supports_audit_features();
+    row.set_visible(supported);
+    if !supported {
+        return;
+    }
+
+    let enabled = preferences.audit_use_commit_history_recipients();
+    row.set_sensitive(true);
+    check.set_sensitive(true);
     if check.is_active() != enabled {
         check.set_active(enabled);
     }
@@ -316,6 +348,42 @@ pub fn connect_private_key_sync_row(state: &PreferencesActionState) {
     });
 }
 
+pub fn connect_audit_history_recipient_row(state: &PreferencesActionState) {
+    let row = state.audit_use_commit_history_recipients_row.clone();
+    let check = state.audit_use_commit_history_recipients_check.clone();
+    let check_for_row = check.clone();
+    row.connect_activated(move |_| {
+        if !check_for_row.is_sensitive() {
+            return;
+        }
+        check_for_row.set_active(!check_for_row.is_active());
+    });
+
+    let overlay = state.overlay.clone();
+    let preferences = Preferences::new();
+    sync_audit_history_recipient_row(&row, &check, &preferences);
+
+    let syncing = Rc::new(Cell::new(false));
+    check.connect_toggled(move |button| {
+        if syncing.get() {
+            return;
+        }
+
+        let desired = button.is_active();
+        let stored = preferences.audit_use_commit_history_recipients();
+        if desired == stored {
+            return;
+        }
+
+        syncing.set(true);
+        if let Err(err) = preferences.set_audit_use_commit_history_recipients(desired) {
+            toast_preferences_save_error(&overlay, "History recipients", &err);
+            button.set_active(stored);
+        }
+        syncing.set(false);
+    });
+}
+
 fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Preferences) {
     state.pass_row.set_text(&settings.command_value());
     sync_backend_preferences_rows(
@@ -323,6 +391,8 @@ fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Pre
         &state.pass_row,
         &state.sync_private_keys_row,
         &state.sync_private_keys_check,
+        &state.audit_use_commit_history_recipients_row,
+        &state.audit_use_commit_history_recipients_check,
         settings,
     );
     sync_clear_empty_fields_before_save_check(
@@ -367,6 +437,8 @@ pub struct PreferencesActionState {
     pub backend_row: ComboRow,
     pub sync_private_keys_row: ActionRow,
     pub sync_private_keys_check: CheckButton,
+    pub audit_use_commit_history_recipients_row: ActionRow,
+    pub audit_use_commit_history_recipients_check: CheckButton,
 }
 
 fn sync_clear_empty_fields_before_save_check(check: &CheckButton, enabled: bool) {

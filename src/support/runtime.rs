@@ -50,6 +50,10 @@ pub const fn supports_logging_features() -> bool {
     cfg!(feature = "logging")
 }
 
+pub const fn supports_audit_features() -> bool {
+    cfg!(all(target_os = "linux", feature = "audit"))
+}
+
 pub const fn supports_docs_features() -> bool {
     cfg!(feature = "docs")
 }

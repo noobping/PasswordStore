@@ -9,11 +9,12 @@ homepage = "https://github.com/noobping/keycord"
 repository = "https://github.com/noobping/keycord"
 
 [features]
-default = ["docs", "logging", "smartcard", "fidokey"]
+default = ["docs", "logging", "smartcard", "fidokey", "audit"]
 setup = []
 flatpak = []
 docs = ["dep:pulldown-cmark"]
 logging = []
+audit = []
 smartcard = ["dep:card-backend-pcsc", "dep:openpgp-card"]
 hardwarekey = ["smartcard"]
 fidolib = ["dep:base64", "dep:fido2-rs", "dep:hmac", "dep:openssl"]

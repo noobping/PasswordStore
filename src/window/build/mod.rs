@@ -55,8 +55,8 @@ use super::host_access::append_optional_host_access_group_row;
 use super::logs::{register_open_log_action, start_log_poller};
 use super::navigation::{set_save_button_for_password, WindowNavigationState};
 use super::preferences::{
-    connect_backend_row, connect_pass_command_row, connect_private_key_sync_row,
-    initialize_backend_row,
+    connect_audit_history_recipient_row, connect_backend_row, connect_pass_command_row,
+    connect_private_key_sync_row, initialize_backend_row,
 };
 use super::preferences::{
     connect_clear_empty_fields_before_save_autosave, connect_new_password_template_autosave,
@@ -64,8 +64,8 @@ use super::preferences::{
     connect_username_fallback_autosave, register_open_preferences_action, PreferencesActionState,
 };
 use super::tools::{
-    register_open_tools_action, sync_tools_action_availability, ToolBrowserWidgets, ToolsPageState,
-    ToolsPageWidgets,
+    register_open_tools_action, sync_tools_action_availability, ToolAuditWidgets,
+    ToolBrowserWidgets, ToolsPageState, ToolsPageWidgets,
 };
 use crate::logging::{log_error, log_info};
 use crate::support::actions::activate_widget_action;
@@ -84,7 +84,6 @@ use crate::support::ui::{
 };
 use crate::window::session::initialize_window_session;
 use adw::glib::{self, Propagation};
-#[cfg(target_os = "windows")]
 use std::rc::Rc;
 
 const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
@@ -156,6 +155,8 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
         &widgets.pass_command_row,
         &widgets.sync_private_keys_with_host_row,
         &widgets.sync_private_keys_with_host_check,
+        &widgets.audit_use_commit_history_recipients_row,
+        &widgets.audit_use_commit_history_recipients_check,
         preferences,
     );
     if !host_features_supported {
@@ -183,6 +184,7 @@ fn connect_backend_preferences(
         preferences,
     );
     connect_private_key_sync_row(preferences_action_state);
+    connect_audit_history_recipient_row(preferences_action_state);
     connect_backend_row(
         &widgets.backend_row,
         &widgets.pass_command_row,
@@ -333,6 +335,7 @@ fn connect_page_keyboard_navigation(widgets: &WindowWidgets) {
     for page in [
         widgets.settings_page.clone(),
         widgets.tools_page.clone(),
+        widgets.tools_audit_page.clone(),
         widgets.store_import_page.clone(),
         widgets.store_recipients_page.clone(),
         widgets.store_git_page.clone(),
@@ -384,6 +387,10 @@ fn preferences_page_detail_widgets(widgets: &WindowWidgets) -> Vec<adw::gtk::Wid
         widgets.backend_row.clone().upcast(),
         widgets.pass_command_row.clone().upcast(),
         widgets.sync_private_keys_with_host_check.clone().upcast(),
+        widgets
+            .audit_use_commit_history_recipients_check
+            .clone()
+            .upcast(),
         widgets.preferences_username_filename_check.clone().upcast(),
         widgets.preferences_username_folder_check.clone().upcast(),
         widgets
@@ -599,6 +606,9 @@ fn focus_first_visible_page_target(
         }
         return widgets.tools_weak_passwords_search_entry.grab_focus();
     }
+    if visible_navigation_page_is(&navigation.nav, &widgets.tools_audit_page) {
+        return widgets.tools_audit_page.child_focus(DirectionType::Down);
+    }
     if visible_navigation_page_is(&navigation.nav, &widgets.store_import_page) {
         return widgets.store_import_store_dropdown.grab_focus();
     }
@@ -655,6 +665,8 @@ fn visible_page_contains_focus(
         Some(widgets.tools_value_values_page.clone().upcast::<Widget>())
     } else if visible_navigation_page_is(&navigation.nav, &widgets.tools_weak_passwords_page) {
         Some(widgets.tools_weak_passwords_page.clone().upcast::<Widget>())
+    } else if visible_navigation_page_is(&navigation.nav, &widgets.tools_audit_page) {
+        Some(widgets.tools_audit_page.clone().upcast::<Widget>())
     } else if visible_navigation_page_is(&navigation.nav, &widgets.store_import_page) {
         Some(widgets.store_import_page.clone().upcast::<Widget>())
     } else if visible_navigation_page_is(&navigation.nav, &widgets.store_recipients_page) {
@@ -748,6 +760,7 @@ fn configure_search_entries(widgets: &WindowWidgets) {
         &widgets.tools_field_values_search_entry,
         &widgets.tools_value_values_search_entry,
         &widgets.tools_weak_passwords_search_entry,
+        &widgets.tools_audit_search_entry,
     ] {
         configure_touch_friendly_search_entry(search_entry);
     }
@@ -830,10 +843,16 @@ pub fn create_main_window(
         list: &widgets.tools_list,
         field_values_row: &widgets.tools_field_values_row,
         field_values_suffix_stack: &widgets.tools_field_values_suffix_stack,
+        field_values_suffix_arrow: &widgets.tools_field_values_suffix_arrow,
         field_values_spinner: &widgets.tools_field_values_spinner,
         weak_passwords_row: &widgets.tools_weak_passwords_row,
         weak_passwords_suffix_stack: &widgets.tools_weak_passwords_suffix_stack,
+        weak_passwords_suffix_arrow: &widgets.tools_weak_passwords_suffix_arrow,
         weak_passwords_spinner: &widgets.tools_weak_passwords_spinner,
+        audit_row: &widgets.tools_audit_row,
+        audit_suffix_stack: &widgets.tools_audit_suffix_stack,
+        audit_suffix_arrow: &widgets.tools_audit_suffix_arrow,
+        audit_spinner: &widgets.tools_audit_spinner,
         logs_list: &widgets.tools_logs_list,
         docs_row: &widgets.tools_docs_row,
         logs_row: &widgets.tools_logs_row,
@@ -855,6 +874,18 @@ pub fn create_main_window(
             page: &widgets.tools_weak_passwords_page,
             search_entry: &widgets.tools_weak_passwords_search_entry,
             list: &widgets.tools_weak_passwords_list,
+        },
+        audit: ToolAuditWidgets {
+            page: &widgets.tools_audit_page,
+            search_entry: &widgets.tools_audit_search_entry,
+            stack: &widgets.tools_audit_stack,
+            status: &widgets.tools_audit_status,
+            scrolled: &widgets.tools_audit_scrolled,
+            content: &widgets.tools_audit_content,
+            filter_button: &widgets.tools_audit_filter_button,
+            filter_popover: &widgets.tools_audit_filter_popover,
+            filter_store_box: &widgets.tools_audit_filter_store_box,
+            filter_branch_box: &widgets.tools_audit_filter_branch_box,
         },
         root_list: &widgets.list,
         root_search_entry: &widgets.search_entry,
@@ -925,9 +956,15 @@ pub fn create_main_window(
     connect_search_visibility(&widgets.find_button, &widgets.search_entry, &widgets.list);
     register_toggle_find_action(
         &widgets.window,
+        &window_navigation_state,
         &widgets.find_button,
         &widgets.search_entry,
         &widgets.list,
+        &widgets.tools_audit_search_entry,
+        Rc::new({
+            let tools_page_state = tools_page_state.clone();
+            move || tools_page_state.render_audit_page()
+        }),
     );
     register_list_visibility_action(&widgets.window, &list_visibility_action_state);
     register_reload_password_list_action(&widgets.window, &list_visibility_action_state);

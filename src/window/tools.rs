@@ -1,3 +1,4 @@
+mod audit;
 mod field_values;
 mod menu;
 #[cfg(test)]
@@ -21,12 +22,16 @@ use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
 };
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::{Button, ListBox, SearchEntry, Spinner, Stack};
+use adw::gtk::{
+    Box as GtkBox, Button, Image, ListBox, MenuButton, Popover, ScrolledWindow, SearchEntry,
+    Spinner, Stack,
+};
 use adw::prelude::*;
-use adw::{ActionRow, ApplicationWindow, NavigationPage, ToastOverlay};
+use adw::{ActionRow, ApplicationWindow, NavigationPage, StatusPage, ToastOverlay};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use self::audit::AuditToolState;
 use self::field_values::FieldValueBrowserState;
 use self::menu::{
     append_optional_pass_import_row, append_optional_setup_row, configure_optional_doc_row,
@@ -66,6 +71,30 @@ const WEAK_PASSWORDS_EMPTY_SUBTITLE: &str =
     "No loaded pass files matched the current weak-password checks.";
 const WEAK_PASSWORDS_FILTER_EMPTY_TITLE: &str = "No matching results";
 const WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE: &str = "Try a different search term.";
+const AUDIT_TITLE: &str = "Audit";
+const AUDIT_SUBTITLE: &str = "Git history and verification";
+const AUDIT_ROW_SUBTITLE: &str = "Inspect Git history across stores and verify commit signatures.";
+const AUDIT_ROW_DISABLED_SUBTITLE: &str = "No Git-backed stores available.";
+const AUDIT_LOADING_TITLE: &str = "Loading data";
+const AUDIT_LOADING_SUBTITLE: &str = "Inspecting Git-backed stores and discovering branches.";
+const AUDIT_NO_STORES_TITLE: &str = "No Git-backed stores";
+const AUDIT_NO_STORES_SUBTITLE: &str = "Add a store with a Git repository to inspect history here.";
+const AUDIT_ERROR_TITLE: &str = "Couldn't load data";
+const AUDIT_EMPTY_SELECTION_TITLE: &str = "Nothing selected";
+const AUDIT_EMPTY_SELECTION_SUBTITLE: &str =
+    "Select at least one store and one branch in the filter menu.";
+const AUDIT_FILTER_EMPTY_TITLE: &str = "No matching branches";
+const AUDIT_FILTER_EMPTY_SUBTITLE: &str =
+    "The current filters don't match any branches in the selected stores.";
+const AUDIT_SEARCH_EMPTY_TITLE: &str = "No matching results";
+const AUDIT_SEARCH_EMPTY_SUBTITLE: &str = "Try a different search term or load more commits.";
+const AUDIT_LOADING_COMMITS_TITLE: &str = "Loading commits";
+const AUDIT_LOADING_COMMITS_SUBTITLE: &str = "Reading recent Git history for this branch.";
+const AUDIT_EMPTY_BRANCH_TITLE: &str = "No commits loaded";
+const AUDIT_EMPTY_BRANCH_SUBTITLE: &str =
+    "This branch doesn't have any commits available to audit.";
+const AUDIT_LOAD_MORE_TITLE: &str = "Load more commits";
+const AUDIT_LOAD_MORE_SUBTITLE: &str = "Read the next {count} commits.";
 
 #[derive(Clone)]
 struct ToolSelectPageState {
@@ -74,10 +103,16 @@ struct ToolSelectPageState {
     logs_list: ListBox,
     field_values_row: ActionRow,
     field_values_suffix_stack: Stack,
+    field_values_suffix_arrow: Image,
     field_values_spinner: Spinner,
     weak_passwords_row: ActionRow,
     weak_passwords_suffix_stack: Stack,
+    weak_passwords_suffix_arrow: Image,
     weak_passwords_spinner: Spinner,
+    audit_row: ActionRow,
+    audit_suffix_stack: Stack,
+    audit_suffix_arrow: Image,
+    audit_spinner: Spinner,
     docs_row: ActionRow,
     logs_row: ActionRow,
     copy_logs_row: ActionRow,
@@ -106,6 +141,21 @@ struct ToolWeakPasswordPageState {
 }
 
 #[derive(Clone)]
+struct ToolAuditPageState {
+    page: NavigationPage,
+    search_entry: SearchEntry,
+    stack: Stack,
+    audit_status: StatusPage,
+    scrolled: ScrolledWindow,
+    content: GtkBox,
+    filter_button: MenuButton,
+    filter_popover: Popover,
+    filter_store_box: GtkBox,
+    filter_branch_box: GtkBox,
+    audit: Rc<AuditToolState>,
+}
+
+#[derive(Clone)]
 pub struct ToolsPageState {
     window: ApplicationWindow,
     navigation: WindowNavigationState,
@@ -116,6 +166,7 @@ pub struct ToolsPageState {
     select_page: ToolSelectPageState,
     field_browser: ToolFieldBrowserPageState,
     weak_password_page: ToolWeakPasswordPageState,
+    audit_page: ToolAuditPageState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,6 +181,19 @@ pub struct ToolBrowserWidgets<'a> {
     pub list: &'a ListBox,
 }
 
+pub struct ToolAuditWidgets<'a> {
+    pub page: &'a NavigationPage,
+    pub search_entry: &'a SearchEntry,
+    pub stack: &'a Stack,
+    pub status: &'a StatusPage,
+    pub scrolled: &'a ScrolledWindow,
+    pub content: &'a GtkBox,
+    pub filter_button: &'a MenuButton,
+    pub filter_popover: &'a Popover,
+    pub filter_store_box: &'a GtkBox,
+    pub filter_branch_box: &'a GtkBox,
+}
+
 pub struct ToolsPageWidgets<'a> {
     pub window: &'a ApplicationWindow,
     pub navigation: &'a WindowNavigationState,
@@ -137,10 +201,16 @@ pub struct ToolsPageWidgets<'a> {
     pub list: &'a ListBox,
     pub field_values_row: &'a ActionRow,
     pub field_values_suffix_stack: &'a Stack,
+    pub field_values_suffix_arrow: &'a Image,
     pub field_values_spinner: &'a Spinner,
     pub weak_passwords_row: &'a ActionRow,
     pub weak_passwords_suffix_stack: &'a Stack,
+    pub weak_passwords_suffix_arrow: &'a Image,
     pub weak_passwords_spinner: &'a Spinner,
+    pub audit_row: &'a ActionRow,
+    pub audit_suffix_stack: &'a Stack,
+    pub audit_suffix_arrow: &'a Image,
+    pub audit_spinner: &'a Spinner,
     pub logs_list: &'a ListBox,
     pub docs_row: &'a ActionRow,
     pub logs_row: &'a ActionRow,
@@ -151,6 +221,7 @@ pub struct ToolsPageWidgets<'a> {
     pub field_values: ToolBrowserWidgets<'a>,
     pub value_values: ToolBrowserWidgets<'a>,
     pub weak_passwords: ToolBrowserWidgets<'a>,
+    pub audit: ToolAuditWidgets<'a>,
     pub root_list: &'a ListBox,
     pub root_search_entry: &'a SearchEntry,
 }
@@ -169,10 +240,16 @@ impl ToolsPageState {
                 list: widgets.list.clone(),
                 field_values_row: widgets.field_values_row.clone(),
                 field_values_suffix_stack: widgets.field_values_suffix_stack.clone(),
+                field_values_suffix_arrow: widgets.field_values_suffix_arrow.clone(),
                 field_values_spinner: widgets.field_values_spinner.clone(),
                 weak_passwords_row: widgets.weak_passwords_row.clone(),
                 weak_passwords_suffix_stack: widgets.weak_passwords_suffix_stack.clone(),
+                weak_passwords_suffix_arrow: widgets.weak_passwords_suffix_arrow.clone(),
                 weak_passwords_spinner: widgets.weak_passwords_spinner.clone(),
+                audit_row: widgets.audit_row.clone(),
+                audit_suffix_stack: widgets.audit_suffix_stack.clone(),
+                audit_suffix_arrow: widgets.audit_suffix_arrow.clone(),
+                audit_spinner: widgets.audit_spinner.clone(),
                 logs_list: widgets.logs_list.clone(),
                 docs_row: widgets.docs_row.clone(),
                 logs_row: widgets.logs_row.clone(),
@@ -196,6 +273,19 @@ impl ToolsPageState {
                 list: widgets.weak_passwords.list.clone(),
                 weak_passwords: Rc::new(WeakPasswordToolState::default()),
             },
+            audit_page: ToolAuditPageState {
+                page: widgets.audit.page.clone(),
+                search_entry: widgets.audit.search_entry.clone(),
+                stack: widgets.audit.stack.clone(),
+                audit_status: widgets.audit.status.clone(),
+                scrolled: widgets.audit.scrolled.clone(),
+                content: widgets.audit.content.clone(),
+                filter_button: widgets.audit.filter_button.clone(),
+                filter_popover: widgets.audit.filter_popover.clone(),
+                filter_store_box: widgets.audit.filter_store_box.clone(),
+                filter_branch_box: widgets.audit.filter_branch_box.clone(),
+                audit: Rc::new(AuditToolState::default()),
+            },
         };
         state.initialize_select_page();
         state.connect_browser_handlers();
@@ -214,6 +304,11 @@ impl ToolsPageState {
             .weak_passwords_row
             .connect_activated(move |_| state.prepare_weak_passwords_browser());
 
+        let state = self.clone();
+        self.select_page
+            .audit_row
+            .connect_activated(move |_| state.prepare_audit_page());
+
         configure_optional_doc_row(self);
         configure_optional_log_rows(self);
         *self.select_page.setup_row.borrow_mut() = append_optional_setup_row(self);
@@ -224,6 +319,7 @@ impl ToolsPageState {
     }
 
     pub fn refresh_select_page(&self) {
+        self.clear_audit_transient_state();
         self.invalidate_stale_tool_cache();
         self.sync_action_availability();
         self.sync_tool_rows();
@@ -257,6 +353,13 @@ impl ToolsPageState {
 
         {
             let state = self.clone();
+            self.audit_page
+                .search_entry
+                .connect_search_changed(move |_| state.render_audit_page());
+        }
+
+        {
+            let state = self.clone();
             self.navigation
                 .nav
                 .connect_notify_local(Some("visible-page"), move |_, _| {
@@ -281,8 +384,19 @@ impl ToolsPageState {
     }
 
     fn handle_navigation_visibility_change(&self) {
+        self.sync_audit_filter_button();
+        if !visible_navigation_page_is(&self.navigation.nav, &self.audit_page.page)
+            && self.audit_has_transient_state()
+        {
+            self.clear_audit_transient_state();
+        }
+
         if visible_navigation_page_is(&self.navigation.nav, &self.weak_password_page.page) {
             self.refresh_weak_passwords_browser_if_needed();
+            return;
+        }
+
+        if visible_navigation_page_is(&self.navigation.nav, &self.audit_page.page) {
             return;
         }
 
@@ -292,6 +406,7 @@ impl ToolsPageState {
 
         self.reset_field_values_view();
         self.clear_weak_passwords_cache();
+        self.clear_audit_transient_state();
         self.invalidate_stale_tool_cache();
     }
 
@@ -301,6 +416,7 @@ impl ToolsPageState {
             visible_navigation_page_is(&self.navigation.nav, &self.field_browser.field_page),
             visible_navigation_page_is(&self.navigation.nav, &self.field_browser.value_page),
             visible_navigation_page_is(&self.navigation.nav, &self.weak_password_page.page),
+            visible_navigation_page_is(&self.navigation.nav, &self.audit_page.page),
             visible_navigation_page_is(&self.navigation.nav, &self.password_page.page),
             visible_navigation_page_is(&self.navigation.nav, &self.password_page.raw_page),
         )
@@ -345,9 +461,10 @@ impl ToolsPageState {
                 self.field_browser.browser.tool_busy.get(),
                 self.weak_password_page.weak_passwords.tool_busy.get(),
             );
-        set_password_tool_row_state(
+        set_tool_action_row_state(
             &self.select_page.field_values_row,
             &self.select_page.field_values_suffix_stack,
+            &self.select_page.field_values_suffix_arrow,
             &self.select_page.field_values_spinner,
             enabled,
             self.field_browser.browser.tool_busy.get(),
@@ -357,9 +474,10 @@ impl ToolsPageState {
                 FIELD_VALUES_ROW_DISABLED_SUBTITLE
             },
         );
-        set_password_tool_row_state(
+        set_tool_action_row_state(
             &self.select_page.weak_passwords_row,
             &self.select_page.weak_passwords_suffix_stack,
+            &self.select_page.weak_passwords_suffix_arrow,
             &self.select_page.weak_passwords_spinner,
             enabled,
             self.weak_password_page.weak_passwords.tool_busy.get(),
@@ -369,6 +487,7 @@ impl ToolsPageState {
                 WEAK_PASSWORDS_ROW_DISABLED_SUBTITLE
             },
         );
+        self.sync_audit_tool_row(enabled);
     }
 
     pub fn sync_action_availability(&self) {
@@ -448,6 +567,7 @@ const fn tool_browser_flow_is_visible(
     field_values_page_visible: bool,
     value_values_page_visible: bool,
     weak_passwords_page_visible: bool,
+    audit_page_visible: bool,
     password_page_visible: bool,
     raw_password_page_visible: bool,
 ) -> bool {
@@ -455,6 +575,7 @@ const fn tool_browser_flow_is_visible(
         || field_values_page_visible
         || value_values_page_visible
         || weak_passwords_page_visible
+        || audit_page_visible
         || password_page_visible
         || raw_password_page_visible
 }
@@ -464,21 +585,26 @@ fn set_tool_row_enabled(row: &ActionRow, enabled: bool) {
     row.set_activatable(enabled);
 }
 
-fn set_tool_row_suffix_loading(stack: &Stack, spinner: &Spinner, loading: bool) {
+fn set_tool_row_suffix_loading(stack: &Stack, arrow: &Image, spinner: &Spinner, loading: bool) {
     spinner.set_spinning(loading);
-    stack.set_visible_child_name(if loading { "spinner" } else { "arrow" });
+    if loading {
+        stack.set_visible_child(spinner);
+    } else {
+        stack.set_visible_child(arrow);
+    }
 }
 
-fn set_password_tool_row_state(
+fn set_tool_action_row_state(
     row: &ActionRow,
     suffix_stack: &Stack,
+    suffix_arrow: &Image,
     spinner: &Spinner,
     enabled: bool,
     loading: bool,
     subtitle: &str,
 ) {
     row.set_subtitle(&gettext(subtitle));
-    set_tool_row_suffix_loading(suffix_stack, spinner, loading);
+    set_tool_row_suffix_loading(suffix_stack, suffix_arrow, spinner, loading);
     set_tool_row_enabled(row, enabled);
 }
 

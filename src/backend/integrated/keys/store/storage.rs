@@ -389,6 +389,14 @@ pub(in crate::backend::integrated) fn available_private_key_fingerprints(
     Ok(fingerprints)
 }
 
+#[cfg(feature = "audit")]
+pub(in crate::backend) fn available_standard_public_certs() -> Result<Vec<Cert>, String> {
+    Ok(load_available_standard_key_ring()?
+        .into_values()
+        .map(|cert| (*cert).clone())
+        .collect())
+}
+
 pub(in crate::backend::integrated) fn selected_ripasso_own_fingerprint(
 ) -> Result<Option<String>, String> {
     let settings = Preferences::new();

@@ -228,6 +228,7 @@ pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigati
         tools_field_values_page: widgets.tools_field_values_page.clone(),
         tools_value_values_page: widgets.tools_value_values_page.clone(),
         tools_weak_passwords_page: widgets.tools_weak_passwords_page.clone(),
+        tools_audit_page: widgets.tools_audit_page.clone(),
         store_import_page: widgets.store_import_page.clone(),
         log_page: widgets.log_page.clone(),
         back: widgets.back_button.clone(),
@@ -290,6 +291,12 @@ pub(super) fn preferences_action_state(
         backend_row: widgets.backend_row.clone(),
         sync_private_keys_row: widgets.sync_private_keys_with_host_row.clone(),
         sync_private_keys_check: widgets.sync_private_keys_with_host_check.clone(),
+        audit_use_commit_history_recipients_row: widgets
+            .audit_use_commit_history_recipients_row
+            .clone(),
+        audit_use_commit_history_recipients_check: widgets
+            .audit_use_commit_history_recipients_check
+            .clone(),
     }
 }
 

@@ -3,13 +3,6 @@ use super::super::cache::{
 };
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
-use rand::random;
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
-use std::sync::{Arc, OnceLock, RwLock};
-use std::thread;
-use std::time::{Duration, Instant};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use fido2_rs::{
     assertion::AssertRequest,
@@ -21,9 +14,16 @@ use hmac::{digest::KeyInit, Hmac, Mac};
 #[cfg(feature = "fidopin")]
 use libfido2_sys as ffi;
 use openssl::symm::{Cipher, Crypter, Mode};
+use rand::random;
+use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 #[cfg(feature = "fidopin")]
 use std::ffi::{CStr, CString};
+use std::fmt::{Display, Formatter};
+use std::sync::{Arc, OnceLock, RwLock};
+use std::thread;
+use std::time::{Duration, Instant};
 #[cfg(feature = "fidopin")]
 use zeroize::Zeroizing;
 
@@ -1060,10 +1060,10 @@ mod tests {
 
     #[test]
     fn base64_helpers_round_trip() {
-        let encoded = BASE64.encode(b"hello");
+        let encoded = encode_base64(b"hello");
         assert_eq!(decode_base64(&encoded).unwrap(), b"hello");
     }
-    
+
     #[test]
     fn hkdf_derives_a_stable_32_byte_key() {
         let derived = hkdf_sha256(b"secret", b"fingerprint", b"salt", b"info", 32).unwrap();
@@ -1073,7 +1073,7 @@ mod tests {
             hkdf_sha256(b"secret", b"fingerprint", b"salt", b"info", 32).unwrap()
         );
     }
-    
+
     #[test]
     fn fido2_error_mapping_covers_pin_required() {
         let err = map_fido2_library_error(Fido2LibraryError::Unsupported);
@@ -1163,7 +1163,7 @@ mod tests {
         .expect_err("non-matching assertion should fail");
         assert!(matches!(err, Fido2TransportError::TokenNotPresent));
     }
-    
+
     #[test]
     fn passkey_enrollment_falls_back_when_discoverable_credentials_are_unsupported() {
         let mut attempts = Vec::new();
@@ -1189,7 +1189,7 @@ mod tests {
         assert_eq!(attempts, [true, false]);
         assert_eq!(enrollment.credential_id, b"cred");
     }
-    
+
     #[test]
     fn passkey_enrollment_does_not_retry_after_non_capability_errors() {
         let mut attempts = Vec::new();

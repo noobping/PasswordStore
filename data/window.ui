@@ -20,6 +20,59 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkMenuButton" id="tools_audit_filter_button">
+                    <property name="visible">false</property>
+                    <property name="icon-name">funnel-symbolic</property>
+                    <property name="always-show-arrow">false</property>
+                    <property name="tooltip-text" translatable="yes">Filter results</property>
+                    <property name="popover">
+                      <object class="GtkPopover" id="tools_audit_filter_popover">
+                        <property name="width-request">560</property>
+                        <child>
+                          <object class="GtkScrolledWindow">
+                            <property name="propagate-natural-width">true</property>
+                            <property name="propagate-natural-height">true</property>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">12</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                                <child>
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">Stores</property>
+                                    <property name="xalign">0</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox" id="tools_audit_filter_store_box">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">6</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel">
+                                    <property name="label" translatable="yes">Branches</property>
+                                    <property name="xalign">0</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkBox" id="tools_audit_filter_branch_box">
+                                    <property name="orientation">vertical</property>
+                                    <property name="spacing">6</property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkButton" id="add_button">
                     <property name="icon-name">list-add-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Add item</property>
@@ -562,6 +615,19 @@
                                     </child>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="AdwActionRow" id="audit_use_commit_history_recipients_row">
+                                    <property name="visible">false</property>
+                                    <property name="title" translatable="yes">Use commit-history recipients for verification</property>
+                                    <property name="subtitle" translatable="yes">Retry authorization with recipient files from the commit history when the current branch recipients cannot authorize the signer.</property>
+                                    <property name="activatable">True</property>
+                                    <child type="suffix">
+                                      <object class="GtkCheckButton" id="audit_use_commit_history_recipients_check">
+                                        <property name="valign">center</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
                               </object>
                             </child>
 
@@ -836,25 +902,14 @@
                                         <property name="activatable">True</property>
                                         <child type="suffix">
                                           <object class="GtkStack" id="tools_field_values_suffix_stack">
-                                            <property name="visible-child-name">arrow</property>
                                             <child>
-                                              <object class="GtkStackPage">
-                                                <property name="name">arrow</property>
-                                                <property name="child">
-                                                  <object class="GtkImage">
-                                                    <property name="icon-name">go-next-symbolic</property>
-                                                  </object>
-                                                </property>
+                                              <object class="GtkImage" id="tools_field_values_suffix_arrow">
+                                                <property name="icon-name">go-next-symbolic</property>
                                               </object>
                                             </child>
                                             <child>
-                                              <object class="GtkStackPage">
-                                                <property name="name">spinner</property>
-                                                <property name="child">
-                                                  <object class="GtkSpinner" id="tools_field_values_spinner">
-                                                    <property name="spinning">false</property>
-                                                  </object>
-                                                </property>
+                                              <object class="GtkSpinner" id="tools_field_values_spinner">
+                                                <property name="spinning">false</property>
                                               </object>
                                             </child>
                                           </object>
@@ -868,25 +923,36 @@
                                         <property name="activatable">True</property>
                                         <child type="suffix">
                                           <object class="GtkStack" id="tools_weak_passwords_suffix_stack">
-                                            <property name="visible-child-name">arrow</property>
                                             <child>
-                                              <object class="GtkStackPage">
-                                                <property name="name">arrow</property>
-                                                <property name="child">
-                                                  <object class="GtkImage">
-                                                    <property name="icon-name">go-next-symbolic</property>
-                                                  </object>
-                                                </property>
+                                              <object class="GtkImage" id="tools_weak_passwords_suffix_arrow">
+                                                <property name="icon-name">go-next-symbolic</property>
                                               </object>
                                             </child>
                                             <child>
-                                              <object class="GtkStackPage">
-                                                <property name="name">spinner</property>
-                                                <property name="child">
-                                                  <object class="GtkSpinner" id="tools_weak_passwords_spinner">
-                                                    <property name="spinning">false</property>
-                                                  </object>
-                                                </property>
+                                              <object class="GtkSpinner" id="tools_weak_passwords_spinner">
+                                                <property name="spinning">false</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="AdwActionRow" id="tools_audit_row">
+                                        <property name="title" translatable="yes">History</property>
+                                        <property name="subtitle" translatable="yes">Inspect Git history across stores and verify commit signatures.</property>
+                                        <property name="activatable">True</property>
+                                        <property name="visible">false</property>
+                                        <child type="suffix">
+                                          <object class="GtkStack" id="tools_audit_suffix_stack">
+                                            <child>
+                                              <object class="GtkImage" id="tools_audit_suffix_arrow">
+                                                <property name="icon-name">go-next-symbolic</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkSpinner" id="tools_audit_spinner">
+                                                <property name="spinning">false</property>
                                               </object>
                                             </child>
                                           </object>
@@ -1134,6 +1200,58 @@
                                         <style>
                                           <class name="boxed-list" />
                                         </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+
+                <child>
+                  <object class="AdwNavigationPage" id="tools_audit_page">
+                    <property name="title" translatable="yes">Audit</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <child>
+                          <object class="GtkSearchEntry" id="tools_audit_search_entry">
+                            <property name="visible">false</property>
+                            <property name="placeholder-text" translatable="yes">Search results</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkStack" id="tools_audit_stack">
+                            <child>
+                              <object class="AdwStatusPage" id="tools_audit_status">
+                                <property name="icon-name">git-symbolic</property>
+                                <property name="title" translatable="yes">Audit</property>
+                                <property name="description" translatable="yes">Open a Git-backed store to inspect branches and commits.</property>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkScrolledWindow" id="tools_audit_scrolled">
+                                <property name="vscrollbar-policy">automatic</property>
+                                <property name="hscrollbar-policy">never</property>
+                                <property name="propagate-natural-width">true</property>
+                                <property name="propagate-natural-height">true</property>
+                                <child>
+                                  <object class="AdwClamp">
+                                    <property name="maximum-size">900</property>
+                                    <property name="tightening-threshold">600</property>
+                                    <child>
+                                      <object class="GtkBox" id="tools_audit_content">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">18</property>
+                                        <property name="margin-top">18</property>
+                                        <property name="margin-bottom">18</property>
+                                        <property name="margin-start">18</property>
+                                        <property name="margin-end">18</property>
                                       </object>
                                     </child>
                                   </object>

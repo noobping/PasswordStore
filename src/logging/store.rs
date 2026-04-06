@@ -56,7 +56,13 @@ fn push_log_entry(level: &str, message: &str, is_error: bool) {
 }
 
 fn sanitize_log_message(message: &str) -> String {
-    redact_scp_like_credentials(&redact_url_credentials(message))
+    replace_embedded_nuls(&redact_scp_like_credentials(&redact_url_credentials(
+        message,
+    )))
+}
+
+fn replace_embedded_nuls(message: &str) -> String {
+    message.replace('\0', "\u{FFFD}")
 }
 
 fn redact_url_credentials(message: &str) -> String {
@@ -167,5 +173,13 @@ mod tests {
             "git clone redacted@example.test:owner/repo.git".to_string()
         );
         assert!(!message.contains("token@"));
+    }
+
+    #[test]
+    fn embedded_nuls_are_replaced() {
+        assert_eq!(
+            sanitize_log_message("alpha\0beta"),
+            "alpha\u{FFFD}beta".to_string()
+        );
     }
 }

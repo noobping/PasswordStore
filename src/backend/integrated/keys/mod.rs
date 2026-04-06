@@ -62,6 +62,8 @@ pub(in crate::backend::integrated) use self::hardware::{
     reset_hardware_transport_for_tests, set_hardware_transport_for_tests, HardwareTransport,
     HardwareTransportError,
 };
+#[cfg(feature = "audit")]
+pub(in crate::backend) use self::store::available_standard_public_certs;
 #[cfg(test)]
 pub use self::store::resolved_ripasso_own_fingerprint;
 #[cfg(test)]

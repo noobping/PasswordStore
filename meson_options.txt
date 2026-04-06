@@ -49,6 +49,13 @@ option(
 )
 
 option(
+  'audit',
+  type: 'boolean',
+  value: false,
+  description: 'Enable the optional Git audit tool.',
+)
+
+option(
   'fidokey',
   type: 'boolean',
   value: false,

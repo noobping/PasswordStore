@@ -132,16 +132,19 @@ fn tool_rows_disable_while_any_tool_is_busy() {
 #[test]
 fn tool_browser_flow_stays_visible_while_a_password_entry_is_open() {
     assert!(tool_browser_flow_is_visible(
-        false, false, false, true, false, false
+        false, false, false, true, false, false, false
     ));
     assert!(tool_browser_flow_is_visible(
-        false, false, false, false, true, false
+        false, false, false, false, false, true, false
     ));
     assert!(tool_browser_flow_is_visible(
-        false, false, false, false, false, true
+        false, false, false, false, false, false, true
+    ));
+    assert!(tool_browser_flow_is_visible(
+        false, false, false, false, true, false, false
     ));
     assert!(!tool_browser_flow_is_visible(
-        false, false, false, false, false, false
+        false, false, false, false, false, false, false
     ));
 }
 

@@ -35,11 +35,25 @@ pub fn start_log_poller(view: &TextView) {
         {
             let mut seen = seen_revision.borrow_mut();
             if revision != *seen {
-                view.buffer().set_text(&text);
+                view.buffer().set_text(&gtk_safe_log_text(&text));
                 *seen = revision;
             }
         }
 
         glib::ControlFlow::Continue
     });
+}
+
+fn gtk_safe_log_text(text: &str) -> String {
+    text.replace('\0', "\u{FFFD}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gtk_safe_log_text;
+
+    #[test]
+    fn gtk_safe_log_text_replaces_embedded_nuls() {
+        assert_eq!(gtk_safe_log_text("left\0right"), "left\u{FFFD}right");
+    }
 }

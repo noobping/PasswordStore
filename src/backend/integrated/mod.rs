@@ -15,6 +15,8 @@ pub use self::git::{
     git_commit_private_key_requiring_unlock_for_entry,
     git_commit_private_key_requiring_unlock_for_store_recipients,
 };
+#[cfg(feature = "audit")]
+pub(in crate::backend) use self::keys::available_standard_public_certs;
 #[cfg(test)]
 pub(in crate::backend) use self::keys::clear_cached_unlocked_ripasso_private_keys;
 pub(in crate::backend) use self::keys::clear_integrated_runtime_secret_state;

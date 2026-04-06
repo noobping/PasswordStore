@@ -343,14 +343,35 @@ pub fn register_context_undo_action(window: &ApplicationWindow, state: &ContextU
 
 pub fn register_toggle_find_action(
     window: &adw::ApplicationWindow,
+    navigation: &WindowNavigationState,
     find_button: &Button,
     search_entry: &SearchEntry,
     list: &ListBox,
+    audit_search_entry: &SearchEntry,
+    on_audit_search_changed: Rc<dyn Fn()>,
 ) {
+    let navigation = navigation.clone();
     let find_button = find_button.clone();
     let search_entry = search_entry.clone();
     let list = list.clone();
+    let audit_search_entry = audit_search_entry.clone();
     register_window_action(window, "toggle-find", move || {
+        if visible_navigation_page_is(&navigation.nav, &navigation.tools_audit_page) {
+            if !find_button.is_visible() {
+                hide_search_entry(&audit_search_entry);
+                return;
+            }
+
+            if audit_search_entry.is_visible() {
+                hide_and_clear_audit_search_entry(&audit_search_entry, &on_audit_search_changed);
+                return;
+            }
+
+            audit_search_entry.set_visible(true);
+            audit_search_entry.grab_focus();
+            return;
+        }
+
         if !find_button.is_visible() {
             hide_search_entry(&search_entry);
             return;
@@ -388,6 +409,19 @@ fn hide_and_clear_search_entry(search_entry: &SearchEntry, list: &ListBox) {
         search_entry.set_text("");
     }
     list.invalidate_filter();
+}
+
+fn hide_and_clear_audit_search_entry(
+    search_entry: &SearchEntry,
+    on_search_changed: &Rc<dyn Fn()>,
+) {
+    hide_search_entry(search_entry);
+    if search_entry.text().is_empty() {
+        return;
+    }
+
+    search_entry.set_text("");
+    on_search_changed();
 }
 
 fn hide_search_entry(search_entry: &SearchEntry) {

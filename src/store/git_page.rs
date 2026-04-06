@@ -11,8 +11,9 @@ use crate::support::git::{
 use crate::support::runtime::{has_host_permission, supports_host_command_features};
 use crate::support::ui::{
     append_action_row_with_button, append_info_row, clear_list_box, dialog_content_shell,
-    dim_label_icon, flat_icon_button_with_tooltip, navigation_stack_contains_page,
-    push_navigation_page_if_needed, reveal_navigation_page, visible_navigation_page_is,
+    dim_label_icon, flat_icon_button_with_tooltip, focus_first_matching_list_row_in_order,
+    list_row_is_keyboard_focusable, navigation_stack_contains_page, push_navigation_page_if_needed,
+    reveal_navigation_page, visible_navigation_page_is,
 };
 use crate::window::append_optional_host_access_row;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
@@ -446,6 +447,23 @@ fn present_remote_dialog(
             last_autofilled_name.replace(tracked_name);
         });
     }
+    sync_remote_dialog_apply_button(&name_row, &url_row);
+    {
+        let name_row_for_signal = name_row.clone();
+        let name_row_for_sync = name_row.clone();
+        let url_row_for_sync = url_row.clone();
+        name_row_for_signal.connect_changed(move |_| {
+            sync_remote_dialog_apply_button(&name_row_for_sync, &url_row_for_sync);
+        });
+    }
+    {
+        let url_row_for_signal = url_row.clone();
+        let name_row_for_sync = name_row.clone();
+        let url_row_for_sync = url_row.clone();
+        url_row_for_signal.connect_changed(move |_| {
+            sync_remote_dialog_apply_button(&name_row_for_sync, &url_row_for_sync);
+        });
+    }
 
     let group = PreferencesGroup::builder().build();
     group.add(&name_row);
@@ -826,6 +844,17 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
     }
 }
 
+fn remote_dialog_apply_enabled(name: &str, url: &str) -> bool {
+    !name.trim().is_empty() && !url.trim().is_empty()
+}
+
+fn sync_remote_dialog_apply_button(name_row: &EntryRow, url_row: &EntryRow) {
+    url_row.set_show_apply_button(remote_dialog_apply_enabled(
+        &name_row.text(),
+        &url_row.text(),
+    ));
+}
+
 pub fn sync_store_git_page_header(state: &StoreGitPageState) {
     let Some(store) = state.current_store() else {
         state.page.set_title(&gettext("Git remotes"));
@@ -848,6 +877,14 @@ pub fn show_store_git_page(state: &StoreGitPageState, store: impl Into<String>) 
     rebuild_store_git_page(state);
     sync_store_git_page_header(state);
     let _ = reveal_navigation_page(&state.nav, &state.page);
+    let _ = focus_first_matching_list_row_in_order(
+        &[
+            state.remotes_list.clone(),
+            state.actions_list.clone(),
+            state.status_list.clone(),
+        ],
+        list_row_is_keyboard_focusable,
+    );
 }
 
 pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
@@ -891,8 +928,9 @@ pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
 mod tests {
     use super::{
         next_autofilled_remote_name, next_available_remote_name, remote_count_subtitle,
-        remote_dialog_error_message, remote_name_exists, remote_url_exists, store_git_row_state,
-        suggested_remote_name_from_url, StoreGitHead, StoreGitRepositoryStatus,
+        remote_dialog_apply_enabled, remote_dialog_error_message, remote_name_exists,
+        remote_url_exists, store_git_row_state, suggested_remote_name_from_url, StoreGitHead,
+        StoreGitRepositoryStatus,
     };
     use crate::i18n::gettext;
     use crate::support::git::GitRemote;
@@ -1038,5 +1076,19 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn remote_dialog_apply_requires_name_and_url() {
+        assert!(!remote_dialog_apply_enabled("", ""));
+        assert!(!remote_dialog_apply_enabled("origin", ""));
+        assert!(!remote_dialog_apply_enabled(
+            "",
+            "https://example.test/repo.git"
+        ));
+        assert!(remote_dialog_apply_enabled(
+            "origin",
+            "https://example.test/repo.git"
+        ));
     }
 }

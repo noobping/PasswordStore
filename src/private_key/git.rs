@@ -1,9 +1,9 @@
 use crate::backend::{
     git_commit_private_key_requiring_unlock_for_entry,
-    git_commit_private_key_requiring_unlock_for_store_recipients, list_ripasso_private_keys,
-    ripasso_private_key_title, unlock_ripasso_private_key_for_session, ManagedRipassoPrivateKey,
-    PrivateKeyError, PrivateKeyUnlockKind, PrivateKeyUnlockRequest, StoreRecipients,
-    StoreRecipientsPrivateKeyRequirement,
+    git_commit_private_key_requiring_unlock_for_store_recipients, list_connected_smartcard_keys,
+    list_ripasso_private_keys, ripasso_private_key_title, unlock_ripasso_private_key_for_session,
+    ManagedRipassoPrivateKey, PrivateKeyError, PrivateKeyUnlockKind, PrivateKeyUnlockRequest,
+    StoreRecipients, StoreRecipientsPrivateKeyRequirement,
 };
 use crate::i18n::gettext;
 use crate::logging::{log_error, log_info};
@@ -26,14 +26,31 @@ fn continue_without_git_signature(overlay: &ToastOverlay, reason: &str, action: 
 
 fn private_key_unlock_kind(fingerprint: &str) -> PrivateKeyUnlockKind {
     match list_ripasso_private_keys() {
-        Ok(keys) => keys
-            .into_iter()
-            .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
-            .map(|key| key.protection.into())
-            .unwrap_or(PrivateKeyUnlockKind::Password),
+        Ok(keys) => {
+            if let Some(kind) = keys
+                .into_iter()
+                .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+                .map(|key| key.protection.into())
+            {
+                return kind;
+            }
+        }
         Err(err) => {
             log_error(format!(
                 "Failed to read private key protection for '{fingerprint}': {err}"
+            ));
+        }
+    }
+
+    match list_connected_smartcard_keys() {
+        Ok(keys) => keys
+            .into_iter()
+            .find(|key| key.fingerprint.eq_ignore_ascii_case(fingerprint))
+            .map(|_| PrivateKeyUnlockKind::HardwareOpenPgpCard)
+            .unwrap_or(PrivateKeyUnlockKind::Password),
+        Err(err) => {
+            log_error(format!(
+                "Failed to inspect connected smartcards for '{fingerprint}': {err}"
             ));
             PrivateKeyUnlockKind::Password
         }

@@ -62,7 +62,7 @@ use std::ffi::OsString;
 #[cfg(target_os = "windows")]
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "windows")]
-use winsafe::{self as w, co, prelude::*};
+use winsafe::{self as w, co};
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");

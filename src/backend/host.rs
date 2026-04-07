@@ -488,6 +488,19 @@ mod validation_tests {
         configure_pass_remove_command(&mut rm, "-danger");
         assert_eq!(command_args(&rm), vec!["rm", "-rf", "--", "-danger"]);
     }
+
+    #[test]
+    fn host_backend_reads_entries_via_show_for_subcommand_like_labels() {
+        let mut show = Command::new("pass");
+        configure_pass_show_command(&mut show, "insert");
+
+        assert_eq!(
+            show.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["show", "--", "insert"]
+        );
+    }
 }
 
 #[cfg(target_os = "linux")]

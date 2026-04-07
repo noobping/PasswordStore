@@ -131,9 +131,16 @@ jobs:
           }
           $iconThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
           $appIconDir = Join-Path $iconThemeDir '256x256\apps'
+          $symbolicActionsDir = Join-Path $iconThemeDir 'symbolic\actions'
+          $symbolicAppsDir = Join-Path $iconThemeDir 'symbolic\apps'
           New-Item -ItemType Directory -Path $appIconDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $symbolicActionsDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $symbolicAppsDir -Force | Out-Null
           $appIcon = Join-Path $workspace 'data\256x256\apps\io.github.noobping.keycord.png'
           Copy-Item $appIcon $appIconDir -Force
+          $localSymbolicIcons = Join-Path $workspace 'data\symbolic\apps\*.svg'
+          Copy-Item $localSymbolicIcons $symbolicActionsDir -Force
+          Copy-Item $localSymbolicIcons $symbolicAppsDir -Force
           $indexTheme = Join-Path $workspace 'data\windows\share\icons\hicolor\index.theme'
           Copy-Item $indexTheme $iconThemeDir -Force
           $etcDir = Join-Path $mingwRoot 'etc'

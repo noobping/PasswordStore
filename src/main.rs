@@ -3,7 +3,7 @@
     windows_subsystem = "windows"
 )]
 
-#[cfg(feature = "setup")]
+#[cfg(target_os = "linux")]
 mod setup;
 
 mod backend;
@@ -37,7 +37,7 @@ use crate::support::startup::{
     fatal_startup_error, prompt_startup_recovery_dialog, show_startup_error_dialog,
     StartupRecoveryChoice,
 };
-#[cfg(feature = "setup")]
+#[cfg(feature = "platform-theme")]
 use crate::support::theme::install_color_scheme_tracking;
 use crate::window::navigation::APP_WINDOW_TITLE;
 
@@ -125,7 +125,7 @@ fn main() -> ExitCode {
             return 1.into();
         }
     };
-    #[cfg(feature = "setup")]
+    #[cfg(feature = "platform-theme")]
     install_color_scheme_tracking(&display);
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);

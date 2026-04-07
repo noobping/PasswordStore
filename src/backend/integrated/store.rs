@@ -18,9 +18,18 @@ use crate::backend::{
 use crate::fido2_recipient::parse_fido2_recipient_string;
 use crate::logging::log_error;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
+use crate::support::runtime::supports_nested_recipients_features;
 use crate::support::secure_fs::write_atomic_file;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+fn effective_relative_dir<'a>(relative_dir: &'a str) -> &'a str {
+    if supports_nested_recipients_features() {
+        relative_dir
+    } else {
+        "."
+    }
+}
 
 fn decrypted_store_entries_with_progress(
     store_dir: &Path,
@@ -105,6 +114,7 @@ pub fn store_recipients_private_key_requiring_unlock_for_relative_dir(
     store_root: &str,
     relative_dir: &str,
 ) -> Result<Option<String>, String> {
+    let relative_dir = effective_relative_dir(relative_dir);
     let store_dir = ensure_store_directory(store_root)?;
     let scoped_recipients_path = recipients_file_for_relative_dir(store_root, relative_dir)?;
 
@@ -140,6 +150,7 @@ pub fn save_store_recipients_for_relative_dir(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
+    let relative_dir = effective_relative_dir(relative_dir);
     let store_dir = ensure_store_directory(store_root)
         .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_path = recipients_file_for_relative_dir(store_root, relative_dir)
@@ -236,6 +247,7 @@ pub fn save_store_recipients_with_progress_for_relative_dir(
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
     report_progress: &mut dyn FnMut(StoreRecipientsSaveProgress),
 ) -> Result<(), StoreRecipientsError> {
+    let relative_dir = effective_relative_dir(relative_dir);
     let store_dir = ensure_store_directory(store_root)
         .map_err(store_recipients_error_from_integrated_message)?;
     let recipients_path = recipients_file_for_relative_dir(store_root, relative_dir)

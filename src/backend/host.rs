@@ -1,3 +1,4 @@
+#[cfg(feature = "hardening")]
 use super::host_errors::{
     ensure_host_command_success, password_entry_error_from_host_failure,
     password_entry_error_from_host_launch, password_entry_write_error_from_host_failure,
@@ -5,16 +6,15 @@ use super::host_errors::{
     store_recipients_error_from_host_launch, HostStoreAction,
 };
 #[cfg(target_os = "linux")]
-use crate::backend::command::ensure_success;
-#[cfg(target_os = "linux")]
 use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
-    command::{run_store_command_output, run_store_command_with_input},
+    command::{ensure_success, run_store_command_output, run_store_command_with_input},
     PasswordEntryError, PasswordEntryWriteError, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
 use crate::logging::CommandLogOptions;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
+use crate::support::runtime::supports_nested_recipients_features;
 use std::path::Path;
 use std::process::Output;
 
@@ -37,9 +37,28 @@ impl HostGpgPrivateKeySummary {
 }
 
 fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
-    run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
-        cmd.arg(label);
-    })
+    let output =
+        run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
+            cmd.arg(label);
+        })?;
+
+    #[cfg(feature = "hardening")]
+    {
+        Ok(output)
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        ensure_success(output, "pass failed")
+    }
+}
+
+fn effective_recipient_relative_dir<'a>(relative_dir: &'a str) -> &'a str {
+    if supports_nested_recipients_features() {
+        relative_dir
+    } else {
+        "."
+    }
 }
 
 pub(super) fn read_password_entry(
@@ -53,26 +72,50 @@ pub(super) fn read_password_entry_with_progress(
     store_root: &str,
     label: &str,
 ) -> Result<String, PasswordEntryError> {
-    let output = read_entry_output(store_root, label, "Read password entry")
-        .map_err(password_entry_error_from_host_launch)?;
-    let output = ensure_host_command_success(HostStoreAction::ReadEntry, output, "pass failed")
-        .map_err(password_entry_error_from_host_failure)?;
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    #[cfg(feature = "hardening")]
+    {
+        let output = read_entry_output(store_root, label, "Read password entry")
+            .map_err(password_entry_error_from_host_launch)?;
+        let output = ensure_host_command_success(HostStoreAction::ReadEntry, output, "pass failed")
+            .map_err(password_entry_error_from_host_failure)?;
+        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        let output = read_entry_output(store_root, label, "Read password entry")
+            .map_err(PasswordEntryError::from_store_message)?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
 }
 
 pub(super) fn read_password_line(
     store_root: &str,
     label: &str,
 ) -> Result<String, PasswordEntryError> {
-    let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
-        .map_err(password_entry_error_from_host_launch)?;
-    let output = ensure_host_command_success(HostStoreAction::ReadLine, output, "pass failed")
-        .map_err(password_entry_error_from_host_failure)?;
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .to_string())
+    #[cfg(feature = "hardening")]
+    {
+        let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
+            .map_err(password_entry_error_from_host_launch)?;
+        let output = ensure_host_command_success(HostStoreAction::ReadLine, output, "pass failed")
+            .map_err(password_entry_error_from_host_failure)?;
+        return Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_string());
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
+            .map_err(PasswordEntryError::from_store_message)?;
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_string())
+    }
 }
 
 pub(super) const fn password_entry_is_readable(_store_root: &str, _label: &str) -> bool {
@@ -111,10 +154,30 @@ pub(super) fn save_password_entry_with_progress(
             cmd.arg(label);
         },
     )
-    .map_err(password_entry_write_error_from_host_launch)?;
-    ensure_host_command_success(HostStoreAction::SaveEntry, output, "pass insert failed")
-        .map(|_| ())
-        .map_err(password_entry_write_error_from_host_failure)
+    .map_err({
+        #[cfg(feature = "hardening")]
+        {
+            password_entry_write_error_from_host_launch
+        }
+        #[cfg(not(feature = "hardening"))]
+        {
+            PasswordEntryWriteError::from_store_message
+        }
+    })?;
+
+    #[cfg(feature = "hardening")]
+    {
+        ensure_host_command_success(HostStoreAction::SaveEntry, output, "pass insert failed")
+            .map(|_| ())
+            .map_err(password_entry_write_error_from_host_failure)
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        ensure_success(output, "pass insert failed")
+            .map(|_| ())
+            .map_err(PasswordEntryWriteError::from_store_message)
+    }
 }
 
 pub(super) fn rename_password_entry(
@@ -130,10 +193,30 @@ pub(super) fn rename_password_entry(
             cmd.arg("mv").arg(old_label).arg(new_label);
         },
     )
-    .map_err(password_entry_write_error_from_host_launch)?;
-    ensure_host_command_success(HostStoreAction::RenameEntry, output, "pass mv failed")
-        .map(|_| ())
-        .map_err(password_entry_write_error_from_host_failure)
+    .map_err({
+        #[cfg(feature = "hardening")]
+        {
+            password_entry_write_error_from_host_launch
+        }
+        #[cfg(not(feature = "hardening"))]
+        {
+            PasswordEntryWriteError::from_store_message
+        }
+    })?;
+
+    #[cfg(feature = "hardening")]
+    {
+        ensure_host_command_success(HostStoreAction::RenameEntry, output, "pass mv failed")
+            .map(|_| ())
+            .map_err(password_entry_write_error_from_host_failure)
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        ensure_success(output, "pass mv failed")
+            .map(|_| ())
+            .map_err(PasswordEntryWriteError::from_store_message)
+    }
 }
 
 pub(super) fn delete_password_entry(
@@ -148,10 +231,30 @@ pub(super) fn delete_password_entry(
             cmd.arg("rm").arg("-rf").arg(label);
         },
     )
-    .map_err(password_entry_write_error_from_host_launch)?;
-    ensure_host_command_success(HostStoreAction::DeleteEntry, output, "pass rm failed")
-        .map(|_| ())
-        .map_err(password_entry_write_error_from_host_failure)
+    .map_err({
+        #[cfg(feature = "hardening")]
+        {
+            password_entry_write_error_from_host_launch
+        }
+        #[cfg(not(feature = "hardening"))]
+        {
+            PasswordEntryWriteError::from_store_message
+        }
+    })?;
+
+    #[cfg(feature = "hardening")]
+    {
+        ensure_host_command_success(HostStoreAction::DeleteEntry, output, "pass rm failed")
+            .map(|_| ())
+            .map_err(password_entry_write_error_from_host_failure)
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        ensure_success(output, "pass rm failed")
+            .map(|_| ())
+            .map_err(PasswordEntryWriteError::from_store_message)
+    }
 }
 
 pub(super) fn save_store_recipients(
@@ -183,11 +286,29 @@ pub(super) fn save_store_recipients_with_progress(
             cmd.arg("init").args(recipients.standard());
         },
     )
-    .map_err(store_recipients_error_from_host_launch)?;
+    .map_err({
+        #[cfg(feature = "hardening")]
+        {
+            store_recipients_error_from_host_launch
+        }
+        #[cfg(not(feature = "hardening"))]
+        {
+            StoreRecipientsError::from_store_message
+        }
+    })?;
+
+    #[cfg(feature = "hardening")]
     ensure_host_command_success(HostStoreAction::SaveRecipients, output, "pass init failed")
         .map_err(store_recipients_error_from_host_failure)?;
+    #[cfg(not(feature = "hardening"))]
+    ensure_success(output, "pass init failed").map_err(StoreRecipientsError::from_store_message)?;
+
     if should_initialize_git {
+        #[cfg(feature = "hardening")]
         ensure_store_git_repository(store_root).map_err(store_recipients_error_from_host_launch)?;
+        #[cfg(not(feature = "hardening"))]
+        ensure_store_git_repository(store_root)
+            .map_err(StoreRecipientsError::from_store_message)?;
     }
     Ok(())
 }
@@ -198,6 +319,7 @@ pub(super) fn save_store_recipients_with_progress_for_relative_dir(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
+    let relative_dir = effective_recipient_relative_dir(relative_dir);
     if matches!(relative_dir.trim(), "" | ".") {
         return save_store_recipients_with_progress(
             store_root,
@@ -217,6 +339,7 @@ pub(super) fn save_store_recipients_for_relative_dir(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
+    let relative_dir = effective_recipient_relative_dir(relative_dir);
     if matches!(relative_dir.trim(), "" | ".") {
         return save_store_recipients(store_root, recipients, private_key_requirement);
     }
@@ -236,6 +359,7 @@ pub(super) fn store_recipients_private_key_requiring_unlock_for_relative_dir(
     store_root: &str,
     relative_dir: &str,
 ) -> Result<Option<String>, String> {
+    let relative_dir = effective_recipient_relative_dir(relative_dir);
     if matches!(relative_dir.trim(), "" | ".") {
         return store_recipients_private_key_requiring_unlock(store_root);
     }

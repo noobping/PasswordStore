@@ -49,6 +49,34 @@ option(
 )
 
 option(
+  'linux_updater',
+  type: 'boolean',
+  value: false,
+  description: 'Enable the Linux standalone update checker and installer.',
+)
+
+option(
+  'platform_theme',
+  type: 'boolean',
+  value: false,
+  description: 'Enable GNOME platform theme and accent tracking.',
+)
+
+option(
+  'hardening',
+  type: 'boolean',
+  value: false,
+  description: 'Enable the optional hardening, secure writes, and privacy protections.',
+)
+
+option(
+  'nested_recipients',
+  type: 'boolean',
+  value: false,
+  description: 'Enable folder-scoped .gpg-id management in the recipients UI.',
+)
+
+option(
   'audit',
   type: 'boolean',
   value: false,

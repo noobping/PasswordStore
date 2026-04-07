@@ -1,7 +1,14 @@
-use super::common::DownloadedUpdate;
-use super::logic::{ReleaseCandidate, SelectedRelease};
 use adw::gtk::glib::ExitCode;
 use std::ffi::OsString;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseCandidate;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectedRelease;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DownloadedUpdate;
 
 pub fn supports_updater() -> bool {
     false

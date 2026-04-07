@@ -13,6 +13,10 @@ cargo_variant = get_option('cargo_variant')
 cargo_features = get_option('cargo_features')
 docs = get_option('docs')
 logging = get_option('logging')
+linux_updater = get_option('linux_updater')
+platform_theme = get_option('platform_theme')
+hardening = get_option('hardening')
+nested_recipients = get_option('nested_recipients')
 audit = get_option('audit')
 legacy_compat = get_option('legacy_compat')
 fidostore = get_option('fidostore')
@@ -27,6 +31,10 @@ effective_cargo_features = cargo_features
 foreach feature_name, enabled : {
   'docs': docs,
   'logging': logging,
+  'linux-updater': linux_updater,
+  'platform-theme': platform_theme,
+  'hardening': hardening,
+  'nested-recipients': nested_recipients,
   'audit': audit,
   'legacy-compat': legacy_compat,
   'fidostore': fidostore,

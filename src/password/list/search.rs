@@ -4,8 +4,8 @@ mod query;
 mod tests;
 
 use self::index::{
-    build_search_index_batch, collect_unindexed_requests, find_row, is_stale_index_batch,
-    list_is_empty, row_field_index_state, SearchIndexBatch,
+    build_search_index_batch, collect_unindexed_requests, find_row, indexed_fields_for_contents,
+    is_stale_index_batch, list_is_empty, row_field_index_state, SearchIndexBatch,
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};
@@ -13,7 +13,15 @@ use super::{
     password_list_folder_row_is_expanded, password_list_row_action_kind, password_list_row_depth,
     password_list_row_is_folder, password_list_row_store_path, PasswordListActionRowKind,
 };
+#[cfg(all(target_os = "linux", not(feature = "hardening")))]
+use crate::backend::{password_entry_is_readable, read_password_entry};
 use crate::password::file::SearchablePassField;
+#[cfg(all(target_os = "linux", not(feature = "hardening")))]
+use crate::password::model::{
+    collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
+};
+#[cfg(all(target_os = "linux", not(feature = "hardening")))]
+use crate::store::labels::shortened_store_label_map;
 use crate::store::support::StoreSupportCache;
 use crate::support::background::spawn_result_task;
 use crate::support::object_data::{cloned_data, non_null_to_string_option, set_cloned_data};
@@ -371,6 +379,58 @@ fn for_each_row(list: &ListBox, mut f: impl FnMut(ListBoxRow)) {
         f(row);
         index += 1;
     }
+}
+
+#[cfg(all(target_os = "linux", not(feature = "hardening")))]
+pub(crate) fn search_password_entries(query: &str, limit: Option<usize>) -> Vec<PassEntry> {
+    let query = parse_search_query(query);
+    if matches!(
+        query,
+        SearchQuery::InvalidRegex | SearchQuery::InvalidStructured
+    ) {
+        return Vec::new();
+    }
+
+    let requires_index = query.requires_index();
+    let uses_advanced_features = query.uses_advanced_features();
+    let store_labels =
+        shortened_store_label_map(&crate::preferences::Preferences::new().store_roots());
+    let mut matches = Vec::new();
+    let mut store_support = StoreSupportCache::default();
+
+    for item in collect_all_password_items_with_options(CollectItemsOptions::default()) {
+        if !store_support.supports_advanced_search(&item.store_path, uses_advanced_features) {
+            continue;
+        }
+
+        let label = item.label();
+        let store_label = store_labels
+            .get(&item.store_path)
+            .map_or(item.store_path.as_str(), String::as_str);
+        let fields = if requires_index {
+            match read_password_entry(&item.store_path, &label) {
+                Ok(contents) => {
+                    SearchRowFieldIndexState::Indexed(indexed_fields_for_contents(&contents))
+                }
+                Err(_) => SearchRowFieldIndexState::Unavailable,
+            }
+        } else if password_entry_is_readable(&item.store_path, &label) {
+            SearchRowFieldIndexState::Unindexed
+        } else {
+            SearchRowFieldIndexState::Unavailable
+        };
+
+        if !row_matches_query(&label, store_label, &item.store_path, &fields, &query) {
+            continue;
+        }
+
+        matches.push(item);
+        if limit.is_some_and(|limit| matches.len() >= limit) {
+            break;
+        }
+    }
+
+    matches
 }
 
 #[cfg(test)]

@@ -1,12 +1,16 @@
 use crate::logging::{log_error, log_info};
+#[cfg(feature = "hardening")]
 use crate::password::model::{
     collect_all_password_items_with_options, CollectItemsOptions, PassEntry,
 };
+#[cfg(not(feature = "hardening"))]
+use crate::password::{list::search_password_entries, model::PassEntry};
 use crate::store::labels::shortened_store_labels;
 
 use adw::gio::{self, BusNameOwnerFlags, BusType, DBusConnection, DBusInterfaceInfo, DBusNodeInfo};
 use adw::glib::{self, ExitCode, MainLoop, Variant};
 use adw::prelude::ToVariant;
+#[cfg(feature = "hardening")]
 use sha2::{Digest, Sha256};
 
 use std::collections::HashMap;
@@ -155,11 +159,7 @@ fn handle_get_initial_result_set(parameters: &Variant) -> Result<Option<Variant>
         return Ok(Some((Vec::<String>::new(),).to_variant()));
     };
 
-    let result_ids = search_provider_entries(&terms, SEARCH_PROVIDER_RESULT_LIMIT)
-        .into_iter()
-        .map(|entry| encode_result_id(&entry))
-        .collect::<Vec<_>>();
-    Ok(Some((result_ids,).to_variant()))
+    Ok(Some((search_result_ids(&terms),).to_variant()))
 }
 
 fn handle_get_subsearch_result_set(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
@@ -168,11 +168,7 @@ fn handle_get_subsearch_result_set(parameters: &Variant) -> Result<Option<Varian
         return Ok(Some((Vec::<String>::new(),).to_variant()));
     };
 
-    let result_ids = search_provider_entries(&terms, SEARCH_PROVIDER_RESULT_LIMIT)
-        .into_iter()
-        .map(|entry| encode_result_id(&entry))
-        .collect::<Vec<_>>();
-    Ok(Some((result_ids,).to_variant()))
+    Ok(Some((search_result_ids(&terms),).to_variant()))
 }
 
 fn handle_get_result_metas(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
@@ -199,10 +195,8 @@ fn handle_activate_result(parameters: &Variant) -> Result<Option<Variant>, glib:
         return Ok(None);
     };
 
-    match decode_result_id(&identifier) {
-        Some(entry) => {
-            let store_path = entry.store_path.clone();
-            let label = entry.label();
+    match decode_result_target(&identifier) {
+        Some((store_path, label)) => {
             if let Err(err) = launch_app(
                 [
                     OsString::from("--open-entry"),
@@ -245,7 +239,14 @@ fn meta_for_identifier(
     identifier: &str,
     store_labels: &HashMap<String, String>,
 ) -> Option<HashMap<String, Variant>> {
+    #[cfg(feature = "hardening")]
     let entry = decode_result_id(identifier)?;
+    #[cfg(not(feature = "hardening"))]
+    let entry = {
+        let (store_path, label) = decode_result_id(identifier)?;
+        PassEntry::from_label(store_path, label)
+    };
+
     let mut meta = HashMap::new();
     meta.insert("id".to_string(), identifier.to_variant());
     meta.insert("name".to_string(), entry.basename.to_variant());
@@ -260,16 +261,30 @@ fn meta_for_identifier(
 fn fallback_meta(identifier: &str) -> HashMap<String, Variant> {
     let mut meta = HashMap::new();
     meta.insert("id".to_string(), identifier.to_variant());
+    #[cfg(feature = "hardening")]
     meta.insert("name".to_string(), "Password entry".to_variant());
+    #[cfg(not(feature = "hardening"))]
+    meta.insert("name".to_string(), identifier.to_variant());
     meta.insert("gicon".to_string(), APP_ID.to_variant());
     meta
 }
 
+#[cfg(feature = "hardening")]
 fn entry_description(entry: &PassEntry, store_labels: &HashMap<String, String>) -> String {
     store_labels
         .get(&entry.store_path)
         .cloned()
         .unwrap_or_default()
+}
+
+#[cfg(not(feature = "hardening"))]
+fn entry_description(entry: &PassEntry, store_labels: &HashMap<String, String>) -> String {
+    let label = entry.label();
+    if let Some(store_label) = store_labels.get(&entry.store_path) {
+        format!("{store_label}: {label}")
+    } else {
+        label
+    }
 }
 
 fn store_label_map() -> HashMap<String, String> {
@@ -305,6 +320,20 @@ fn launch_app(args: &[OsString]) -> Result<(), String> {
         .map_err(|err| format!("Failed to spawn Keycord: {err}"))
 }
 
+fn decode_result_target(identifier: &str) -> Option<(String, String)> {
+    #[cfg(feature = "hardening")]
+    {
+        let entry = decode_result_id(identifier)?;
+        Some((entry.store_path.clone(), entry.label()))
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        decode_result_id(identifier)
+    }
+}
+
+#[cfg(feature = "hardening")]
 fn encode_result_id(entry: &PassEntry) -> String {
     let mut digest = Sha256::new();
     digest.update(entry.store_path.as_bytes());
@@ -317,6 +346,12 @@ fn encode_result_id(entry: &PassEntry) -> String {
         .collect()
 }
 
+#[cfg(not(feature = "hardening"))]
+fn encode_result_id(entry: &PassEntry) -> String {
+    format!("{}{RESULT_ID_SEPARATOR}{}", entry.store_path, entry.label())
+}
+
+#[cfg(feature = "hardening")]
 fn decode_result_id(identifier: &str) -> Option<PassEntry> {
     if identifier.len() != 64 || !identifier.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
@@ -327,6 +362,17 @@ fn decode_result_id(identifier: &str) -> Option<PassEntry> {
         .find(|entry| encode_result_id(entry) == identifier)
 }
 
+#[cfg(not(feature = "hardening"))]
+fn decode_result_id(identifier: &str) -> Option<(String, String)> {
+    let (store_path, label) = identifier.split_once(RESULT_ID_SEPARATOR)?;
+    if store_path.is_empty() || label.is_empty() {
+        return None;
+    }
+
+    Some((store_path.to_string(), label.to_string()))
+}
+
+#[cfg(feature = "hardening")]
 fn search_provider_entries(terms: &[String], limit: usize) -> Vec<PassEntry> {
     let terms = normalized_search_terms(terms);
     if terms.is_empty() {
@@ -353,6 +399,7 @@ fn search_provider_entries(terms: &[String], limit: usize) -> Vec<PassEntry> {
     matches
 }
 
+#[cfg(feature = "hardening")]
 fn normalized_search_terms(terms: &[String]) -> Vec<String> {
     terms
         .iter()
@@ -361,6 +408,7 @@ fn normalized_search_terms(terms: &[String]) -> Vec<String> {
         .collect()
 }
 
+#[cfg(feature = "hardening")]
 fn search_provider_entry_matches(
     entry: &PassEntry,
     store_label: Option<&str>,
@@ -373,14 +421,29 @@ fn search_provider_entry_matches(
         .all(|term| label.contains(term) || store_label.contains(term))
 }
 
+#[cfg(feature = "hardening")]
+fn search_result_ids(terms: &[String]) -> Vec<String> {
+    search_provider_entries(terms, SEARCH_PROVIDER_RESULT_LIMIT)
+        .into_iter()
+        .map(|entry| encode_result_id(&entry))
+        .collect()
+}
+
+#[cfg(not(feature = "hardening"))]
+fn search_result_ids(terms: &[String]) -> Vec<String> {
+    let query = join_search_terms(terms);
+    search_password_entries(&query, Some(SEARCH_PROVIDER_RESULT_LIMIT))
+        .into_iter()
+        .map(|entry| encode_result_id(&entry))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{
-        decode_result_id, encode_result_id, join_search_terms, normalized_search_terms,
-        search_provider_entry_matches,
-    };
+    use super::{decode_result_id, encode_result_id, join_search_terms};
     use crate::password::model::PassEntry;
 
+    #[cfg(feature = "hardening")]
     #[test]
     fn result_ids_are_opaque_hashes() {
         let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
@@ -393,10 +456,23 @@ mod tests {
         assert_eq!(decode_result_id(&identifier), None);
     }
 
+    #[cfg(not(feature = "hardening"))]
+    #[test]
+    fn result_ids_round_trip_without_hardening() {
+        let entry = PassEntry::from_label("/tmp/store", "work/alice/github");
+        let identifier = encode_result_id(&entry);
+
+        assert_eq!(
+            decode_result_id(&identifier),
+            Some(("/tmp/store".to_string(), "work/alice/github".to_string()))
+        );
+    }
+
     #[test]
     fn invalid_result_ids_are_rejected() {
         assert_eq!(decode_result_id(""), None);
         assert_eq!(decode_result_id("/tmp/store"), None);
+        #[cfg(feature = "hardening")]
         assert_eq!(decode_result_id("xyz"), None);
     }
 
@@ -415,6 +491,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "hardening")]
     #[test]
     fn search_terms_normalization_drops_empty_values() {
         assert_eq!(
@@ -423,6 +500,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "hardening")]
     #[test]
     fn shell_search_matches_labels_and_store_labels_only() {
         let entry = PassEntry::from_label("/tmp/store", "work/alice/github");

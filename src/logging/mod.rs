@@ -50,6 +50,7 @@ mod tests {
         assert!(text.contains(&format!("stderr:\n{marker} stderr")));
     }
 
+    #[cfg(feature = "hardening")]
     #[test]
     fn run_command_output_redacts_credentialed_urls() {
         let marker = format!("url-redaction-test-{}", std::process::id());
@@ -65,6 +66,23 @@ mod tests {
         let (_, _, text) = log_snapshot();
         assert!(text.contains("https://redacted@example.test/private/repo.git"));
         assert!(!text.contains("user:secret@example.test"));
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    #[test]
+    fn run_command_output_keeps_credentialed_urls_without_hardening() {
+        let marker = format!("url-no-redaction-test-{}", std::process::id());
+        let url = "https://user:secret@example.test/private/repo.git";
+        let mut cmd = Command::new("sh");
+        cmd.args(["-lc", &format!("printf '{url}'")]);
+
+        let output = run_command_output(&mut cmd, &marker, CommandLogOptions::DEFAULT)
+            .expect("command should run");
+
+        assert!(output.status.success());
+
+        let (_, _, text) = log_snapshot();
+        assert!(text.contains(url));
     }
 
     #[test]

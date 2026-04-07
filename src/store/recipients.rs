@@ -4,7 +4,7 @@ use crate::fido2_recipient::{
     parse_fido2_recipient_string, FIDO2_RECIPIENTS_FILE_NAME,
 };
 use crate::i18n::gettext;
-use crate::support::runtime::supports_fidostore_features;
+use crate::support::runtime::{supports_fidostore_features, supports_nested_recipients_features};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 #[cfg(test)]
@@ -16,6 +16,10 @@ pub const UNSUPPORTED_FIDOSTORE_MESSAGE: &str = "This build doesn't support FIDO
 pub const ROOT_STORE_RECIPIENTS_SCOPE: &str = ".";
 
 fn normalized_store_recipients_scope(scope: &str) -> String {
+    if !supports_nested_recipients_features() {
+        return ROOT_STORE_RECIPIENTS_SCOPE.to_string();
+    }
+
     let trimmed = scope.trim();
     if trimmed.is_empty() || trimmed == ROOT_STORE_RECIPIENTS_SCOPE {
         return ROOT_STORE_RECIPIENTS_SCOPE.to_string();
@@ -150,6 +154,14 @@ fn store_recipients_scope_from_path(store_root: &Path, recipients_path: &Path) -
 pub fn relevant_store_recipient_scopes(store_root: &str) -> Vec<String> {
     let store_root = Path::new(store_root);
     let root_path = store_root.join(".gpg-id");
+    if !supports_nested_recipients_features() {
+        return if root_path.is_file() {
+            vec![ROOT_STORE_RECIPIENTS_SCOPE.to_string()]
+        } else {
+            Vec::new()
+        };
+    }
+
     let root_contents =
         root_store_standard_recipients_contents(store_root.to_string_lossy().as_ref());
     let mut scopes = Vec::new();

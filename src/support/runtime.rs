@@ -15,12 +15,17 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, legacy-compat={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
+            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, linux-updater={}, platform-theme={}, hardening={}, nested-recipients={}, audit={}, legacy-compat={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
             feature_status(cfg!(debug_assertions)),
-            feature_status(cfg!(feature = "setup")),
+            feature_status(supports_setup_features()),
             feature_status(cfg!(feature = "flatpak")),
             feature_status(supports_docs_features()),
             feature_status(supports_logging_features()),
+            feature_status(supports_linux_updater_features()),
+            feature_status(supports_platform_theme_features()),
+            feature_status(supports_hardening_features()),
+            feature_status(supports_nested_recipients_features()),
+            feature_status(supports_audit_features()),
             feature_status(supports_legacy_compat_features()),
             feature_status(has_host_permission()),
             feature_status(has_smartcard_permission()),
@@ -47,8 +52,32 @@ pub const fn supports_host_command_features() -> bool {
     cfg!(target_os = "linux")
 }
 
+pub const fn supports_setup_features() -> bool {
+    cfg!(all(target_os = "linux", feature = "setup"))
+}
+
 pub const fn supports_logging_features() -> bool {
     cfg!(feature = "logging")
+}
+
+pub const fn supports_linux_updater_features() -> bool {
+    cfg!(all(
+        target_os = "linux",
+        feature = "linux-updater",
+        not(feature = "flatpak")
+    ))
+}
+
+pub const fn supports_platform_theme_features() -> bool {
+    cfg!(feature = "platform-theme")
+}
+
+pub const fn supports_hardening_features() -> bool {
+    cfg!(feature = "hardening")
+}
+
+pub const fn supports_nested_recipients_features() -> bool {
+    cfg!(feature = "nested-recipients")
 }
 
 pub const fn supports_audit_features() -> bool {

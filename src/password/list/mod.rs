@@ -33,6 +33,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(all(target_os = "linux", not(feature = "hardening")))]
+pub(crate) use self::search::search_password_entries;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Visibility {
     Hidden,

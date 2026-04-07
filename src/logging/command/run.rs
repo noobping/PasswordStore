@@ -9,6 +9,19 @@ use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, ExitStatus, Output, Stdio};
 use std::thread;
 
+fn redact_stderr(options: CommandLogOptions) -> bool {
+    #[cfg(feature = "hardening")]
+    {
+        options.redact_stderr
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    {
+        let _ = options;
+        false
+    }
+}
+
 fn shell_quote(value: &OsStr) -> String {
     let text = value.to_string_lossy();
     if text.is_empty() {
@@ -118,7 +131,7 @@ fn run_command_output_inner(
                     context.to_string(),
                     command.clone(),
                     "stderr",
-                    options.redact_stderr,
+                    redact_stderr(options),
                 )
             });
 
@@ -231,7 +244,7 @@ pub fn run_command_with_input(
             context.to_string(),
             command.clone(),
             "stderr",
-            options.redact_stderr,
+            redact_stderr(options),
         )
     });
 

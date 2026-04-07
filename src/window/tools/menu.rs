@@ -1,11 +1,11 @@
 use super::ToolsPageState;
 use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
-#[cfg(feature = "setup")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::logging::log_error;
 use crate::logging::log_snapshot;
 use crate::preferences::Preferences;
-#[cfg(feature = "setup")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::setup::{
     can_install_locally, install_locally, is_installed_locally, local_menu_action_label,
     uninstall_locally,
@@ -15,7 +15,7 @@ use crate::support::actions::activate_widget_action;
 use crate::support::runtime::{
     supports_docs_features, supports_host_command_features, supports_logging_features,
 };
-#[cfg(feature = "setup")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::support::ui::append_action_row_with_button;
 use crate::window::navigation::show_log_page;
 use adw::prelude::*;
@@ -70,7 +70,7 @@ pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
         .connect_clicked(move |_| copy_action());
 }
 
-#[cfg(feature = "setup")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 pub(super) fn append_optional_setup_row(state: &ToolsPageState) -> Option<ActionRow> {
     if !can_install_locally() {
         return None;
@@ -103,12 +103,12 @@ pub(super) fn append_optional_setup_row(state: &ToolsPageState) -> Option<Action
     Some(row)
 }
 
-#[cfg(not(feature = "setup"))]
+#[cfg(not(all(target_os = "linux", feature = "setup")))]
 pub(super) const fn append_optional_setup_row(_state: &ToolsPageState) -> Option<ActionRow> {
     None
 }
 
-#[cfg(feature = "setup")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 pub(super) fn sync_optional_setup_row(row: Option<&ActionRow>) {
     let Some(row) = row else {
         return;
@@ -117,7 +117,7 @@ pub(super) fn sync_optional_setup_row(row: Option<&ActionRow>) {
     row.set_title(&gettext(local_menu_action_label(is_installed_locally())));
 }
 
-#[cfg(not(feature = "setup"))]
+#[cfg(not(all(target_os = "linux", feature = "setup")))]
 pub(super) const fn sync_optional_setup_row(_row: Option<&ActionRow>) {}
 
 pub(super) fn append_optional_pass_import_row(

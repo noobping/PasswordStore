@@ -130,10 +130,22 @@ jobs:
             Copy-Item $adwaitaSourceDir (Join-Path $shareDir 'icons\Adwaita') -Recurse -Force
           }
           $iconThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
-          $appIconDir = Join-Path $iconThemeDir '256x256\apps'
-          New-Item -ItemType Directory -Path $appIconDir -Force | Out-Null
-          $appIcon = Join-Path $workspace 'data\256x256\apps\io.github.noobping.keycord.png'
-          Copy-Item $appIcon $appIconDir -Force
+          $iconDirs = @{
+            'data\256x256\apps' = @('256x256\apps')
+            'data\scalable\apps' = @('scalable\apps')
+            'data\symbolic\apps' = @('symbolic\apps', 'symbolic\actions')
+          }
+          foreach ($source in $iconDirs.Keys) {
+            $sourceDir = Join-Path $workspace $source
+            if (-not (Test-Path $sourceDir)) {
+              continue
+            }
+            foreach ($relativeDest in $iconDirs[$source]) {
+              $destDir = Join-Path $iconThemeDir $relativeDest
+              New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+              Copy-Item (Join-Path $sourceDir '*') $destDir -Force
+            }
+          }
           $indexTheme = Join-Path $workspace 'data\windows\share\icons\hicolor\index.theme'
           Copy-Item $indexTheme $iconThemeDir -Force
           $etcDir = Join-Path $mingwRoot 'etc'

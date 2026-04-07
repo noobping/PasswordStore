@@ -35,17 +35,17 @@ use super::keys::{
     DiscoveredHardwareToken, HardwareSessionPolicy, HardwareTransport, HardwareTransportError,
     ManagedRipassoHardwareKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockRequest,
 };
-#[cfg(any(feature = "fidostore", feature = "fidokey"))]
-use super::keys::{
-    direct_binding_from_store_recipient, encrypt_fido2_any_managed_bundle_with_progress,
-    reset_fido2_transport_for_tests, set_fido2_transport_for_tests, Fido2AssertionOutput,
-    Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError,
-};
 #[cfg(feature = "fidostore")]
 use super::keys::{
     create_fido2_store_recipient, decrypt_fido2_any_managed_bundle_dek_for_fingerprint,
     decrypt_fido2_any_managed_bundle_for_fingerprint, decrypt_payload_from_any_managed_bundle,
     unlock_fido2_store_recipient_for_session,
+};
+#[cfg(any(feature = "fidostore", feature = "fidokey"))]
+use super::keys::{
+    direct_binding_from_store_recipient, encrypt_fido2_any_managed_bundle_with_progress,
+    reset_fido2_transport_for_tests, set_fido2_transport_for_tests, Fido2AssertionOutput,
+    Fido2DeviceLabel, Fido2Enrollment, Fido2Transport, Fido2TransportError,
 };
 use super::paths::{recipients_file_for_label, secret_entry_relative_path};
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]

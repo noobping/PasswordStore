@@ -354,39 +354,52 @@ fn collect_items_in_dir(
         return Ok(());
     }
 
-    let entries = fs::read_dir(root)?;
+    let mut pending_dirs = vec![(root.to_path_buf(), true)];
 
-    for entry_result in entries {
-        let Ok(entry) = entry_result else { continue };
-
-        let path = entry.path();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
+    while let Some((dir, is_root)) = pending_dirs.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(err) if is_root => return Err(err),
+            Err(_) => continue,
         };
+        let mut child_dirs = Vec::new();
 
-        if file_type.is_dir() {
-            if !options.show_hidden && is_hidden_name(&path) {
+        for entry_result in entries {
+            let Ok(entry) = entry_result else { continue };
+
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+
+            if file_type.is_dir() {
+                if !options.show_hidden && is_hidden_name(&path) {
+                    continue;
+                }
+                child_dirs.push(path);
                 continue;
             }
-            let _ = collect_items_in_dir(path.as_path(), base, out, options);
-            continue;
+
+            if !file_type.is_file() || (!options.show_hidden && is_hidden_name(&path)) {
+                continue;
+            }
+
+            let Some(label) = secret_label_from_path(base, &path) else {
+                continue;
+            };
+            if label.is_empty() {
+                continue;
+            }
+
+            out.push(PassEntry::from_label(
+                base.to_string_lossy().to_string(),
+                label,
+            ));
         }
 
-        if !file_type.is_file() || (!options.show_hidden && is_hidden_name(&path)) {
-            continue;
+        for child_dir in child_dirs.into_iter().rev() {
+            pending_dirs.push((child_dir, false));
         }
-
-        let Some(label) = secret_label_from_path(base, &path) else {
-            continue;
-        };
-        if label.is_empty() {
-            continue;
-        }
-
-        out.push(PassEntry::from_label(
-            base.to_string_lossy().to_string(),
-            label,
-        ));
     }
 
     Ok(())
@@ -621,6 +634,34 @@ mod tests {
                 "vault/entry".to_string()
             )]
         );
+
+        fs::remove_dir_all(store).expect("remove test store");
+    }
+
+    #[test]
+    fn collect_items_in_dir_handles_deep_folder_chains_without_recursion() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        let store = std::env::temp_dir().join(format!("passwordstore-deep-{nanos}"));
+        fs::create_dir_all(&store).expect("create store dir");
+
+        let depth = 1024usize;
+        let mut current = store.clone();
+        for _ in 0..depth {
+            current.push("d");
+            fs::create_dir(&current).expect("create nested dir");
+        }
+        fs::write(current.join("entry.gpg"), b"x").expect("write deep secret");
+
+        let mut items = Vec::new();
+        collect_items_in_dir(&store, &store, &mut items, CollectItemsOptions::default())
+            .expect("collect deeply nested secrets");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].basename, "entry");
+        assert_eq!(items[0].relative_path.matches('/').count(), depth);
 
         fs::remove_dir_all(store).expect("remove test store");
     }

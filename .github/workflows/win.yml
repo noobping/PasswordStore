@@ -220,15 +220,30 @@ jobs:
             exit 0
           }
 
-          $raw = & $ntldd -R $exe 2>$null
-          $needed = $raw |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { $_ -match '^[A-Za-z]:\\' -and $_.ToLower().EndsWith('.dll') } |
-            ForEach-Object { Split-Path $_ -Leaf } |
-            Sort-Object -Unique
+          function Get-NeededDllNames([string]$binaryPath) {
+            $raw = & $ntldd -R $binaryPath 2>$null
+            $raw |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { $_ -match '^[A-Za-z]:\\' -and $_.ToLower().EndsWith('.dll') } |
+              ForEach-Object { Split-Path $_ -Leaf }
+          }
+
+          $needed = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($name in (Get-NeededDllNames $exe)) {
+            $null = $needed.Add($name)
+          }
+
+          $loaderDir = Join-Path $env:GITHUB_WORKSPACE 'bundle\lib\gdk-pixbuf-2.0\2.10.0\loaders'
+          if (Test-Path $loaderDir) {
+            Get-ChildItem $loaderDir -Filter '*.dll' | ForEach-Object {
+              foreach ($name in (Get-NeededDllNames $_.FullName)) {
+                $null = $needed.Add($name)
+              }
+            }
+          }
 
           $bundleDlls = Get-ChildItem bundle -Filter '*.dll' | Select-Object -ExpandProperty Name
-          $remove = $bundleDlls | Where-Object { $needed -notcontains $_ }
+          $remove = $bundleDlls | Where-Object { -not $needed.Contains($_) }
 
           # Keep it conservative: only remove if ntldd says it's not needed
           foreach ($name in $remove) {

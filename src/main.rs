@@ -58,9 +58,17 @@ use adw::gtk::{
 };
 use adw::prelude::*;
 use adw::Application;
+#[cfg(target_os = "windows")]
+use dirs_next::cache_dir;
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
-use std::path::{Path, PathBuf};
+use std::fs;
+#[cfg(target_os = "windows")]
+use std::hash::{Hash, Hasher};
+#[cfg(any(target_os = "windows", test))]
+use std::path::Path;
+#[cfg(target_os = "windows")]
+use std::path::PathBuf;
 #[cfg(target_os = "windows")]
 use winsafe::{self as w, co};
 
@@ -344,11 +352,12 @@ fn configure_windows_runtime_environment() {
     }
 
     let pixbuf_root = root.join("lib").join("gdk-pixbuf-2.0").join("2.10.0");
-    let pixbuf_cache = pixbuf_root.join("loaders.cache");
+    let pixbuf_modules = pixbuf_root.join("loaders");
+    let pixbuf_cache = rewritten_windows_pixbuf_cache(&root, &pixbuf_root, &pixbuf_modules)
+        .unwrap_or_else(|| pixbuf_root.join("loaders.cache"));
     if pixbuf_cache.is_file() {
         set_windows_env_path_if_exists("GDK_PIXBUF_MODULE_FILE", &pixbuf_cache);
     }
-    let pixbuf_modules = pixbuf_root.join("loaders");
     prepend_windows_env_path("GDK_PIXBUF_MODULEDIR", &pixbuf_modules);
 }
 
@@ -381,6 +390,82 @@ fn prepend_windows_env_path(name: &str, path: &Path) {
     if let Ok(joined) = std::env::join_paths(paths) {
         std::env::set_var(name, joined);
     }
+}
+
+#[cfg(target_os = "windows")]
+fn rewritten_windows_pixbuf_cache(
+    runtime_root: &Path,
+    pixbuf_root: &Path,
+    pixbuf_modules: &Path,
+) -> Option<PathBuf> {
+    let source_cache = pixbuf_root.join("loaders.cache");
+    if !source_cache.is_file() || !pixbuf_modules.is_dir() {
+        return None;
+    }
+
+    let source = fs::read_to_string(&source_cache).ok()?;
+    let rewritten = rewrite_pixbuf_loader_cache(&source, pixbuf_modules);
+    let output = windows_pixbuf_cache_output_path(runtime_root)?;
+    let parent = output.parent()?;
+    fs::create_dir_all(parent).ok()?;
+
+    let should_write = fs::read_to_string(&output)
+        .map(|existing| existing != rewritten)
+        .unwrap_or(true);
+    if should_write && fs::write(&output, rewritten).is_err() {
+        return None;
+    }
+
+    Some(output)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_pixbuf_cache_output_path(runtime_root: &Path) -> Option<PathBuf> {
+    let base = cache_dir().unwrap_or_else(std::env::temp_dir);
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    runtime_root.hash(&mut hasher);
+    let hash = hasher.finish();
+    Some(
+        base.join(APP_ID)
+            .join("gdk-pixbuf")
+            .join(format!("loaders-{hash:016x}.cache")),
+    )
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn rewrite_pixbuf_loader_cache(source: &str, pixbuf_modules: &Path) -> String {
+    let loader_dir = pixbuf_modules.display().to_string().replace('\\', "/");
+    source
+        .lines()
+        .map(|line| {
+            if line.starts_with("# LoaderDir = ") {
+                return format!("# LoaderDir = {loader_dir}");
+            }
+
+            let Some(loader_name) = quoted_pixbuf_loader_name(line) else {
+                return line.to_string();
+            };
+
+            let rewritten = pixbuf_modules
+                .join(loader_name)
+                .display()
+                .to_string()
+                .replace('\\', "/");
+            format!("\"{rewritten}\"")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn quoted_pixbuf_loader_name(line: &str) -> Option<&str> {
+    let inner = line.strip_prefix('"')?.strip_suffix('"')?;
+    let name = inner.rsplit(['/', '\\']).next()?;
+    let ext = name.rsplit('.').next()?;
+    if name.is_empty() || !ext.eq_ignore_ascii_case("dll") {
+        return None;
+    }
+    Some(name)
 }
 
 #[cfg(target_os = "windows")]
@@ -517,8 +602,12 @@ fn get_pass_version(settings: &Preferences) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_line_pass_file, command_line_query};
+    use super::{
+        command_line_pass_file, command_line_query, quoted_pixbuf_loader_name,
+        rewrite_pixbuf_loader_cache,
+    };
     use std::ffi::OsString;
+    use std::path::Path;
 
     #[test]
     fn open_entry_command_line_is_parsed() {
@@ -551,5 +640,39 @@ mod tests {
             Some("find otp and user alice".to_string())
         );
         assert!(command_line_pass_file(&args).is_none());
+    }
+
+    #[test]
+    fn pixbuf_loader_cache_rewrite_uses_runtime_loader_dir() {
+        let source = concat!(
+            "# LoaderDir = C:/tools/msys64/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders\n",
+            "\"C:/tools/msys64/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.dll\"\n",
+            "\"svg\" 6 \"gdk-pixbuf\" \"Scalable Vector Graphics\" \"LGPL\""
+        );
+        let modules = Path::new(
+            r"C:\Users\nick\AppData\Local\Programs\Keycord\lib\gdk-pixbuf-2.0\2.10.0\loaders",
+        );
+
+        let rewritten = rewrite_pixbuf_loader_cache(source, modules);
+
+        assert!(rewritten.contains(
+            "# LoaderDir = C:/Users/nick/AppData/Local/Programs/Keycord/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+        ));
+        assert!(rewritten.contains(
+            "\"C:/Users/nick/AppData/Local/Programs/Keycord/lib/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.dll\""
+        ));
+        assert!(
+            rewritten.contains("\"svg\" 6 \"gdk-pixbuf\" \"Scalable Vector Graphics\" \"LGPL\"")
+        );
+    }
+
+    #[test]
+    fn pixbuf_loader_name_only_matches_loader_path_lines() {
+        assert_eq!(
+            quoted_pixbuf_loader_name("\"C:/msys64/libpixbufloader-svg.dll\""),
+            Some("libpixbufloader-svg.dll")
+        );
+        assert_eq!(quoted_pixbuf_loader_name("\"svg\" 6 \"gdk-pixbuf\""), None);
+        assert_eq!(quoted_pixbuf_loader_name("# LoaderDir = C:/tmp"), None);
     }
 }

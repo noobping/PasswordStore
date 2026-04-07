@@ -37,7 +37,7 @@ fn with_log_state_write<T>(f: impl FnOnce(&mut LogState) -> T) -> T {
 }
 
 fn push_log_entry(level: &str, message: &str, is_error: bool) {
-    let message = sanitize_log_message(message.trim_end());
+    let message = sanitize_diagnostic_message(message.trim_end());
     if message.is_empty() {
         return;
     }
@@ -55,6 +55,10 @@ fn push_log_entry(level: &str, message: &str, is_error: bool) {
             state.error_revision = state.revision;
         }
     });
+}
+
+pub(crate) fn sanitize_diagnostic_message(message: &str) -> String {
+    sanitize_log_message(message)
 }
 
 #[cfg(feature = "hardening")]
@@ -165,13 +169,14 @@ pub fn log_snapshot() -> (usize, usize, String) {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_log_message;
+    use super::sanitize_diagnostic_message;
 
     #[cfg(feature = "hardening")]
     #[test]
     fn credentialed_urls_are_redacted() {
-        let message =
-            sanitize_log_message("git clone https://user:secret@example.test/private/repo.git");
+        let message = sanitize_diagnostic_message(
+            "git clone https://user:secret@example.test/private/repo.git",
+        );
 
         assert_eq!(
             message,
@@ -183,7 +188,7 @@ mod tests {
     #[cfg(feature = "hardening")]
     #[test]
     fn scp_like_remotes_are_redacted() {
-        let message = sanitize_log_message("git clone token@example.test:owner/repo.git");
+        let message = sanitize_diagnostic_message("git clone token@example.test:owner/repo.git");
 
         assert_eq!(
             message,
@@ -196,7 +201,7 @@ mod tests {
     #[test]
     fn embedded_nuls_are_replaced() {
         assert_eq!(
-            sanitize_log_message("alpha\0beta"),
+            sanitize_diagnostic_message("alpha\0beta"),
             "alpha\u{FFFD}beta".to_string()
         );
     }
@@ -205,11 +210,13 @@ mod tests {
     #[test]
     fn messages_are_unchanged_without_hardening() {
         assert_eq!(
-            sanitize_log_message("git clone https://user:secret@example.test/private/repo.git"),
+            sanitize_diagnostic_message(
+                "git clone https://user:secret@example.test/private/repo.git"
+            ),
             "git clone https://user:secret@example.test/private/repo.git".to_string()
         );
         assert_eq!(
-            sanitize_log_message("alpha\0beta"),
+            sanitize_diagnostic_message("alpha\0beta"),
             "alpha\0beta".to_string()
         );
     }

@@ -7,6 +7,7 @@ pub use command::{run_command_output, CommandLogOptions};
 pub use store::log_error;
 pub use store::log_info;
 pub use store::log_snapshot;
+pub(crate) use store::sanitize_diagnostic_message;
 
 #[cfg(test)]
 mod tests {

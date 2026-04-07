@@ -1,4 +1,4 @@
-use crate::logging::log_error;
+use crate::logging::{log_error, sanitize_diagnostic_message};
 use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use adw::glib;
 use adw::gtk::glib::ExitCode;
@@ -49,8 +49,13 @@ fn persist_startup_log(app_name: &str, file_name: &str, detail: &str) -> Option<
     if let Some(parent) = path.parent() {
         ensure_private_dir(parent).ok()?;
     }
-    write_private_file(&path, detail.as_bytes()).ok()?;
+    let persisted_detail = persisted_startup_log_detail(detail);
+    write_private_file(&path, persisted_detail.as_bytes()).ok()?;
     Some(path)
+}
+
+fn persisted_startup_log_detail(detail: &str) -> String {
+    sanitize_diagnostic_message(detail)
 }
 
 fn startup_log_path(app_name: &str, file_name: &str) -> PathBuf {
@@ -142,7 +147,10 @@ fn show_startup_recovery_dialog(title: &str, body: &str) -> StartupRecoveryChoic
 
 #[cfg(test)]
 mod tests {
-    use super::{fatal_startup_dialog_body, startup_recovery_dialog_body, StartupRecoveryChoice};
+    use super::{
+        fatal_startup_dialog_body, persisted_startup_log_detail, startup_recovery_dialog_body,
+        StartupRecoveryChoice,
+    };
     use std::path::Path;
 
     #[test]
@@ -181,5 +189,36 @@ mod tests {
     #[test]
     fn startup_recovery_choice_defaults_to_quit() {
         assert_eq!(StartupRecoveryChoice::Quit, StartupRecoveryChoice::Quit);
+    }
+
+    #[cfg(feature = "hardening")]
+    #[test]
+    fn persisted_startup_log_detail_redacts_credentialed_urls() {
+        let detail =
+            persisted_startup_log_detail("panic: https://user:secret@example.test/private/repo");
+
+        assert_eq!(
+            detail,
+            "panic: https://redacted@example.test/private/repo".to_string()
+        );
+        assert!(!detail.contains("user:secret@example.test"));
+    }
+
+    #[cfg(feature = "hardening")]
+    #[test]
+    fn persisted_startup_log_detail_replaces_embedded_nuls() {
+        assert_eq!(
+            persisted_startup_log_detail("panic\0payload"),
+            "panic\u{FFFD}payload".to_string()
+        );
+    }
+
+    #[cfg(not(feature = "hardening"))]
+    #[test]
+    fn persisted_startup_log_detail_is_unchanged_without_hardening() {
+        assert_eq!(
+            persisted_startup_log_detail("panic\0https://user:secret@example.test/private/repo"),
+            "panic\0https://user:secret@example.test/private/repo".to_string()
+        );
     }
 }

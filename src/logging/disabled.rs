@@ -2,12 +2,20 @@ use std::io::{self, Write};
 use std::process::{Command, ExitStatus, Output, Stdio};
 use std::thread;
 
-pub fn log_info(_message: impl Into<String>) {}
+pub fn log_info(message: impl Into<String>) {
+    let _ = sanitize_diagnostic_message(&message.into());
+}
 
-pub fn log_error(_message: impl Into<String>) {}
+pub fn log_error(message: impl Into<String>) {
+    let _ = sanitize_diagnostic_message(&message.into());
+}
 
 pub fn log_snapshot() -> (usize, usize, String) {
     (0, 0, String::new())
+}
+
+pub(crate) fn sanitize_diagnostic_message(message: &str) -> String {
+    message.to_string()
 }
 
 #[derive(Clone, Copy, Debug, Default)]

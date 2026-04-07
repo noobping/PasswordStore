@@ -1,43 +1,16 @@
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+use crate::backend::path_validation::{
+    validated_entry_label_path, validated_relative_directory_path,
+};
 use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
 use crate::password::entry_files::{
     is_password_entry_file, label_from_password_entry_path, password_entry_extension,
 };
 use crate::support::runtime::supports_legacy_compat_features;
 use crate::support::secure_fs::write_atomic_file;
-
-pub(super) fn validated_relative_directory_path(relative_dir: &str) -> Result<PathBuf, String> {
-    let mut relative = PathBuf::new();
-    for component in Path::new(relative_dir).components() {
-        match component {
-            Component::Normal(part) => relative.push(part),
-            Component::CurDir => {}
-            _ => return Err("Invalid recipients file path.".to_string()),
-        }
-    }
-
-    Ok(relative)
-}
-
-pub(super) fn validated_entry_label_path(label: &str) -> Result<PathBuf, String> {
-    let mut relative = PathBuf::new();
-    for component in Path::new(label).components() {
-        match component {
-            Component::Normal(part) => relative.push(part),
-            Component::CurDir => {}
-            _ => return Err("Invalid password entry path.".to_string()),
-        }
-    }
-
-    if relative.as_os_str().is_empty() {
-        return Err("Password entry name is empty.".to_string());
-    }
-
-    Ok(relative)
-}
 
 pub(super) fn recipients_file_for_relative_dir(
     store_root: &str,

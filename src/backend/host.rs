@@ -5,6 +5,7 @@ use super::host_errors::{
     password_entry_write_error_from_host_launch, store_recipients_error_from_host_failure,
     store_recipients_error_from_host_launch, HostStoreAction,
 };
+use super::path_validation::{validated_entry_label_path, validated_relative_directory_path};
 #[cfg(target_os = "linux")]
 use crate::backend::command::{run_host_program_output, run_host_program_with_input};
 use crate::backend::{
@@ -61,6 +62,26 @@ fn effective_recipient_relative_dir<'a>(relative_dir: &'a str) -> &'a str {
     }
 }
 
+fn ensure_valid_entry_label(label: &str) -> Result<(), String> {
+    validated_entry_label_path(label).map(|_| ())
+}
+
+fn validate_entry_label_for_read(label: &str) -> Result<(), PasswordEntryError> {
+    ensure_valid_entry_label(label).map_err(PasswordEntryError::other)
+}
+
+fn validate_entry_label_for_write(label: &str) -> Result<(), PasswordEntryWriteError> {
+    ensure_valid_entry_label(label).map_err(PasswordEntryWriteError::other)
+}
+
+fn validated_effective_recipient_relative_dir(
+    relative_dir: &str,
+) -> Result<&str, StoreRecipientsError> {
+    let relative_dir = effective_recipient_relative_dir(relative_dir);
+    validated_relative_directory_path(relative_dir).map_err(StoreRecipientsError::other)?;
+    Ok(relative_dir)
+}
+
 pub(super) fn read_password_entry(
     store_root: &str,
     label: &str,
@@ -72,6 +93,8 @@ pub(super) fn read_password_entry_with_progress(
     store_root: &str,
     label: &str,
 ) -> Result<String, PasswordEntryError> {
+    validate_entry_label_for_read(label)?;
+
     #[cfg(feature = "hardening")]
     {
         let output = read_entry_output(store_root, label, "Read password entry")
@@ -93,6 +116,8 @@ pub(super) fn read_password_line(
     store_root: &str,
     label: &str,
 ) -> Result<String, PasswordEntryError> {
+    validate_entry_label_for_read(label)?;
+
     #[cfg(feature = "hardening")]
     {
         let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
@@ -141,6 +166,8 @@ pub(super) fn save_password_entry_with_progress(
     contents: &str,
     overwrite: bool,
 ) -> Result<(), PasswordEntryWriteError> {
+    validate_entry_label_for_write(label)?;
+
     let output = run_store_command_with_input(
         store_root,
         "Save password entry",
@@ -185,6 +212,9 @@ pub(super) fn rename_password_entry(
     old_label: &str,
     new_label: &str,
 ) -> Result<(), PasswordEntryWriteError> {
+    validate_entry_label_for_write(old_label)?;
+    validate_entry_label_for_write(new_label)?;
+
     let output = run_store_command_output(
         store_root,
         "Rename password entry",
@@ -223,6 +253,8 @@ pub(super) fn delete_password_entry(
     store_root: &str,
     label: &str,
 ) -> Result<(), PasswordEntryWriteError> {
+    validate_entry_label_for_write(label)?;
+
     let output = run_store_command_output(
         store_root,
         "Delete password entry",
@@ -319,7 +351,7 @@ pub(super) fn save_store_recipients_with_progress_for_relative_dir(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
-    let relative_dir = effective_recipient_relative_dir(relative_dir);
+    let relative_dir = validated_effective_recipient_relative_dir(relative_dir)?;
     if matches!(relative_dir.trim(), "" | ".") {
         return save_store_recipients_with_progress(
             store_root,
@@ -339,7 +371,7 @@ pub(super) fn save_store_recipients_for_relative_dir(
     recipients: &StoreRecipients,
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
-    let relative_dir = effective_recipient_relative_dir(relative_dir);
+    let relative_dir = validated_effective_recipient_relative_dir(relative_dir)?;
     if matches!(relative_dir.trim(), "" | ".") {
         return save_store_recipients(store_root, recipients, private_key_requirement);
     }
@@ -360,11 +392,48 @@ pub(super) fn store_recipients_private_key_requiring_unlock_for_relative_dir(
     relative_dir: &str,
 ) -> Result<Option<String>, String> {
     let relative_dir = effective_recipient_relative_dir(relative_dir);
+    validated_relative_directory_path(relative_dir)?;
     if matches!(relative_dir.trim(), "" | ".") {
         return store_recipients_private_key_requiring_unlock(store_root);
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::{
+        delete_password_entry, read_password_entry_with_progress, rename_password_entry,
+        save_password_entry,
+    };
+    use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+
+    #[test]
+    fn host_backend_rejects_traversal_labels_before_read_launch() {
+        let err = read_password_entry_with_progress("/tmp/unused", "team/../../escape")
+            .expect_err("host backend should reject traversal labels");
+
+        assert!(matches!(
+            err,
+            PasswordEntryError::Other(message) if message == "Invalid password entry path."
+        ));
+    }
+
+    #[test]
+    fn host_backend_rejects_traversal_labels_before_write_launch() {
+        for result in [
+            save_password_entry("/tmp/unused", "team/../../escape", "secret", true),
+            rename_password_entry("/tmp/unused", "team/../../escape", "renamed"),
+            delete_password_entry("/tmp/unused", "team/../../escape"),
+        ] {
+            let err = result.expect_err("host backend should reject traversal labels");
+            assert!(matches!(
+                err,
+                PasswordEntryWriteError::Other(message)
+                    if message == "Invalid password entry path."
+            ));
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]

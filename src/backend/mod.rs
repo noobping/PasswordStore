@@ -4,6 +4,7 @@ mod host;
 #[cfg(feature = "hardening")]
 mod host_errors;
 mod integrated;
+mod path_validation;
 #[cfg(test)]
 mod test_support;
 

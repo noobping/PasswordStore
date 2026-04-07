@@ -87,6 +87,9 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      - name: Verify fidostore feature build
+        run: cargo test --no-run --no-default-features --features fidostore
+
       - name: Build
         run: cargo build --release --features setup
 

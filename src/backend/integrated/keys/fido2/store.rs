@@ -14,7 +14,9 @@ use super::common::{
 };
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{parse_fido2_recipient_string, Fido2StoreRecipient};
+use crate::support::background::spawn_worker;
 use secrecy::ExposeSecret;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -258,20 +260,21 @@ pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_dek_for_b
     }
 
     let (send, recv) = mpsc::channel();
-    let pending = Arc::new(Mutex::new(candidates.into_iter()));
+    let pending = Arc::new(Mutex::new(VecDeque::from(candidates)));
     let stop = Arc::new(AtomicBool::new(false));
+    let mut spawned_workers = 0usize;
     for _ in 0..worker_count {
         let send = send.clone();
         let pending = pending.clone();
         let stop = stop.clone();
-        thread::spawn(move || loop {
+        if spawn_worker("fido2-direct-any-decrypt", move || loop {
             if stop.load(Ordering::Relaxed) {
                 return;
             }
 
             let candidate = {
                 let mut pending = pending.lock().expect("pending FIDO2 candidates poisoned");
-                pending.next()
+                pending.pop_front()
             };
             let Some(candidate) = candidate else {
                 return;
@@ -284,9 +287,22 @@ pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_dek_for_b
             if send.send(result).is_err() {
                 return;
             }
-        });
+        })
+        .is_ok()
+        {
+            spawned_workers += 1;
+        }
     }
     drop(send);
+
+    if spawned_workers == 0 {
+        let remaining = pending
+            .lock()
+            .expect("pending FIDO2 candidates poisoned")
+            .drain(..)
+            .collect();
+        return decrypt_direct_any_recipient_candidates_sequentially(remaining);
+    }
 
     let mut best_error = None;
     for result in recv {

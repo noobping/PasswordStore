@@ -6,12 +6,11 @@ use crate::logging::{log_error, run_command_status, CommandLogOptions};
 use crate::password::model::PassEntry;
 use crate::preferences::Preferences;
 use crate::private_key::unlock::prompt_private_key_unlock_for_action;
-use crate::support::background::spawn_result_task;
+use crate::support::background::{spawn_result_task, spawn_worker};
 use crate::support::ui::flat_icon_button_with_tooltip;
 use adw::gtk::{gdk::Display, Button, Widget};
 use adw::{glib, prelude::*, EntryRow, PasswordEntryRow, Toast, ToastOverlay};
 use std::rc::Rc;
-use std::thread;
 use std::time::Duration;
 
 const COPY_BUTTON_ICON_NAME: &str = "edit-copy-symbolic";
@@ -87,7 +86,7 @@ fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry, button: Op
         show_copy_feedback(button);
     }
 
-    thread::spawn(move || {
+    if let Err(err) = spawn_worker("clipboard-pass-copy", move || {
         let settings = Preferences::new();
         let mut cmd = settings.command();
         cmd.env("PASSWORD_STORE_DIR", &item.store_path)
@@ -98,7 +97,9 @@ fn copy_password_entry_to_clipboard_via_pass_command(item: PassEntry, button: Op
             "Copy password to clipboard",
             CommandLogOptions::SENSITIVE,
         );
-    });
+    }) {
+        log_error(format!("Failed to spawn clipboard copy worker: {err}"));
+    }
 }
 
 fn handle_copy_password_error(

@@ -1,6 +1,7 @@
 use super::super::store::{log_error, log_info};
 use super::streams::{join_stream_logger, spawn_stream_logger};
 use super::CommandLogOptions;
+use crate::support::background::spawn_worker_or_panic;
 use std::ffi::OsStr;
 use std::io;
 use std::io::Write;
@@ -163,7 +164,7 @@ fn spawn_input_writer(
     mut stdin: impl Write + Send + 'static,
     input: String,
 ) -> thread::JoinHandle<Result<(), String>> {
-    thread::spawn(move || {
+    spawn_worker_or_panic("command-stdin-writer", move || {
         stdin
             .write_all(input.as_bytes())
             .map_err(|err| format!("Failed to write command input: {err}"))

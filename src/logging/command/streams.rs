@@ -1,4 +1,5 @@
 use super::super::store::{log_error, log_info};
+use crate::support::background::spawn_worker_or_panic;
 use std::io::{self, Read};
 use std::thread;
 
@@ -35,7 +36,7 @@ pub(super) fn spawn_stream_logger<R>(
 where
     R: Read + Send + 'static,
 {
-    thread::spawn(move || {
+    spawn_worker_or_panic("command-stream-logger", move || {
         let mut bytes = Vec::new();
         let mut buf = [0u8; 4096];
         let mut logged_redaction = false;

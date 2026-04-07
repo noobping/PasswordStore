@@ -1,6 +1,6 @@
+use crate::support::background::spawn_worker;
 use std::io::{self, Write};
 use std::process::{Command, ExitStatus, Output, Stdio};
-use std::thread;
 
 pub fn log_info(message: impl Into<String>) {
     let _ = sanitize_diagnostic_message(&message.into());
@@ -89,7 +89,10 @@ pub fn run_command_with_input(
     };
 
     let input = input.to_string();
-    let writer = thread::spawn(move || stdin.write_all(input.as_bytes()));
+    let writer = spawn_worker("disabled-command-stdin-writer", move || {
+        stdin.write_all(input.as_bytes())
+    })
+    .map_err(|err| format!("Failed to spawn command input writer: {err}"))?;
 
     let output = child
         .wait_with_output()

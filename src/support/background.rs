@@ -1,5 +1,6 @@
 use adw::glib;
 use std::cell::RefCell;
+use std::io;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
@@ -7,6 +8,28 @@ use std::thread;
 use std::time::Duration;
 
 const BACKGROUND_TASK_POLL_INTERVAL_MS: u64 = 50;
+const BACKGROUND_THREAD_STACK_SIZE_BYTES: usize = 4 * 1024 * 1024;
+
+pub(crate) fn spawn_worker<T, Task>(name: &str, task: Task) -> io::Result<thread::JoinHandle<T>>
+where
+    T: Send + 'static,
+    Task: FnOnce() -> T + Send + 'static,
+{
+    thread::Builder::new()
+        .name(format!("keycord-{name}"))
+        .stack_size(BACKGROUND_THREAD_STACK_SIZE_BYTES)
+        .spawn(task)
+}
+
+#[cfg(feature = "logging")]
+pub(crate) fn spawn_worker_or_panic<T, Task>(name: &str, task: Task) -> thread::JoinHandle<T>
+where
+    T: Send + 'static,
+    Task: FnOnce() -> T + Send + 'static,
+{
+    spawn_worker(name, task)
+        .unwrap_or_else(|err| panic!("Failed to spawn background worker '{name}': {err}"))
+}
 
 pub fn spawn_result_task<T, Task, HandleResult, HandleDisconnect>(
     task: Task,
@@ -19,9 +42,14 @@ pub fn spawn_result_task<T, Task, HandleResult, HandleDisconnect>(
     HandleDisconnect: FnOnce() + 'static,
 {
     let (tx, rx) = mpsc::channel::<T>();
-    thread::spawn(move || {
+    if spawn_worker("result-task", move || {
         let _ = tx.send(task());
-    });
+    })
+    .is_err()
+    {
+        handle_disconnect();
+        return;
+    }
 
     let mut handle_result = Some(handle_result);
     let mut handle_disconnect = Some(handle_disconnect);
@@ -93,10 +121,15 @@ pub fn spawn_progress_result_task<T, P, Task, HandleProgress, HandleResult, Hand
 {
     let (progress_tx, progress_rx) = mpsc::channel::<P>();
     let (result_tx, result_rx) = mpsc::channel::<T>();
-    thread::spawn(move || {
+    if spawn_worker("progress-result-task", move || {
         let result = task(progress_tx);
         let _ = result_tx.send(result);
-    });
+    })
+    .is_err()
+    {
+        handle_disconnect();
+        return;
+    }
 
     let mut handle_progress = handle_progress;
     let mut handle_result = Some(handle_result);
@@ -129,7 +162,7 @@ pub fn spawn_progress_result_task<T, P, Task, HandleProgress, HandleResult, Hand
 
 #[cfg(test)]
 mod tests {
-    use super::spawn_result_task_with_finalizer;
+    use super::{spawn_result_task_with_finalizer, spawn_worker};
     use adw::glib::MainLoop;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -166,5 +199,17 @@ mod tests {
         main_loop.run();
 
         assert_eq!(&*events.borrow(), &["finalize", "result"]);
+    }
+
+    #[test]
+    fn background_workers_use_keycord_thread_names() {
+        let name = spawn_worker("test-worker", || {
+            std::thread::current().name().map(str::to_owned)
+        })
+        .expect("worker should spawn")
+        .join()
+        .expect("worker should finish");
+
+        assert_eq!(name.as_deref(), Some("keycord-test-worker"));
     }
 }

@@ -5,6 +5,7 @@ use super::platform;
 use super::DirtyProbe;
 use crate::i18n::gettext;
 use crate::logging::{log_error, log_info};
+use crate::support::background::spawn_worker;
 use crate::support::object_data::{cloned_data, set_cloned_data};
 use crate::support::ui::wrapped_dialog_body;
 use adw::gio::SimpleAction;
@@ -26,7 +27,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
 const UPDATE_CONTROLLER_KEY: &str = "app-updater-controller";
@@ -334,14 +334,22 @@ impl UpdaterController {
         }
 
         let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
+        if let Err(err) = spawn_worker("updater-check", move || {
             let result = fetch_update_release();
             let _ = tx.send(WorkerMessage::CheckFinished {
                 run_id,
                 mode,
                 result,
             });
-        });
+        }) {
+            log_error(format!("Failed to spawn update check worker: {err}"));
+            *self.inner.state.borrow_mut() = UpdateState::Idle;
+            self.close_dialog();
+            if matches!(mode, CheckMode::Manual) {
+                self.show_toast(UPDATE_CHECK_FAILED_TOAST);
+            }
+            return;
+        }
 
         let controller = self.clone();
         poll_worker(rx, move |message| controller.handle_worker_message(message));
@@ -460,12 +468,20 @@ impl UpdaterController {
         self.present_download_dialog(&release, 0);
 
         let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
+        if let Err(err) = spawn_worker("updater-download", move || {
             let result = download_release_asset(run_id, &release, &download, &cancel, &tx);
             if let Some(message) = result {
                 let _ = tx.send(message);
             }
-        });
+        }) {
+            log_error(format!("Failed to spawn update download worker: {err}"));
+            *self.inner.state.borrow_mut() = UpdateState::Idle;
+            self.close_dialog();
+            if matches!(mode, CheckMode::Manual) {
+                self.show_toast(UPDATE_DOWNLOAD_FAILED_TOAST);
+            }
+            return;
+        }
 
         let controller = self.clone();
         poll_worker(rx, move |message| controller.handle_worker_message(message));

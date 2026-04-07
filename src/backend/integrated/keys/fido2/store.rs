@@ -15,13 +15,15 @@ use super::common::{
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{parse_fido2_recipient_string, Fido2StoreRecipient};
 use secrecy::ExposeSecret;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 const PASSWORD_ENTRY_CANDIDATE_MISMATCH: &str =
     "The available private keys cannot decrypt this item.";
 const AES_GCM_NONCE_LEN: usize = 12;
+const MAX_PARALLEL_FIDO2_DECRYPT_WORKERS: usize = 4;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DirectAnyRecipientCandidate {
@@ -250,15 +252,38 @@ pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_dek_for_b
     if remaining_candidates.is_empty() {
         return decrypt_direct_any_recipient_candidate(first_candidate);
     }
+    let worker_count = parallel_fido2_decrypt_worker_count(candidates.len());
+    if worker_count == 1 {
+        return decrypt_direct_any_recipient_candidates_sequentially(candidates);
+    }
 
     let (send, recv) = mpsc::channel();
-    let start = Arc::new(Barrier::new(candidates.len()));
-    for candidate in candidates {
+    let pending = Arc::new(Mutex::new(candidates.into_iter()));
+    let stop = Arc::new(AtomicBool::new(false));
+    for _ in 0..worker_count {
         let send = send.clone();
-        let start = start.clone();
-        thread::spawn(move || {
-            start.wait();
-            let _ = send.send(decrypt_direct_any_recipient_candidate(&candidate));
+        let pending = pending.clone();
+        let stop = stop.clone();
+        thread::spawn(move || loop {
+            if stop.load(Ordering::Relaxed) {
+                return;
+            }
+
+            let candidate = {
+                let mut pending = pending.lock().expect("pending FIDO2 candidates poisoned");
+                pending.next()
+            };
+            let Some(candidate) = candidate else {
+                return;
+            };
+
+            let result = decrypt_direct_any_recipient_candidate(&candidate);
+            if result.is_ok() {
+                stop.store(true, Ordering::Relaxed);
+            }
+            if send.send(result).is_err() {
+                return;
+            }
         });
     }
     drop(send);
@@ -266,7 +291,10 @@ pub(in crate::backend::integrated) fn decrypt_fido2_any_managed_bundle_dek_for_b
     let mut best_error = None;
     for result in recv {
         match result {
-            Ok(dek) => return Ok(dek),
+            Ok(dek) => {
+                stop.store(true, Ordering::Relaxed);
+                return Ok(dek);
+            }
             Err(err) => best_error = prefer_direct_any_candidate_error(best_error, err),
         }
     }
@@ -512,6 +540,34 @@ fn direct_any_candidate_error_rank(message: &str) -> usize {
     } else {
         5
     }
+}
+
+fn parallel_fido2_decrypt_worker_count(candidate_count: usize) -> usize {
+    if candidate_count <= 1 {
+        return candidate_count;
+    }
+
+    let available_parallelism = thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    candidate_count
+        .min(available_parallelism)
+        .min(MAX_PARALLEL_FIDO2_DECRYPT_WORKERS)
+}
+
+fn decrypt_direct_any_recipient_candidates_sequentially(
+    candidates: Vec<DirectAnyRecipientCandidate>,
+) -> Result<Vec<u8>, String> {
+    let mut best_error = None;
+
+    for candidate in candidates {
+        match decrypt_direct_any_recipient_candidate(&candidate) {
+            Ok(dek) => return Ok(dek),
+            Err(err) => best_error = prefer_direct_any_candidate_error(best_error, err),
+        }
+    }
+
+    Err(best_error.unwrap_or_else(|| PASSWORD_ENTRY_CANDIDATE_MISMATCH.to_string()))
 }
 
 fn prefer_direct_any_candidate_error(current: Option<String>, candidate: String) -> Option<String> {

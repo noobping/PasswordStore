@@ -830,13 +830,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/fastrand/fastrand-2.4.0.crate
-  sha256: a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f
-  dest: cargo/vendor/fastrand-2.4.0
+  url: https://static.crates.io/crates/fastrand/fastrand-2.3.0.crate
+  sha256: 37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be
+  dest: cargo/vendor/fastrand-2.3.0
 - type: inline
-  contents: '{"package": "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f",
+  contents: '{"package": "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be",
     "files": {}}'
-  dest: cargo/vendor/fastrand-2.4.0
+  dest: cargo/vendor/fastrand-2.3.0
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

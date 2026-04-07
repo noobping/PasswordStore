@@ -1,6 +1,6 @@
 use super::{
     dialogs::build_progress_dialog, open_store_folder_picker, rebuild_stores_list,
-    updated_stores_after_add, StoreRecipientsPageState,
+    refresh_after_store_list_change, updated_stores_after_add, StoreRecipientsPageState,
 };
 use crate::i18n::gettext;
 use crate::logging::log_error;
@@ -224,6 +224,7 @@ fn start_store_clone(
                     &settings_for_result,
                     &recipients_page_for_result,
                 );
+                refresh_after_store_list_change(&recipients_page_for_result);
                 overlay.add_toast(Toast::new(&gettext("Store restored.")));
             }
             Err(message) => {

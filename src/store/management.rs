@@ -21,7 +21,7 @@ pub use super::recipients_page::{
 use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::preferences::Preferences;
-use crate::support::actions::register_window_action;
+use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::file_picker::choose_local_folder_path;
 use crate::support::ui::{
     append_action_row_with_button, append_info_row, clear_list_box, dim_label_icon,
@@ -105,8 +105,12 @@ pub fn rebuild_store_list(
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
 ) {
-    if let Err(err) = settings.prune_missing_stores() {
-        log_error(format!("Failed to remove missing password stores: {err}"));
+    match settings.prune_missing_stores() {
+        Ok(true) => refresh_after_store_list_change(recipients_page),
+        Ok(false) => {}
+        Err(err) => {
+            log_error(format!("Failed to remove missing password stores: {err}"));
+        }
     }
 
     rebuild_stores_list(stores_list, settings, recipients_page);
@@ -118,6 +122,11 @@ pub fn rebuild_store_list(
         overlay,
         recipients_page,
     );
+}
+
+pub fn refresh_after_store_list_change(recipients_page: &StoreRecipientsPageState) {
+    activate_widget_action(&recipients_page.window, "win.reload-password-list");
+    activate_widget_action(&recipients_page.window, "win.reload-store-recipients-list");
 }
 
 pub fn rebuild_stores_list(
@@ -217,6 +226,7 @@ fn append_store_row(
                 log_error(format!("Failed to save stores: {err}"));
             } else {
                 rebuild_stores_list(&list, &settings, &recipients_page_for_delete);
+                refresh_after_store_list_change(&recipients_page_for_delete);
             }
         }
     });
@@ -284,6 +294,7 @@ pub fn prompt_add_or_create_store(
 
             match mode {
                 SelectedStoreFolderMode::AddExisting => {
+                    let mut store_added = false;
                     if let Some(stores) = updated_stores_after_add(&settings.stores(), &store) {
                         if let Err(err) = settings.set_stores(stores) {
                             log_error(format!("Failed to save stores: {err}"));
@@ -291,10 +302,14 @@ pub fn prompt_add_or_create_store(
                                 .add_toast(Toast::new(&gettext("Couldn't add that folder.")));
                             return;
                         }
+                        store_added = true;
                     }
 
                     rebuild_stores_list(&stores_list, &settings, &recipients_page);
                     show_store_recipients_edit_page(&recipients_page, &store);
+                    if store_added {
+                        refresh_after_store_list_change(&recipients_page);
+                    }
                 }
                 SelectedStoreFolderMode::CreateNew => {
                     let recipients =

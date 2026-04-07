@@ -1,4 +1,4 @@
-use super::super::management::rebuild_stores_list;
+use super::super::management::{rebuild_stores_list, refresh_after_store_list_change};
 use super::super::recipients::{
     split_store_recipients, stores_with_preferred_first, ROOT_STORE_RECIPIENTS_SCOPE,
 };
@@ -221,7 +221,7 @@ fn save_store_recipients_async(
                             .saved_private_key_requirement
                             .set(private_key_requirement);
                     }
-                    let should_rebuild_store_list = if request.mode.creates_store() {
+                    let store_list_changed = if request.mode.creates_store() {
                         let stores =
                             stores_with_preferred_first(&settings.stores(), &request.store);
                         if let Err(err) = settings.set_stores(stores) {
@@ -237,11 +237,14 @@ fn save_store_recipients_async(
                             true
                         }
                     } else {
-                        true
+                        false
                     };
 
-                    if should_rebuild_store_list {
+                    if request.mode.creates_store() {
                         rebuild_stores_list(&stores_list, &settings, &state);
+                    }
+                    if store_list_changed {
+                        refresh_after_store_list_change(&state);
                     }
                     finish_store_recipients_save(&state, true);
                 }
@@ -316,7 +319,7 @@ fn save_store_recipients_async(
                         .saved_private_key_requirement
                         .set(private_key_requirement);
                 }
-                let should_rebuild_store_list = if request.mode.creates_store() {
+                let store_list_changed = if request.mode.creates_store() {
                     let stores = stores_with_preferred_first(&settings.stores(), &request.store);
                     if let Err(err) = settings.set_stores(stores) {
                         log_error(format!("Failed to save stores: {err}"));
@@ -330,11 +333,14 @@ fn save_store_recipients_async(
                         true
                     }
                 } else {
-                    true
+                    false
                 };
 
-                if should_rebuild_store_list {
+                if request.mode.creates_store() {
                     rebuild_stores_list(&stores_list, &settings, &state);
+                }
+                if store_list_changed {
+                    refresh_after_store_list_change(&state);
                 }
                 finish_store_recipients_save(&state, true);
             }

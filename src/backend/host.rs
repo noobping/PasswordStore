@@ -90,6 +90,11 @@ fn configure_pass_remove_command(cmd: &mut Command, label: &str) {
     append_pass_entry_args(cmd, [label]);
 }
 
+fn configure_pass_init_command(cmd: &mut Command, recipients: &[String]) {
+    cmd.arg("init");
+    append_pass_entry_args(cmd, recipients.iter().map(String::as_str));
+}
+
 fn ensure_valid_entry_label(label: &str) -> Result<(), String> {
     validated_entry_label_path(label).map(|_| ())
 }
@@ -339,7 +344,7 @@ pub(super) fn save_store_recipients_with_progress(
         "Save password store recipients",
         CommandLogOptions::DEFAULT,
         |cmd| {
-            cmd.arg("init").args(recipients.standard());
+            configure_pass_init_command(cmd, recipients.standard());
         },
     )
     .map_err({
@@ -427,9 +432,9 @@ pub(super) fn store_recipients_private_key_requiring_unlock_for_relative_dir(
 #[cfg(test)]
 mod validation_tests {
     use super::{
-        configure_pass_insert_command, configure_pass_move_command, configure_pass_remove_command,
-        configure_pass_show_command, delete_password_entry, read_password_entry_with_progress,
-        rename_password_entry, save_password_entry,
+        configure_pass_init_command, configure_pass_insert_command, configure_pass_move_command,
+        configure_pass_remove_command, configure_pass_show_command, delete_password_entry,
+        read_password_entry_with_progress, rename_password_entry, save_password_entry,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
     use std::process::Command;
@@ -499,6 +504,22 @@ mod validation_tests {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
             vec!["show", "--", "insert"]
+        );
+    }
+
+    #[test]
+    fn host_backend_pass_init_terminates_option_parsing_for_recipients() {
+        let mut init = Command::new("pass");
+        configure_pass_init_command(
+            &mut init,
+            &[String::from("-recipient"), String::from("ABCD")],
+        );
+
+        assert_eq!(
+            init.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["init", "--", "-recipient", "ABCD"]
         );
     }
 }

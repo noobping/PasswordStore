@@ -1,5 +1,5 @@
 use crate::store::git_page::StoreGitPageState;
-use crate::store::management::StoreRecipientsPageState;
+use crate::store::management::{StoreRecipientsPageState, NUMBERED_STORE_SHORTCUT_COUNT};
 use crate::support::actions::register_window_action;
 use crate::window::build::widgets::WindowWidgets;
 use crate::window::controls::ListVisibilityState;
@@ -50,6 +50,10 @@ pub fn register_open_git_action(state: &GitActionState) {
     let window = state.window.clone();
     register_window_action(&window, "git-clone", || {});
     register_window_action(&window, "open-git", || {});
+
+    for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+        register_window_action(&window, &format!("open-store-git-{slot}"), || {});
+    }
 }
 
 pub fn register_synchronize_action(state: &GitActionState) {

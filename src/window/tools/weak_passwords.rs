@@ -99,6 +99,7 @@ impl ToolsPageState {
     }
 
     fn show_weak_passwords_browser_page(&self) {
+        self.close_select_dialog();
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(
             &chrome,

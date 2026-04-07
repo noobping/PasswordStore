@@ -1,5 +1,6 @@
 use crate::i18n::gettext;
 use crate::logging::log_error;
+use crate::store::management::NUMBERED_STORE_SHORTCUT_COUNT;
 use crate::store::recipients_page::{StoreRecipientsMode, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_result_task_with_finalizer;
@@ -10,15 +11,17 @@ use crate::support::git::{
 };
 use crate::support::runtime::{has_host_permission, supports_host_command_features};
 use crate::support::ui::{
-    append_action_row_with_button, append_info_row, clear_list_box, dialog_content_shell,
-    dim_label_icon, flat_icon_button_with_tooltip, focus_first_matching_list_row_in_order,
-    list_row_is_keyboard_focusable, navigation_stack_contains_page, push_navigation_page_if_needed,
-    reveal_navigation_page, visible_navigation_page_is,
+    add_tracked_preferences_group_child, append_action_group_row_with_button,
+    append_info_group_row, clear_tracked_preferences_group, dialog_content_shell, dim_label_icon,
+    flat_icon_button_with_tooltip, focus_first_preferences_group_child_in_order,
+    navigation_stack_contains_page, push_navigation_page_if_needed, reveal_navigation_page,
+    visible_navigation_page_is,
 };
-use crate::window::append_optional_host_access_row;
+use crate::window::append_optional_host_access_group_row;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
+use crate::window::preferences_search::PreferencesPageSearchState;
 use adw::gio::{prelude::*, SimpleAction};
-use adw::gtk::{Align, Box as GtkBox, Button, Image, Label, ListBox, Orientation};
+use adw::gtk::{Align, Box as GtkBox, Button, Image, Label, Orientation, Widget};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, Dialog, EntryRow, NavigationPage, NavigationView,
@@ -32,9 +35,12 @@ pub struct StoreGitPageState {
     pub window: ApplicationWindow,
     pub nav: NavigationView,
     pub page: NavigationPage,
-    pub remotes_list: ListBox,
-    pub actions_list: ListBox,
-    pub status_list: ListBox,
+    pub back_row: ActionRow,
+    pub search: PreferencesPageSearchState,
+    pub remotes_list: PreferencesGroup,
+    pub actions_list: PreferencesGroup,
+    pub status_list: PreferencesGroup,
+    pub access_list: PreferencesGroup,
     pub overlay: ToastOverlay,
     pub back: Button,
     pub add: Button,
@@ -47,6 +53,11 @@ pub struct StoreGitPageState {
     pub busy_page: NavigationPage,
     pub busy_status: StatusPage,
     pub current_store: Rc<RefCell<Option<String>>>,
+    pub recipients_page: Rc<RefCell<Option<StoreRecipientsPageState>>>,
+    pub reopen_after_busy: Rc<Cell<bool>>,
+    pub remote_rows: Rc<RefCell<Vec<Widget>>>,
+    pub action_rows: Rc<RefCell<Vec<Widget>>>,
+    pub status_rows: Rc<RefCell<Vec<Widget>>>,
 }
 
 impl StoreGitPageState {
@@ -83,12 +94,16 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
     ] {
         set_window_action_enabled(window, action, enabled);
     }
+
+    for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+        set_window_action_enabled(window, &format!("open-store-recipients-{slot}"), enabled);
+        set_window_action_enabled(window, &format!("open-store-git-{slot}"), enabled);
+    }
 }
 
 fn begin_git_operation(state: &StoreGitPageState, title: &str) {
     set_git_busy_actions_enabled(&state.window, false);
-    let chrome = state.window_chrome();
-    show_secondary_page_chrome(&chrome, "Working", title, false);
+    state.reopen_after_busy.set(true);
     state.busy_status.set_title(&gettext(title));
     push_navigation_page_if_needed(&state.nav, &state.busy_page);
 }
@@ -110,12 +125,37 @@ fn finish_git_operation(state: &StoreGitPageState) {
         }
     }
 
-    if visible_navigation_page_is(&state.nav, &state.page) {
+    if state.reopen_after_busy.replace(false) {
         sync_store_git_page_header(state);
+        state.search.sync();
     }
 }
 
-fn append_status_row(list: &ListBox, title: &str, subtitle: &str, icon_name: &str) {
+fn ordered_store_git_lists(state: &StoreGitPageState) -> [PreferencesGroup; 4] {
+    [
+        state.remotes_list.clone(),
+        state.actions_list.clone(),
+        state.status_list.clone(),
+        state.access_list.clone(),
+    ]
+}
+
+pub fn present_store_git_dialog(state: &StoreGitPageState) {
+    sync_store_git_page_header(state);
+    reveal_navigation_page(&state.nav, &state.page);
+    let _ = focus_first_preferences_group_child_in_order(&ordered_store_git_lists(state));
+}
+
+pub fn connect_store_git_controls(state: &StoreGitPageState) {
+    state.back_row.set_visible(false);
+}
+
+fn append_status_row(
+    list: &PreferencesGroup,
+    title: &str,
+    subtitle: &str,
+    icon_name: &str,
+) -> ActionRow {
     let title = gettext(title);
     let row = ActionRow::builder()
         .title(&title)
@@ -123,7 +163,8 @@ fn append_status_row(list: &ListBox, title: &str, subtitle: &str, icon_name: &st
         .build();
     row.set_activatable(false);
     row.add_prefix(&dim_label_icon(icon_name));
-    list.append(&row);
+    list.add(&row);
+    row
 }
 
 fn translated_branch_message(template: &str, branch: &str) -> String {
@@ -135,7 +176,7 @@ fn translated_count_message(template: &str, count: usize) -> String {
 }
 
 fn append_translated_action_row_with_button(
-    list: &ListBox,
+    list: &PreferencesGroup,
     title: &str,
     subtitle: &str,
     icon_name: &str,
@@ -146,7 +187,7 @@ fn append_translated_action_row_with_button(
 
     let icon = Image::from_icon_name(icon_name);
     row.add_suffix(&icon);
-    list.append(&row);
+    list.add(&row);
 
     let action = Rc::new(action);
     let row_action = action.clone();
@@ -602,7 +643,7 @@ fn append_remote_row(
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove remote");
     row.add_suffix(&delete_button);
 
-    state.remotes_list.append(&row);
+    add_tracked_preferences_group_child(&state.remotes_list, state.remote_rows.as_ref(), &row);
 
     let store_for_edit = store.to_string();
     let state_for_edit = state.clone();
@@ -664,16 +705,18 @@ fn append_remote_row(
 }
 
 pub fn rebuild_store_git_page(state: &StoreGitPageState) {
-    clear_list_box(&state.remotes_list);
-    clear_list_box(&state.actions_list);
-    clear_list_box(&state.status_list);
+    clear_tracked_preferences_group(&state.remotes_list, state.remote_rows.as_ref());
+    clear_tracked_preferences_group(&state.actions_list, state.action_rows.as_ref());
+    clear_tracked_preferences_group(&state.status_list, state.status_rows.as_ref());
+    state.access_list.set_visible(false);
 
     let Some(store) = state.current_store() else {
-        append_info_row(
+        let row = append_info_group_row(
             &state.remotes_list,
             "No password store",
             "Open a store first.",
         );
+        state.remote_rows.borrow_mut().push(row.upcast());
         return;
     };
 
@@ -690,12 +733,13 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                 .map(|remote| remote.url.clone())
                 .collect::<Vec<_>>();
             if status.remotes.is_empty() {
-                append_status_row(
+                let row = append_status_row(
                     &state.remotes_list,
                     "Repository",
                     &repository_subtitle(&status),
                     "git-symbolic",
                 );
+                state.remote_rows.borrow_mut().push(row.upcast());
             } else {
                 for remote in &status.remotes {
                     append_remote_row(
@@ -722,7 +766,7 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
 
             let add_state = state.clone();
             let store_for_add = store.clone();
-            let add_row = append_action_row_with_button(
+            let add_row = append_action_group_row_with_button(
                 &state.actions_list,
                 "Add remote",
                 "Add a Git remote for this store.",
@@ -752,10 +796,14 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     );
                 },
             );
+            state
+                .action_rows
+                .borrow_mut()
+                .push(add_row.clone().upcast());
             add_row.set_sensitive(has_host_permission());
             add_row.set_activatable(has_host_permission());
 
-            append_optional_host_access_row(&state.status_list, &state.overlay);
+            let _ = append_optional_host_access_group_row(&state.access_list, &state.overlay);
 
             let sync_state = state.clone();
             let store_for_sync = store.clone();
@@ -823,25 +871,33 @@ pub fn rebuild_store_git_page(state: &StoreGitPageState) {
                     );
                 },
             );
+            state
+                .status_rows
+                .borrow_mut()
+                .push(sync_row.clone().upcast());
             sync_row.set_sensitive(sync_allowed(&status));
             sync_row.set_activatable(sync_allowed(&status));
 
-            append_status_row(
+            let row = append_status_row(
                 &state.status_list,
                 "Branch",
                 &branch_subtitle(&status),
                 "object-select-symbolic",
             );
+            state.status_rows.borrow_mut().push(row.upcast());
         }
         Err(err) => {
             log_error(format!("Failed to inspect Git state for '{store}': {err}"));
-            append_info_row(
+            let row = append_info_group_row(
                 &state.remotes_list,
                 "Couldn't inspect Git state",
                 "Check the logs for details.",
             );
+            state.remote_rows.borrow_mut().push(row.upcast());
         }
     }
+
+    state.search.sync();
 }
 
 fn remote_dialog_apply_enabled(name: &str, url: &str) -> bool {
@@ -856,39 +912,39 @@ fn sync_remote_dialog_apply_button(name_row: &EntryRow, url_row: &EntryRow) {
 }
 
 pub fn sync_store_git_page_header(state: &StoreGitPageState) {
+    let chrome = state.window_chrome();
     let Some(store) = state.current_store() else {
         state.page.set_title(&gettext("Git remotes"));
-        let chrome = state.window_chrome();
         show_secondary_page_chrome(&chrome, "Git remotes", APP_WINDOW_TITLE, false);
+        chrome.find.set_visible(true);
         return;
     };
 
-    let chrome = state.window_chrome();
-    show_secondary_page_chrome(&chrome, "Git remotes", &store, false);
     state.page.set_title(&gettext("Git remotes"));
+    show_secondary_page_chrome(&chrome, "Git remotes", &store, false);
+    chrome.find.set_visible(true);
 }
 
-pub fn show_store_git_page(state: &StoreGitPageState, store: impl Into<String>) {
+fn show_store_git_page_with_back_destination(state: &StoreGitPageState, store: impl Into<String>) {
     if !supports_host_command_features() {
         return;
     }
 
     *state.current_store.borrow_mut() = Some(store.into());
     rebuild_store_git_page(state);
-    sync_store_git_page_header(state);
-    let _ = reveal_navigation_page(&state.nav, &state.page);
-    let _ = focus_first_matching_list_row_in_order(
-        &[
-            state.remotes_list.clone(),
-            state.actions_list.clone(),
-            state.status_list.clone(),
-        ],
-        list_row_is_keyboard_focusable,
-    );
+    present_store_git_dialog(state);
+}
+
+pub fn show_store_git_page(state: &StoreGitPageState, store: impl Into<String>) {
+    show_store_git_page_with_back_destination(state, store);
+}
+
+pub fn show_store_git_page_from_recipients(state: &StoreGitPageState, store: impl Into<String>) {
+    show_store_git_page_with_back_destination(state, store);
 }
 
 pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
-    clear_list_box(&state.platform.git_list);
+    clear_tracked_preferences_group(&state.platform.git_list, state.git_rows.as_ref());
     if !supports_host_command_features() {
         state.platform.git_group.set_visible(false);
         return;
@@ -916,9 +972,10 @@ pub fn rebuild_store_recipients_git_row(state: &StoreRecipientsPageState) {
         &row_state.subtitle,
         "go-next-symbolic",
         move || {
-            show_store_git_page(&git_page, store.clone());
+            show_store_git_page_from_recipients(&git_page, store.clone());
         },
     );
+    state.git_rows.borrow_mut().push(row.clone().upcast());
     row.add_prefix(&dim_label_icon("git-symbolic"));
     row.set_sensitive(row_state.enabled);
     row.set_activatable(row_state.enabled);

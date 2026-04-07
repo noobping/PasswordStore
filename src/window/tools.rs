@@ -14,6 +14,7 @@ use crate::store::management::StoreImportToolRowState;
 use crate::store::support::StoreSupportCache;
 use crate::support::actions::register_window_action;
 use crate::support::object_data::non_null_to_string_option;
+use crate::support::runtime::{supports_docs_features, supports_logging_features};
 use crate::support::ui::{
     append_info_row, append_spinner_row, connect_keyboard_focusable_search_list_arrow_navigation,
     focus_first_keyboard_focusable_list_row, reveal_navigation_page, visible_navigation_page_is,
@@ -23,8 +24,8 @@ use crate::window::navigation::{
 };
 use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::{
-    Box as GtkBox, Button, Image, ListBox, MenuButton, Popover, ScrolledWindow, SearchEntry,
-    Spinner, Stack,
+    Box as GtkBox, Button, Image, ListBox, ListBoxRow, MenuButton, Popover, ScrolledWindow,
+    SearchEntry, Spinner, Stack,
 };
 use adw::prelude::*;
 use adw::{
@@ -102,6 +103,9 @@ const AUDIT_LOAD_MORE_SUBTITLE: &str = "Read the next {count} commits.";
 #[derive(Clone)]
 struct ToolSelectPageState {
     page: NavigationPage,
+    search_entry: SearchEntry,
+    primary_group: PreferencesGroup,
+    empty_group: PreferencesGroup,
     list: ListBox,
     information_group: PreferencesGroup,
     logs_list: ListBox,
@@ -202,7 +206,9 @@ pub struct ToolsPageWidgets<'a> {
     pub window: &'a ApplicationWindow,
     pub navigation: &'a WindowNavigationState,
     pub page: &'a NavigationPage,
+    pub search_entry: &'a SearchEntry,
     pub list: &'a ListBox,
+    pub primary_group: &'a PreferencesGroup,
     pub field_values_row: &'a ActionRow,
     pub field_values_suffix_stack: &'a Stack,
     pub field_values_suffix_arrow: &'a Image,
@@ -216,6 +222,7 @@ pub struct ToolsPageWidgets<'a> {
     pub audit_suffix_arrow: &'a Image,
     pub audit_spinner: &'a Spinner,
     pub information_group: &'a PreferencesGroup,
+    pub search_empty_group: &'a PreferencesGroup,
     pub logs_list: &'a ListBox,
     pub docs_row: &'a ActionRow,
     pub logs_row: &'a ActionRow,
@@ -242,6 +249,9 @@ impl ToolsPageState {
             root_search_entry: widgets.root_search_entry.clone(),
             select_page: ToolSelectPageState {
                 page: widgets.page.clone(),
+                search_entry: widgets.search_entry.clone(),
+                primary_group: widgets.primary_group.clone(),
+                empty_group: widgets.search_empty_group.clone(),
                 list: widgets.list.clone(),
                 information_group: widgets.information_group.clone(),
                 field_values_row: widgets.field_values_row.clone(),
@@ -294,6 +304,7 @@ impl ToolsPageState {
             },
         };
         state.initialize_select_page();
+        state.connect_select_page_handlers();
         state.connect_browser_handlers();
         state.connect_browser_keyboard_handlers();
         state
@@ -333,6 +344,24 @@ impl ToolsPageState {
         if let Some(pass_import_row) = self.select_page.pass_import_row.borrow().as_ref() {
             pass_import_row.refresh();
         }
+        self.render_select_page_search_results();
+    }
+
+    fn connect_select_page_handlers(&self) {
+        let search_entry = self.select_page.search_entry.clone();
+        self.select_page
+            .list
+            .set_filter_func(move |row| tool_search_matches_list_row(row, &search_entry));
+
+        let search_entry = self.select_page.search_entry.clone();
+        self.select_page
+            .logs_list
+            .set_filter_func(move |row| tool_search_matches_list_row(row, &search_entry));
+
+        let state = self.clone();
+        self.select_page
+            .search_entry
+            .connect_search_changed(move |_| state.render_select_page_search_results());
     }
 
     fn connect_browser_handlers(&self) {
@@ -494,19 +523,48 @@ impl ToolsPageState {
             },
         );
         self.sync_audit_tool_row(enabled);
+        self.render_select_page_search_results();
     }
 
     pub fn sync_action_availability(&self) {
         sync_tools_action_availability(&self.window);
     }
 
+    pub(super) fn close_select_dialog(&self) {}
+
     pub fn open(&self) {
         let chrome = self.navigation.window_chrome();
         show_secondary_page_chrome(&chrome, TOOLS_PAGE_TITLE, TOOLS_PAGE_SUBTITLE, false);
+        chrome.find.set_visible(true);
         self.refresh_select_page();
         reveal_navigation_page(&self.navigation.nav, &self.select_page.page);
+        if self.select_page.search_entry.is_visible() {
+            let _ = self.select_page.search_entry.grab_focus();
+            return;
+        }
         let _ = focus_first_keyboard_focusable_list_row(&self.select_page.list)
             || focus_first_keyboard_focusable_list_row(&self.select_page.logs_list);
+    }
+
+    fn render_select_page_search_results(&self) {
+        self.select_page.list.invalidate_filter();
+        self.select_page.logs_list.invalidate_filter();
+        self.sync_select_page_group_visibility();
+    }
+
+    fn sync_select_page_group_visibility(&self) {
+        let tools_visible = list_has_visible_rows(&self.select_page.list);
+        let information_visible = (supports_docs_features() || supports_logging_features())
+            && list_has_visible_rows(&self.select_page.logs_list);
+        let searching = tool_search_is_active(self.select_page.search_entry.text().as_str());
+
+        self.select_page.primary_group.set_visible(tools_visible);
+        self.select_page
+            .information_group
+            .set_visible(information_visible);
+        self.select_page
+            .empty_group
+            .set_visible(searching && !tools_visible && !information_visible);
     }
 }
 
@@ -631,6 +689,57 @@ fn set_window_action_enabled(window: &ApplicationWindow, name: &str, enabled: bo
         return;
     };
     action.set_enabled(enabled);
+}
+
+fn tool_search_matches_list_row(row: &ListBoxRow, search_entry: &SearchEntry) -> bool {
+    let query = normalized_tool_search_query(search_entry.text().as_str());
+    if query.is_empty() {
+        return true;
+    }
+
+    let action_row = row.clone().downcast::<ActionRow>().ok().or_else(|| {
+        row.child()
+            .and_then(|child| child.downcast::<ActionRow>().ok())
+    });
+    let Some(action_row) = action_row else {
+        return true;
+    };
+    let subtitle = action_row.subtitle();
+    tool_row_matches_query(action_row.title().as_str(), subtitle.as_deref(), &query)
+}
+
+fn tool_row_matches_query(title: &str, subtitle: Option<&str>, query: &str) -> bool {
+    let query = normalized_tool_search_query(query);
+    if query.is_empty() {
+        return true;
+    }
+
+    let title_matches = title.to_lowercase().contains(&query);
+    let subtitle_matches = subtitle
+        .map(|value| value.to_lowercase().contains(&query))
+        .unwrap_or(false);
+    title_matches || subtitle_matches
+}
+
+fn normalized_tool_search_query(query: &str) -> String {
+    query.trim().to_lowercase()
+}
+
+fn tool_search_is_active(query: &str) -> bool {
+    !normalized_tool_search_query(query).is_empty()
+}
+
+fn list_has_visible_rows(list: &ListBox) -> bool {
+    let mut index = 0;
+    loop {
+        let Some(row) = list.row_at_index(index) else {
+            return false;
+        };
+        if row.is_visible() {
+            return true;
+        }
+        index += 1;
+    }
 }
 
 pub fn sync_tools_action_availability(window: &ApplicationWindow) {

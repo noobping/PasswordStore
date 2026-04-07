@@ -12,11 +12,13 @@ use crate::password::list::{
 use crate::password::new_item::{register_open_new_password_action, NewPasswordDialogState};
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
+use crate::store::git_page::connect_store_git_controls;
 use crate::store::management::{
     connect_store_recipients_controls, initialize_store_import_page, rebuild_store_actions_list,
-    register_open_store_picker_action, register_store_recipients_reload_action,
-    register_store_recipients_save_action, StoreImportChrome, StoreImportControls,
-    StoreImportPageState, StoreImportPageWidgets, StoreRecipientsPageState,
+    register_open_store_picker_action, register_open_store_recipients_shortcut_actions,
+    register_store_recipients_reload_action, register_store_recipients_save_action,
+    StoreImportChrome, StoreImportControls, StoreImportPageState, StoreImportPageWidgets,
+    StoreRecipientsPageState,
 };
 use crate::support::actions::activate_widget_action;
 use crate::support::runtime::{
@@ -134,6 +136,7 @@ pub(super) fn assemble_preferences_page(
     preferences_action_state: &PreferencesActionState,
     tools_page_state: &DeferredState<ToolsPageState>,
 ) {
+    preferences_action_state.search.connect_handlers();
     initialize_backend_preferences(widgets, preferences);
 
     connect_new_password_template_autosave(
@@ -204,6 +207,7 @@ pub(super) fn assemble_store_recipients_page(
     widgets: &WindowWidgets,
     store_recipients_page_state: &StoreRecipientsPageState,
 ) {
+    store_recipients_page_state.search.connect_handlers();
     connect_store_recipients_controls(store_recipients_page_state);
     register_store_recipients_save_action(
         &widgets.window,
@@ -218,10 +222,13 @@ pub(super) fn assemble_store_recipients_page(
         &widgets.toast_overlay,
         store_recipients_page_state,
     );
+    register_open_store_recipients_shortcut_actions(&widgets.window, store_recipients_page_state);
 }
 
 pub(super) fn assemble_git_page(widgets: &WindowWidgets, git_action_state: &GitActionState) {
+    git_action_state.store_git_page.search.connect_handlers();
     let git_supported = supports_host_command_features();
+    connect_store_git_controls(&git_action_state.store_git_page);
     if git_supported {
         register_open_git_action(git_action_state);
         register_synchronize_action(git_action_state);
@@ -298,6 +305,13 @@ pub(super) fn register_window_navigation_actions(
         &widgets.find_button,
         &widgets.search_entry,
         &widgets.list,
+        &widgets.settings_search_entry,
+        &widgets.store_recipients_page,
+        &widgets.store_recipients_search_entry,
+        &widgets.store_git_page,
+        &widgets.store_git_search_entry,
+        &widgets.tools_search_entry,
+        &widgets.docs_search_entry,
         &widgets.tools_field_values_search_entry,
         &widgets.tools_value_values_search_entry,
         &widgets.tools_weak_passwords_search_entry,
@@ -375,7 +389,9 @@ fn connect_backend_preferences(
                     &preferences_action_state.page_state.window,
                     &preferences_action_state.overlay,
                     &preferences_action_state.recipients_page,
+                    None,
                 );
+                preferences_action_state.search.sync();
                 activate_widget_action(&window, "win.reload-store-recipients-list");
             }
         },

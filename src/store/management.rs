@@ -33,6 +33,7 @@ use adw::{ActionRow, ApplicationWindow, Toast, ToastOverlay};
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::rc::Rc;
 
 fn updated_stores_after_add(stores: &[String], new_store: &str) -> Option<Vec<String>> {
     if stores.iter().any(|store| store == new_store) {
@@ -53,6 +54,20 @@ fn updated_stores_after_delete(stores: &[String], store_to_remove: &str) -> Opti
 
 fn initial_recipients_for_store_creation(existing_recipients: Vec<String>) -> Vec<String> {
     existing_recipients
+}
+
+pub const NUMBERED_STORE_SHORTCUT_COUNT: usize = 6;
+
+fn configured_store_for_shortcut_slot(stores: &[String], slot: usize) -> Option<String> {
+    if !(1..=NUMBERED_STORE_SHORTCUT_COUNT).contains(&slot) {
+        return None;
+    }
+
+    stores.get(slot - 1).cloned()
+}
+
+pub(crate) fn configured_store_for_shortcut(slot: usize) -> Option<String> {
+    configured_store_for_shortcut_slot(&Preferences::new().stores(), slot)
 }
 
 fn open_store_folder_picker(
@@ -104,6 +119,7 @@ pub fn rebuild_store_list(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     match settings.prune_missing_stores() {
         Ok(true) => refresh_after_store_list_change(recipients_page),
@@ -113,7 +129,12 @@ pub fn rebuild_store_list(
         }
     }
 
-    rebuild_stores_list(stores_list, settings, recipients_page);
+    rebuild_stores_list(
+        stores_list,
+        settings,
+        recipients_page,
+        before_navigation.clone(),
+    );
     rebuild_store_actions_list(
         actions_list,
         stores_list,
@@ -121,6 +142,7 @@ pub fn rebuild_store_list(
         window,
         overlay,
         recipients_page,
+        before_navigation,
     );
 }
 
@@ -133,6 +155,7 @@ pub fn rebuild_stores_list(
     stores_list: &ListBox,
     settings: &Preferences,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     clear_list_box(stores_list);
 
@@ -143,7 +166,13 @@ pub fn rebuild_stores_list(
     }
 
     for store in &stores {
-        append_store_row(stores_list, settings, store, recipients_page);
+        append_store_row(
+            stores_list,
+            settings,
+            store,
+            recipients_page,
+            before_navigation.clone(),
+        );
     }
 }
 
@@ -163,6 +192,7 @@ pub fn rebuild_store_actions_list(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     clear_list_box(actions_list);
 
@@ -173,6 +203,7 @@ pub fn rebuild_store_actions_list(
         window,
         overlay,
         recipients_page,
+        before_navigation.clone(),
     );
     append_store_clone_row(
         actions_list,
@@ -181,6 +212,7 @@ pub fn rebuild_store_actions_list(
         window,
         overlay,
         recipients_page,
+        before_navigation,
     );
 }
 
@@ -189,6 +221,7 @@ fn append_store_row(
     settings: &Preferences,
     store: &str,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     let store_supported = store_is_supported_in_current_build(store);
     let row = ActionRow::builder()
@@ -215,8 +248,12 @@ fn append_store_row(
     let recipients_page_for_edit = recipients_page.clone();
     let recipients_page_for_delete = recipients_page.clone();
     let store_for_edit = store.clone();
+    let before_navigation_for_edit = before_navigation.clone();
 
     row.connect_activated(move |_| {
+        if let Some(before_navigation) = &before_navigation_for_edit {
+            before_navigation();
+        }
         show_store_recipients_edit_page(&recipients_page_for_edit, &store_for_edit);
     });
 
@@ -225,7 +262,12 @@ fn append_store_row(
             if let Err(err) = settings.set_stores(stores) {
                 log_error(format!("Failed to save stores: {err}"));
             } else {
-                rebuild_stores_list(&list, &settings, &recipients_page_for_delete);
+                rebuild_stores_list(
+                    &list,
+                    &settings,
+                    &recipients_page_for_delete,
+                    before_navigation.clone(),
+                );
                 refresh_after_store_list_change(&recipients_page_for_delete);
             }
         }
@@ -239,24 +281,30 @@ fn append_store_picker_row(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     let settings = settings.clone();
     let window = window.clone();
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
     let stores_list_for_action = stores_list.clone();
+    let before_navigation_for_action = before_navigation.clone();
     append_action_row_with_button(
         list,
         "Add or create store",
         "Choose a folder. If it is empty, it becomes a store.",
         "folder-new-symbolic",
         move || {
+            if let Some(before_navigation) = &before_navigation_for_action {
+                before_navigation();
+            }
             prompt_add_or_create_store(
                 &window,
                 &stores_list_for_action,
                 &settings,
                 &overlay,
                 &recipients_page,
+                before_navigation.clone(),
             );
         },
     );
@@ -268,6 +316,7 @@ pub fn prompt_add_or_create_store(
     settings: &Preferences,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     let stores_list = stores_list.clone();
     let settings = settings.clone();
@@ -305,7 +354,12 @@ pub fn prompt_add_or_create_store(
                         store_added = true;
                     }
 
-                    rebuild_stores_list(&stores_list, &settings, &recipients_page);
+                    rebuild_stores_list(
+                        &stores_list,
+                        &settings,
+                        &recipients_page,
+                        before_navigation.clone(),
+                    );
                     show_store_recipients_edit_page(&recipients_page, &store);
                     if store_added {
                         refresh_after_store_list_change(&recipients_page);
@@ -340,14 +394,37 @@ pub fn register_open_store_picker_action(
             &settings,
             &overlay,
             &recipients_page,
+            None,
         );
     });
+}
+
+pub fn register_open_store_recipients_shortcut_actions(
+    window: &ApplicationWindow,
+    recipients_page: &StoreRecipientsPageState,
+) {
+    for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+        let action_window = window.clone();
+        let recipients_page = recipients_page.clone();
+        register_window_action(
+            &action_window,
+            &format!("open-store-recipients-{slot}"),
+            move || {
+                let Some(store) = configured_store_for_shortcut(slot) else {
+                    return;
+                };
+
+                show_store_recipients_edit_page(&recipients_page, store);
+            },
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        empty_store_list_text, initial_recipients_for_store_creation, selected_store_folder_mode,
+        configured_store_for_shortcut_slot, empty_store_list_text,
+        initial_recipients_for_store_creation, selected_store_folder_mode,
         updated_stores_after_add, updated_stores_after_delete, SelectedStoreFolderMode,
     };
 
@@ -407,5 +484,29 @@ mod tests {
             empty_store_list_text(),
             ("No password stores", "Add a folder.")
         );
+    }
+
+    #[test]
+    fn numbered_store_shortcuts_follow_the_first_six_configured_stores() {
+        let stores = vec![
+            "/tmp/one".to_string(),
+            "/tmp/two".to_string(),
+            "/tmp/three".to_string(),
+            "/tmp/four".to_string(),
+            "/tmp/five".to_string(),
+            "/tmp/six".to_string(),
+            "/tmp/seven".to_string(),
+        ];
+
+        assert_eq!(
+            configured_store_for_shortcut_slot(&stores, 1),
+            Some("/tmp/one".to_string())
+        );
+        assert_eq!(
+            configured_store_for_shortcut_slot(&stores, 6),
+            Some("/tmp/six".to_string())
+        );
+        assert_eq!(configured_store_for_shortcut_slot(&stores, 0), None);
+        assert_eq!(configured_store_for_shortcut_slot(&stores, 7), None);
     }
 }

@@ -9,12 +9,12 @@ use crate::i18n::gettext;
 use crate::store::git_page::StoreGitPageState;
 use crate::support::actions::register_window_action;
 use crate::support::ui::{
-    focus_first_matching_list_row_in_order, list_row_is_keyboard_focusable, reveal_navigation_page,
+    focus_first_preferences_group_child_in_order, reveal_navigation_page,
+    visible_navigation_page_is,
 };
-use crate::window::navigation::{
-    set_save_button_for_password, show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE,
-};
-use adw::gtk::{Button, CheckButton, ListBox, ScrolledWindow, Stack};
+use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
+use crate::window::preferences_search::PreferencesPageSearchState;
+use adw::gtk::{Button, CheckButton, ScrolledWindow, Stack, Widget};
 use adw::prelude::*;
 use adw::{
     ActionRow, ApplicationWindow, ComboRow, Dialog, EntryRow, NavigationPage, NavigationView,
@@ -96,7 +96,9 @@ pub struct StoreRecipientsPageState {
     pub window: ApplicationWindow,
     pub nav: NavigationView,
     pub page: NavigationPage,
-    pub list: ListBox,
+    pub back_row: ActionRow,
+    pub search: PreferencesPageSearchState,
+    pub list: PreferencesGroup,
     pub platform: StoreRecipientsPlatformState,
     pub back: Button,
     pub add: Button,
@@ -118,28 +120,31 @@ pub struct StoreRecipientsPageState {
     pub additional_fido2_save_guide_dialog: Rc<RefCell<Option<Dialog>>>,
     pub(crate) fido2_save_progress_dialog:
         Rc<RefCell<Option<StoreRecipientsSaveProgressDialogHandle>>>,
+    pub(crate) reopen_after_subpage: Rc<Cell<bool>>,
+    pub(crate) key_rows: Rc<RefCell<Vec<Widget>>>,
+    pub(crate) git_rows: Rc<RefCell<Vec<Widget>>>,
 }
 
 #[derive(Clone)]
 pub struct StoreRecipientsPlatformState {
     pub overlay: ToastOverlay,
     pub host_gpg_warning_group: PreferencesGroup,
-    pub host_gpg_warning_list: ListBox,
+    pub host_gpg_warning_list: PreferencesGroup,
     pub host_gpg_warning_row: ActionRow,
     pub fido2_info_group: PreferencesGroup,
-    pub fido2_info_list: ListBox,
+    pub fido2_info_list: PreferencesGroup,
     pub scope_group: PreferencesGroup,
     pub keys_group: PreferencesGroup,
-    pub scope_list: ListBox,
+    pub scope_list: PreferencesGroup,
     pub add_group: PreferencesGroup,
-    pub add_list: ListBox,
+    pub add_list: PreferencesGroup,
     pub create_group: PreferencesGroup,
-    pub create_list: ListBox,
+    pub create_list: PreferencesGroup,
     pub options_group: PreferencesGroup,
-    pub options_list: ListBox,
+    pub options_list: PreferencesGroup,
     pub scope_row: ComboRow,
     pub git_group: PreferencesGroup,
-    pub git_list: ListBox,
+    pub git_list: PreferencesGroup,
     pub setup_hardware_key_row: ActionRow,
     pub add_hardware_key_row: ActionRow,
     pub add_fido2_key_row: ActionRow,
@@ -188,7 +193,7 @@ impl StoreRecipientsPageState {
     }
 }
 
-fn ordered_store_recipients_lists(state: &StoreRecipientsPageState) -> [ListBox; 8] {
+fn ordered_store_recipients_lists(state: &StoreRecipientsPageState) -> [PreferencesGroup; 8] {
     [
         state.platform.host_gpg_warning_list.clone(),
         state.platform.fido2_info_list.clone(),
@@ -199,6 +204,28 @@ fn ordered_store_recipients_lists(state: &StoreRecipientsPageState) -> [ListBox;
         state.platform.options_list.clone(),
         state.platform.git_list.clone(),
     ]
+}
+
+pub fn present_store_recipients_dialog(state: &StoreRecipientsPageState) {
+    sync_store_recipients_page_header(state);
+    reveal_navigation_page(&state.nav, &state.page);
+    let _ = focus_first_preferences_group_child_in_order(&ordered_store_recipients_lists(state));
+}
+
+pub fn handle_store_recipients_subpage_back(state: &StoreRecipientsPageState) -> bool {
+    if !visible_navigation_page_is(&state.nav, &state.platform.private_key_generation_page)
+        && !visible_navigation_page_is(&state.nav, &state.platform.hardware_key_generation_page)
+    {
+        return false;
+    }
+
+    state.nav.pop();
+    if state.reopen_after_subpage.replace(false) {
+        present_store_recipients_dialog(state);
+    } else {
+        sync_store_recipients_page_header(state);
+    }
+    true
 }
 
 pub(super) fn load_store_recipients_scope(
@@ -224,6 +251,8 @@ pub(super) fn load_store_recipients_scope(
 }
 
 pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
+    state.back_row.set_visible(false);
+
     import::connect_private_key_import_controls(state);
     import::connect_hardware_key_generation_autofill(state);
     import::connect_hardware_key_generation_submit(state);
@@ -237,6 +266,7 @@ pub fn connect_store_recipients_controls(state: &StoreRecipientsPageState) {
 
 pub fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     list::rebuild_store_recipients_list(state);
+    state.search.sync();
 }
 
 pub fn register_store_recipients_reload_action(
@@ -254,17 +284,17 @@ pub fn register_store_recipients_reload_action(
 }
 
 pub fn sync_store_recipients_page_header(state: &StoreRecipientsPageState) {
+    let chrome = state.window_chrome();
     let Some(request) = state.current_request() else {
-        state.save.set_visible(false);
-        set_save_button_for_password(&state.save);
-        state.win.set_title(&gettext("Store keys"));
-        state.win.set_subtitle(&gettext(APP_WINDOW_TITLE));
+        state.page.set_title(&gettext("Store keys"));
+        show_secondary_page_chrome(&chrome, "Store keys", APP_WINDOW_TITLE, false);
+        chrome.find.set_visible(true);
         return;
     };
 
-    let chrome = state.window_chrome();
-    show_secondary_page_chrome(&chrome, request.mode.page_title(), &request.store, false);
     state.page.set_title(&gettext(request.mode.page_title()));
+    show_secondary_page_chrome(&chrome, request.mode.page_title(), &request.store, false);
+    chrome.find.set_visible(true);
 }
 
 fn show_store_recipients_page(
@@ -285,20 +315,13 @@ fn show_store_recipients_page(
         .set(private_key_requirement);
     state.save_in_flight.set(false);
     state.save_queued.set(false);
+    state.reopen_after_subpage.set(false);
     state.platform.add_group.set_visible(true);
     state.platform.create_group.set_visible(true);
     state.platform.options_group.set_visible(true);
     rebuild_store_recipients_list(state);
-    sync_store_recipients_page_header(state);
-
-    if !reveal_navigation_page(&state.nav, &state.page) {
-        return;
-    }
-
-    let _ = focus_first_matching_list_row_in_order(
-        &ordered_store_recipients_lists(state),
-        list_row_is_keyboard_focusable,
-    );
+    state.search.sync();
+    present_store_recipients_dialog(state);
 
     if mode.creates_store() {
         queue_store_recipients_autosave(state);

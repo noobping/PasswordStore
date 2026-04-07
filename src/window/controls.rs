@@ -11,11 +11,13 @@ use crate::password::undo::{
     undo_action_restored_entry,
 };
 use crate::store::git_page::StoreGitPageState;
-use crate::store::management::StoreRecipientsPageState;
+use crate::store::management::{StoreRecipientsPageState, NUMBERED_STORE_SHORTCUT_COUNT};
+use crate::store::recipients_page::handle_store_recipients_subpage_back;
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::background::spawn_result_task;
 use crate::support::runtime::{
-    has_host_permission, supports_docs_features, supports_logging_features,
+    has_host_permission, supports_docs_features, supports_host_command_features,
+    supports_logging_features,
 };
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
 use crate::window::git::{handle_git_busy_back, GitActionState};
@@ -349,6 +351,13 @@ pub fn register_toggle_find_action(
     find_button: &Button,
     search_entry: &SearchEntry,
     list: &ListBox,
+    settings_search_entry: &SearchEntry,
+    store_recipients_page: &NavigationPage,
+    store_recipients_search_entry: &SearchEntry,
+    store_git_page: &NavigationPage,
+    store_git_search_entry: &SearchEntry,
+    tools_search_entry: &SearchEntry,
+    docs_search_entry: &SearchEntry,
     field_search_entry: &SearchEntry,
     value_search_entry: &SearchEntry,
     weak_password_search_entry: &SearchEntry,
@@ -359,11 +368,43 @@ pub fn register_toggle_find_action(
     let find_button = find_button.clone();
     let search_entry = search_entry.clone();
     let list = list.clone();
+    let settings_search_entry = settings_search_entry.clone();
+    let store_recipients_page = store_recipients_page.clone();
+    let store_recipients_search_entry = store_recipients_search_entry.clone();
+    let store_git_page = store_git_page.clone();
+    let store_git_search_entry = store_git_search_entry.clone();
+    let tools_search_entry = tools_search_entry.clone();
+    let docs_search_entry = docs_search_entry.clone();
     let field_search_entry = field_search_entry.clone();
     let value_search_entry = value_search_entry.clone();
     let weak_password_search_entry = weak_password_search_entry.clone();
     let audit_search_entry = audit_search_entry.clone();
     register_window_action(window, "toggle-find", move || {
+        if visible_navigation_page_is(&navigation.nav, &navigation.settings_page) {
+            toggle_tool_search_entry(&find_button, &settings_search_entry);
+            return;
+        }
+
+        if visible_navigation_page_is(&navigation.nav, &store_recipients_page) {
+            toggle_tool_search_entry(&find_button, &store_recipients_search_entry);
+            return;
+        }
+
+        if visible_navigation_page_is(&navigation.nav, &store_git_page) {
+            toggle_tool_search_entry(&find_button, &store_git_search_entry);
+            return;
+        }
+
+        if visible_navigation_page_is(&navigation.nav, &navigation.docs_page) {
+            toggle_tool_search_entry(&find_button, &docs_search_entry);
+            return;
+        }
+
+        if visible_navigation_page_is(&navigation.nav, &navigation.tools_page) {
+            toggle_tool_search_entry(&find_button, &tools_search_entry);
+            return;
+        }
+
         if visible_navigation_page_is(&navigation.nav, &navigation.tools_field_values_page) {
             toggle_tool_search_entry(&find_button, &field_search_entry);
             return;
@@ -476,6 +517,9 @@ pub fn register_back_action(window: &adw::ApplicationWindow, state: &BackActionS
         if before_back_action(&state.platform) {
             return;
         }
+        if handle_store_recipients_subpage_back(&state.recipients_page) {
+            return;
+        }
 
         state.navigation.nav.pop();
         if restore_window_for_current_page(
@@ -530,6 +574,21 @@ pub fn configure_window_shortcuts(app: &Application) {
     app.set_accels_for_action("win.open-git", &["<primary>g"]);
     app.set_accels_for_action("win.open-preferences", &["<primary>comma"]);
     app.set_accels_for_action("win.open-tools", &["<primary>t"]);
+
+    for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+        let recipients_action = format!("win.open-store-recipients-{slot}");
+        let recipients_accel = format!("<primary>{slot}");
+        app.set_accels_for_action(&recipients_action, &[recipients_accel.as_str()]);
+    }
+
+    if supports_host_command_features() {
+        for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+            let git_action = format!("win.open-store-git-{slot}");
+            let git_accel = format!("<primary><alt>{slot}");
+            app.set_accels_for_action(&git_action, &[git_accel.as_str()]);
+        }
+    }
+
     if supports_docs_features() {
         app.set_accels_for_action("win.open-docs", &["<primary><shift>d"]);
     }

@@ -6,7 +6,7 @@ use crate::support::runtime::{
     supports_smartcard_features,
 };
 use crate::window::host_access::{
-    append_optional_fido2_access_row, append_optional_smartcard_access_row,
+    append_optional_fido2_access_group_row, append_optional_smartcard_access_group_row,
 };
 use adw::prelude::*;
 
@@ -126,7 +126,7 @@ pub(super) fn sync_store_recipients_mode_controls(
         .add_fido2_key_row
         .set_visible(show_fido2_rows && fidostore_supported);
 
-    append_optional_smartcard_access_row(
+    append_optional_smartcard_access_group_row(
         &state.platform.add_list,
         &state.platform.overlay,
         &[
@@ -136,7 +136,7 @@ pub(super) fn sync_store_recipients_mode_controls(
         ],
         show_standard_rows && smartcard_supported && hardwarekey_supported,
     );
-    append_optional_fido2_access_row(
+    append_optional_fido2_access_group_row(
         &state.platform.add_list,
         &state.platform.overlay,
         &[

@@ -14,11 +14,13 @@ use crate::support::runtime::has_host_permission;
 use crate::support::runtime::{supports_audit_features, supports_host_command_features};
 use crate::support::ui::{
     connect_entry_row_apply_button_to_nonempty_text, focus_first_matching_list_row_in_order,
-    list_row_is_keyboard_focusable, push_navigation_page_if_needed,
+    list_row_is_keyboard_focusable, reveal_navigation_page,
 };
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowPageState, APP_WINDOW_TITLE,
 };
+use crate::window::preferences_search::PreferencesPageSearchState;
+use adw::glib;
 use adw::gtk::{CheckButton, ListBox, TextView};
 use adw::prelude::*;
 use adw::{ActionRow, AlertDialog, ComboRow, EntryRow};
@@ -417,6 +419,53 @@ fn refresh_open_preferences_state(state: &PreferencesActionState, settings: &Pre
     );
 }
 
+fn refresh_preferences_page(state: &PreferencesActionState) {
+    let settings = Preferences::new();
+    refresh_open_preferences_state(state, &settings);
+    sync_username_fallback_checks(
+        &state.username_folder_check,
+        &state.username_filename_check,
+        settings.username_fallback_mode(),
+    );
+    sync_password_generation_controls(
+        &state.generator_controls,
+        &settings.password_generation_settings(),
+    );
+    state
+        .template_view
+        .buffer()
+        .set_text(&settings.new_pass_file_template());
+    rebuild_store_list(
+        &state.stores_list,
+        &state.store_actions_list,
+        &settings,
+        &state.page_state.window,
+        &state.overlay,
+        &state.recipients_page,
+        None,
+    );
+    state.search.sync();
+}
+
+fn show_preferences_page(state: &PreferencesActionState) {
+    refresh_preferences_page(state);
+    let chrome = state.page_state.window_chrome();
+    show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
+    chrome.find.set_visible(true);
+    reveal_navigation_page(&state.page_state.nav, &state.page_state.page);
+
+    let state = state.clone();
+    glib::idle_add_local_once(move || {
+        if !focus_first_matching_list_row_in_order(
+            &[state.stores_list.clone(), state.store_actions_list.clone()],
+            list_row_is_keyboard_focusable,
+        ) && state.backend_row.is_visible()
+        {
+            let _ = state.backend_row.grab_focus();
+        }
+    });
+}
+
 pub(super) fn toast_preferences_save_error(
     overlay: &ToastOverlay,
     context: &str,
@@ -432,6 +481,7 @@ pub(super) fn toast_preferences_save_error(
 #[derive(Clone)]
 pub struct PreferencesActionState {
     pub page_state: WindowPageState,
+    pub search: PreferencesPageSearchState,
     pub template_view: TextView,
     pub clear_empty_fields_before_save_row: ActionRow,
     pub clear_empty_fields_before_save_check: CheckButton,
@@ -699,41 +749,7 @@ pub fn register_open_preferences_action(
 ) {
     let state = state.clone();
     register_window_action(window, "open-preferences", move || {
-        let chrome = state.page_state.window_chrome();
-        show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
-
-        push_navigation_page_if_needed(&state.page_state.nav, &state.page_state.page);
-
-        let settings = Preferences::new();
-        refresh_open_preferences_state(&state, &settings);
-        sync_username_fallback_checks(
-            &state.username_folder_check,
-            &state.username_filename_check,
-            settings.username_fallback_mode(),
-        );
-        sync_password_generation_controls(
-            &state.generator_controls,
-            &settings.password_generation_settings(),
-        );
-        state
-            .template_view
-            .buffer()
-            .set_text(&settings.new_pass_file_template());
-        rebuild_store_list(
-            &state.stores_list,
-            &state.store_actions_list,
-            &settings,
-            &state.page_state.window,
-            &state.overlay,
-            &state.recipients_page,
-        );
-        if !focus_first_matching_list_row_in_order(
-            &[state.stores_list.clone(), state.store_actions_list.clone()],
-            list_row_is_keyboard_focusable,
-        ) && state.backend_row.is_visible()
-        {
-            state.backend_row.grab_focus();
-        }
+        show_preferences_page(&state);
     });
 }
 

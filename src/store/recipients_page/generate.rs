@@ -1,7 +1,9 @@
 use super::list::rebuild_store_recipients_list;
 use super::mode::ensure_standard_recipient_actions_allowed;
 use super::sync::sync_private_keys_to_host_if_enabled;
-use super::{sync_store_recipients_page_header, StoreRecipientsPageState};
+use super::{
+    present_store_recipients_dialog, sync_store_recipients_page_header, StoreRecipientsPageState,
+};
 use crate::backend::{
     generate_fido2_private_key, generate_ripasso_private_key, set_fido2_security_key_pin,
     supports_first_time_fido2_pin_setup, ManagedRipassoPrivateKey, PrivateKeyError,
@@ -19,16 +21,11 @@ use crate::support::ui::{
     connect_row_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use crate::support::validation::validate_email_address;
-use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::prelude::*;
 use adw::Toast;
 use secrecy::{ExposeSecret, SecretString};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
-const PRIVATE_KEY_GENERATION_TITLE: &str = "Generate private key";
-const PRIVATE_KEY_GENERATION_SUBTITLE: &str =
-    "Create a password-protected private key for password stores.";
 
 #[derive(Clone, Debug)]
 struct PrivateKeyGenerationRequest {
@@ -350,7 +347,11 @@ fn pop_private_key_generation_page_if_visible(state: &StoreRecipientsPageState) 
     }
 
     state.nav.pop();
-    sync_store_recipients_page_header(state);
+    if state.reopen_after_subpage.replace(false) {
+        present_store_recipients_dialog(state);
+    } else {
+        sync_store_recipients_page_header(state);
+    }
 }
 
 fn show_private_key_generation_page(state: &StoreRecipientsPageState) {
@@ -358,13 +359,7 @@ fn show_private_key_generation_page(state: &StoreRecipientsPageState) {
         return;
     }
 
-    let chrome = state.window_chrome();
-    show_secondary_page_chrome(
-        &chrome,
-        PRIVATE_KEY_GENERATION_TITLE,
-        PRIVATE_KEY_GENERATION_SUBTITLE,
-        false,
-    );
+    state.reopen_after_subpage.set(true);
     push_navigation_page_if_needed(&state.nav, &state.platform.private_key_generation_page);
 
     if state.platform.private_key_generation_in_flight.get() {

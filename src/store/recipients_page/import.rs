@@ -6,7 +6,8 @@ use super::mode::{
 };
 use super::sync::sync_private_keys_to_host_if_enabled;
 use super::{
-    queue_store_recipients_autosave, sync_store_recipients_page_header, StoreRecipientsPageState,
+    present_store_recipients_dialog, queue_store_recipients_autosave,
+    sync_store_recipients_page_header, StoreRecipientsPageState,
 };
 use crate::backend::{
     create_fido2_store_recipient, discover_ripasso_hardware_keys,
@@ -30,7 +31,6 @@ use crate::support::ui::{
     connect_row_action, push_navigation_page_if_needed, visible_navigation_page_is,
 };
 use crate::support::validation::validate_email_address;
-use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
 use adw::gio;
 use adw::gtk::gdk::Display;
 use adw::prelude::*;
@@ -120,10 +120,6 @@ fn finish_hardware_key_import(
         }
     }
 }
-
-const HARDWARE_KEY_GENERATION_TITLE: &str = "Set up new hardware key";
-const HARDWARE_KEY_GENERATION_SUBTITLE: &str =
-    "Create a new OpenPGP key on the connected hardware token.";
 
 #[derive(Clone, Debug)]
 struct HardwareKeyGenerationPageRequest {
@@ -516,7 +512,11 @@ fn pop_hardware_key_generation_page_if_visible(state: &StoreRecipientsPageState)
     }
 
     state.nav.pop();
-    sync_store_recipients_page_header(state);
+    if state.reopen_after_subpage.replace(false) {
+        present_store_recipients_dialog(state);
+    } else {
+        sync_store_recipients_page_header(state);
+    }
 }
 
 fn finish_hardware_key_generation(
@@ -548,13 +548,7 @@ fn show_hardware_key_generation_page(
     state: &StoreRecipientsPageState,
     token: DiscoveredHardwareToken,
 ) {
-    let chrome = state.window_chrome();
-    show_secondary_page_chrome(
-        &chrome,
-        HARDWARE_KEY_GENERATION_TITLE,
-        HARDWARE_KEY_GENERATION_SUBTITLE,
-        false,
-    );
+    state.reopen_after_subpage.set(true);
     push_navigation_page_if_needed(&state.nav, &state.platform.hardware_key_generation_page);
     state
         .platform

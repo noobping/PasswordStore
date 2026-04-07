@@ -6,11 +6,11 @@ use adw::gtk::{
     ScrolledWindow, SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
 };
 use adw::ActionRow;
-use adw::PreferencesGroup;
 use adw::{
     ApplicationWindow, ComboRow, EntryRow, NavigationPage, NavigationView, PasswordEntryRow,
     StatusPage, ToastOverlay, WindowTitle,
 };
+use adw::{PreferencesGroup, PreferencesPage};
 
 #[derive(Clone)]
 pub(in crate::window) struct WindowWidgets {
@@ -31,7 +31,19 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) save_button: Button,
     pub(in crate::window) toast_overlay: ToastOverlay,
     pub(in crate::window) settings_page: NavigationPage,
+    pub(in crate::window) settings_search_entry: SearchEntry,
+    pub(in crate::window) settings_preferences_page: PreferencesPage,
+    pub(in crate::window) settings_search_empty_group: PreferencesGroup,
+    pub(in crate::window) settings_store_list_group: PreferencesGroup,
+    pub(in crate::window) settings_store_actions_group: PreferencesGroup,
+    pub(in crate::window) settings_username_group: PreferencesGroup,
+    pub(in crate::window) settings_password_list_group: PreferencesGroup,
+    pub(in crate::window) settings_template_group: PreferencesGroup,
+    pub(in crate::window) settings_clear_empty_fields_group: PreferencesGroup,
+    pub(in crate::window) settings_generator_group: PreferencesGroup,
     pub(in crate::window) tools_page: NavigationPage,
+    pub(in crate::window) tools_search_entry: SearchEntry,
+    pub(in crate::window) tools_primary_group: PreferencesGroup,
     pub(in crate::window) tools_list: ListBox,
     pub(in crate::window) tools_field_values_row: ActionRow,
     pub(in crate::window) tools_field_values_suffix_stack: Stack,
@@ -46,6 +58,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) tools_audit_suffix_arrow: Image,
     pub(in crate::window) tools_audit_spinner: Spinner,
     pub(in crate::window) tools_information_group: PreferencesGroup,
+    pub(in crate::window) tools_search_empty_group: PreferencesGroup,
     pub(in crate::window) tools_logs_list: ListBox,
     pub(in crate::window) tools_docs_row: ActionRow,
     pub(in crate::window) tools_logs_row: ActionRow,
@@ -86,24 +99,28 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_import_target_path_row: EntryRow,
     pub(in crate::window) store_import_button: Button,
     pub(in crate::window) store_recipients_page: NavigationPage,
+    pub(in crate::window) store_recipients_search_entry: SearchEntry,
+    pub(in crate::window) store_recipients_preferences_page: PreferencesPage,
+    pub(in crate::window) store_recipients_back_row: ActionRow,
+    pub(in crate::window) store_recipients_search_empty_group: PreferencesGroup,
     pub(in crate::window) store_recipients_host_gpg_warning_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_host_gpg_warning_list: ListBox,
+    pub(in crate::window) store_recipients_host_gpg_warning_list: PreferencesGroup,
     pub(in crate::window) store_recipients_host_gpg_warning_row: ActionRow,
     pub(in crate::window) store_recipients_fido2_info_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_fido2_info_list: ListBox,
+    pub(in crate::window) store_recipients_fido2_info_list: PreferencesGroup,
     pub(in crate::window) store_recipients_scope_group: PreferencesGroup,
     pub(in crate::window) store_recipients_keys_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_scope_list: ListBox,
-    pub(in crate::window) store_recipients_list: ListBox,
+    pub(in crate::window) store_recipients_scope_list: PreferencesGroup,
+    pub(in crate::window) store_recipients_list: PreferencesGroup,
     pub(in crate::window) store_recipients_add_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_add_list: ListBox,
+    pub(in crate::window) store_recipients_add_list: PreferencesGroup,
     pub(in crate::window) store_recipients_create_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_create_list: ListBox,
+    pub(in crate::window) store_recipients_create_list: PreferencesGroup,
     pub(in crate::window) store_recipients_options_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_options_list: ListBox,
+    pub(in crate::window) store_recipients_options_list: PreferencesGroup,
     pub(in crate::window) store_recipients_scope_row: ComboRow,
     pub(in crate::window) store_recipients_git_group: PreferencesGroup,
-    pub(in crate::window) store_recipients_git_list: ListBox,
+    pub(in crate::window) store_recipients_git_list: PreferencesGroup,
     pub(in crate::window) store_recipients_setup_hardware_key_row: ActionRow,
     pub(in crate::window) store_recipients_add_hardware_key_row: ActionRow,
     pub(in crate::window) store_recipients_add_fido2_key_row: ActionRow,
@@ -116,9 +133,14 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) store_recipients_all_fido2_keys_required_row: ActionRow,
     pub(in crate::window) store_recipients_require_all_check: CheckButton,
     pub(in crate::window) store_git_page: NavigationPage,
-    pub(in crate::window) store_git_remotes_list: ListBox,
-    pub(in crate::window) store_git_actions_list: ListBox,
-    pub(in crate::window) store_git_status_list: ListBox,
+    pub(in crate::window) store_git_search_entry: SearchEntry,
+    pub(in crate::window) store_git_preferences_page: PreferencesPage,
+    pub(in crate::window) store_git_back_row: ActionRow,
+    pub(in crate::window) store_git_search_empty_group: PreferencesGroup,
+    pub(in crate::window) store_git_remotes_list: PreferencesGroup,
+    pub(in crate::window) store_git_actions_list: PreferencesGroup,
+    pub(in crate::window) store_git_status_list: PreferencesGroup,
+    pub(in crate::window) store_git_access_list: PreferencesGroup,
     pub(in crate::window) private_key_generation_page: NavigationPage,
     pub(in crate::window) private_key_generation_stack: Stack,
     pub(in crate::window) private_key_generation_form: ScrolledWindow,
@@ -189,6 +211,15 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) sync_private_keys_with_host_check: CheckButton,
     pub(in crate::window) audit_use_commit_history_recipients_row: ActionRow,
     pub(in crate::window) audit_use_commit_history_recipients_check: CheckButton,
+    pub(in crate::window) preferences_username_filename_row: ActionRow,
+    pub(in crate::window) preferences_username_folder_row: ActionRow,
+    pub(in crate::window) preferences_password_list_sort_filename_row: ActionRow,
+    pub(in crate::window) preferences_password_list_sort_store_path_row: ActionRow,
+    pub(in crate::window) preferences_password_generator_length_row: ActionRow,
+    pub(in crate::window) preferences_password_generator_min_lowercase_row: ActionRow,
+    pub(in crate::window) preferences_password_generator_min_uppercase_row: ActionRow,
+    pub(in crate::window) preferences_password_generator_min_numbers_row: ActionRow,
+    pub(in crate::window) preferences_password_generator_min_symbols_row: ActionRow,
     pub(in crate::window) git_busy_page: NavigationPage,
     pub(in crate::window) git_busy_status: StatusPage,
     pub(in crate::window) git_busy_show_logs_button: Button,
@@ -225,7 +256,19 @@ impl WindowWidgets {
             save_button: required!("save_button"),
             toast_overlay: required!("toast_overlay"),
             settings_page: required!("settings_page"),
+            settings_search_entry: required!("settings_search_entry"),
+            settings_preferences_page: required!("settings_preferences_page"),
+            settings_search_empty_group: required!("settings_search_empty_group"),
+            settings_store_list_group: required!("settings_store_list_group"),
+            settings_store_actions_group: required!("settings_store_actions_group"),
+            settings_username_group: required!("settings_username_group"),
+            settings_password_list_group: required!("settings_password_list_group"),
+            settings_template_group: required!("settings_template_group"),
+            settings_clear_empty_fields_group: required!("settings_clear_empty_fields_group"),
+            settings_generator_group: required!("settings_generator_group"),
             tools_page: required!("tools_page"),
+            tools_search_entry: required!("tools_search_entry"),
+            tools_primary_group: required!("tools_primary_group"),
             tools_list: required!("tools_list"),
             tools_field_values_row: required!("tools_field_values_row"),
             tools_field_values_suffix_stack: required!("tools_field_values_suffix_stack"),
@@ -240,6 +283,7 @@ impl WindowWidgets {
             tools_audit_suffix_arrow: required!("tools_audit_suffix_arrow"),
             tools_audit_spinner: required!("tools_audit_spinner"),
             tools_information_group: required!("tools_information_group"),
+            tools_search_empty_group: required!("tools_search_empty_group"),
             tools_logs_list: required!("tools_logs_list"),
             tools_docs_row: required!("tools_docs_row"),
             tools_logs_row: required!("tools_logs_row"),
@@ -280,30 +324,34 @@ impl WindowWidgets {
             store_import_target_path_row: required!("store_import_target_path_row"),
             store_import_button: required!("store_import_button"),
             store_recipients_page: required!("store_recipients_page"),
+            store_recipients_search_entry: required!("store_recipients_search_entry"),
+            store_recipients_preferences_page: required!("store_recipients_preferences_page"),
+            store_recipients_back_row: required!("store_recipients_back_row"),
+            store_recipients_search_empty_group: required!("store_recipients_search_empty_group"),
             store_recipients_host_gpg_warning_group: required!(
                 "store_recipients_host_gpg_warning_group"
             ),
             store_recipients_host_gpg_warning_list: required!(
-                "store_recipients_host_gpg_warning_list"
+                "store_recipients_host_gpg_warning_group"
             ),
             store_recipients_host_gpg_warning_row: required!(
                 "store_recipients_host_gpg_warning_row"
             ),
             store_recipients_fido2_info_group: required!("store_recipients_fido2_info_group"),
-            store_recipients_fido2_info_list: required!("store_recipients_fido2_info_list"),
+            store_recipients_fido2_info_list: required!("store_recipients_fido2_info_group"),
             store_recipients_scope_group: required!("store_recipients_scope_group"),
             store_recipients_keys_group: required!("store_recipients_keys_group"),
-            store_recipients_scope_list: required!("store_recipients_scope_list"),
-            store_recipients_list: required!("store_recipients_list"),
+            store_recipients_scope_list: required!("store_recipients_scope_group"),
+            store_recipients_list: required!("store_recipients_keys_group"),
             store_recipients_add_group: required!("store_recipients_add_group"),
-            store_recipients_add_list: required!("store_recipients_add_list"),
+            store_recipients_add_list: required!("store_recipients_add_group"),
             store_recipients_create_group: required!("store_recipients_create_group"),
-            store_recipients_create_list: required!("store_recipients_create_list"),
+            store_recipients_create_list: required!("store_recipients_create_group"),
             store_recipients_options_group: required!("store_recipients_options_group"),
-            store_recipients_options_list: required!("store_recipients_options_list"),
+            store_recipients_options_list: required!("store_recipients_options_group"),
             store_recipients_scope_row: required!("store_recipients_scope_row"),
             store_recipients_git_group: required!("store_recipients_git_group"),
-            store_recipients_git_list: required!("store_recipients_git_list"),
+            store_recipients_git_list: required!("store_recipients_git_group"),
             store_recipients_setup_hardware_key_row: required!(
                 "store_recipients_setup_hardware_key_row"
             ),
@@ -328,9 +376,14 @@ impl WindowWidgets {
             ),
             store_recipients_require_all_check: required!("store_recipients_require_all_check"),
             store_git_page: required!("store_git_page"),
+            store_git_search_entry: required!("store_git_search_entry"),
+            store_git_preferences_page: required!("store_git_preferences_page"),
+            store_git_back_row: required!("store_git_back_row"),
+            store_git_search_empty_group: required!("store_git_search_empty_group"),
             store_git_remotes_list: required!("store_git_remotes_list"),
             store_git_actions_list: required!("store_git_actions_list"),
             store_git_status_list: required!("store_git_status_list"),
+            store_git_access_list: required!("store_git_access_list"),
             private_key_generation_page: required!("private_key_generation_page"),
             private_key_generation_stack: required!("private_key_generation_stack"),
             private_key_generation_form: required!("private_key_generation_form"),
@@ -424,6 +477,29 @@ impl WindowWidgets {
             ),
             audit_use_commit_history_recipients_check: required!(
                 "audit_use_commit_history_recipients_check"
+            ),
+            preferences_username_filename_row: required!("preferences_username_filename_row"),
+            preferences_username_folder_row: required!("preferences_username_folder_row"),
+            preferences_password_list_sort_filename_row: required!(
+                "preferences_password_list_sort_filename_row"
+            ),
+            preferences_password_list_sort_store_path_row: required!(
+                "preferences_password_list_sort_store_path_row"
+            ),
+            preferences_password_generator_length_row: required!(
+                "preferences_password_generator_length_row"
+            ),
+            preferences_password_generator_min_lowercase_row: required!(
+                "preferences_password_generator_min_lowercase_row"
+            ),
+            preferences_password_generator_min_uppercase_row: required!(
+                "preferences_password_generator_min_uppercase_row"
+            ),
+            preferences_password_generator_min_numbers_row: required!(
+                "preferences_password_generator_min_numbers_row"
+            ),
+            preferences_password_generator_min_symbols_row: required!(
+                "preferences_password_generator_min_symbols_row"
             ),
             git_busy_page: required!("git_busy_page"),
             git_busy_status: required!("git_busy_status"),

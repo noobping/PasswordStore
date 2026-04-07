@@ -61,6 +61,7 @@ pub struct StoreImportToolRowState {
     overlay: ToastOverlay,
     row: ActionRow,
     source_state: Rc<RefCell<PassImportSourceState>>,
+    before_open: Option<Rc<dyn Fn()>>,
 }
 
 impl StoreImportToolRowState {
@@ -69,6 +70,7 @@ impl StoreImportToolRowState {
         settings: &Preferences,
         window: &ApplicationWindow,
         overlay: &ToastOverlay,
+        before_open: Option<Rc<dyn Fn()>>,
     ) -> Self {
         let row = ActionRow::builder()
             .title(gettext("Import passwords"))
@@ -83,6 +85,7 @@ impl StoreImportToolRowState {
             overlay: overlay.clone(),
             row,
             source_state: Rc::new(RefCell::new(PassImportSourceState::Checking)),
+            before_open,
         };
         state.refresh();
 
@@ -107,6 +110,9 @@ impl StoreImportToolRowState {
             return;
         };
 
+        if let Some(before_open) = &self.before_open {
+            before_open();
+        }
         show_pass_import_page(&self.window, &stores, import_sources, &self.overlay);
     }
 
@@ -516,13 +522,18 @@ pub fn schedule_store_import_row(
     settings: &Preferences,
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
+    before_open: Option<Rc<dyn Fn()>>,
 ) -> Option<StoreImportToolRowState> {
     if !supports_host_command_features() {
         return None;
     }
 
     Some(StoreImportToolRowState::append_to(
-        list, settings, window, overlay,
+        list,
+        settings,
+        window,
+        overlay,
+        before_open,
     ))
 }
 

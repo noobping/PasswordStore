@@ -191,10 +191,10 @@ impl DocumentationPageState {
 
         for result in results {
             let state = self.clone();
-            let row = ActionRow::builder()
-                .title(&result.title)
-                .subtitle(&result.subtitle)
-                .build();
+            let row = ActionRow::new();
+            row.set_use_markup(false);
+            row.set_title(&result.title);
+            row.set_subtitle(&result.subtitle);
             row.set_activatable(true);
             row.add_suffix(&adw::gtk::Image::from_icon_name("go-next-symbolic"));
             row.connect_activated(move |_| state.open_result(&result));

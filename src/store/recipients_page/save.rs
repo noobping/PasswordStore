@@ -241,7 +241,7 @@ fn save_store_recipients_async(
                     };
 
                     if request.mode.creates_store() {
-                        rebuild_stores_list(&stores_list, &settings, &state);
+                        rebuild_stores_list(&stores_list, &settings, &state, None);
                     }
                     if store_list_changed {
                         refresh_after_store_list_change(&state);
@@ -337,7 +337,7 @@ fn save_store_recipients_async(
                 };
 
                 if request.mode.creates_store() {
-                    rebuild_stores_list(&stores_list, &settings, &state);
+                    rebuild_stores_list(&stores_list, &settings, &state, None);
                 }
                 if store_list_changed {
                     refresh_after_store_list_change(&state);

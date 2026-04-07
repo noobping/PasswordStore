@@ -28,8 +28,8 @@ use crate::store::git_page::rebuild_store_recipients_git_row;
 use crate::store::recipients::{relevant_store_recipient_scopes, ROOT_STORE_RECIPIENTS_SCOPE};
 use crate::support::actions::activate_widget_action;
 use crate::support::ui::{
-    add_persistent_hide_button, append_info_row, clear_list_box, dim_label_icon,
-    flat_icon_button_with_tooltip,
+    add_persistent_hide_button, add_tracked_preferences_group_child, append_info_group_row,
+    clear_tracked_preferences_group, dim_label_icon, flat_icon_button_with_tooltip,
 };
 use adw::gtk::StringList;
 use adw::prelude::*;
@@ -377,7 +377,7 @@ fn append_unresolved_private_key_rows(state: &StoreRecipientsPageState, recipien
         let delete_button =
             flat_icon_button_with_tooltip("user-trash-symbolic", "Remove recipient");
         row.add_suffix(&delete_button);
-        state.list.append(&row);
+        add_tracked_preferences_group_child(&state.list, state.key_rows.as_ref(), &row);
 
         let page_state = state.clone();
         let recipient = recipient.clone();
@@ -831,7 +831,7 @@ fn show_available_private_key_choice(
 }
 
 pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
-    clear_list_box(&state.list);
+    clear_tracked_preferences_group(&state.list, state.key_rows.as_ref());
     rebuild_store_recipients_git_row(state);
     sync_private_key_verification_warning(state, StoreRecipientsSelectionMode::Empty, None);
     let _ = sync_private_keys_from_host_if_enabled(state);
@@ -850,11 +850,12 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
         Err(err) => {
             log_error(format!("Failed to load private keys for recipients: {err}"));
             sync_private_key_requirement_row(state, selection_mode, false, 0);
-            append_info_row(
+            let row = append_info_group_row(
                 &state.list,
                 "Couldn't load private keys",
                 "Try again from Preferences.",
             );
+            state.key_rows.borrow_mut().push(row.upcast());
             return;
         }
     };
@@ -900,7 +901,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
 
     if keys.is_empty() && fido2_recipients.is_empty() {
         if unresolved_recipients.is_empty() {
-            append_info_row(
+            let row = append_info_group_row(
                 &state.list,
                 "No recipients yet",
                 if uses_integrated_backend {
@@ -909,6 +910,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
                     "Generate or import a private key."
                 },
             );
+            state.key_rows.borrow_mut().push(row.upcast());
         } else {
             append_unresolved_private_key_rows(state, &unresolved_recipients);
         }
@@ -983,7 +985,7 @@ fn append_fido2_recipient_row(
     let remove_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove recipient");
     sync_recipient_remove_button(&remove_button, remove_blocked_message);
     row.add_suffix(&remove_button);
-    state.list.append(&row);
+    add_tracked_preferences_group_child(&state.list, state.key_rows.as_ref(), &row);
 
     let state_for_remove = state.clone();
     let recipient_for_remove = recipient.to_string();
@@ -1084,7 +1086,7 @@ fn append_managed_private_key_row(
     let delete_button = flat_icon_button_with_tooltip("user-trash-symbolic", "Remove key");
     sync_private_key_delete_button(&delete_button, delete_blocked_message);
     row.add_suffix(&delete_button);
-    state.list.append(&row);
+    add_tracked_preferences_group_child(&state.list, state.key_rows.as_ref(), &row);
 
     connect_managed_private_key_row_actions(state, key, &toggle, &copy_button, &delete_button);
 }
@@ -1119,7 +1121,7 @@ fn append_host_private_key_row(
 
     let copy_button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy fingerprint");
     row.add_suffix(&copy_button);
-    state.list.append(&row);
+    add_tracked_preferences_group_child(&state.list, state.key_rows.as_ref(), &row);
 
     let state_for_toggle = state.clone();
     let fingerprint_for_toggle = key.fingerprint.clone();
@@ -1295,7 +1297,7 @@ fn append_connected_smartcard_row(
 
     let copy_button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy fingerprint");
     row.add_suffix(&copy_button);
-    state.list.append(&row);
+    add_tracked_preferences_group_child(&state.list, state.key_rows.as_ref(), &row);
 
     let state_for_toggle = state.clone();
     let fingerprint_for_toggle = key.fingerprint.clone();

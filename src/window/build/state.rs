@@ -17,9 +17,11 @@ use crate::window::docs::{DocumentationPageState, DocumentationPageWidgets};
 use crate::window::git::GitActionState;
 use crate::window::navigation::{WindowNavigationState, WindowPageState};
 use crate::window::preferences::PreferencesActionState;
+use crate::window::preferences_search::{PreferencesPageSearchState, SearchablePreferencesGroup};
 use crate::window::tools::{
     ToolAuditWidgets, ToolBrowserWidgets, ToolsPageState, ToolsPageWidgets,
 };
+use adw::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -81,13 +83,39 @@ pub(super) fn password_page_state(
 }
 
 pub(super) fn store_git_page_state(widgets: &WindowWidgets) -> StoreGitPageState {
+    let remote_rows = Rc::new(RefCell::new(Vec::new()));
+    let action_rows = Rc::new(RefCell::new(Vec::new()));
+    let status_rows = Rc::new(RefCell::new(Vec::new()));
+    let search = PreferencesPageSearchState::new(
+        &widgets.store_git_preferences_page,
+        &widgets.store_git_search_entry,
+        Some(&widgets.store_git_search_empty_group),
+        vec![
+            SearchablePreferencesGroup::with_tracked_widgets(
+                &widgets.store_git_remotes_list,
+                remote_rows.clone(),
+            ),
+            SearchablePreferencesGroup::with_tracked_widgets(
+                &widgets.store_git_actions_list,
+                action_rows.clone(),
+            ),
+            SearchablePreferencesGroup::with_tracked_widgets(
+                &widgets.store_git_status_list,
+                status_rows.clone(),
+            ),
+            SearchablePreferencesGroup::with_widgets(&widgets.store_git_access_list, Vec::new()),
+        ],
+    );
     StoreGitPageState {
         window: widgets.window.clone(),
         nav: widgets.navigation_view.clone(),
         page: widgets.store_git_page.clone(),
+        back_row: widgets.store_git_back_row.clone(),
+        search,
         remotes_list: widgets.store_git_remotes_list.clone(),
         actions_list: widgets.store_git_actions_list.clone(),
         status_list: widgets.store_git_status_list.clone(),
+        access_list: widgets.store_git_access_list.clone(),
         overlay: widgets.toast_overlay.clone(),
         back: widgets.back_button.clone(),
         add: widgets.add_button.clone(),
@@ -100,6 +128,11 @@ pub(super) fn store_git_page_state(widgets: &WindowWidgets) -> StoreGitPageState
         busy_page: widgets.git_busy_page.clone(),
         busy_status: widgets.git_busy_status.clone(),
         current_store: Rc::new(RefCell::new(None)),
+        recipients_page: Rc::new(RefCell::new(None)),
+        reopen_after_busy: Rc::new(Cell::new(false)),
+        remote_rows,
+        action_rows,
+        status_rows,
     }
 }
 
@@ -181,11 +214,84 @@ fn build_store_recipients_page_state(
     let save_queued = Rc::new(Cell::new(false));
     let additional_fido2_save_guide_dialog = Rc::new(RefCell::new(None));
     let fido2_save_progress_dialog = Rc::new(RefCell::new(None));
+    let key_rows = Rc::new(RefCell::new(Vec::new()));
+    let git_rows = Rc::new(RefCell::new(Vec::new()));
 
-    StoreRecipientsPageState {
+    let state = StoreRecipientsPageState {
         window: widgets.window.clone(),
         nav: widgets.navigation_view.clone(),
         page: widgets.store_recipients_page.clone(),
+        back_row: widgets.store_recipients_back_row.clone(),
+        search: PreferencesPageSearchState::new(
+            &widgets.store_recipients_preferences_page,
+            &widgets.store_recipients_search_entry,
+            Some(&widgets.store_recipients_search_empty_group),
+            vec![
+                SearchablePreferencesGroup::with_widgets(
+                    &widgets.store_recipients_host_gpg_warning_group,
+                    vec![widgets
+                        .store_recipients_host_gpg_warning_row
+                        .clone()
+                        .upcast()],
+                ),
+                SearchablePreferencesGroup::with_widgets(
+                    &widgets.store_recipients_fido2_info_group,
+                    vec![widgets
+                        .store_recipients_all_fido2_keys_required_row
+                        .clone()
+                        .upcast()],
+                ),
+                SearchablePreferencesGroup::with_widgets(
+                    &widgets.store_recipients_scope_group,
+                    vec![widgets.store_recipients_scope_row.clone().upcast()],
+                ),
+                SearchablePreferencesGroup::with_tracked_widgets(
+                    &widgets.store_recipients_keys_group,
+                    key_rows.clone(),
+                ),
+                SearchablePreferencesGroup::with_widgets(
+                    &widgets.store_recipients_create_group,
+                    vec![
+                        widgets.store_recipients_generate_key_row.clone().upcast(),
+                        widgets.store_recipients_add_fido2_key_row.clone().upcast(),
+                    ],
+                ),
+                SearchablePreferencesGroup::with_widgets(
+                    &widgets.store_recipients_add_group,
+                    vec![
+                        widgets
+                            .store_recipients_generate_fido2_key_row
+                            .clone()
+                            .upcast(),
+                        widgets
+                            .store_recipients_setup_hardware_key_row
+                            .clone()
+                            .upcast(),
+                        widgets
+                            .store_recipients_add_hardware_key_row
+                            .clone()
+                            .upcast(),
+                        widgets
+                            .store_recipients_import_hardware_key_row
+                            .clone()
+                            .upcast(),
+                        widgets
+                            .store_recipients_import_clipboard_row
+                            .clone()
+                            .upcast(),
+                        widgets.store_recipients_import_file_row.clone().upcast(),
+                    ],
+                ),
+                SearchablePreferencesGroup::with_widgets(
+                    &widgets.store_recipients_options_group,
+                    vec![widgets.store_recipients_require_all_row.clone().upcast()],
+                ),
+                SearchablePreferencesGroup::with_tracked_widgets(
+                    &widgets.store_recipients_git_group,
+                    git_rows.clone(),
+                ),
+            ],
+        ),
         list: widgets.store_recipients_list.clone(),
         platform,
         back: widgets.back_button.clone(),
@@ -207,7 +313,12 @@ fn build_store_recipients_page_state(
         save_queued,
         additional_fido2_save_guide_dialog,
         fido2_save_progress_dialog,
-    }
+        reopen_after_subpage: Rc::new(Cell::new(false)),
+        key_rows,
+        git_rows,
+    };
+    *state.platform.store_git_page.recipients_page.borrow_mut() = Some(state.clone());
+    state
 }
 
 pub(super) fn store_recipients_page_state(
@@ -270,7 +381,9 @@ pub(super) fn tools_page_state(
         window: &widgets.window,
         navigation,
         page: &widgets.tools_page,
+        search_entry: &widgets.tools_search_entry,
         list: &widgets.tools_list,
+        primary_group: &widgets.tools_primary_group,
         field_values_row: &widgets.tools_field_values_row,
         field_values_suffix_stack: &widgets.tools_field_values_suffix_stack,
         field_values_suffix_arrow: &widgets.tools_field_values_suffix_arrow,
@@ -284,6 +397,7 @@ pub(super) fn tools_page_state(
         audit_suffix_arrow: &widgets.tools_audit_suffix_arrow,
         audit_spinner: &widgets.tools_audit_spinner,
         information_group: &widgets.tools_information_group,
+        search_empty_group: &widgets.tools_search_empty_group,
         logs_list: &widgets.tools_logs_list,
         docs_row: &widgets.tools_docs_row,
         logs_row: &widgets.tools_logs_row,
@@ -343,8 +457,90 @@ pub(super) fn preferences_action_state(
     widgets: &WindowWidgets,
     recipients_page: &StoreRecipientsPageState,
 ) -> PreferencesActionState {
+    let search = PreferencesPageSearchState::new(
+        &widgets.settings_preferences_page,
+        &widgets.settings_search_entry,
+        Some(&widgets.settings_search_empty_group),
+        vec![
+            SearchablePreferencesGroup::with_list_box(
+                &widgets.settings_store_list_group,
+                &widgets.password_stores,
+            ),
+            SearchablePreferencesGroup::with_list_box(
+                &widgets.settings_store_actions_group,
+                &widgets.password_store_actions,
+            ),
+            SearchablePreferencesGroup::with_widgets(
+                &widgets.backend_preferences,
+                vec![
+                    widgets.backend_row.clone().upcast(),
+                    widgets.pass_command_row.clone().upcast(),
+                    widgets.sync_private_keys_with_host_row.clone().upcast(),
+                    widgets
+                        .audit_use_commit_history_recipients_row
+                        .clone()
+                        .upcast(),
+                ],
+            ),
+            SearchablePreferencesGroup::with_widgets(
+                &widgets.host_access_preferences_group,
+                Vec::new(),
+            ),
+            SearchablePreferencesGroup::with_widgets(
+                &widgets.settings_username_group,
+                vec![
+                    widgets.preferences_username_filename_row.clone().upcast(),
+                    widgets.preferences_username_folder_row.clone().upcast(),
+                ],
+            ),
+            SearchablePreferencesGroup::with_widgets(
+                &widgets.settings_password_list_group,
+                vec![
+                    widgets
+                        .preferences_password_list_sort_filename_row
+                        .clone()
+                        .upcast(),
+                    widgets
+                        .preferences_password_list_sort_store_path_row
+                        .clone()
+                        .upcast(),
+                ],
+            ),
+            SearchablePreferencesGroup::with_widgets(&widgets.settings_template_group, Vec::new()),
+            SearchablePreferencesGroup::with_widgets(
+                &widgets.settings_clear_empty_fields_group,
+                vec![widgets.clear_empty_fields_before_save_row.clone().upcast()],
+            ),
+            SearchablePreferencesGroup::with_widgets(
+                &widgets.settings_generator_group,
+                vec![
+                    widgets
+                        .preferences_password_generator_length_row
+                        .clone()
+                        .upcast(),
+                    widgets
+                        .preferences_password_generator_min_lowercase_row
+                        .clone()
+                        .upcast(),
+                    widgets
+                        .preferences_password_generator_min_uppercase_row
+                        .clone()
+                        .upcast(),
+                    widgets
+                        .preferences_password_generator_min_numbers_row
+                        .clone()
+                        .upcast(),
+                    widgets
+                        .preferences_password_generator_min_symbols_row
+                        .clone()
+                        .upcast(),
+                ],
+            ),
+        ],
+    );
     PreferencesActionState {
         page_state: window_page_state(widgets, &widgets.settings_page),
+        search,
         template_view: widgets.new_pass_file_template_view.clone(),
         clear_empty_fields_before_save_row: widgets.clear_empty_fields_before_save_row.clone(),
         clear_empty_fields_before_save_check: widgets.clear_empty_fields_before_save_check.clone(),

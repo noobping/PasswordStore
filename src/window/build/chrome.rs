@@ -2,6 +2,7 @@ use super::widgets::WindowWidgets;
 use crate::preferences::Preferences;
 use crate::support::ui::{
     configure_touch_friendly_search_entry, connect_horizontal_arrow_adjustment_for_spin_buttons,
+    connect_ordered_keyboard_focusable_search_list_arrow_navigation,
     connect_ordered_list_arrow_navigation, connect_vertical_arrow_navigation_for_buttons,
     focus_first_keyboard_focusable_list_row, focus_first_matching_list_row_in_order,
     focus_first_visible_widget, focus_last_matching_list_row_in_order, focus_last_visible_widget,
@@ -59,27 +60,6 @@ fn preferences_page_lists(widgets: &WindowWidgets) -> [ListBox; 2] {
     [
         widgets.password_stores.clone(),
         widgets.password_store_actions.clone(),
-    ]
-}
-
-fn store_recipients_page_lists(widgets: &WindowWidgets) -> [ListBox; 8] {
-    [
-        widgets.store_recipients_host_gpg_warning_list.clone(),
-        widgets.store_recipients_fido2_info_list.clone(),
-        widgets.store_recipients_scope_list.clone(),
-        widgets.store_recipients_list.clone(),
-        widgets.store_recipients_create_list.clone(),
-        widgets.store_recipients_add_list.clone(),
-        widgets.store_recipients_options_list.clone(),
-        widgets.store_recipients_git_list.clone(),
-    ]
-}
-
-fn store_git_page_lists(widgets: &WindowWidgets) -> [ListBox; 3] {
-    [
-        widgets.store_git_remotes_list.clone(),
-        widgets.store_git_actions_list.clone(),
-        widgets.store_git_status_list.clone(),
     ]
 }
 
@@ -148,21 +128,13 @@ fn connect_page_list_keyboard_navigation(widgets: &WindowWidgets) {
     );
 
     connect_ordered_list_arrow_navigation(
-        &store_recipients_page_lists(widgets),
-        Some(&primary_menu_button),
-        list_row_is_keyboard_focusable,
-    );
-
-    connect_ordered_list_arrow_navigation(
-        &store_git_page_lists(widgets),
-        Some(&primary_menu_button),
-        list_row_is_keyboard_focusable,
-    );
-
-    connect_ordered_list_arrow_navigation(
         &tools_page_lists(widgets),
         Some(&primary_menu_button),
         list_row_is_keyboard_focusable,
+    );
+    connect_ordered_keyboard_focusable_search_list_arrow_navigation(
+        &tools_page_lists(widgets),
+        &widgets.tools_search_entry,
     );
 }
 
@@ -269,6 +241,9 @@ fn focus_first_visible_page_target(
         return widgets.text_view.grab_focus();
     }
     if visible_navigation_page_is(&navigation.nav, &widgets.settings_page) {
+        if widgets.settings_search_entry.is_visible() {
+            return widgets.settings_search_entry.grab_focus();
+        }
         if focus_first_matching_list_row_in_order(
             &preferences_page_lists(widgets),
             list_row_is_keyboard_focusable,
@@ -279,6 +254,9 @@ fn focus_first_visible_page_target(
             || widgets.settings_page.child_focus(DirectionType::Down);
     }
     if visible_navigation_page_is(&navigation.nav, &widgets.tools_page) {
+        if widgets.tools_search_entry.is_visible() {
+            return widgets.tools_search_entry.grab_focus();
+        }
         if focus_first_keyboard_focusable_list_row(&widgets.tools_list) {
             return true;
         }
@@ -318,16 +296,18 @@ fn focus_first_visible_page_target(
         return widgets.store_import_store_dropdown.grab_focus();
     }
     if visible_navigation_page_is(&navigation.nav, &widgets.store_recipients_page) {
-        return focus_first_matching_list_row_in_order(
-            &store_recipients_page_lists(widgets),
-            list_row_is_keyboard_focusable,
-        );
+        if widgets.store_recipients_search_entry.is_visible() {
+            return widgets.store_recipients_search_entry.grab_focus();
+        }
+        return widgets
+            .store_recipients_page
+            .child_focus(DirectionType::Down);
     }
     if visible_navigation_page_is(&navigation.nav, &widgets.store_git_page) {
-        return focus_first_matching_list_row_in_order(
-            &store_git_page_lists(widgets),
-            list_row_is_keyboard_focusable,
-        );
+        if widgets.store_git_search_entry.is_visible() {
+            return widgets.store_git_search_entry.grab_focus();
+        }
+        return widgets.store_git_page.child_focus(DirectionType::Down);
     }
     if visible_navigation_page_is(&navigation.nav, &widgets.private_key_generation_page) {
         return widgets.private_key_generation_name_row.grab_focus();
@@ -461,11 +441,15 @@ fn restore_window_size(window: &ApplicationWindow, preferences: &Preferences) {
 fn configure_search_entries(widgets: &WindowWidgets) {
     for search_entry in [
         &widgets.search_entry,
+        &widgets.settings_search_entry,
+        &widgets.tools_search_entry,
         &widgets.docs_search_entry,
         &widgets.tools_field_values_search_entry,
         &widgets.tools_value_values_search_entry,
         &widgets.tools_weak_passwords_search_entry,
         &widgets.tools_audit_search_entry,
+        &widgets.store_recipients_search_entry,
+        &widgets.store_git_search_entry,
     ] {
         configure_touch_friendly_search_entry(search_entry);
     }

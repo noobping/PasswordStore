@@ -106,10 +106,13 @@ pub fn restore_window_for_current_page(
         show_secondary_page_chrome(&chrome, "Raw text", &subtitle, true);
     } else if page_kind == RestoredPageKind::Settings {
         show_secondary_page_chrome(&chrome, "Preferences", APP_WINDOW_TITLE, false);
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::Tools {
         show_secondary_page_chrome(&chrome, "Tools", "Utilities and maintenance", false);
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::Documentation {
         show_secondary_page_chrome(&chrome, DOCS_PAGE_TITLE, DOCS_PAGE_SUBTITLE, false);
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::DocumentationDetail {
         show_secondary_page_chrome(
             &chrome,

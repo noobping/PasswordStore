@@ -133,6 +133,7 @@ pub(super) fn append_store_clone_row(
     window: &ApplicationWindow,
     overlay: &ToastOverlay,
     recipients_page: &StoreRecipientsPageState,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     if !supports_host_command_features() {
         return;
@@ -157,17 +158,22 @@ pub(super) fn append_store_clone_row(
     let overlay = overlay.clone();
     let recipients_page = recipients_page.clone();
     let stores_list_for_action = stores_list.clone();
+    let before_navigation_for_action = before_navigation.clone();
     append_action_row_with_button(
         list,
         "Restore password store",
         "Choose a folder and restore it from a Git repository.",
         "git-symbolic",
         move || {
+            if let Some(before_navigation) = &before_navigation_for_action {
+                before_navigation();
+            }
             let stores_list_for_clone = stores_list_for_action.clone();
             let settings_for_clone = settings.clone();
             let window_for_clone = window.clone();
             let overlay_for_clone = overlay.clone();
             let recipients_page_for_clone = recipients_page.clone();
+            let before_navigation_for_clone = before_navigation.clone();
             prompt_store_clone(&window, &overlay, move |store, url| {
                 start_store_clone(
                     &window_for_clone,
@@ -177,6 +183,7 @@ pub(super) fn append_store_clone_row(
                     &recipients_page_for_clone,
                     store,
                     url,
+                    before_navigation_for_clone.clone(),
                 );
             });
         },
@@ -191,6 +198,7 @@ fn start_store_clone(
     recipients_page: &StoreRecipientsPageState,
     store: String,
     url: String,
+    before_navigation: Option<Rc<dyn Fn()>>,
 ) {
     let progress_dialog = build_clone_progress_dialog(window, &store);
     let progress_dialog_for_disconnect = progress_dialog.clone();
@@ -223,6 +231,7 @@ fn start_store_clone(
                     &stores_list_for_result,
                     &settings_for_result,
                     &recipients_page_for_result,
+                    before_navigation.clone(),
                 );
                 refresh_after_store_list_change(&recipients_page_for_result);
                 overlay.add_toast(Toast::new(&gettext("Store restored.")));

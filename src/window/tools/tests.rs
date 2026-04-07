@@ -4,7 +4,7 @@ use super::field_values::{
 };
 use super::{
     filter_tool_requests, password_read_tools_available_for_store_roots_with,
-    tool_browser_flow_is_visible, tool_rows_enabled, FieldValueRequest,
+    tool_browser_flow_is_visible, tool_row_matches_query, tool_rows_enabled, FieldValueRequest,
 };
 use crate::i18n::gettext;
 use crate::password::file::SearchablePassField;
@@ -187,4 +187,24 @@ fn tool_requests_skip_fido_only_stores() {
             label: "chat".to_string(),
         }]
     );
+}
+
+#[test]
+fn tool_root_search_matches_titles_and_subtitles_case_insensitively() {
+    assert!(tool_row_matches_query(
+        "Browse field values",
+        Some("Browse unique field values from the current list."),
+        "field",
+    ));
+    assert!(tool_row_matches_query(
+        "Open logs",
+        Some("Inspect recent app and command output."),
+        "COMMAND OUTPUT",
+    ));
+    assert!(!tool_row_matches_query(
+        "Documentation",
+        Some("Open guides and reference."),
+        "history",
+    ));
+    assert!(tool_row_matches_query("Documentation", None, ""));
 }

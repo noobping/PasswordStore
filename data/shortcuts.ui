@@ -176,6 +176,83 @@
         </child>
         <child>
           <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes">Stores</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 1 keys</property>
+                <property name="accelerator">&lt;Primary&gt;1</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 2 keys</property>
+                <property name="accelerator">&lt;Primary&gt;2</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 3 keys</property>
+                <property name="accelerator">&lt;Primary&gt;3</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 4 keys</property>
+                <property name="accelerator">&lt;Primary&gt;4</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 5 keys</property>
+                <property name="accelerator">&lt;Primary&gt;5</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 6 keys</property>
+                <property name="accelerator">&lt;Primary&gt;6</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 1 Git remotes</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Alt&gt;1</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 2 Git remotes</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Alt&gt;2</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 3 Git remotes</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Alt&gt;3</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 4 Git remotes</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Alt&gt;4</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 5 Git remotes</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Alt&gt;5</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open store 6 Git remotes</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Alt&gt;6</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcutsGroup">
             <property name="title" translatable="yes">Tools</property>
             <child>
               <object class="GtkShortcutsShortcut">

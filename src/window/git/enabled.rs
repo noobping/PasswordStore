@@ -6,8 +6,13 @@ use crate::i18n::gettext;
 use crate::logging::log_error;
 use crate::password::list::{load_passwords_async, PasswordListActions};
 use crate::preferences::Preferences;
-use crate::store::git_page::StoreGitPageState;
-use crate::store::management::{prompt_store_clone, StoreRecipientsPageState};
+use crate::store::git_page::{
+    show_store_git_page, show_store_git_page_from_recipients, StoreGitPageState,
+};
+use crate::store::management::{
+    configured_store_for_shortcut, prompt_store_clone, StoreRecipientsPageState,
+    NUMBERED_STORE_SHORTCUT_COUNT,
+};
 use crate::support::actions::register_window_action;
 use crate::support::background::spawn_result_task;
 use crate::support::ui::{navigation_stack_is_root, visible_navigation_page_is};
@@ -99,6 +104,11 @@ fn set_git_busy_actions_enabled(window: &ApplicationWindow, enabled: bool) {
         "toggle-hidden-and-duplicates",
     ] {
         set_window_action_enabled(window, action, enabled);
+    }
+
+    for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+        set_window_action_enabled(window, &format!("open-store-recipients-{slot}"), enabled);
+        set_window_action_enabled(window, &format!("open-store-git-{slot}"), enabled);
     }
 }
 
@@ -225,6 +235,32 @@ pub fn register_open_git_action(state: &GitActionState) {
             move |store, url| start_prompted_clone(&state, store, url)
         });
     });
+
+    for slot in 1..=NUMBERED_STORE_SHORTCUT_COUNT {
+        let action_window = state.window.clone();
+        let state = state.clone();
+        register_window_action(
+            &action_window,
+            &format!("open-store-git-{slot}"),
+            move || {
+                let Some(store) = configured_store_for_shortcut(slot) else {
+                    return;
+                };
+
+                let preserve_recipients_state =
+                    visible_navigation_page_is(&state.navigation.nav, &state.recipients_page.page)
+                        && state
+                            .recipients_page
+                            .current_request()
+                            .is_some_and(|request| request.store == store);
+                if preserve_recipients_state {
+                    show_store_git_page_from_recipients(&state.store_git_page, store);
+                } else {
+                    show_store_git_page(&state.store_git_page, store);
+                }
+            },
+        );
+    }
 }
 
 pub fn register_synchronize_action(state: &GitActionState) {

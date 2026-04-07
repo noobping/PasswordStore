@@ -10,13 +10,14 @@ pub(crate) mod host_access;
 mod logs;
 pub mod navigation;
 mod preferences;
+pub(crate) mod preferences_search;
 pub(crate) mod session;
 mod tools;
 
 pub use self::build::create_main_window;
 pub use self::build::dispatch_main_window_command;
 pub use self::git::clone_store_repository;
-pub(crate) use self::host_access::append_optional_host_access_row;
+pub(crate) use self::host_access::append_optional_host_access_group_row;
 pub(crate) use self::tools::sync_tools_action_availability;
 
 #[cfg(test)]

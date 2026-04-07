@@ -17,6 +17,8 @@ use crate::support::ui::push_navigation_page_if_needed;
 use crate::support::ui::{
     navigation_stack_contains_page, push_navigation_page_if_needed, visible_navigation_page_is,
 };
+#[cfg(feature = "docs")]
+use adw::prelude::WidgetExt;
 #[cfg(target_os = "linux")]
 use adw::{ApplicationWindow, NavigationPage, StatusPage};
 
@@ -39,6 +41,7 @@ pub fn show_docs_page(state: &WindowNavigationState) {
 
     let chrome = state.window_chrome();
     show_secondary_page_chrome(&chrome, "Documentation", "Guides and reference", false);
+    chrome.find.set_visible(true);
 
     push_navigation_page_if_needed(&state.nav, &state.docs_page);
 }

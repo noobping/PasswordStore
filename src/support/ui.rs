@@ -10,8 +10,9 @@ use adw::gtk::{
 use adw::prelude::*;
 use adw::{
     ActionRow, Clamp, EntryRow, HeaderBar, NavigationPage, NavigationView, PasswordEntryRow,
-    WindowTitle,
+    PreferencesGroup, WindowTitle,
 };
+use std::cell::RefCell;
 use std::rc::Rc;
 
 const TOUCH_FRIENDLY_SEARCH_ENTRY_HEIGHT: i32 = 44;
@@ -41,6 +42,21 @@ pub fn connect_password_entry_row_apply_button_to_nonempty_text(row: &PasswordEn
 pub fn clear_list_box(list: &ListBox) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
+    }
+}
+
+pub fn add_tracked_preferences_group_child(
+    group: &PreferencesGroup,
+    tracked: &RefCell<Vec<Widget>>,
+    child: &(impl IsA<Widget> + Clone),
+) {
+    group.add(child);
+    tracked.borrow_mut().push(child.clone().upcast());
+}
+
+pub fn clear_tracked_preferences_group(group: &PreferencesGroup, tracked: &RefCell<Vec<Widget>>) {
+    for child in tracked.borrow_mut().drain(..) {
+        group.remove(&child);
     }
 }
 
@@ -165,6 +181,70 @@ pub fn connect_keyboard_focusable_search_list_arrow_navigation(
     search_entry: &SearchEntry,
 ) {
     connect_search_list_arrow_navigation(list, search_entry, list_row_is_keyboard_focusable);
+}
+
+pub fn connect_ordered_search_list_arrow_navigation(
+    lists: &[ListBox],
+    search_entry: &SearchEntry,
+    row_is_focusable: impl Fn(&ListBoxRow) -> bool + 'static,
+) {
+    let lists = Rc::new(lists.to_vec());
+    let row_is_focusable = Rc::new(row_is_focusable);
+
+    let search_controller = EventControllerKey::new();
+    search_controller.set_propagation_phase(PropagationPhase::Capture);
+    let lists_for_search = lists.clone();
+    let row_is_focusable_for_search = row_is_focusable.clone();
+    search_controller.connect_key_pressed(move |_, key, _, _| {
+        if matches!(key, gdk::Key::Down | gdk::Key::KP_Down)
+            && focus_first_matching_list_row_in_lists(
+                &lists_for_search,
+                &*row_is_focusable_for_search,
+            )
+        {
+            return Propagation::Stop;
+        }
+
+        Propagation::Proceed
+    });
+    search_entry.add_controller(search_controller);
+
+    for (index, list) in lists.iter().enumerate() {
+        let controller = EventControllerKey::new();
+        controller.set_propagation_phase(PropagationPhase::Capture);
+        let lists_for_keys = lists.clone();
+        let search_entry_for_keys = search_entry.clone();
+        let row_is_focusable_for_keys = row_is_focusable.clone();
+        controller.connect_key_pressed(move |_, key, _, _| {
+            if !search_entry_for_keys.is_visible() || !matches!(key, gdk::Key::Up | gdk::Key::KP_Up)
+            {
+                return Propagation::Proceed;
+            }
+
+            if focused_row_is_first_matching_list_row(
+                &lists_for_keys[index],
+                &*row_is_focusable_for_keys,
+            ) && !lists_have_matching_row(&lists_for_keys[..index], &*row_is_focusable_for_keys)
+            {
+                search_entry_for_keys.grab_focus();
+                return Propagation::Stop;
+            }
+
+            Propagation::Proceed
+        });
+        list.add_controller(controller);
+    }
+}
+
+pub fn connect_ordered_keyboard_focusable_search_list_arrow_navigation(
+    lists: &[ListBox],
+    search_entry: &SearchEntry,
+) {
+    connect_ordered_search_list_arrow_navigation(
+        lists,
+        search_entry,
+        list_row_is_keyboard_focusable,
+    );
 }
 
 pub fn connect_ordered_list_arrow_navigation(
@@ -383,6 +463,15 @@ fn focus_first_matching_list_row_in_lists(
         .any(|list| focus_first_matching_list_row(list, |row| row_is_focusable(row)))
 }
 
+fn lists_have_matching_row(
+    lists: &[ListBox],
+    row_is_focusable: &dyn Fn(&ListBoxRow) -> bool,
+) -> bool {
+    lists
+        .iter()
+        .any(|list| first_matching_list_row(list, row_is_focusable).is_some())
+}
+
 fn focus_last_matching_list_row_in_lists(
     lists: &[ListBox],
     row_is_focusable: &dyn Fn(&ListBoxRow) -> bool,
@@ -542,6 +631,18 @@ pub fn append_info_row(list: &ListBox, title: &str, subtitle: &str) {
     list.append(&row);
 }
 
+pub fn append_info_group_row(group: &PreferencesGroup, title: &str, subtitle: &str) -> ActionRow {
+    let title = gettext(title);
+    let subtitle = gettext(subtitle);
+    let row = ActionRow::builder()
+        .title(&title)
+        .subtitle(&subtitle)
+        .build();
+    row.set_activatable(false);
+    group.add(&row);
+    row
+}
+
 pub fn append_spinner_row(list: &ListBox) {
     let spinner = Spinner::builder().spinning(true).build();
     let container = GtkBox::builder()
@@ -673,6 +774,47 @@ pub fn append_action_row_with_button(
     row.connect_activated(move |_| row_action());
 
     row
+}
+
+pub fn append_action_group_row_with_button(
+    group: &PreferencesGroup,
+    title: &str,
+    subtitle: &str,
+    icon_name: &str,
+    action: impl Fn() + 'static,
+) -> ActionRow {
+    let title = gettext(title);
+    let subtitle = gettext(subtitle);
+    let row = ActionRow::builder()
+        .title(&title)
+        .subtitle(&subtitle)
+        .build();
+    row.set_activatable(true);
+
+    let icon = Image::from_icon_name(icon_name);
+    row.add_suffix(&icon);
+    group.add(&row);
+
+    let action = Rc::new(action);
+    let row_action = action.clone();
+    row.connect_activated(move |_| row_action());
+
+    row
+}
+
+pub fn focus_first_preferences_group_child_in_order(groups: &[PreferencesGroup]) -> bool {
+    groups.iter().any(focus_first_preferences_group_child)
+}
+
+fn focus_first_preferences_group_child(group: &PreferencesGroup) -> bool {
+    let mut child = group.first_child();
+    while let Some(widget) = child {
+        if focus_widget(&widget) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
 }
 
 pub fn navigation_stack_contains_page(nav: &NavigationView, page: &NavigationPage) -> bool {

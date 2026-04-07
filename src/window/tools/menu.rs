@@ -42,10 +42,11 @@ pub(super) fn configure_optional_doc_row(state: &ToolsPageState) {
     state.select_page.docs_row.set_visible(docs_supported);
     sync_optional_information_group(state, docs_supported, supports_logging_features());
     let window = state.window.clone();
-    state
-        .select_page
-        .docs_row
-        .connect_activated(move |_| activate_widget_action(&window, "win.open-docs"));
+    let state_for_open = state.clone();
+    state.select_page.docs_row.connect_activated(move |_| {
+        state_for_open.close_select_dialog();
+        activate_widget_action(&window, "win.open-docs");
+    });
 }
 
 pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
@@ -58,10 +59,11 @@ pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
         .set_visible(logging_supported);
 
     let navigation = state.navigation.clone();
-    state
-        .select_page
-        .logs_row
-        .connect_activated(move |_| show_log_page(&navigation));
+    let state_for_logs = state.clone();
+    state.select_page.logs_row.connect_activated(move |_| {
+        state_for_logs.close_select_dialog();
+        show_log_page(&navigation);
+    });
 
     let overlay = state.overlay.clone();
     let feedback_button = state.select_page.copy_logs_button.clone();
@@ -161,5 +163,11 @@ pub(super) fn append_optional_pass_import_row(
         &settings,
         &state.window,
         &state.overlay,
+        Some(Rc::new({
+            let state = state.clone();
+            move || {
+                state.close_select_dialog();
+            }
+        })),
     )
 }

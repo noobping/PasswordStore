@@ -7,8 +7,11 @@ use crate::password::model::{
 use crate::password::{list::search_password_entries, model::PassEntry};
 use crate::store::labels::shortened_store_labels;
 
-use adw::gio::{self, BusNameOwnerFlags, BusType, DBusConnection, DBusInterfaceInfo, DBusNodeInfo};
-use adw::glib::{self, ExitCode, MainLoop, Variant};
+use adw::gio::{
+    self, BusNameOwnerFlags, BusType, DBusCallFlags, DBusConnection, DBusInterfaceInfo,
+    DBusNodeInfo,
+};
+use adw::glib::{self, ExitCode, MainLoop, Variant, VariantTy};
 use adw::prelude::ToVariant;
 #[cfg(feature = "hardening")]
 use sha2::{Digest, Sha256};
@@ -22,6 +25,10 @@ const APP_ID: &str = env!("APP_ID");
 const SEARCH_PROVIDER_BUS_NAME: &str = env!("SEARCH_PROVIDER_BUS_NAME");
 const SEARCH_PROVIDER_OBJECT_PATH: &str = env!("SEARCH_PROVIDER_OBJECT_PATH");
 const SEARCH_PROVIDER_INTERFACE: &str = "org.gnome.Shell.SearchProvider2";
+const SEARCH_PROVIDER_ALLOWED_CALLER: &str = "org.gnome.Shell";
+const DBUS_BUS_NAME: &str = "org.freedesktop.DBus";
+const DBUS_OBJECT_PATH: &str = "/org/freedesktop/DBus";
+const DBUS_INTERFACE: &str = "org.freedesktop.DBus";
 const SEARCH_PROVIDER_RESULT_LIMIT: usize = 24;
 const RESULT_ID_SEPARATOR: char = '\u{1f}';
 const SEARCH_PROVIDER_XML: &str = r#"
@@ -118,7 +125,7 @@ impl SearchProviderService {
             .register_object(SEARCH_PROVIDER_OBJECT_PATH, &self.interface_info)
             .method_call(
                 |_connection,
-                 _sender,
+                 sender,
                  _object_path,
                  _interface_name,
                  method_name,
@@ -126,19 +133,39 @@ impl SearchProviderService {
                  invocation| {
                     match method_name {
                         "GetInitialResultSet" => {
-                            invocation.return_result(handle_get_initial_result_set(&parameters));
+                            invocation.return_result(handle_get_initial_result_set(
+                                &_connection,
+                                sender,
+                                &parameters,
+                            ));
                         }
                         "GetSubsearchResultSet" => {
-                            invocation.return_result(handle_get_subsearch_result_set(&parameters));
+                            invocation.return_result(handle_get_subsearch_result_set(
+                                &_connection,
+                                sender,
+                                &parameters,
+                            ));
                         }
                         "GetResultMetas" => {
-                            invocation.return_result(handle_get_result_metas(&parameters));
+                            invocation.return_result(handle_get_result_metas(
+                                &_connection,
+                                sender,
+                                &parameters,
+                            ));
                         }
                         "ActivateResult" => {
-                            invocation.return_result(handle_activate_result(&parameters));
+                            invocation.return_result(handle_activate_result(
+                                &_connection,
+                                sender,
+                                &parameters,
+                            ));
                         }
                         "LaunchSearch" => {
-                            invocation.return_result(handle_launch_search(&parameters));
+                            invocation.return_result(handle_launch_search(
+                                &_connection,
+                                sender,
+                                &parameters,
+                            ));
                         }
                         _ => {
                             log_error(format!("Unknown search provider method: {method_name}."));
@@ -153,29 +180,87 @@ impl SearchProviderService {
     }
 }
 
-fn handle_get_initial_result_set(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
+fn current_search_shell_owner(connection: &DBusConnection) -> Option<String> {
+    connection
+        .call_sync(
+            Some(DBUS_BUS_NAME),
+            DBUS_OBJECT_PATH,
+            DBUS_INTERFACE,
+            "GetNameOwner",
+            Some(&(SEARCH_PROVIDER_ALLOWED_CALLER,).to_variant()),
+            Some(VariantTy::new("(s)").expect("valid D-Bus reply type")),
+            DBusCallFlags::NONE,
+            -1,
+            gio::Cancellable::NONE,
+        )
+        .ok()?
+        .get::<(String,)>()
+        .map(|(owner,)| owner)
+}
+
+fn search_provider_caller_is_authorized(connection: &DBusConnection, sender: Option<&str>) -> bool {
+    search_provider_caller_is_authorized_for_owner(
+        sender,
+        current_search_shell_owner(connection).as_deref(),
+    )
+}
+
+fn search_provider_caller_is_authorized_for_owner(
+    sender: Option<&str>,
+    shell_owner: Option<&str>,
+) -> bool {
+    sender
+        .zip(shell_owner)
+        .is_some_and(|(sender, shell_owner)| !sender.is_empty() && sender == shell_owner)
+}
+
+fn handle_get_initial_result_set(
+    connection: &DBusConnection,
+    sender: Option<&str>,
+    parameters: &Variant,
+) -> Result<Option<Variant>, glib::Error> {
     let Some((terms,)) = parameters.get::<(Vec<String>,)>() else {
         log_error("Search provider GetInitialResultSet received invalid parameters.".to_string());
         return Ok(Some((Vec::<String>::new(),).to_variant()));
     };
 
+    if !search_provider_caller_is_authorized(connection, sender) {
+        return Ok(Some((Vec::<String>::new(),).to_variant()));
+    }
+
     Ok(Some((search_result_ids(&terms),).to_variant()))
 }
 
-fn handle_get_subsearch_result_set(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
+fn handle_get_subsearch_result_set(
+    connection: &DBusConnection,
+    sender: Option<&str>,
+    parameters: &Variant,
+) -> Result<Option<Variant>, glib::Error> {
     let Some((_previous_results, terms)) = parameters.get::<(Vec<String>, Vec<String>)>() else {
         log_error("Search provider GetSubsearchResultSet received invalid parameters.".to_string());
         return Ok(Some((Vec::<String>::new(),).to_variant()));
     };
 
+    if !search_provider_caller_is_authorized(connection, sender) {
+        return Ok(Some((Vec::<String>::new(),).to_variant()));
+    }
+
     Ok(Some((search_result_ids(&terms),).to_variant()))
 }
 
-fn handle_get_result_metas(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
+fn handle_get_result_metas(
+    connection: &DBusConnection,
+    sender: Option<&str>,
+    parameters: &Variant,
+) -> Result<Option<Variant>, glib::Error> {
     let Some((identifiers,)) = parameters.get::<(Vec<String>,)>() else {
         log_error("Search provider GetResultMetas received invalid parameters.".to_string());
         return Ok(Some((Vec::<HashMap<String, Variant>>::new(),).to_variant()));
     };
+
+    if !search_provider_caller_is_authorized(connection, sender) {
+        return Ok(Some((Vec::<HashMap<String, Variant>>::new(),).to_variant()));
+    }
 
     let store_labels = store_label_map();
     let metas = identifiers
@@ -188,12 +273,20 @@ fn handle_get_result_metas(parameters: &Variant) -> Result<Option<Variant>, glib
     Ok(Some((metas,).to_variant()))
 }
 
-fn handle_activate_result(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
+fn handle_activate_result(
+    connection: &DBusConnection,
+    sender: Option<&str>,
+    parameters: &Variant,
+) -> Result<Option<Variant>, glib::Error> {
     let Some((identifier, terms, _timestamp)) = parameters.get::<(String, Vec<String>, u32)>()
     else {
         log_error("Search provider ActivateResult received invalid parameters.".to_string());
         return Ok(None);
     };
+
+    if !search_provider_caller_is_authorized(connection, sender) {
+        return Ok(None);
+    }
 
     match decode_result_target(&identifier) {
         Some((store_path, label)) => {
@@ -222,11 +315,19 @@ fn handle_activate_result(parameters: &Variant) -> Result<Option<Variant>, glib:
     Ok(None)
 }
 
-fn handle_launch_search(parameters: &Variant) -> Result<Option<Variant>, glib::Error> {
+fn handle_launch_search(
+    connection: &DBusConnection,
+    sender: Option<&str>,
+    parameters: &Variant,
+) -> Result<Option<Variant>, glib::Error> {
     let Some((terms, _timestamp)) = parameters.get::<(Vec<String>, u32)>() else {
         log_error("Search provider LaunchSearch received invalid parameters.".to_string());
         return Ok(None);
     };
+
+    if !search_provider_caller_is_authorized(connection, sender) {
+        return Ok(None);
+    }
 
     let query = join_search_terms(&terms);
     if let Err(err) = launch_search_query(&query) {
@@ -261,10 +362,7 @@ fn meta_for_identifier(
 fn fallback_meta(identifier: &str) -> HashMap<String, Variant> {
     let mut meta = HashMap::new();
     meta.insert("id".to_string(), identifier.to_variant());
-    #[cfg(feature = "hardening")]
     meta.insert("name".to_string(), "Password entry".to_variant());
-    #[cfg(not(feature = "hardening"))]
-    meta.insert("name".to_string(), identifier.to_variant());
     meta.insert("gicon".to_string(), APP_ID.to_variant());
     meta
 }
@@ -441,7 +539,8 @@ fn search_result_ids(terms: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_result_id, encode_result_id, join_search_terms, normalized_search_terms,
+        decode_result_id, encode_result_id, fallback_meta, join_search_terms,
+        normalized_search_terms, search_provider_caller_is_authorized_for_owner,
         search_provider_entry_matches,
     };
     use crate::password::model::PassEntry;
@@ -491,6 +590,41 @@ mod tests {
                 "alice".to_string(),
             ]),
             "find otp and user alice".to_string()
+        );
+    }
+
+    #[test]
+    fn search_provider_only_authorizes_the_shell_owner() {
+        assert!(search_provider_caller_is_authorized_for_owner(
+            Some(":1.42"),
+            Some(":1.42")
+        ));
+        assert!(!search_provider_caller_is_authorized_for_owner(
+            Some(":1.99"),
+            Some(":1.42")
+        ));
+        assert!(!search_provider_caller_is_authorized_for_owner(
+            None,
+            Some(":1.42")
+        ));
+        assert!(!search_provider_caller_is_authorized_for_owner(
+            Some(":1.42"),
+            None
+        ));
+    }
+
+    #[test]
+    fn fallback_meta_never_echoes_identifiers() {
+        let identifier = "/tmp/store\u{1f}work/alice/github";
+        let meta = fallback_meta(identifier);
+
+        assert_eq!(
+            meta.get("name").and_then(|value| value.get::<String>()),
+            Some("Password entry".to_string())
+        );
+        assert_eq!(
+            meta.get("id").and_then(|value| value.get::<String>()),
+            Some(identifier.to_string())
         );
     }
 

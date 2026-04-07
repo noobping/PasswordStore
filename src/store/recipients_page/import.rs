@@ -397,13 +397,19 @@ fn start_hardware_key_generation(
     let state_for_disconnect = state.clone();
     spawn_result_task_with_finalizer(
         move || {
+            let HardwareKeyGenerationPageRequest {
+                name,
+                email,
+                admin_pin,
+                user_pin,
+            } = request;
             crate::backend::generate_ripasso_hardware_key(
                 &token.ident,
                 token.reader_hint.as_deref(),
-                &request.name,
-                &request.email,
-                request.admin_pin.expose_secret(),
-                request.user_pin.expose_secret(),
+                &name,
+                &email,
+                admin_pin,
+                user_pin,
                 true,
             )
         },

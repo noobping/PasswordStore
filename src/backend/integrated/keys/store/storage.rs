@@ -53,6 +53,7 @@ use crate::support::runtime::{has_smartcard_permission, supports_legacy_compat_f
 use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
 #[cfg(feature = "hardwarekey")]
+use secrecy::ExposeSecret;
 use secrecy::SecretString;
 use sequoia_openpgp::{
     cert::CertBuilder,
@@ -947,8 +948,8 @@ pub fn generate_ripasso_hardware_key(
     reader_hint: Option<&str>,
     name: &str,
     email: &str,
-    admin_pin: &str,
-    user_pin: &str,
+    admin_pin: SecretString,
+    user_pin: SecretString,
     replace_user_pin: bool,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let name = name.trim();
@@ -963,15 +964,15 @@ pub fn generate_ripasso_hardware_key(
         ));
     }
 
-    let admin_pin = admin_pin.trim();
-    if admin_pin.is_empty() {
+    let admin_pin_trimmed = admin_pin.expose_secret().trim();
+    if admin_pin_trimmed.is_empty() {
         return Err(PrivateKeyError::hardware_pin_required(
             "Enter the hardware key admin PIN.",
         ));
     }
 
-    let user_pin = user_pin.trim();
-    if user_pin.is_empty() {
+    let user_pin_trimmed = user_pin.expose_secret().trim();
+    if user_pin_trimmed.is_empty() {
         return Err(PrivateKeyError::hardware_pin_required(
             if replace_user_pin {
                 "Enter the new hardware key PIN."
@@ -986,8 +987,8 @@ pub fn generate_ripasso_hardware_key(
         ident: ident.to_string(),
         cardholder_name: name.to_string(),
         user_id,
-        admin_pin: SecretString::from(admin_pin),
-        user_pin: SecretString::from(user_pin),
+        admin_pin: SecretString::from(admin_pin_trimmed),
+        user_pin: SecretString::from(user_pin_trimmed),
         replace_user_pin,
     })
     .map_err(private_key_error_from_hardware_transport_error)?;
@@ -1009,8 +1010,8 @@ pub fn generate_ripasso_hardware_key(
     _reader_hint: Option<&str>,
     _name: &str,
     _email: &str,
-    _admin_pin: &str,
-    _user_pin: &str,
+    _admin_pin: SecretString,
+    _user_pin: SecretString,
     _replace_user_pin: bool,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     Err(PrivateKeyError::unsupported_hardware_key(

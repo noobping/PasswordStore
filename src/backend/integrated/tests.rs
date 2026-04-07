@@ -72,6 +72,7 @@ use crate::store::recipients::split_store_recipients;
 use crate::support::git::has_git_repository;
 #[cfg(feature = "hardwarekey")]
 use secrecy::ExposeSecret;
+use secrecy::SecretString;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, parse::Parse, serialize::Serialize};
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use std::collections::HashSet;
@@ -1059,8 +1060,8 @@ fn blank_hardware_tokens_can_generate_a_managed_openpgp_key() {
         Some("Mock Reader"),
         "Generated Hardware",
         "generated@example.com",
-        "12345678",
-        "123456",
+        SecretString::from("12345678"),
+        SecretString::from("123456"),
         true,
     )
     .expect("generate hardware-backed key");
@@ -1110,8 +1111,8 @@ fn hardware_key_generation_can_keep_existing_user_pin() {
         Some("Mock Reader"),
         "Existing Hardware",
         "existing@example.com",
-        "12345678",
-        "654321",
+        SecretString::from("12345678"),
+        SecretString::from("654321"),
         false,
     )
     .expect("generate hardware-backed key while keeping user pin");
@@ -1346,8 +1347,8 @@ fn smartcard_only_build_keeps_managed_hardware_key_entry_points_disabled() {
             Some("Mock Reader"),
             "Generated Hardware",
             "generated@example.com",
-            "12345678",
-            "123456",
+            SecretString::from("12345678"),
+            SecretString::from("123456"),
             true,
         ),
         Err(PrivateKeyError::UnsupportedHardwareKey(_))

@@ -37,8 +37,10 @@ pub use storage::{
     generate_fido2_private_key, generate_ripasso_hardware_key, generate_ripasso_private_key,
     import_ripasso_hardware_key_bytes, import_ripasso_private_key_bytes,
     list_connected_smartcard_keys, list_ripasso_private_keys, remove_ripasso_private_key,
-    ripasso_private_key_title, store_ripasso_private_key_bytes,
+    ripasso_private_key_title,
 };
+#[cfg(target_os = "linux")]
+pub use storage::store_ripasso_private_key_bytes;
 pub use unlock::{
     create_fido2_store_recipient, is_ripasso_private_key_unlocked,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,

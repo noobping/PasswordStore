@@ -63,13 +63,6 @@ option(
 )
 
 option(
-  'hardening',
-  type: 'boolean',
-  value: false,
-  description: 'Enable the optional hardening, secure writes, and privacy protections.',
-)
-
-option(
   'audit',
   type: 'boolean',
   value: false,

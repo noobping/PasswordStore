@@ -1,4 +1,3 @@
-#[cfg(feature = "hardening")]
 use super::host_errors::{
     ensure_host_command_success, password_entry_error_from_host_failure,
     password_entry_error_from_host_launch, password_entry_write_error_from_host_failure,
@@ -37,20 +36,9 @@ impl HostGpgPrivateKeySummary {
 }
 
 fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
-    let output =
-        run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
-            configure_pass_show_command(cmd, label);
-        })?;
-
-    #[cfg(feature = "hardening")]
-    {
-        Ok(output)
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    {
-        ensure_success(output, "pass failed")
-    }
+    run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
+        configure_pass_show_command(cmd, label);
+    })
 }
 
 fn append_pass_entry_args<'a>(cmd: &mut Command, labels: impl IntoIterator<Item = &'a str>) {
@@ -117,21 +105,11 @@ pub(super) fn read_password_entry_with_progress(
 ) -> Result<String, PasswordEntryError> {
     validate_entry_label_for_read(label)?;
 
-    #[cfg(feature = "hardening")]
-    {
-        let output = read_entry_output(store_root, label, "Read password entry")
-            .map_err(password_entry_error_from_host_launch)?;
-        let output = ensure_host_command_success(HostStoreAction::ReadEntry, output, "pass failed")
-            .map_err(password_entry_error_from_host_failure)?;
-        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    {
-        let output = read_entry_output(store_root, label, "Read password entry")
-            .map_err(PasswordEntryError::from_store_message)?;
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    }
+    let output = read_entry_output(store_root, label, "Read password entry")
+        .map_err(password_entry_error_from_host_launch)?;
+    let output = ensure_host_command_success(HostStoreAction::ReadEntry, output, "pass failed")
+        .map_err(password_entry_error_from_host_failure)?;
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 pub(super) fn read_password_line(
@@ -140,29 +118,15 @@ pub(super) fn read_password_line(
 ) -> Result<String, PasswordEntryError> {
     validate_entry_label_for_read(label)?;
 
-    #[cfg(feature = "hardening")]
-    {
-        let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
-            .map_err(password_entry_error_from_host_launch)?;
-        let output = ensure_host_command_success(HostStoreAction::ReadLine, output, "pass failed")
-            .map_err(password_entry_error_from_host_failure)?;
-        return Ok(String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .to_string());
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    {
-        let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
-            .map_err(PasswordEntryError::from_store_message)?;
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .to_string())
-    }
+    let output = read_entry_output(store_root, label, "Read password entry for clipboard copy")
+        .map_err(password_entry_error_from_host_launch)?;
+    let output = ensure_host_command_success(HostStoreAction::ReadLine, output, "pass failed")
+        .map_err(password_entry_error_from_host_failure)?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string())
 }
 
 pub(super) const fn password_entry_is_readable(_store_root: &str, _label: &str) -> bool {
@@ -199,30 +163,11 @@ pub(super) fn save_password_entry_with_progress(
             configure_pass_insert_command(cmd, label, overwrite);
         },
     )
-    .map_err({
-        #[cfg(feature = "hardening")]
-        {
-            password_entry_write_error_from_host_launch
-        }
-        #[cfg(not(feature = "hardening"))]
-        {
-            PasswordEntryWriteError::from_store_message
-        }
-    })?;
+    .map_err(password_entry_write_error_from_host_launch)?;
 
-    #[cfg(feature = "hardening")]
-    {
-        ensure_host_command_success(HostStoreAction::SaveEntry, output, "pass insert failed")
-            .map(|_| ())
-            .map_err(password_entry_write_error_from_host_failure)
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    {
-        ensure_success(output, "pass insert failed")
-            .map(|_| ())
-            .map_err(PasswordEntryWriteError::from_store_message)
-    }
+    ensure_host_command_success(HostStoreAction::SaveEntry, output, "pass insert failed")
+        .map(|_| ())
+        .map_err(password_entry_write_error_from_host_failure)
 }
 
 pub(super) fn rename_password_entry(
@@ -241,30 +186,11 @@ pub(super) fn rename_password_entry(
             configure_pass_move_command(cmd, old_label, new_label);
         },
     )
-    .map_err({
-        #[cfg(feature = "hardening")]
-        {
-            password_entry_write_error_from_host_launch
-        }
-        #[cfg(not(feature = "hardening"))]
-        {
-            PasswordEntryWriteError::from_store_message
-        }
-    })?;
+    .map_err(password_entry_write_error_from_host_launch)?;
 
-    #[cfg(feature = "hardening")]
-    {
-        ensure_host_command_success(HostStoreAction::RenameEntry, output, "pass mv failed")
-            .map(|_| ())
-            .map_err(password_entry_write_error_from_host_failure)
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    {
-        ensure_success(output, "pass mv failed")
-            .map(|_| ())
-            .map_err(PasswordEntryWriteError::from_store_message)
-    }
+    ensure_host_command_success(HostStoreAction::RenameEntry, output, "pass mv failed")
+        .map(|_| ())
+        .map_err(password_entry_write_error_from_host_failure)
 }
 
 pub(super) fn delete_password_entry(
@@ -281,30 +207,11 @@ pub(super) fn delete_password_entry(
             configure_pass_remove_command(cmd, label);
         },
     )
-    .map_err({
-        #[cfg(feature = "hardening")]
-        {
-            password_entry_write_error_from_host_launch
-        }
-        #[cfg(not(feature = "hardening"))]
-        {
-            PasswordEntryWriteError::from_store_message
-        }
-    })?;
+    .map_err(password_entry_write_error_from_host_launch)?;
 
-    #[cfg(feature = "hardening")]
-    {
-        ensure_host_command_success(HostStoreAction::DeleteEntry, output, "pass rm failed")
-            .map(|_| ())
-            .map_err(password_entry_write_error_from_host_failure)
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    {
-        ensure_success(output, "pass rm failed")
-            .map(|_| ())
-            .map_err(PasswordEntryWriteError::from_store_message)
-    }
+    ensure_host_command_success(HostStoreAction::DeleteEntry, output, "pass rm failed")
+        .map(|_| ())
+        .map_err(password_entry_write_error_from_host_failure)
 }
 
 pub(super) fn save_store_recipients(
@@ -336,29 +243,13 @@ pub(super) fn save_store_recipients_with_progress(
             configure_pass_init_command(cmd, recipients.standard());
         },
     )
-    .map_err({
-        #[cfg(feature = "hardening")]
-        {
-            store_recipients_error_from_host_launch
-        }
-        #[cfg(not(feature = "hardening"))]
-        {
-            StoreRecipientsError::from_store_message
-        }
-    })?;
+    .map_err(store_recipients_error_from_host_launch)?;
 
-    #[cfg(feature = "hardening")]
     ensure_host_command_success(HostStoreAction::SaveRecipients, output, "pass init failed")
         .map_err(store_recipients_error_from_host_failure)?;
-    #[cfg(not(feature = "hardening"))]
-    ensure_success(output, "pass init failed").map_err(StoreRecipientsError::from_store_message)?;
 
     if should_initialize_git {
-        #[cfg(feature = "hardening")]
         ensure_store_git_repository(store_root).map_err(store_recipients_error_from_host_launch)?;
-        #[cfg(not(feature = "hardening"))]
-        ensure_store_git_repository(store_root)
-            .map_err(StoreRecipientsError::from_store_message)?;
     }
     Ok(())
 }

@@ -11,7 +11,7 @@ use std::process::{Command, ExitStatus, Output, Stdio};
 use std::thread;
 
 fn redact_stderr(options: CommandLogOptions) -> bool {
-    cfg!(feature = "hardening") && options.redact_stderr
+    options.redact_stderr
 }
 
 fn shell_quote(value: &OsStr) -> String {

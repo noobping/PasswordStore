@@ -189,7 +189,6 @@ mod tests {
         assert_eq!(StartupRecoveryChoice::Quit, StartupRecoveryChoice::Quit);
     }
 
-    #[cfg(feature = "hardening")]
     #[test]
     fn persisted_startup_log_detail_redacts_credentialed_urls() {
         let detail =
@@ -202,21 +201,11 @@ mod tests {
         assert!(!detail.contains("user:secret@example.test"));
     }
 
-    #[cfg(feature = "hardening")]
     #[test]
     fn persisted_startup_log_detail_replaces_embedded_nuls() {
         assert_eq!(
             persisted_startup_log_detail("panic\0payload"),
             "panic\u{FFFD}payload".to_string()
-        );
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    #[test]
-    fn persisted_startup_log_detail_is_unchanged_without_hardening() {
-        assert_eq!(
-            persisted_startup_log_detail("panic\0https://user:secret@example.test/private/repo"),
-            "panic\0https://user:secret@example.test/private/repo".to_string()
         );
     }
 }

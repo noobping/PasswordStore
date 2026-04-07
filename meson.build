@@ -15,7 +15,6 @@ docs = get_option('docs')
 logging = get_option('logging')
 linux_updater = get_option('linux_updater')
 platform_theme = get_option('platform_theme')
-hardening = get_option('hardening')
 audit = get_option('audit')
 legacy_compat = get_option('legacy_compat')
 fidostore = get_option('fidostore')
@@ -32,7 +31,6 @@ foreach feature_name, enabled : {
   'logging': logging,
   'linux-updater': linux_updater,
   'platform-theme': platform_theme,
-  'hardening': hardening,
   'audit': audit,
   'legacy-compat': legacy_compat,
   'fidostore': fidostore,

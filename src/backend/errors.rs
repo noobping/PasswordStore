@@ -1,50 +1,5 @@
 use thiserror::Error;
 
-#[cfg(not(feature = "hardening"))]
-fn message_contains_any(lowered: &str, patterns: &[&str]) -> bool {
-    patterns.iter().any(|pattern| lowered.contains(pattern))
-}
-
-#[cfg(not(feature = "hardening"))]
-fn store_message_is_entry_not_found(lowered: &str) -> bool {
-    message_contains_any(
-        lowered,
-        &[
-            "not in the password store",
-            "was not found",
-            "no such file or directory",
-        ],
-    )
-}
-
-#[cfg(not(feature = "hardening"))]
-fn store_message_is_already_exists(lowered: &str) -> bool {
-    lowered.contains("already exists")
-}
-
-#[cfg(not(feature = "hardening"))]
-fn store_message_is_missing_private_key(message: &str) -> bool {
-    message.contains("Import a private key in Preferences")
-}
-
-#[cfg(not(feature = "hardening"))]
-fn store_message_is_locked_private_key(message: &str) -> bool {
-    message.contains("A private key for this item is locked.")
-}
-
-#[cfg(not(feature = "hardening"))]
-fn store_message_is_incompatible_private_key(message: &str) -> bool {
-    message.contains("cannot decrypt password store entries")
-        || message.contains("available private keys cannot decrypt")
-        || message.contains("no pkesks managed to decrypt the ciphertext")
-        || message.contains("no pkesk managed to decrypt the ciphertext")
-}
-
-#[cfg(not(feature = "hardening"))]
-fn store_message_is_invalid_store_path(lowered: &str) -> bool {
-    lowered.contains("selected password store path is not a folder")
-}
-
 fn save_toast_message_for_fido2_store_message(message: &str) -> Option<&'static str> {
     if message.contains("Enter the FIDO2 security key PIN.") {
         Some("Enter the FIDO2 security key PIN.")
@@ -72,38 +27,6 @@ fn import_toast_message_for_private_key_other(message: &str) -> Option<&'static 
         Some("Unplug the other security keys, then try again.")
     } else {
         save_toast_message_for_fido2_store_message(message)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg(not(feature = "hardening"))]
-enum StoreMessageKind {
-    EntryNotFound,
-    EntryAlreadyExists,
-    MissingPrivateKey,
-    LockedPrivateKey,
-    IncompatiblePrivateKey,
-    InvalidStorePath,
-    Other,
-}
-
-#[cfg(not(feature = "hardening"))]
-fn classify_store_message(message: &str) -> StoreMessageKind {
-    let lowered = message.to_ascii_lowercase();
-    if store_message_is_entry_not_found(&lowered) {
-        StoreMessageKind::EntryNotFound
-    } else if store_message_is_already_exists(&lowered) {
-        StoreMessageKind::EntryAlreadyExists
-    } else if store_message_is_missing_private_key(message) {
-        StoreMessageKind::MissingPrivateKey
-    } else if store_message_is_locked_private_key(message) {
-        StoreMessageKind::LockedPrivateKey
-    } else if store_message_is_incompatible_private_key(message) {
-        StoreMessageKind::IncompatiblePrivateKey
-    } else if store_message_is_invalid_store_path(&lowered) {
-        StoreMessageKind::InvalidStorePath
-    } else {
-        StoreMessageKind::Other
     }
 }
 
@@ -136,20 +59,6 @@ impl PasswordEntryError {
 
     pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    pub fn from_store_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        match classify_store_message(&message) {
-            StoreMessageKind::EntryNotFound => Self::EntryNotFound(message),
-            StoreMessageKind::MissingPrivateKey => Self::MissingPrivateKey(message),
-            StoreMessageKind::LockedPrivateKey => Self::LockedPrivateKey(message),
-            StoreMessageKind::IncompatiblePrivateKey => Self::IncompatiblePrivateKey(message),
-            StoreMessageKind::EntryAlreadyExists
-            | StoreMessageKind::InvalidStorePath
-            | StoreMessageKind::Other => Self::other(message),
-        }
     }
 
     pub const fn toast_message(&self) -> Option<&'static str> {
@@ -188,19 +97,6 @@ impl PasswordEntryWriteError {
 
     pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    pub fn from_store_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        match classify_store_message(&message) {
-            StoreMessageKind::EntryAlreadyExists => Self::already_exists(message),
-            StoreMessageKind::EntryNotFound => Self::entry_not_found(message),
-            StoreMessageKind::MissingPrivateKey => Self::MissingPrivateKey(message),
-            StoreMessageKind::LockedPrivateKey => Self::LockedPrivateKey(message),
-            StoreMessageKind::IncompatiblePrivateKey => Self::IncompatiblePrivateKey(message),
-            StoreMessageKind::InvalidStorePath | StoreMessageKind::Other => Self::other(message),
-        }
     }
 
     pub fn save_toast_message(&self) -> &'static str {
@@ -259,20 +155,6 @@ impl StoreRecipientsError {
 
     pub fn other(message: impl Into<String>) -> Self {
         Self::Other(message.into())
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    pub fn from_store_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        match classify_store_message(&message) {
-            StoreMessageKind::InvalidStorePath => Self::invalid_store_path(message),
-            StoreMessageKind::MissingPrivateKey => Self::MissingPrivateKey(message),
-            StoreMessageKind::LockedPrivateKey => Self::LockedPrivateKey(message),
-            StoreMessageKind::IncompatiblePrivateKey => Self::IncompatiblePrivateKey(message),
-            StoreMessageKind::EntryNotFound
-            | StoreMessageKind::EntryAlreadyExists
-            | StoreMessageKind::Other => Self::other(message),
-        }
     }
 
     pub fn toast_message(&self, fallback: &'static str) -> &'static str {

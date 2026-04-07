@@ -1,7 +1,5 @@
-#[cfg(feature = "hardening")]
 use regex::{Captures, Regex};
 use std::sync::{OnceLock, RwLock};
-#[cfg(feature = "hardening")]
 use url::Url;
 
 #[derive(Debug, Default)]
@@ -61,24 +59,16 @@ pub(crate) fn sanitize_diagnostic_message(message: &str) -> String {
     sanitize_log_message(message)
 }
 
-#[cfg(feature = "hardening")]
 fn sanitize_log_message(message: &str) -> String {
     replace_embedded_nuls(&redact_scp_like_credentials(&redact_url_credentials(
         message,
     )))
 }
 
-#[cfg(not(feature = "hardening"))]
-fn sanitize_log_message(message: &str) -> String {
-    message.to_string()
-}
-
-#[cfg(feature = "hardening")]
 fn replace_embedded_nuls(message: &str) -> String {
     message.replace('\0', "\u{FFFD}")
 }
 
-#[cfg(feature = "hardening")]
 fn redact_url_credentials(message: &str) -> String {
     credential_url_regex()
         .replace_all(message, |captures: &Captures| {
@@ -89,7 +79,6 @@ fn redact_url_credentials(message: &str) -> String {
         .into_owned()
 }
 
-#[cfg(feature = "hardening")]
 fn redact_scp_like_credentials(message: &str) -> String {
     scp_remote_regex()
         .replace_all(message, |captures: &Captures| {
@@ -101,7 +90,6 @@ fn redact_scp_like_credentials(message: &str) -> String {
         .into_owned()
 }
 
-#[cfg(feature = "hardening")]
 fn redact_url_credential_value(url: &str) -> String {
     let (url, suffix) = split_trailing_punctuation(url);
     let Ok(mut parsed) = Url::parse(url) else {
@@ -117,7 +105,6 @@ fn redact_url_credential_value(url: &str) -> String {
     format!("{}{suffix}", parsed.as_str())
 }
 
-#[cfg(feature = "hardening")]
 fn split_trailing_punctuation(value: &str) -> (&str, &str) {
     let mut end = value.len();
     while end > 0 {
@@ -133,7 +120,6 @@ fn split_trailing_punctuation(value: &str) -> (&str, &str) {
     value.split_at(end)
 }
 
-#[cfg(feature = "hardening")]
 fn credential_url_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
@@ -142,7 +128,6 @@ fn credential_url_regex() -> &'static Regex {
     })
 }
 
-#[cfg(feature = "hardening")]
 fn scp_remote_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
@@ -171,7 +156,6 @@ pub fn log_snapshot() -> (usize, usize, String) {
 mod tests {
     use super::sanitize_diagnostic_message;
 
-    #[cfg(feature = "hardening")]
     #[test]
     fn credentialed_urls_are_redacted() {
         let message = sanitize_diagnostic_message(
@@ -185,7 +169,6 @@ mod tests {
         assert!(!message.contains("secret"));
     }
 
-    #[cfg(feature = "hardening")]
     #[test]
     fn scp_like_remotes_are_redacted() {
         let message = sanitize_diagnostic_message("git clone token@example.test:owner/repo.git");
@@ -197,27 +180,11 @@ mod tests {
         assert!(!message.contains("token@"));
     }
 
-    #[cfg(feature = "hardening")]
     #[test]
     fn embedded_nuls_are_replaced() {
         assert_eq!(
             sanitize_diagnostic_message("alpha\0beta"),
             "alpha\u{FFFD}beta".to_string()
-        );
-    }
-
-    #[cfg(not(feature = "hardening"))]
-    #[test]
-    fn messages_are_unchanged_without_hardening() {
-        assert_eq!(
-            sanitize_diagnostic_message(
-                "git clone https://user:secret@example.test/private/repo.git"
-            ),
-            "git clone https://user:secret@example.test/private/repo.git".to_string()
-        );
-        assert_eq!(
-            sanitize_diagnostic_message("alpha\0beta"),
-            "alpha\0beta".to_string()
         );
     }
 }

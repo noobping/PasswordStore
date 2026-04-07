@@ -298,6 +298,9 @@ pub(super) fn register_window_navigation_actions(
         &widgets.find_button,
         &widgets.search_entry,
         &widgets.list,
+        &widgets.tools_field_values_search_entry,
+        &widgets.tools_value_values_search_entry,
+        &widgets.tools_weak_passwords_search_entry,
         &widgets.tools_audit_search_entry,
         Rc::new({
             let tools_page_state = tools_page_state.clone();

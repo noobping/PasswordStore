@@ -1101,6 +1101,7 @@
                         <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkSearchEntry" id="tools_field_values_search_entry">
+                            <property name="visible">false</property>
                             <property name="placeholder-text" translatable="yes">Search fields</property>
                           </object>
                         </child>
@@ -1141,6 +1142,7 @@
                         <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkSearchEntry" id="tools_value_values_search_entry">
+                            <property name="visible">false</property>
                             <property name="placeholder-text" translatable="yes">Search values</property>
                           </object>
                         </child>
@@ -1181,6 +1183,7 @@
                         <property name="orientation">vertical</property>
                         <child>
                           <object class="GtkSearchEntry" id="tools_weak_passwords_search_entry">
+                            <property name="visible">false</property>
                             <property name="placeholder-text" translatable="yes">Search weak passwords</property>
                           </object>
                         </child>

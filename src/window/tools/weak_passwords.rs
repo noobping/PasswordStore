@@ -106,6 +106,7 @@ impl ToolsPageState {
             WEAK_PASSWORDS_SUBTITLE,
             false,
         );
+        chrome.find.set_visible(true);
         reveal_navigation_page(&self.navigation.nav, &self.weak_password_page.page);
     }
 
@@ -235,6 +236,7 @@ impl ToolsPageState {
     }
 
     pub(super) fn reset_weak_passwords_view(&self) {
+        self.weak_password_page.search_entry.set_visible(false);
         if !self.weak_password_page.search_entry.text().is_empty() {
             self.weak_password_page.search_entry.set_text("");
         }

@@ -112,6 +112,7 @@ impl ToolsPageState {
             FIELD_VALUES_FIELDS_SUBTITLE,
             false,
         );
+        chrome.find.set_visible(true);
         reveal_navigation_page(&self.navigation.nav, &self.field_browser.field_page);
     }
 
@@ -162,6 +163,7 @@ impl ToolsPageState {
             FIELD_VALUES_VALUES_SUBTITLE,
             false,
         );
+        chrome.find.set_visible(true);
         reveal_navigation_page(&self.navigation.nav, &self.field_browser.value_page);
     }
 
@@ -339,6 +341,8 @@ impl ToolsPageState {
 
     pub(super) fn reset_field_values_view(&self) {
         *self.field_browser.browser.selected_field.borrow_mut() = None;
+        self.field_browser.field_search_entry.set_visible(false);
+        self.field_browser.value_search_entry.set_visible(false);
 
         if !self.field_browser.field_search_entry.text().is_empty() {
             self.field_browser.field_search_entry.set_text("");

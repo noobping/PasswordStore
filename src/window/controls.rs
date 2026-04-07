@@ -349,6 +349,9 @@ pub fn register_toggle_find_action(
     find_button: &Button,
     search_entry: &SearchEntry,
     list: &ListBox,
+    field_search_entry: &SearchEntry,
+    value_search_entry: &SearchEntry,
+    weak_password_search_entry: &SearchEntry,
     audit_search_entry: &SearchEntry,
     on_audit_search_changed: Rc<dyn Fn()>,
 ) {
@@ -356,8 +359,26 @@ pub fn register_toggle_find_action(
     let find_button = find_button.clone();
     let search_entry = search_entry.clone();
     let list = list.clone();
+    let field_search_entry = field_search_entry.clone();
+    let value_search_entry = value_search_entry.clone();
+    let weak_password_search_entry = weak_password_search_entry.clone();
     let audit_search_entry = audit_search_entry.clone();
     register_window_action(window, "toggle-find", move || {
+        if visible_navigation_page_is(&navigation.nav, &navigation.tools_field_values_page) {
+            toggle_tool_search_entry(&find_button, &field_search_entry);
+            return;
+        }
+
+        if visible_navigation_page_is(&navigation.nav, &navigation.tools_value_values_page) {
+            toggle_tool_search_entry(&find_button, &value_search_entry);
+            return;
+        }
+
+        if visible_navigation_page_is(&navigation.nav, &navigation.tools_weak_passwords_page) {
+            toggle_tool_search_entry(&find_button, &weak_password_search_entry);
+            return;
+        }
+
         if visible_navigation_page_is(&navigation.nav, &navigation.tools_audit_page) {
             if !find_button.is_visible() {
                 hide_search_entry(&audit_search_entry);
@@ -411,6 +432,28 @@ fn hide_and_clear_search_entry(search_entry: &SearchEntry, list: &ListBox) {
         search_entry.set_text("");
     }
     list.invalidate_filter();
+}
+
+fn toggle_tool_search_entry(find_button: &Button, search_entry: &SearchEntry) {
+    if !find_button.is_visible() {
+        hide_search_entry(search_entry);
+        return;
+    }
+
+    if search_entry.is_visible() {
+        hide_and_clear_tool_search_entry(search_entry);
+        return;
+    }
+
+    search_entry.set_visible(true);
+    search_entry.grab_focus();
+}
+
+fn hide_and_clear_tool_search_entry(search_entry: &SearchEntry) {
+    hide_search_entry(search_entry);
+    if !search_entry.text().is_empty() {
+        search_entry.set_text("");
+    }
 }
 
 fn hide_and_clear_audit_search_entry(search_entry: &SearchEntry, on_search_changed: &Rc<dyn Fn()>) {

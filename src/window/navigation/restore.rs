@@ -124,6 +124,7 @@ pub fn restore_window_for_current_page(
             "Pick a field from the current list.",
             false,
         );
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::ToolValueValues {
         show_secondary_page_chrome(
             &chrome,
@@ -131,6 +132,7 @@ pub fn restore_window_for_current_page(
             "Pick a value from the current list.",
             false,
         );
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::ToolWeakPasswords {
         show_secondary_page_chrome(
             &chrome,
@@ -138,6 +140,7 @@ pub fn restore_window_for_current_page(
             "Scan the current list for passwords that fail basic checks.",
             false,
         );
+        chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::ToolAudit {
         show_secondary_page_chrome(&chrome, "Audit", "Git history and verification", false);
         chrome.find.set_visible(true);

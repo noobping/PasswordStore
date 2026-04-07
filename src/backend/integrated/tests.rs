@@ -1568,6 +1568,57 @@ fn exported_fido2_private_keys_import_as_managed_keys() {
 
 #[cfg(feature = "fidokey")]
 #[test]
+fn exported_fido2_private_keys_reject_unsupported_manifest_metadata() {
+    let _env = SystemBackendTestEnv::new();
+    let _guard = Fido2TransportGuard::install(Arc::new(
+        MockFido2Transport::default()
+            .with_enrollment_result(Ok(mock_fido2_enrollment(b"travel-key-secret"))),
+    ));
+    let generated =
+        generate_fido2_private_key(Some("123456")).expect("generate FIDO2-protected key");
+    let exported =
+        armored_ripasso_private_key(&generated.fingerprint).expect("export FIDO2-protected key");
+    remove_ripasso_private_key(&generated.fingerprint).expect("remove generated FIDO key");
+
+    let unsupported_format = exported.replacen("format = 1", "format = 99", 1);
+    assert_ne!(unsupported_format, exported);
+    let format_err = import_ripasso_private_key_bytes(unsupported_format.as_bytes(), None)
+        .expect_err("unsupported FIDO2 manifest format should be rejected");
+    assert!(format_err
+        .to_string()
+        .contains("Unsupported FIDO2 private key format 99."));
+    assert!(
+        ripasso_private_key_requires_passphrase(unsupported_format.as_bytes())
+            .expect_err("unsupported FIDO2 manifest format should not be treated as valid")
+            .to_string()
+            .contains("Unsupported FIDO2 private key format 99.")
+    );
+
+    let unsupported_protection = exported.replacen(
+        "protection = \"fido2-hmac-secret\"",
+        "protection = \"password\"",
+        1,
+    );
+    assert_ne!(unsupported_protection, exported);
+    let protection_err = import_ripasso_private_key_bytes(unsupported_protection.as_bytes(), None)
+        .expect_err("unsupported FIDO2 manifest protection should be rejected");
+    assert!(protection_err
+        .to_string()
+        .contains("Unsupported FIDO2 private key protection 'password'."));
+    assert!(
+        ripasso_private_key_requires_passphrase(unsupported_protection.as_bytes())
+            .expect_err("unsupported FIDO2 manifest protection should not be treated as valid")
+            .to_string()
+            .contains("Unsupported FIDO2 private key protection 'password'.")
+    );
+
+    assert!(list_ripasso_private_keys()
+        .expect("list private keys after rejected imports")
+        .is_empty());
+}
+
+#[cfg(feature = "fidokey")]
+#[test]
 fn generated_fido2_private_keys_are_listed_and_start_unlocked_when_a_pin_is_cached() {
     let _env = SystemBackendTestEnv::new();
     let _guard = Fido2TransportGuard::install(Arc::new(

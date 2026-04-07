@@ -6,8 +6,6 @@ use super::super::cache::{
 };
 #[cfg(feature = "fidokey")]
 use super::super::cert::cert_can_decrypt_password_entries;
-#[cfg(feature = "fidokey")]
-use super::super::cert::parse_fido2_public_key_bytes;
 use super::super::cert::{
     cert_has_transport_encryption_key, cert_requires_passphrase, connected_smartcard_key_from_cert,
     fingerprint_from_string, normalized_fingerprint, parse_hardware_public_key_bytes,
@@ -26,7 +24,8 @@ use super::manifest::HardwarePrivateKeyManifest;
 use super::manifest::{
     fido2_private_key_manifest_contents, managed_fido2_private_key_from_cert,
     parse_fido2_private_key_manifest, parse_fido2_private_key_manifest_bytes,
-    read_fido2_private_key_manifest_entry, Fido2PrivateKeyManifest,
+    read_fido2_private_key_manifest_entry, validate_fido2_private_key_manifest,
+    Fido2PrivateKeyManifest,
 };
 use super::manifest::{
     read_hardware_private_key_manifest, read_hardware_private_key_manifest_entry,
@@ -600,13 +599,8 @@ fn store_fido2_private_key_manifest(
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     let keys_dir = ripasso_fido_keys_dir().map_err(PrivateKeyError::other)?;
     ensure_private_dir(&keys_dir).map_err(|err| PrivateKeyError::other(err.to_string()))?;
-    let (cert, key) = parse_fido2_public_key_bytes(manifest.public_key.as_bytes())?;
-    let expected = normalized_fingerprint(&manifest.fingerprint).map_err(PrivateKeyError::other)?;
-    if !key.fingerprint.eq_ignore_ascii_case(&expected) {
-        return Err(PrivateKeyError::other(
-            "That FIDO2-protected key is invalid.",
-        ));
-    }
+    let (cert, key) =
+        validate_fido2_private_key_manifest(&manifest).map_err(PrivateKeyError::other)?;
     if !cert_has_transport_encryption_key(&cert) {
         return Err(PrivateKeyError::incompatible(
             "That private key cannot decrypt password store entries.",

@@ -105,10 +105,9 @@ pub(super) fn parse_fido2_private_key_manifest_bytes(
 }
 
 #[cfg(feature = "fidokey")]
-pub(super) fn read_fido2_private_key_manifest_entry(
-    path: &Path,
-    manifest: Fido2PrivateKeyManifest,
-) -> Result<super::storage::StoredPrivateKeyEntry, String> {
+pub(super) fn validate_fido2_private_key_manifest(
+    manifest: &Fido2PrivateKeyManifest,
+) -> Result<(Cert, ManagedRipassoPrivateKey), String> {
     if manifest.format != FIDO2_PRIVATE_KEY_MANIFEST_FORMAT {
         return Err(format!(
             "Unsupported FIDO2 private key format {}.",
@@ -128,6 +127,16 @@ pub(super) fn read_fido2_private_key_manifest_entry(
     if !key.fingerprint.eq_ignore_ascii_case(&expected) {
         return Err("That FIDO2-protected key is invalid.".to_string());
     }
+
+    Ok((cert, key))
+}
+
+#[cfg(feature = "fidokey")]
+pub(super) fn read_fido2_private_key_manifest_entry(
+    path: &Path,
+    manifest: Fido2PrivateKeyManifest,
+) -> Result<super::storage::StoredPrivateKeyEntry, String> {
+    let (cert, key) = validate_fido2_private_key_manifest(&manifest)?;
 
     Ok(super::storage::StoredPrivateKeyEntry {
         cert: Some(cert),

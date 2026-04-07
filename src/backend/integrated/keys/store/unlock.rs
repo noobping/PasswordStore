@@ -12,7 +12,7 @@ use super::super::hardware::{
     HardwareSessionPolicy, HardwareUnlockMode,
 };
 #[cfg(feature = "fidokey")]
-use super::manifest::parse_fido2_private_key_manifest;
+use super::manifest::{parse_fido2_private_key_manifest, validate_fido2_private_key_manifest};
 use super::storage::{
     find_connected_smartcard_key, find_stored_private_key, ConnectedSmartcardEntry,
     StoredPrivateKeyEntry, StoredPrivateKeyLocation,
@@ -301,6 +301,7 @@ fn unlock_fido2_private_key_for_session(
     )
     .map_err(PrivateKeyError::other)?
     .ok_or_else(|| PrivateKeyError::other("That FIDO2-protected key is invalid."))?;
+    let _ = validate_fido2_private_key_manifest(&manifest).map_err(PrivateKeyError::other)?;
     let unlocked_bytes = super::super::fido2::unlock_fido2_private_key_material_for_session(
         manifest.encrypted_private_key.as_bytes(),
         pin.as_ref().map(|pin| pin.expose_secret()),
@@ -398,10 +399,10 @@ pub fn unlock_ripasso_private_key_for_session(
 
 pub fn ripasso_private_key_requires_passphrase(bytes: &[u8]) -> Result<bool, PrivateKeyError> {
     #[cfg(feature = "fidokey")]
-    if super::manifest::parse_fido2_private_key_manifest_bytes(bytes)
+    if let Some(manifest) = super::manifest::parse_fido2_private_key_manifest_bytes(bytes)
         .map_err(PrivateKeyError::other)?
-        .is_some()
     {
+        let _ = validate_fido2_private_key_manifest(&manifest).map_err(PrivateKeyError::other)?;
         return Ok(false);
     }
 

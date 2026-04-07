@@ -86,7 +86,7 @@ fn configure_pass_move_command(cmd: &mut Command, old_label: &str, new_label: &s
 }
 
 fn configure_pass_remove_command(cmd: &mut Command, label: &str) {
-    cmd.arg("rm").arg("-rf");
+    cmd.arg("rm").arg("-f");
     append_pass_entry_args(cmd, [label]);
 }
 
@@ -491,7 +491,20 @@ mod validation_tests {
 
         let mut rm = Command::new("pass");
         configure_pass_remove_command(&mut rm, "-danger");
-        assert_eq!(command_args(&rm), vec!["rm", "-rf", "--", "-danger"]);
+        assert_eq!(command_args(&rm), vec!["rm", "-f", "--", "-danger"]);
+    }
+
+    #[test]
+    fn host_backend_deletes_entries_non_recursively() {
+        let mut rm = Command::new("pass");
+        configure_pass_remove_command(&mut rm, "team/entry");
+
+        assert_eq!(
+            rm.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["rm", "-f", "--", "team/entry"]
+        );
     }
 
     #[test]

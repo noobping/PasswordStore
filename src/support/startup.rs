@@ -28,8 +28,6 @@ pub(crate) fn fatal_startup_error(
     let dialog_body = fatal_startup_dialog_body(app_name, &detail, log_path.as_deref());
 
     show_startup_error_dialog(app_name, &dialog_body);
-    let body = fatal_startup_dialog_body(app_name, &detail, log_path.as_deref());
-    show_startup_error_dialog(app_name, &body);
 
     1.into()
 }

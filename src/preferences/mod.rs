@@ -177,6 +177,10 @@ impl Preferences {
         notices
     }
 
+    fn resolved_store_dirs(stores: Option<Vec<String>>) -> Vec<String> {
+        stores.unwrap_or_else(default_store_dirs)
+    }
+
     pub fn store_roots(&self) -> Vec<String> {
         self.stores()
             .into_iter()
@@ -271,17 +275,15 @@ impl Preferences {
     pub fn stores(&self) -> Vec<String> {
         self.read_preference(
             |settings| {
-                settings
-                    .strv("password-store-dirs")
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect()
+                Self::resolved_store_dirs(settings.user_value("password-store-dirs").map(|_| {
+                    settings
+                        .strv("password-store-dirs")
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect()
+                }))
             },
-            |cfg| {
-                cfg.password_store_dirs
-                    .clone()
-                    .unwrap_or_else(default_store_dirs)
-            },
+            |cfg| Self::resolved_store_dirs(cfg.password_store_dirs.clone()),
         )
     }
 
@@ -469,6 +471,22 @@ mod tests {
     #[test]
     fn default_store_dirs_match_build_mode() {
         assert_eq!(default_store_dirs(), expected_default_store_dirs());
+    }
+
+    #[test]
+    fn store_dirs_default_when_unset() {
+        assert_eq!(
+            Preferences::resolved_store_dirs(None),
+            expected_default_store_dirs()
+        );
+    }
+
+    #[test]
+    fn store_dirs_keep_explicit_empty_lists() {
+        assert_eq!(
+            Preferences::resolved_store_dirs(Some(Vec::<String>::new())),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

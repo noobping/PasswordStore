@@ -24,7 +24,8 @@ pub use remotes::{
     set_store_git_remote_url,
 };
 pub use repository::{
-    ensure_store_git_repository, has_git_repository, password_store_git_state_summary,
+    ensure_store_git_repository, git_command_available, has_git_repository,
+    password_store_git_state_summary,
 };
 pub use status::store_git_repository_status;
 pub use sync::sync_store_repository;

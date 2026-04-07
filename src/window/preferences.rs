@@ -8,6 +8,7 @@ use crate::private_key::sync::{
 use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
 use crate::support::actions::register_window_action;
+use crate::support::git::git_command_available;
 #[cfg(feature = "flatpak")]
 use crate::support::runtime::has_host_permission;
 use crate::support::runtime::{supports_audit_features, supports_host_command_features};
@@ -169,15 +170,25 @@ fn sync_audit_history_recipient_row(
     check: &CheckButton,
     preferences: &Preferences,
 ) {
+    const AUDIT_HISTORY_RECIPIENTS_SUBTITLE: &str = "Retry authorization with recipient files from the commit history when the current branch recipients cannot authorize the signer.";
+    const AUDIT_HISTORY_RECIPIENTS_DISABLED_SUBTITLE: &str =
+        "Install Git to use commit-history recipients for audit verification.";
+
     let supported = supports_audit_features();
     row.set_visible(supported);
     if !supported {
         return;
     }
 
+    let available = git_command_available();
     let enabled = preferences.audit_use_commit_history_recipients();
-    row.set_sensitive(true);
-    check.set_sensitive(true);
+    row.set_sensitive(available);
+    check.set_sensitive(available);
+    row.set_subtitle(&gettext(if available {
+        AUDIT_HISTORY_RECIPIENTS_SUBTITLE
+    } else {
+        AUDIT_HISTORY_RECIPIENTS_DISABLED_SUBTITLE
+    }));
     if check.is_active() != enabled {
         check.set_active(enabled);
     }

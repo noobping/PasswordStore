@@ -76,6 +76,7 @@ const WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE: &str = "Try a different search term.
 const AUDIT_TITLE: &str = "Audit";
 const AUDIT_SUBTITLE: &str = "Git history and verification";
 const AUDIT_ROW_SUBTITLE: &str = "Inspect Git history across stores and verify commit signatures.";
+const AUDIT_ROW_GIT_UNAVAILABLE_SUBTITLE: &str = "Git isn't available in this runtime.";
 const AUDIT_ROW_DISABLED_SUBTITLE: &str = "No Git-backed stores available.";
 const AUDIT_LOADING_TITLE: &str = "Loading data";
 const AUDIT_LOADING_SUBTITLE: &str = "Inspecting Git-backed stores and discovering branches.";

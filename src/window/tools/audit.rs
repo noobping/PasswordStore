@@ -5,17 +5,17 @@ use super::{
     AUDIT_FILTER_EMPTY_TITLE, AUDIT_LOADING_COMMITS_SUBTITLE, AUDIT_LOADING_COMMITS_TITLE,
     AUDIT_LOADING_SUBTITLE, AUDIT_LOADING_TITLE, AUDIT_LOAD_MORE_SUBTITLE, AUDIT_LOAD_MORE_TITLE,
     AUDIT_NO_STORES_SUBTITLE, AUDIT_NO_STORES_TITLE, AUDIT_ROW_DISABLED_SUBTITLE,
-    AUDIT_ROW_SUBTITLE, AUDIT_SEARCH_EMPTY_SUBTITLE, AUDIT_SEARCH_EMPTY_TITLE, AUDIT_SUBTITLE,
-    AUDIT_TITLE,
+    AUDIT_ROW_GIT_UNAVAILABLE_SUBTITLE, AUDIT_ROW_SUBTITLE, AUDIT_SEARCH_EMPTY_SUBTITLE,
+    AUDIT_SEARCH_EMPTY_TITLE, AUDIT_SUBTITLE, AUDIT_TITLE,
 };
 use crate::i18n::gettext;
 use crate::preferences::Preferences;
 use crate::store::labels::{shortened_store_label_for_path, shortened_store_label_map};
 use crate::support::background::spawn_result_task;
 use crate::support::git::{
-    audit_unverified_reason_message, discover_store_git_audit_catalog, has_git_repository,
-    load_store_git_audit_commit_page, StoreGitAuditBranchRef, StoreGitAuditCatalog,
-    StoreGitAuditCommit, StoreGitAuditCommitPage, StoreGitAuditPathChange,
+    audit_unverified_reason_message, discover_store_git_audit_catalog, git_command_available,
+    has_git_repository, load_store_git_audit_commit_page, StoreGitAuditBranchRef,
+    StoreGitAuditCatalog, StoreGitAuditCommit, StoreGitAuditCommitPage, StoreGitAuditPathChange,
     StoreGitAuditVerification, StoreGitAuditVerificationMode, StoreGitAuditVerificationState,
     STORE_GIT_AUDIT_PAGE_SIZE,
 };
@@ -67,7 +67,7 @@ struct AuditBranchState {
 
 impl ToolsPageState {
     pub(super) fn prepare_audit_page(&self) {
-        if !supports_audit_features() {
+        if !supports_audit_features() || !git_command_available() {
             return;
         }
 
@@ -93,15 +93,14 @@ impl ToolsPageState {
             return;
         }
 
-        let available = audit_git_store_available(&Preferences::new().store_roots());
+        let availability = audit_git_runtime_availability(&Preferences::new().store_roots());
         self.select_page
             .audit_row
-            .set_subtitle(&localized_text(if available {
-                AUDIT_ROW_SUBTITLE
-            } else {
-                AUDIT_ROW_DISABLED_SUBTITLE
-            }));
-        set_tool_row_enabled(&self.select_page.audit_row, enabled && available);
+            .set_subtitle(&localized_text(audit_row_subtitle(availability)));
+        set_tool_row_enabled(
+            &self.select_page.audit_row,
+            enabled && matches!(availability, AuditGitRuntimeAvailability::Available),
+        );
         set_tool_row_suffix_loading(
             &self.select_page.audit_suffix_stack,
             &self.select_page.audit_suffix_arrow,
@@ -762,8 +761,30 @@ impl ToolsPageState {
     }
 }
 
-fn audit_git_store_available(stores: &[String]) -> bool {
-    stores.iter().any(|store| has_git_repository(store))
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuditGitRuntimeAvailability {
+    Available,
+    GitUnavailable,
+    NoGitStores,
+}
+
+fn audit_git_runtime_availability(stores: &[String]) -> AuditGitRuntimeAvailability {
+    if !git_command_available() {
+        return AuditGitRuntimeAvailability::GitUnavailable;
+    }
+    if stores.iter().any(|store| has_git_repository(store)) {
+        AuditGitRuntimeAvailability::Available
+    } else {
+        AuditGitRuntimeAvailability::NoGitStores
+    }
+}
+
+const fn audit_row_subtitle(availability: AuditGitRuntimeAvailability) -> &'static str {
+    match availability {
+        AuditGitRuntimeAvailability::Available => AUDIT_ROW_SUBTITLE,
+        AuditGitRuntimeAvailability::GitUnavailable => AUDIT_ROW_GIT_UNAVAILABLE_SUBTITLE,
+        AuditGitRuntimeAvailability::NoGitStores => AUDIT_ROW_DISABLED_SUBTITLE,
+    }
 }
 
 fn audit_available_store_ids(catalog: &StoreGitAuditCatalog) -> BTreeSet<String> {

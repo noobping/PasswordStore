@@ -19,6 +19,7 @@ pub mod secure_fs;
 pub mod startup;
 #[cfg(feature = "platform-theme")]
 pub mod theme;
+pub mod toml_safety;
 pub mod ui;
 pub mod uri;
 pub mod validation;

@@ -11,6 +11,7 @@ use super::super::cert::{normalized_fingerprint, ManagedRipassoPrivateKeyProtect
 use super::super::cert::{parse_hardware_public_key_bytes, ManagedRipassoHardwareKey};
 #[cfg(feature = "fidokey")]
 use crate::backend::PrivateKeyError;
+use crate::support::toml_safety::{parse_toml_with_limits, MANAGED_KEY_MANIFEST_TOML_LIMITS};
 #[cfg(feature = "fidokey")]
 use sequoia_openpgp::Cert;
 use serde::{Deserialize, Serialize as SerdeSerialize};
@@ -91,6 +92,11 @@ pub(super) fn managed_fido2_private_key_from_cert(cert: &Cert) -> ManagedRipasso
 pub(super) fn parse_fido2_private_key_manifest(
     contents: &str,
 ) -> Result<Option<Fido2PrivateKeyManifest>, String> {
+    crate::support::toml_safety::validate_toml_input(
+        contents,
+        MANAGED_KEY_MANIFEST_TOML_LIMITS,
+        "FIDO2 private key manifest",
+    )?;
     toml::from_str(contents).map(Some).or(Ok(None))
 }
 
@@ -193,9 +199,11 @@ pub(super) fn read_hardware_private_key_manifest_entry(
 pub(super) fn read_hardware_private_key_manifest(
     dir: &Path,
 ) -> Result<HardwarePrivateKeyManifest, String> {
-    toml::from_str(
-        &std::fs::read_to_string(super::paths::hardware_manifest_path(dir))
-            .map_err(|err| err.to_string())?,
+    let contents = std::fs::read_to_string(super::paths::hardware_manifest_path(dir))
+        .map_err(|err| err.to_string())?;
+    parse_toml_with_limits(
+        &contents,
+        MANAGED_KEY_MANIFEST_TOML_LIMITS,
+        "hardware key manifest",
     )
-    .map_err(|err| err.to_string())
 }

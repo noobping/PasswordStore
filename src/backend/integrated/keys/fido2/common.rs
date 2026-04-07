@@ -3,6 +3,7 @@ use super::super::cache::{
 };
 use crate::backend::PrivateKeyError;
 use crate::fido2_recipient::{build_fido2_recipient_string, derived_fido2_recipient_id};
+use crate::support::toml_safety::{parse_toml_with_limits, FIDO2_TEXT_ENVELOPE_TOML_LIMITS};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use fido2_rs::{
     assertion::AssertRequest,
@@ -327,9 +328,7 @@ pub(super) fn parse_text_envelope<T: for<'de> Deserialize<'de>>(
         return Ok(None);
     };
     let body = std::str::from_utf8(body).map_err(|err| err.to_string())?;
-    toml::from_str(body)
-        .map(Some)
-        .map_err(|err| err.to_string())
+    parse_toml_with_limits(body, FIDO2_TEXT_ENVELOPE_TOML_LIMITS, "FIDO2 text envelope").map(Some)
 }
 
 pub(super) fn validate_direct_any_envelope(

@@ -1,6 +1,7 @@
 use super::{PasswordListSortMode, UsernameFallbackMode};
 use crate::password::generation::PasswordGenerationSettings;
 use crate::support::secure_fs::write_private_file;
+use crate::support::toml_safety::{parse_toml_with_limits, PREFERENCE_FILE_TOML_LIMITS};
 use adw::glib::{bool_error, BoolError};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -35,7 +36,10 @@ pub(super) fn load_file_prefs() -> PreferenceFile {
     let path = config_path();
     fs::read_to_string(&path).map_or_else(
         |_| PreferenceFile::default(),
-        |data| toml::from_str(&data).unwrap_or_default(),
+        |data| {
+            parse_toml_with_limits(&data, PREFERENCE_FILE_TOML_LIMITS, "preferences file")
+                .unwrap_or_default()
+        },
     )
 }
 

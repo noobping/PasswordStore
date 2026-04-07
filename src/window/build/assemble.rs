@@ -2,6 +2,7 @@ use super::actions::{
     connect_new_password_submit, connect_password_copy_buttons, connect_password_list_activation,
     register_password_page_actions,
 };
+use super::deferred::DeferredState;
 use super::widgets::WindowWidgets;
 use crate::logging::log_info;
 use crate::password::list::{
@@ -131,7 +132,7 @@ pub(super) fn assemble_preferences_page(
     preferences: &Preferences,
     password_page_state: &PasswordPageState,
     preferences_action_state: &PreferencesActionState,
-    tools_page_state: &ToolsPageState,
+    tools_page_state: &DeferredState<ToolsPageState>,
 ) {
     initialize_backend_preferences(widgets, preferences);
 
@@ -251,19 +252,28 @@ pub(super) fn assemble_log_page(widgets: &WindowWidgets, navigation_state: &Wind
 
 pub(super) fn assemble_docs_page(
     widgets: &WindowWidgets,
-    docs_page_state: &DocumentationPageState,
+    docs_page_state: &DeferredState<DocumentationPageState>,
 ) {
-    register_open_docs_action(&widgets.window, docs_page_state);
+    let docs_page_state = docs_page_state.clone();
+    register_open_docs_action(&widgets.window, move || {
+        docs_page_state.with(DocumentationPageState::open);
+    });
 }
 
-pub(super) fn assemble_tools_page(widgets: &WindowWidgets, tools_page_state: &ToolsPageState) {
-    register_open_tools_action(&widgets.window, tools_page_state);
+pub(super) fn assemble_tools_page(
+    widgets: &WindowWidgets,
+    tools_page_state: &DeferredState<ToolsPageState>,
+) {
+    let tools_page_state = tools_page_state.clone();
+    register_open_tools_action(&widgets.window, move || {
+        tools_page_state.with(ToolsPageState::open);
+    });
 }
 
 pub(super) fn register_window_navigation_actions(
     widgets: &WindowWidgets,
     navigation_state: &WindowNavigationState,
-    tools_page_state: &ToolsPageState,
+    tools_page_state: &DeferredState<ToolsPageState>,
     store_recipients_page_state: &StoreRecipientsPageState,
     list_visibility_action_state: &ListVisibilityActionState,
     back_action_state: &BackActionState,
@@ -291,7 +301,9 @@ pub(super) fn register_window_navigation_actions(
         &widgets.tools_audit_search_entry,
         Rc::new({
             let tools_page_state = tools_page_state.clone();
-            move || tools_page_state.render_audit_page()
+            move || {
+                let _ = tools_page_state.with_initialized(|state| state.render_audit_page());
+            }
         }),
     );
     register_list_visibility_action(&widgets.window, list_visibility_action_state);
@@ -332,7 +344,7 @@ fn connect_backend_preferences(
     widgets: &WindowWidgets,
     preferences: &Preferences,
     preferences_action_state: &PreferencesActionState,
-    tools_page_state: &ToolsPageState,
+    tools_page_state: &DeferredState<ToolsPageState>,
 ) {
     connect_pass_command_row(
         &widgets.pass_command_row,
@@ -352,7 +364,7 @@ fn connect_backend_preferences(
             let tools_page_state = tools_page_state.clone();
             let window = widgets.window.clone();
             move || {
-                tools_page_state.refresh_select_page();
+                let _ = tools_page_state.with_initialized(ToolsPageState::refresh_select_page);
                 rebuild_store_actions_list(
                     &preferences_action_state.store_actions_list,
                     &preferences_action_state.stores_list,

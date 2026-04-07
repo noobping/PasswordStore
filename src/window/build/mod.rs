@@ -1,6 +1,7 @@
 mod actions;
 mod assemble;
 mod chrome;
+mod deferred;
 mod state;
 pub(super) mod widgets;
 
@@ -12,6 +13,7 @@ use self::assemble::{
 use self::chrome::{
     connect_window_keyboard_navigation, initialize_window_chrome, schedule_initial_focus,
 };
+use self::deferred::DeferredState;
 use self::state::{
     back_action_state, build_git_action_state, context_undo_action_state, docs_page_state,
     list_visibility_action_state, new_password_dialog_state, password_page_state,
@@ -64,9 +66,17 @@ pub fn create_main_window(
     let store_git_page_state = store_git_page_state(&widgets);
     let store_recipients_page_state = store_recipients_page_state(&widgets, &store_git_page_state);
     let window_navigation_state = window_navigation_state(&widgets);
-    let docs_page_state = docs_page_state(&widgets, &window_navigation_state);
-    let tools_page_state =
-        tools_page_state(&widgets, &window_navigation_state, &password_page_state);
+    let docs_page_state = DeferredState::new({
+        let widgets = widgets.clone();
+        let window_navigation_state = window_navigation_state.clone();
+        move || docs_page_state(&widgets, &window_navigation_state)
+    });
+    let tools_page_state = DeferredState::new({
+        let widgets = widgets.clone();
+        let window_navigation_state = window_navigation_state.clone();
+        let password_page_state = password_page_state.clone();
+        move || tools_page_state(&widgets, &window_navigation_state, &password_page_state)
+    });
     let preferences_action_state = preferences_action_state(&widgets, &store_recipients_page_state);
     let git_action_state = build_git_action_state(
         &widgets,

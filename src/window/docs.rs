@@ -443,9 +443,8 @@ impl DocumentationPageState {
     }
 }
 
-pub fn register_open_docs_action(window: &ApplicationWindow, state: &DocumentationPageState) {
-    let state = state.clone();
-    register_window_action(window, "open-docs", move || state.open());
+pub fn register_open_docs_action(window: &ApplicationWindow, open_docs: impl Fn() + 'static) {
+    register_window_action(window, "open-docs", open_docs);
 }
 
 fn load_documents() -> Vec<DocumentationDocument> {

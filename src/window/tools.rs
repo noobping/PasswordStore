@@ -493,6 +493,15 @@ impl ToolsPageState {
     pub fn sync_action_availability(&self) {
         sync_tools_action_availability(&self.window);
     }
+
+    pub fn open(&self) {
+        let chrome = self.navigation.window_chrome();
+        show_secondary_page_chrome(&chrome, TOOLS_PAGE_TITLE, TOOLS_PAGE_SUBTITLE, false);
+        self.refresh_select_page();
+        reveal_navigation_page(&self.navigation.nav, &self.select_page.page);
+        let _ = focus_first_keyboard_focusable_list_row(&self.select_page.list)
+            || focus_first_keyboard_focusable_list_row(&self.select_page.logs_list);
+    }
 }
 
 fn collect_loaded_entry_requests(list: &ListBox) -> Vec<FieldValueRequest> {
@@ -622,15 +631,7 @@ pub fn sync_tools_action_availability(window: &ApplicationWindow) {
     set_window_action_enabled(window, "open-tools", true);
 }
 
-pub fn register_open_tools_action(window: &ApplicationWindow, state: &ToolsPageState) {
-    let state = state.clone();
-    register_window_action(window, "open-tools", move || {
-        let chrome = state.navigation.window_chrome();
-        show_secondary_page_chrome(&chrome, TOOLS_PAGE_TITLE, TOOLS_PAGE_SUBTITLE, false);
-        state.refresh_select_page();
-        reveal_navigation_page(&state.navigation.nav, &state.select_page.page);
-        let _ = focus_first_keyboard_focusable_list_row(&state.select_page.list)
-            || focus_first_keyboard_focusable_list_row(&state.select_page.logs_list);
-    });
+pub fn register_open_tools_action(window: &ApplicationWindow, open_tools: impl Fn() + 'static) {
+    register_window_action(window, "open-tools", open_tools);
     sync_tools_action_availability(window);
 }

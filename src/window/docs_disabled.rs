@@ -27,6 +27,8 @@ impl DocumentationPageState {
     pub fn new(_widgets: DocumentationPageWidgets<'_>) -> Self {
         Self
     }
+
+    pub fn open(&self) {}
 }
 
-pub fn register_open_docs_action(_window: &ApplicationWindow, _state: &DocumentationPageState) {}
+pub fn register_open_docs_action(_window: &ApplicationWindow, _open_docs: impl Fn() + 'static) {}

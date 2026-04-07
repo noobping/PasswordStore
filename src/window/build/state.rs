@@ -13,9 +13,13 @@ use crate::window::controls::{
     BackActionState, ContextUndoActionState, ListVisibilityActionState, ListVisibilityState,
     PlatformBackActionState,
 };
+use crate::window::docs::{DocumentationPageState, DocumentationPageWidgets};
 use crate::window::git::GitActionState;
 use crate::window::navigation::{WindowNavigationState, WindowPageState};
 use crate::window::preferences::PreferencesActionState;
+use crate::window::tools::{
+    ToolAuditWidgets, ToolBrowserWidgets, ToolsPageState, ToolsPageWidgets,
+};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -241,6 +245,81 @@ pub(super) fn window_navigation_state(widgets: &WindowWidgets) -> WindowNavigati
         win: widgets.window_title.clone(),
         username: widgets.username_entry.clone(),
     }
+}
+
+pub(super) fn docs_page_state(
+    widgets: &WindowWidgets,
+    navigation: &WindowNavigationState,
+) -> DocumentationPageState {
+    DocumentationPageState::new(DocumentationPageWidgets::new(
+        navigation,
+        &widgets.docs_search_entry,
+        &widgets.docs_list,
+        &widgets.docs_detail_page,
+        &widgets.docs_detail_scrolled,
+        &widgets.docs_detail_box,
+    ))
+}
+
+pub(super) fn tools_page_state(
+    widgets: &WindowWidgets,
+    navigation: &WindowNavigationState,
+    password_page: &PasswordPageState,
+) -> ToolsPageState {
+    ToolsPageState::new(ToolsPageWidgets {
+        window: &widgets.window,
+        navigation,
+        page: &widgets.tools_page,
+        list: &widgets.tools_list,
+        field_values_row: &widgets.tools_field_values_row,
+        field_values_suffix_stack: &widgets.tools_field_values_suffix_stack,
+        field_values_suffix_arrow: &widgets.tools_field_values_suffix_arrow,
+        field_values_spinner: &widgets.tools_field_values_spinner,
+        weak_passwords_row: &widgets.tools_weak_passwords_row,
+        weak_passwords_suffix_stack: &widgets.tools_weak_passwords_suffix_stack,
+        weak_passwords_suffix_arrow: &widgets.tools_weak_passwords_suffix_arrow,
+        weak_passwords_spinner: &widgets.tools_weak_passwords_spinner,
+        audit_row: &widgets.tools_audit_row,
+        audit_suffix_stack: &widgets.tools_audit_suffix_stack,
+        audit_suffix_arrow: &widgets.tools_audit_suffix_arrow,
+        audit_spinner: &widgets.tools_audit_spinner,
+        logs_list: &widgets.tools_logs_list,
+        docs_row: &widgets.tools_docs_row,
+        logs_row: &widgets.tools_logs_row,
+        copy_logs_row: &widgets.tools_copy_logs_row,
+        copy_logs_button: &widgets.tools_copy_logs_button,
+        overlay: &widgets.toast_overlay,
+        password_page,
+        field_values: ToolBrowserWidgets {
+            page: &widgets.tools_field_values_page,
+            search_entry: &widgets.tools_field_values_search_entry,
+            list: &widgets.tools_field_values_list,
+        },
+        value_values: ToolBrowserWidgets {
+            page: &widgets.tools_value_values_page,
+            search_entry: &widgets.tools_value_values_search_entry,
+            list: &widgets.tools_value_values_list,
+        },
+        weak_passwords: ToolBrowserWidgets {
+            page: &widgets.tools_weak_passwords_page,
+            search_entry: &widgets.tools_weak_passwords_search_entry,
+            list: &widgets.tools_weak_passwords_list,
+        },
+        audit: ToolAuditWidgets {
+            page: &widgets.tools_audit_page,
+            search_entry: &widgets.tools_audit_search_entry,
+            stack: &widgets.tools_audit_stack,
+            status: &widgets.tools_audit_status,
+            scrolled: &widgets.tools_audit_scrolled,
+            content: &widgets.tools_audit_content,
+            filter_button: &widgets.tools_audit_filter_button,
+            filter_popover: &widgets.tools_audit_filter_popover,
+            filter_store_box: &widgets.tools_audit_filter_store_box,
+            filter_branch_box: &widgets.tools_audit_filter_branch_box,
+        },
+        root_list: &widgets.list,
+        root_search_entry: &widgets.search_entry,
+    })
 }
 
 fn window_page_state(widgets: &WindowWidgets, page: &adw::NavigationPage) -> WindowPageState {

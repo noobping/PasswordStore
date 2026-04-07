@@ -324,7 +324,10 @@ fn initialize_password_list(widgets: &WindowWidgets) {
         &widgets.list,
         &list_actions,
         &widgets.toast_overlay,
-        true,
+        Rc::new({
+            let navigation = widgets.navigation_view.clone();
+            move || navigation_stack_is_root(&navigation)
+        }),
         false,
         false,
     );

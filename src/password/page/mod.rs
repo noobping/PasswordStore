@@ -29,13 +29,15 @@ use crate::preferences::Preferences;
 use crate::support::actions::activate_widget_action;
 use crate::support::background::spawn_progress_result_task;
 use crate::support::ui::{
-    pop_navigation_to_root, push_navigation_page_if_needed, visible_navigation_page_is,
+    navigation_stack_is_root, pop_navigation_to_root, push_navigation_page_if_needed,
+    visible_navigation_page_is,
 };
 use crate::support::validation::validate_pass_file_email_fields;
 use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use crate::window::sync_tools_action_availability;
 use adw::prelude::*;
 use adw::{Dialog, Toast};
+use std::rc::Rc;
 use std::string::ToString;
 
 use self::editor::{
@@ -745,7 +747,10 @@ pub fn show_password_list_page(
         &state.list,
         &list_actions,
         &state.overlay,
-        true,
+        Rc::new({
+            let navigation = state.nav.clone();
+            move || navigation_stack_is_root(&navigation)
+        }),
         show_hidden,
         show_duplicates,
     );

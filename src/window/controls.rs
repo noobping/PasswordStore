@@ -240,7 +240,6 @@ fn reload_password_list(
     navigation: &WindowNavigationState,
     visibility: &ListVisibilityState,
 ) {
-    let show_list_actions = navigation_stack_is_root(&navigation.nav);
     let list_actions = PasswordListActions::new(
         &navigation.add,
         &navigation.git,
@@ -252,7 +251,10 @@ fn reload_password_list(
         list,
         &list_actions,
         overlay,
-        show_list_actions,
+        Rc::new({
+            let navigation = navigation.nav.clone();
+            move || navigation_stack_is_root(&navigation)
+        }),
         visibility.show_hidden(),
         visibility.show_duplicates(),
     );
@@ -411,10 +413,7 @@ fn hide_and_clear_search_entry(search_entry: &SearchEntry, list: &ListBox) {
     list.invalidate_filter();
 }
 
-fn hide_and_clear_audit_search_entry(
-    search_entry: &SearchEntry,
-    on_search_changed: &Rc<dyn Fn()>,
-) {
+fn hide_and_clear_audit_search_entry(search_entry: &SearchEntry, on_search_changed: &Rc<dyn Fn()>) {
     hide_search_entry(search_entry);
     if search_entry.text().is_empty() {
         return;

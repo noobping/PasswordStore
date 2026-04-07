@@ -21,6 +21,7 @@ use crate::window::tools::sync_tools_action_availability;
 use adw::gio::{prelude::*, SimpleAction};
 use adw::gtk::ListBox;
 use adw::{ApplicationWindow, NavigationPage, StatusPage, Toast, ToastOverlay};
+use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct GitActionState {
@@ -128,7 +129,6 @@ fn begin_git_operation(state: &GitActionState, title: &str) {
 }
 
 fn reload_password_list(state: &GitActionState) {
-    let show_list_actions = navigation_stack_is_root(&state.navigation.nav);
     let list_actions = PasswordListActions::new(
         &state.navigation.add,
         &state.navigation.git,
@@ -140,7 +140,10 @@ fn reload_password_list(state: &GitActionState) {
         &state.list,
         &list_actions,
         &state.overlay,
-        show_list_actions,
+        Rc::new({
+            let navigation = state.navigation.nav.clone();
+            move || navigation_stack_is_root(&navigation)
+        }),
         state.visibility.show_hidden(),
         state.visibility.show_duplicates(),
     );

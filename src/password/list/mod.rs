@@ -238,7 +238,7 @@ pub fn load_passwords_async(
     list: &ListBox,
     actions: &PasswordListActions,
     overlay: &ToastOverlay,
-    show_list_actions: bool,
+    should_show_list_actions: Rc<dyn Fn() -> bool>,
     show_hidden: bool,
     show_duplicates: bool,
 ) {
@@ -256,7 +256,7 @@ pub fn load_passwords_async(
     let git_available = has_host_permission();
     log_store_git_state(&settings);
 
-    if show_list_actions {
+    if should_show_list_actions() {
         actions.git.set_visible(false);
         actions.store.set_visible(false);
         actions.add.set_visible(has_store_dirs);
@@ -269,6 +269,8 @@ pub fn load_passwords_async(
     let overlay_clone = overlay.clone();
     let list_for_disconnect = list_clone.clone();
     let actions_for_disconnect = actions_clone.clone();
+    let should_show_list_actions_for_result = should_show_list_actions.clone();
+    let should_show_list_actions_for_disconnect = should_show_list_actions.clone();
     spawn_result_task(
         move || {
             collect_all_password_items_with_options(collect_items_options(
@@ -288,6 +290,7 @@ pub fn load_passwords_async(
                 return;
             }
 
+            let show_list_actions = should_show_list_actions_for_result();
             let context = list_action_context(
                 show_list_actions,
                 has_store_dirs,
@@ -334,6 +337,7 @@ pub fn load_passwords_async(
                 return;
             }
 
+            let show_list_actions = should_show_list_actions_for_disconnect();
             let context = list_action_context(
                 show_list_actions,
                 has_store_dirs,

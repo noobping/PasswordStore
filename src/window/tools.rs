@@ -27,7 +27,9 @@ use adw::gtk::{
     Spinner, Stack,
 };
 use adw::prelude::*;
-use adw::{ActionRow, ApplicationWindow, NavigationPage, StatusPage, ToastOverlay};
+use adw::{
+    ActionRow, ApplicationWindow, NavigationPage, PreferencesGroup, StatusPage, ToastOverlay,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -100,6 +102,7 @@ const AUDIT_LOAD_MORE_SUBTITLE: &str = "Read the next {count} commits.";
 struct ToolSelectPageState {
     page: NavigationPage,
     list: ListBox,
+    information_group: PreferencesGroup,
     logs_list: ListBox,
     field_values_row: ActionRow,
     field_values_suffix_stack: Stack,
@@ -211,6 +214,7 @@ pub struct ToolsPageWidgets<'a> {
     pub audit_suffix_stack: &'a Stack,
     pub audit_suffix_arrow: &'a Image,
     pub audit_spinner: &'a Spinner,
+    pub information_group: &'a PreferencesGroup,
     pub logs_list: &'a ListBox,
     pub docs_row: &'a ActionRow,
     pub logs_row: &'a ActionRow,
@@ -238,6 +242,7 @@ impl ToolsPageState {
             select_page: ToolSelectPageState {
                 page: widgets.page.clone(),
                 list: widgets.list.clone(),
+                information_group: widgets.information_group.clone(),
                 field_values_row: widgets.field_values_row.clone(),
                 field_values_suffix_stack: widgets.field_values_suffix_stack.clone(),
                 field_values_suffix_arrow: widgets.field_values_suffix_arrow.clone(),

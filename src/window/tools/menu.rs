@@ -22,11 +22,25 @@ use adw::prelude::*;
 use adw::{ActionRow, Toast};
 use std::rc::Rc;
 
-pub(super) fn configure_optional_doc_row(state: &ToolsPageState) {
+const fn information_group_visible(docs_supported: bool, logging_supported: bool) -> bool {
+    docs_supported || logging_supported
+}
+
+fn sync_optional_information_group(
+    state: &ToolsPageState,
+    docs_supported: bool,
+    logging_supported: bool,
+) {
     state
         .select_page
-        .docs_row
-        .set_visible(supports_docs_features());
+        .information_group
+        .set_visible(information_group_visible(docs_supported, logging_supported));
+}
+
+pub(super) fn configure_optional_doc_row(state: &ToolsPageState) {
+    let docs_supported = supports_docs_features();
+    state.select_page.docs_row.set_visible(docs_supported);
+    sync_optional_information_group(state, docs_supported, supports_logging_features());
     let window = state.window.clone();
     state
         .select_page
@@ -36,6 +50,7 @@ pub(super) fn configure_optional_doc_row(state: &ToolsPageState) {
 
 pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
     let logging_supported = supports_logging_features();
+    sync_optional_information_group(state, supports_docs_features(), logging_supported);
     state.select_page.logs_row.set_visible(logging_supported);
     state
         .select_page
@@ -68,6 +83,19 @@ pub(super) fn configure_optional_log_rows(state: &ToolsPageState) {
         .select_page
         .copy_logs_button
         .connect_clicked(move |_| copy_action());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::information_group_visible;
+
+    #[test]
+    fn information_group_requires_docs_or_logs() {
+        assert!(!information_group_visible(false, false));
+        assert!(information_group_visible(true, false));
+        assert!(information_group_visible(false, true));
+        assert!(information_group_visible(true, true));
+    }
 }
 
 #[cfg(all(target_os = "linux", feature = "setup"))]

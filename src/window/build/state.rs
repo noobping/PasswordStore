@@ -283,6 +283,7 @@ pub(super) fn tools_page_state(
         audit_suffix_stack: &widgets.tools_audit_suffix_stack,
         audit_suffix_arrow: &widgets.tools_audit_suffix_arrow,
         audit_spinner: &widgets.tools_audit_spinner,
+        information_group: &widgets.tools_information_group,
         logs_list: &widgets.tools_logs_list,
         docs_row: &widgets.tools_docs_row,
         logs_row: &widgets.tools_logs_row,

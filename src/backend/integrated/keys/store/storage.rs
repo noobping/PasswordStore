@@ -52,6 +52,8 @@ use crate::preferences::Preferences;
 use crate::support::runtime::{has_smartcard_permission, supports_legacy_compat_features};
 use crate::support::secure_fs::{ensure_private_dir, write_private_file};
 use ripasso::crypto::{slice_to_20_bytes, Sequoia};
+#[cfg(feature = "hardwarekey")]
+use secrecy::SecretString;
 use sequoia_openpgp::{
     cert::CertBuilder,
     crypto::Password,
@@ -984,8 +986,8 @@ pub fn generate_ripasso_hardware_key(
         ident: ident.to_string(),
         cardholder_name: name.to_string(),
         user_id,
-        admin_pin: admin_pin.to_string(),
-        user_pin: user_pin.to_string(),
+        admin_pin: SecretString::from(admin_pin),
+        user_pin: SecretString::from(user_pin),
         replace_user_pin,
     })
     .map_err(private_key_error_from_hardware_transport_error)?;

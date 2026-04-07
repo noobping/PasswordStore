@@ -1,5 +1,7 @@
 use super::cert::ManagedRipassoHardwareKey;
 use crate::backend::PrivateKeyError;
+#[cfg(feature = "hardwarekey")]
+use secrecy::SecretString;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -31,13 +33,13 @@ pub struct DiscoveredHardwareToken {
 }
 
 #[cfg(feature = "hardwarekey")]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct HardwareKeyGenerationRequest {
     pub ident: String,
     pub cardholder_name: String,
     pub user_id: String,
-    pub admin_pin: String,
-    pub user_pin: String,
+    pub admin_pin: SecretString,
+    pub user_pin: SecretString,
     pub replace_user_pin: bool,
 }
 

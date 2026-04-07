@@ -12,6 +12,8 @@ use openpgp_card::ocard::StatusBytes;
 #[cfg(feature = "hardwarekey")]
 use openpgp_card::Error as OpenPgpCardError;
 use openpgp_card::{state, Card};
+#[cfg(feature = "hardwarekey")]
+use secrecy::ExposeSecret;
 use secrecy::SecretString;
 #[cfg(feature = "hardwarekey")]
 use sequoia_openpgp::serialize::Serialize;
@@ -94,7 +96,7 @@ impl RealHardwareTransport {
             return Ok(());
         }
 
-        let new_pin = SecretString::from(request.user_pin.clone());
+        let new_pin = request.user_pin.clone();
         match admin.reset_user_pin(new_pin.clone()) {
             Ok(()) => Ok(()),
             Err(err) if Self::should_retry_user_pin_change(&err) => admin
@@ -126,8 +128,10 @@ impl RealHardwareTransport {
         >,
         request: &HardwareKeyGenerationRequest,
     ) -> Result<Cert, HardwareTransportError> {
-        let mut candidate_pins = vec![request.user_pin.as_str()];
-        if request.replace_user_pin && request.user_pin != DEFAULT_OPENPGP_CARD_USER_PIN {
+        let mut candidate_pins = vec![request.user_pin.expose_secret()];
+        if request.replace_user_pin
+            && request.user_pin.expose_secret() != DEFAULT_OPENPGP_CARD_USER_PIN
+        {
             candidate_pins.push(DEFAULT_OPENPGP_CARD_USER_PIN);
         }
 
@@ -171,7 +175,7 @@ impl RealHardwareTransport {
         request: &HardwareKeyGenerationRequest,
     ) -> Result<bool, HardwareTransportError> {
         let mut transaction = card.transaction().map_err(card_error)?;
-        match transaction.verify_user_pin(SecretString::from(request.user_pin.clone())) {
+        match transaction.verify_user_pin(request.user_pin.clone()) {
             Ok(()) => Ok(true),
             Err(err) if Self::should_retry_user_pin_change(&err) => Ok(false),
             Err(err) => Err(card_error(err)),
@@ -194,7 +198,7 @@ impl RealHardwareTransport {
         {
             let mut transaction = card.transaction().map_err(card_error)?;
             let mut admin = transaction
-                .to_admin_card(SecretString::from(request.admin_pin.clone()))
+                .to_admin_card(request.admin_pin.clone())
                 .map_err(card_error)?;
             Self::set_requested_user_pin(&mut admin, request)?;
         }
@@ -265,7 +269,7 @@ impl RealHardwareTransport {
         {
             let mut transaction = card.transaction().map_err(card_error)?;
             let mut admin = transaction
-                .to_admin_card(SecretString::from(request.admin_pin.clone()))
+                .to_admin_card(request.admin_pin.clone())
                 .map_err(|err| {
                     Self::step_error("Couldn't verify the hardware key admin PIN", err)
                 })?;
@@ -284,7 +288,7 @@ impl RealHardwareTransport {
         let (signing_material, signing_time, decryption_material, decryption_time) = {
             let mut transaction = card.transaction().map_err(card_error)?;
             let mut admin = transaction
-                .to_admin_card(SecretString::from(request.admin_pin.clone()))
+                .to_admin_card(request.admin_pin.clone())
                 .map_err(|err| {
                     Self::step_error("Couldn't reopen the hardware key admin session", err)
                 })?;
@@ -466,7 +470,7 @@ impl HardwareTransport for RealHardwareTransport {
         &self,
         request: &HardwareKeyGenerationRequest,
     ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
-        if request.user_pin.trim().is_empty() {
+        if request.user_pin.expose_secret().trim().is_empty() {
             return Err(HardwareTransportError::PinRequired(
                 if request.replace_user_pin {
                     "Enter the new hardware key PIN."

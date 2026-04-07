@@ -70,6 +70,8 @@ use crate::fido2_recipient::{build_fido2_recipient_string, FIDO2_RECIPIENTS_FILE
 use crate::preferences::Preferences;
 use crate::store::recipients::split_store_recipients;
 use crate::support::git::has_git_repository;
+#[cfg(feature = "hardwarekey")]
+use secrecy::ExposeSecret;
 use sequoia_openpgp::{cert::CertBuilder, crypto::Password, parse::Parse, serialize::Serialize};
 #[cfg(any(feature = "fidostore", feature = "fidokey"))]
 use std::collections::HashSet;
@@ -1120,7 +1122,11 @@ fn hardware_key_generation_can_keep_existing_user_pin() {
         .expect("generation request mutex poisoned");
     assert_eq!(requests.len(), 1);
     assert!(!requests[0].replace_user_pin);
-    assert_eq!(requests[0].user_pin, "654321");
+    assert_eq!(requests[0].admin_pin.expose_secret(), "12345678");
+    assert_eq!(requests[0].user_pin.expose_secret(), "654321");
+    let request_debug = format!("{:?}", requests[0]);
+    assert!(!request_debug.contains("12345678"));
+    assert!(!request_debug.contains("654321"));
 }
 
 #[test]

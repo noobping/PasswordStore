@@ -6,14 +6,19 @@ use crate::setup::{install_locally, is_current_executable_installed_locally};
 use adw::glib;
 use adw::prelude::*;
 use adw::AlertDialog;
+use rand::random;
 use std::ffi::OsString;
 use std::fs;
+use std::io;
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const AUTO_INSTALL_ARG: &str = "--auto-install";
+const UPDATE_STAGING_DIR_MODE: u32 = 0o700;
+const UPDATE_EXECUTABLE_MODE: u32 = 0o700;
+const UPDATE_DIR_ATTEMPTS: usize = 32;
 
 pub fn supports_updater() -> bool {
     is_current_executable_installed_locally()
@@ -54,7 +59,7 @@ pub fn select_update_release(
 }
 
 pub fn download_target(release: &SelectedRelease) -> Result<DownloadedUpdate, String> {
-    let dir = unique_update_dir();
+    let dir = create_update_dir()?;
     Ok(DownloadedUpdate {
         path: dir.join(&release.asset.name),
         size: release.asset.size,
@@ -75,7 +80,7 @@ pub fn launch_update(download: &DownloadedUpdate) -> Result<(), String> {
     let mut perms = fs::metadata(&download.path)
         .map_err(|error| format!("Failed to read update file metadata: {error}"))?
         .permissions();
-    perms.set_mode(0o755);
+    perms.set_mode(UPDATE_EXECUTABLE_MODE);
     fs::set_permissions(&download.path, perms)
         .map_err(|error| format!("Failed to make the downloaded update executable: {error}"))?;
 
@@ -155,16 +160,82 @@ fn linux_release_asset_name(tag_name: &str, arch: &str) -> String {
     format!("{}-{tag_name}.{arch}", env!("CARGO_PKG_NAME"))
 }
 
-fn unique_update_dir() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    std::env::temp_dir().join(format!(
-        "{}-update-{}-{nanos}",
-        env!("CARGO_PKG_NAME"),
-        process::id()
-    ))
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct UpdateStagingRoot {
+    path: PathBuf,
+    needs_creation: bool,
+}
+
+fn create_update_dir() -> Result<PathBuf, String> {
+    create_update_dir_in(&update_staging_root())
+}
+
+fn update_staging_root() -> UpdateStagingRoot {
+    if let Some(base) = dirs_next::cache_dir().or_else(dirs_next::data_local_dir) {
+        UpdateStagingRoot {
+            path: base.join(env!("CARGO_PKG_NAME")).join("updates"),
+            needs_creation: true,
+        }
+    } else {
+        UpdateStagingRoot {
+            path: std::env::temp_dir(),
+            needs_creation: false,
+        }
+    }
+}
+
+fn create_update_dir_in(root: &UpdateStagingRoot) -> Result<PathBuf, String> {
+    ensure_update_staging_root(root)?;
+
+    for _ in 0..UPDATE_DIR_ATTEMPTS {
+        let candidate = root.path.join(format!("update-{:032x}", random::<u128>()));
+        match create_private_update_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Failed to create Linux update staging directory '{}': {error}",
+                    candidate.display()
+                ));
+            }
+        }
+    }
+
+    Err("Failed to allocate a private Linux update staging directory.".to_string())
+}
+
+fn ensure_update_staging_root(root: &UpdateStagingRoot) -> Result<(), String> {
+    if !root.needs_creation {
+        return Ok(());
+    }
+
+    fs::create_dir_all(&root.path).map_err(|error| {
+        format!(
+            "Failed to create Linux update staging root '{}': {error}",
+            root.path.display()
+        )
+    })?;
+    let mut perms = fs::metadata(&root.path)
+        .map_err(|error| {
+            format!(
+                "Failed to read Linux update staging root metadata '{}': {error}",
+                root.path.display()
+            )
+        })?
+        .permissions();
+    perms.set_mode(UPDATE_STAGING_DIR_MODE);
+    fs::set_permissions(&root.path, perms).map_err(|error| {
+        format!(
+            "Failed to secure Linux update staging root '{}': {error}",
+            root.path.display()
+        )
+    })
+}
+
+fn create_private_update_dir(path: &Path) -> io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.mode(UPDATE_STAGING_DIR_MODE);
+    builder.create(path)
 }
 
 fn show_auto_install_error_dialog(error: &str) {
@@ -195,8 +266,28 @@ fn show_auto_install_error_dialog(error: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{auto_install_cleanup_dir, linux_release_asset_name, release_arch};
+    use super::{
+        auto_install_cleanup_dir, create_update_dir_in, linux_release_asset_name, release_arch,
+        UpdateStagingRoot, UPDATE_STAGING_DIR_MODE,
+    };
     use std::ffi::OsString;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::process;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn temp_test_root() -> PathBuf {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+        let root = std::env::temp_dir().join(format!(
+            "keycord-updater-test-{}-{}",
+            process::id(),
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&root).expect("create updater test root");
+        root
+    }
 
     #[test]
     fn auto_install_command_extracts_cleanup_directory() {
@@ -233,5 +324,39 @@ mod tests {
         if let Some(arch) = release_arch() {
             assert!(matches!(arch, "x86_64" | "aarch64"));
         }
+    }
+
+    #[test]
+    fn update_dirs_are_private_and_unpredictable() {
+        let root = temp_test_root();
+        let staging_root = UpdateStagingRoot {
+            path: root.join("updates"),
+            needs_creation: true,
+        };
+
+        let first = create_update_dir_in(&staging_root).expect("create first update dir");
+        let second = create_update_dir_in(&staging_root).expect("create second update dir");
+
+        assert_ne!(first, second);
+        assert!(first.is_dir());
+        assert!(second.is_dir());
+        assert_eq!(
+            fs::metadata(&first)
+                .expect("first dir metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            UPDATE_STAGING_DIR_MODE
+        );
+        assert_eq!(
+            fs::metadata(&second)
+                .expect("second dir metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            UPDATE_STAGING_DIR_MODE
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 }

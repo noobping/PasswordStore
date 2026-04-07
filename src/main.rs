@@ -3,7 +3,13 @@
     windows_subsystem = "windows"
 )]
 
-#[cfg(target_os = "linux")]
+#[cfg(all(
+    target_os = "linux",
+    any(
+        feature = "setup",
+        all(feature = "linux-updater", not(feature = "flatpak"))
+    )
+))]
 mod setup;
 
 mod backend;

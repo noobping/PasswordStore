@@ -3,9 +3,11 @@ mod query;
 #[cfg(test)]
 mod tests;
 
+#[cfg(all(target_os = "linux", not(feature = "hardening")))]
+use self::index::indexed_fields_for_contents;
 use self::index::{
-    build_search_index_batch, collect_unindexed_requests, find_row, indexed_fields_for_contents,
-    is_stale_index_batch, list_is_empty, row_field_index_state, SearchIndexBatch,
+    build_search_index_batch, collect_unindexed_requests, find_row, is_stale_index_batch,
+    list_is_empty, row_field_index_state, SearchIndexBatch,
 };
 use self::query::{parse_search_query, row_matches_query, SearchQuery};
 use super::placeholder::{show_loading_placeholder, show_resolved_placeholder};

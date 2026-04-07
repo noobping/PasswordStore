@@ -1,6 +1,7 @@
 mod command;
 mod errors;
 mod host;
+#[cfg(feature = "hardening")]
 mod host_errors;
 mod integrated;
 #[cfg(test)]

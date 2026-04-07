@@ -1,9 +1,11 @@
 use thiserror::Error;
 
+#[cfg(not(feature = "hardening"))]
 fn message_contains_any(lowered: &str, patterns: &[&str]) -> bool {
     patterns.iter().any(|pattern| lowered.contains(pattern))
 }
 
+#[cfg(not(feature = "hardening"))]
 fn store_message_is_entry_not_found(lowered: &str) -> bool {
     message_contains_any(
         lowered,
@@ -15,18 +17,22 @@ fn store_message_is_entry_not_found(lowered: &str) -> bool {
     )
 }
 
+#[cfg(not(feature = "hardening"))]
 fn store_message_is_already_exists(lowered: &str) -> bool {
     lowered.contains("already exists")
 }
 
+#[cfg(not(feature = "hardening"))]
 fn store_message_is_missing_private_key(message: &str) -> bool {
     message.contains("Import a private key in Preferences")
 }
 
+#[cfg(not(feature = "hardening"))]
 fn store_message_is_locked_private_key(message: &str) -> bool {
     message.contains("A private key for this item is locked.")
 }
 
+#[cfg(not(feature = "hardening"))]
 fn store_message_is_incompatible_private_key(message: &str) -> bool {
     message.contains("cannot decrypt password store entries")
         || message.contains("available private keys cannot decrypt")
@@ -34,6 +40,7 @@ fn store_message_is_incompatible_private_key(message: &str) -> bool {
         || message.contains("no pkesk managed to decrypt the ciphertext")
 }
 
+#[cfg(not(feature = "hardening"))]
 fn store_message_is_invalid_store_path(lowered: &str) -> bool {
     lowered.contains("selected password store path is not a folder")
 }
@@ -69,6 +76,7 @@ fn import_toast_message_for_private_key_other(message: &str) -> Option<&'static 
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg(not(feature = "hardening"))]
 enum StoreMessageKind {
     EntryNotFound,
     EntryAlreadyExists,
@@ -79,6 +87,7 @@ enum StoreMessageKind {
     Other,
 }
 
+#[cfg(not(feature = "hardening"))]
 fn classify_store_message(message: &str) -> StoreMessageKind {
     let lowered = message.to_ascii_lowercase();
     if store_message_is_entry_not_found(&lowered) {
@@ -129,6 +138,7 @@ impl PasswordEntryError {
         Self::Other(message.into())
     }
 
+    #[cfg(not(feature = "hardening"))]
     pub fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
         match classify_store_message(&message) {
@@ -180,6 +190,7 @@ impl PasswordEntryWriteError {
         Self::Other(message.into())
     }
 
+    #[cfg(not(feature = "hardening"))]
     pub fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
         match classify_store_message(&message) {
@@ -250,6 +261,7 @@ impl StoreRecipientsError {
         Self::Other(message.into())
     }
 
+    #[cfg(not(feature = "hardening"))]
     pub fn from_store_message(message: impl Into<String>) -> Self {
         let message = message.into();
         match classify_store_message(&message) {

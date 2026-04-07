@@ -1,4 +1,6 @@
 use adw::glib::{object::IsA, Object};
+#[cfg(target_os = "windows")]
+use adw::gtk::HeaderBar;
 use adw::gtk::{
     Box as GtkBox, Builder, Button, CheckButton, Image, ListBox, MenuButton, Popover, Revealer,
     ScrolledWindow, SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
@@ -13,6 +15,8 @@ use adw::{
 #[derive(Clone)]
 pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) window: ApplicationWindow,
+    #[cfg(target_os = "windows")]
+    pub(in crate::window) header_bar: HeaderBar,
     pub(in crate::window) back_button: Button,
     pub(in crate::window) add_button: Button,
     pub(in crate::window) find_button: Button,
@@ -204,6 +208,8 @@ impl WindowWidgets {
 
         Ok(Self {
             window: required!("main_window"),
+            #[cfg(target_os = "windows")]
+            header_bar: required!("header_bar"),
             back_button: required!("back_button"),
             add_button: required!("add_button"),
             find_button: required!("find_button"),

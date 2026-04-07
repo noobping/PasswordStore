@@ -8,7 +8,8 @@
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
-          <object class="AdwHeaderBar">
+          <object class="GtkHeaderBar" id="header_bar">
+            <property name="show-title-buttons">True</property>
             <child type="start">
               <object class="GtkBox">
                 <child>

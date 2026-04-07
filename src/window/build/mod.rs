@@ -55,6 +55,7 @@ pub fn create_main_window(
 ) -> Result<ApplicationWindow, String> {
     let builder = Builder::from_string(UI_SRC);
     let widgets = WindowWidgets::load(&builder)?;
+    configure_platform_window_header(&widgets);
     widgets.window.set_application(Some(app));
     initialize_window_session(&widgets.window);
     log_runtime_capabilities_once();
@@ -178,12 +179,24 @@ pub fn create_main_window(
     Ok(widgets.window)
 }
 
+#[cfg(target_os = "windows")]
+fn configure_platform_window_header(widgets: &WindowWidgets) {
+    let header_bar = &widgets.header_bar;
+    if header_bar.find_property("use-native-controls").is_some() {
+        header_bar.set_property("use-native-controls", true);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_platform_window_header(_widgets: &WindowWidgets) {}
+
 pub fn dispatch_main_window_command(
     window: &ApplicationWindow,
     startup_query: Option<String>,
     initial_pass_file: Option<OpenPassFile>,
 ) {
-    let Some(state) = cloned_data::<_, MainWindowCommandState>(window, MAIN_WINDOW_COMMAND_STATE_KEY)
+    let Some(state) =
+        cloned_data::<_, MainWindowCommandState>(window, MAIN_WINDOW_COMMAND_STATE_KEY)
     else {
         return;
     };

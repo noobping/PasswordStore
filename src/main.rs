@@ -3,13 +3,7 @@
     windows_subsystem = "windows"
 )]
 
-#[cfg(all(
-    target_os = "linux",
-    any(
-        feature = "setup",
-        all(feature = "linux-updater", not(feature = "flatpak"))
-    )
-))]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 mod setup;
 
 mod backend;
@@ -45,7 +39,7 @@ use crate::support::startup::{
     fatal_startup_error, prompt_startup_recovery_dialog, show_startup_error_dialog,
     StartupRecoveryChoice,
 };
-#[cfg(feature = "platform-theme")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 use crate::support::theme::install_color_scheme_tracking;
 use crate::window::navigation::APP_WINDOW_TITLE;
 
@@ -137,7 +131,7 @@ fn main() -> ExitCode {
             return nonlegacy_startup_error("No display available.", "missing display");
         }
     };
-    #[cfg(feature = "platform-theme")]
+    #[cfg(all(target_os = "linux", feature = "setup"))]
     install_color_scheme_tracking(&display);
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);

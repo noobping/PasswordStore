@@ -9,7 +9,7 @@ pub mod runtime;
 pub mod secure_fs;
 #[cfg(feature = "legacy-compat")]
 pub mod startup;
-#[cfg(feature = "platform-theme")]
+#[cfg(all(target_os = "linux", feature = "setup"))]
 pub mod theme;
 pub mod toml_safety;
 pub mod ui;

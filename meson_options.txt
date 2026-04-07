@@ -14,6 +14,13 @@ option(
 )
 
 option(
+  'setup',
+  type: 'boolean',
+  value: false,
+  description: 'Enable Linux setup helpers, GNOME platform theme tracking, and the standalone updater.',
+)
+
+option(
   'fidostore',
   type: 'boolean',
   value: false,
@@ -46,20 +53,6 @@ option(
   type: 'boolean',
   value: true,
   description: 'Enable the in-app log viewer and command stream capture.',
-)
-
-option(
-  'linux_updater',
-  type: 'boolean',
-  value: false,
-  description: 'Enable the Linux standalone update checker and installer.',
-)
-
-option(
-  'platform_theme',
-  type: 'boolean',
-  value: false,
-  description: 'Enable GNOME platform theme and accent tracking.',
 )
 
 option(

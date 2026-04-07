@@ -1,36 +1,20 @@
 #[cfg(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 ))]
 mod common;
 #[cfg(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 ))]
 mod logic;
 #[cfg(not(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 )))]
 #[path = "disabled.rs"]
 mod platform;
-#[cfg(all(
-    target_os = "linux",
-    feature = "linux-updater",
-    not(feature = "flatpak")
-))]
+#[cfg(all(target_os = "linux", feature = "setup", not(feature = "flatpak")))]
 #[path = "linux.rs"]
 mod platform;
 #[cfg(target_os = "windows")]
@@ -40,11 +24,7 @@ mod platform;
 use adw::gtk::glib::ExitCode;
 #[cfg(not(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 )))]
 use adw::{Application, ApplicationWindow, ToastOverlay};
 use std::ffi::OsString;
@@ -54,31 +34,19 @@ pub type DirtyProbe = Rc<dyn Fn() -> bool>;
 
 #[cfg(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 ))]
 pub use self::common::{after_window_presented, register_app_actions, register_window, shutdown};
 
 #[cfg(not(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 )))]
 pub fn register_app_actions(_app: &Application) {}
 
 #[cfg(not(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 )))]
 pub fn register_window(
     _app: &Application,
@@ -90,21 +58,13 @@ pub fn register_window(
 
 #[cfg(not(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 )))]
 pub fn after_window_presented(_app: &Application, _window: &ApplicationWindow) {}
 
 #[cfg(not(any(
     target_os = "windows",
-    all(
-        target_os = "linux",
-        feature = "linux-updater",
-        not(feature = "flatpak")
-    )
+    all(target_os = "linux", feature = "setup", not(feature = "flatpak"))
 )))]
 pub fn shutdown(_app: &Application) {}
 

@@ -31,13 +31,8 @@ pub fn can_install_locally() -> bool {
     let Some(data) = dirs_next::data_dir() else {
         return false;
     };
-    let apps = data.join("applications");
 
-    let bin_parent_is_writable = bin.parent().map(is_writable).unwrap_or(false);
-    let apps_parent_is_writable = apps.parent().map(is_writable).unwrap_or(false);
-    // If they exist, they must be writable; if not, the parent must be writable.
-    (bin.exists() && bin.is_dir() && is_writable(&bin) || bin_parent_is_writable)
-        && (apps.exists() && apps.is_dir() && is_writable(&apps) || apps_parent_is_writable)
+    can_install_into(&bin, &data)
 }
 
 pub fn is_installed_locally() -> bool {
@@ -94,6 +89,13 @@ pub fn install_locally() -> std::io::Result<()> {
         .join("apps");
     let locale_root = data.join("locale");
     let dest = bin.join(project);
+
+    if !can_install_into(&bin, &data) {
+        return Err(Error::new(
+            ErrorKind::PermissionDenied,
+            "One or more local install directories are not writable.",
+        ));
+    }
 
     std::fs::create_dir_all(&bin)?;
     std::fs::create_dir_all(&apps)?;
@@ -162,6 +164,36 @@ pub fn uninstall_locally() -> std::io::Result<()> {
     Ok(())
 }
 
+fn can_install_into(bin: &Path, data: &Path) -> bool {
+    let mut targets = vec![
+        bin.to_path_buf(),
+        data.join("applications"),
+        data.join("dbus-1").join("services"),
+        data.join("gnome-shell").join("search-providers"),
+        data.join("icons")
+            .join("hicolor")
+            .join("scalable")
+            .join("apps"),
+    ];
+    if locale_install_required() {
+        targets.push(data.join("locale"));
+    }
+
+    targets
+        .iter()
+        .all(|target| install_target_dir_is_eligible(target))
+}
+
+fn locale_install_required() -> bool {
+    available_locales().any(|locale| {
+        Path::new(LOCALEDIR)
+            .join(locale)
+            .join("LC_MESSAGES")
+            .join(format!("{GETTEXT_DOMAIN}.mo"))
+            .exists()
+    })
+}
+
 fn is_writable(dir: &Path) -> bool {
     for attempt in 0..8u32 {
         let nanos = SystemTime::now()
@@ -186,6 +218,18 @@ fn is_writable(dir: &Path) -> bool {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return false,
         }
+    }
+
+    false
+}
+
+fn install_target_dir_is_eligible(path: &Path) -> bool {
+    let mut candidate = Some(path);
+    while let Some(dir) = candidate {
+        if dir.exists() {
+            return dir.is_dir() && is_writable(dir);
+        }
+        candidate = dir.parent();
     }
 
     false
@@ -338,4 +382,78 @@ fn writability_probe_does_not_truncate_existing_perm_test_files() {
     );
 
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn install_target_dir_rejects_existing_non_writable_directories() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("keycord-setup-existing-dir-{unique}"));
+    let target = root.join("applications");
+    fs::create_dir_all(&target).expect("create target dir");
+    let mut permissions = fs::metadata(&target)
+        .expect("read target metadata")
+        .permissions();
+    permissions.set_mode(0o500);
+    fs::set_permissions(&target, permissions).expect("make target non-writable");
+
+    assert!(!install_target_dir_is_eligible(&target));
+
+    let mut cleanup_permissions = fs::metadata(&target)
+        .expect("read target metadata for cleanup")
+        .permissions();
+    cleanup_permissions.set_mode(0o700);
+    fs::set_permissions(&target, cleanup_permissions).expect("restore target permissions");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_target_dir_accepts_missing_nested_directories_under_writable_ancestor() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("keycord-setup-missing-dir-{unique}"));
+    fs::create_dir_all(&root).expect("create root dir");
+
+    assert!(install_target_dir_is_eligible(
+        &root
+            .join("icons")
+            .join("hicolor")
+            .join("scalable")
+            .join("apps")
+    ));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_eligibility_checks_all_written_target_directories() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("keycord-setup-eligibility-{unique}"));
+    let bin = root.join("bin");
+    let data = root.join("data");
+    let search_providers = data.join("gnome-shell").join("search-providers");
+    fs::create_dir_all(&bin).expect("create bin dir");
+    fs::create_dir_all(&search_providers).expect("create search provider dir");
+    let mut permissions = fs::metadata(&search_providers)
+        .expect("read search provider metadata")
+        .permissions();
+    permissions.set_mode(0o500);
+    fs::set_permissions(&search_providers, permissions).expect("make search provider non-writable");
+
+    assert!(!can_install_into(&bin, &data));
+
+    let mut cleanup_permissions = fs::metadata(&search_providers)
+        .expect("read search provider metadata for cleanup")
+        .permissions();
+    cleanup_permissions.set_mode(0o700);
+    fs::set_permissions(&search_providers, cleanup_permissions)
+        .expect("restore search provider permissions");
+    let _ = fs::remove_dir_all(root);
 }

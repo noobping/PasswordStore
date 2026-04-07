@@ -32,6 +32,8 @@ fn private_key_not_stored_error() -> String {
 
 #[cfg(all(test, feature = "hardwarekey"))]
 pub use storage::store_ripasso_hardware_key_bytes;
+#[cfg(target_os = "linux")]
+pub use storage::store_ripasso_private_key_bytes;
 pub use storage::{
     armored_ripasso_private_key, armored_ripasso_public_key, discover_ripasso_hardware_keys,
     generate_fido2_private_key, generate_ripasso_hardware_key, generate_ripasso_private_key,
@@ -39,8 +41,6 @@ pub use storage::{
     list_connected_smartcard_keys, list_ripasso_private_keys, remove_ripasso_private_key,
     ripasso_private_key_title,
 };
-#[cfg(target_os = "linux")]
-pub use storage::store_ripasso_private_key_bytes;
 pub use unlock::{
     create_fido2_store_recipient, is_ripasso_private_key_unlocked,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,

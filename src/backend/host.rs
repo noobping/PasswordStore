@@ -15,7 +15,6 @@ use crate::backend::{
 };
 use crate::logging::CommandLogOptions;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
-use crate::support::runtime::supports_nested_recipients_features;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -51,14 +50,6 @@ fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Outp
     #[cfg(not(feature = "hardening"))]
     {
         ensure_success(output, "pass failed")
-    }
-}
-
-fn effective_recipient_relative_dir<'a>(relative_dir: &'a str) -> &'a str {
-    if supports_nested_recipients_features() {
-        relative_dir
-    } else {
-        "."
     }
 }
 
@@ -109,10 +100,8 @@ fn validate_entry_label_for_write(label: &str) -> Result<(), PasswordEntryWriteE
 
 fn validated_effective_recipient_relative_dir(
     relative_dir: &str,
-) -> Result<&str, StoreRecipientsError> {
-    let relative_dir = effective_recipient_relative_dir(relative_dir);
-    validated_relative_directory_path(relative_dir).map_err(StoreRecipientsError::other)?;
-    Ok(relative_dir)
+) -> Result<std::path::PathBuf, StoreRecipientsError> {
+    validated_relative_directory_path(relative_dir).map_err(StoreRecipientsError::other)
 }
 
 pub(super) fn read_password_entry(
@@ -381,7 +370,7 @@ pub(super) fn save_store_recipients_with_progress_for_relative_dir(
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     let relative_dir = validated_effective_recipient_relative_dir(relative_dir)?;
-    if matches!(relative_dir.trim(), "" | ".") {
+    if relative_dir.as_os_str().is_empty() {
         return save_store_recipients_with_progress(
             store_root,
             recipients,
@@ -401,7 +390,7 @@ pub(super) fn save_store_recipients_for_relative_dir(
     private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     let relative_dir = validated_effective_recipient_relative_dir(relative_dir)?;
-    if matches!(relative_dir.trim(), "" | ".") {
+    if relative_dir.as_os_str().is_empty() {
         return save_store_recipients(store_root, recipients, private_key_requirement);
     }
 
@@ -420,9 +409,8 @@ pub(super) fn store_recipients_private_key_requiring_unlock_for_relative_dir(
     store_root: &str,
     relative_dir: &str,
 ) -> Result<Option<String>, String> {
-    let relative_dir = effective_recipient_relative_dir(relative_dir);
-    validated_relative_directory_path(relative_dir)?;
-    if matches!(relative_dir.trim(), "" | ".") {
+    let relative_dir = validated_relative_directory_path(relative_dir)?;
+    if relative_dir.as_os_str().is_empty() {
         return store_recipients_private_key_requiring_unlock(store_root);
     }
 

@@ -16,7 +16,6 @@ logging = get_option('logging')
 linux_updater = get_option('linux_updater')
 platform_theme = get_option('platform_theme')
 hardening = get_option('hardening')
-nested_recipients = get_option('nested_recipients')
 audit = get_option('audit')
 legacy_compat = get_option('legacy_compat')
 fidostore = get_option('fidostore')
@@ -34,7 +33,6 @@ foreach feature_name, enabled : {
   'linux-updater': linux_updater,
   'platform-theme': platform_theme,
   'hardening': hardening,
-  'nested-recipients': nested_recipients,
   'audit': audit,
   'legacy-compat': legacy_compat,
   'fidostore': fidostore,

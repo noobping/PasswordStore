@@ -70,13 +70,6 @@ option(
 )
 
 option(
-  'nested_recipients',
-  type: 'boolean',
-  value: false,
-  description: 'Enable folder-scoped .gpg-id management in the recipients UI.',
-)
-
-option(
   'audit',
   type: 'boolean',
   value: false,

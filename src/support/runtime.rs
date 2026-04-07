@@ -15,7 +15,7 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, linux-updater={}, platform-theme={}, hardening={}, nested-recipients={}, audit={}, legacy-compat={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
+            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, linux-updater={}, platform-theme={}, hardening={}, audit={}, legacy-compat={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
             feature_status(cfg!(debug_assertions)),
             feature_status(supports_setup_features()),
             feature_status(cfg!(feature = "flatpak")),
@@ -24,7 +24,6 @@ pub fn log_runtime_capabilities_once() {
             feature_status(supports_linux_updater_features()),
             feature_status(supports_platform_theme_features()),
             feature_status(supports_hardening_features()),
-            feature_status(supports_nested_recipients_features()),
             feature_status(supports_audit_features()),
             feature_status(supports_legacy_compat_features()),
             feature_status(has_host_permission()),
@@ -74,10 +73,6 @@ pub const fn supports_platform_theme_features() -> bool {
 
 pub const fn supports_hardening_features() -> bool {
     cfg!(feature = "hardening")
-}
-
-pub const fn supports_nested_recipients_features() -> bool {
-    cfg!(feature = "nested-recipients")
 }
 
 pub const fn supports_audit_features() -> bool {

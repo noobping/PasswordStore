@@ -14,6 +14,7 @@ cargo_features = get_option('cargo_features')
 docs = get_option('docs')
 logging = get_option('logging')
 audit = get_option('audit')
+legacy_compat = get_option('legacy_compat')
 fidostore = get_option('fidostore')
 fidokey = get_option('fidokey')
 fidopin = get_option('fidopin')
@@ -27,6 +28,7 @@ foreach feature_name, enabled : {
   'docs': docs,
   'logging': logging,
   'audit': audit,
+  'legacy-compat': legacy_compat,
   'fidostore': fidostore,
   'fidokey': fidokey,
   'fidopin': fidopin,

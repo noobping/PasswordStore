@@ -15,12 +15,13 @@ pub fn log_runtime_capabilities_once() {
 
     RUNTIME_LOGGED.call_once(|| {
         log_info(format!(
-            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
+            "App runtime: debug={}, setup={}, flatpak={}, docs={}, logging={}, legacy-compat={}, host-access={}, smartcard={}, hardwarekey={}, fidostore={}, fidokey={}.",
             feature_status(cfg!(debug_assertions)),
             feature_status(cfg!(feature = "setup")),
             feature_status(cfg!(feature = "flatpak")),
             feature_status(supports_docs_features()),
             feature_status(supports_logging_features()),
+            feature_status(supports_legacy_compat_features()),
             feature_status(has_host_permission()),
             feature_status(has_smartcard_permission()),
             feature_status(supports_hardwarekey_features()),
@@ -52,6 +53,10 @@ pub const fn supports_logging_features() -> bool {
 
 pub const fn supports_audit_features() -> bool {
     cfg!(all(target_os = "linux", feature = "audit"))
+}
+
+pub const fn supports_legacy_compat_features() -> bool {
+    cfg!(feature = "legacy-compat")
 }
 
 pub const fn supports_docs_features() -> bool {

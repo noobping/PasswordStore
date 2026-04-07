@@ -6,6 +6,7 @@ use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
 use crate::password::entry_files::{
     is_password_entry_file, label_from_password_entry_path, password_entry_extension,
 };
+use crate::support::runtime::supports_legacy_compat_features;
 use crate::support::secure_fs::write_atomic_file;
 
 pub(super) fn validated_relative_directory_path(relative_dir: &str) -> Result<PathBuf, String> {
@@ -91,7 +92,9 @@ pub(super) fn existing_entry_file_path(
 
     let standard_path = entry_file_path_with_extension(store_root, label, false)?;
     if standard_path.is_file() {
-        return Ok(Some(standard_path));
+        if supports_legacy_compat_features() || !label_uses_fido2_recipients(store_root, label)? {
+            return Ok(Some(standard_path));
+        }
     }
 
     Ok(None)
@@ -306,6 +309,7 @@ mod tests {
         fs::remove_dir_all(store).expect("remove store");
     }
 
+    #[cfg(feature = "legacy-compat")]
     #[test]
     fn existing_standard_entry_paths_still_resolve_for_legacy_fido2_items() {
         let store = temp_store("keycord-paths-legacy");
@@ -327,6 +331,33 @@ mod tests {
             entry_file_path(store.to_string_lossy().as_ref(), "team/service")
                 .expect("resolve entry path"),
             store.join("team/service.gpg")
+        );
+
+        fs::remove_dir_all(store).expect("remove store");
+    }
+
+    #[cfg(not(feature = "legacy-compat"))]
+    #[test]
+    fn legacy_fido2_standard_entry_paths_no_longer_resolve_without_legacy_compat() {
+        let store = temp_store("keycord-paths-legacy-off");
+        fs::create_dir_all(store.join("team")).expect("create store");
+        fs::write(store.join(".gpg-id"), "user@example.com\n").expect("write recipients");
+        fs::write(
+            store.join(crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME),
+            "keycord-fido2-recipient-v1=0123456789abcdef0123456789abcdef01234567:4465736b204b6579:63726564\n",
+        )
+        .expect("write fido2 recipients");
+        fs::write(store.join("team/service.gpg"), b"x").expect("write legacy entry");
+
+        assert_eq!(
+            existing_entry_file_path(store.to_string_lossy().as_ref(), "team/service")
+                .expect("resolve existing path"),
+            None
+        );
+        assert_eq!(
+            entry_file_path(store.to_string_lossy().as_ref(), "team/service")
+                .expect("resolve entry path"),
+            store.join("team/service.keycord")
         );
 
         fs::remove_dir_all(store).expect("remove store");

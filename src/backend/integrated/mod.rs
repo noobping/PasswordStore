@@ -35,9 +35,12 @@ pub use self::keys::{
     ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection, PrivateKeyUnlockKind,
     PrivateKeyUnlockRequest,
 };
+#[cfg(feature = "legacy-compat")]
 pub(crate) use self::keys::{
-    continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
-    ManagedKeyStorageRecovery, ManagedKeyStorageStartup,
+    continue_after_managed_key_storage_recovery, ManagedKeyStorageRecovery,
+};
+pub(crate) use self::keys::{
+    prepare_managed_private_key_storage_for_startup, ManagedKeyStorageStartup,
 };
 pub use self::recipients::preferred_ripasso_private_key_fingerprint_for_entry;
 #[cfg(test)]

@@ -12,9 +12,9 @@ use sequoia_openpgp::Cert;
 pub use self::errors::PasswordEntryError;
 pub use self::errors::PrivateKeyError;
 pub use self::errors::{PasswordEntryWriteError, StoreRecipientsError};
-pub(crate) use self::integrated::{
-    ManagedKeyStorageRecovery as ManagedKeyRecovery, ManagedKeyStorageStartup as StartupPreparation,
-};
+#[cfg(feature = "legacy-compat")]
+pub(crate) use self::integrated::ManagedKeyStorageRecovery as ManagedKeyRecovery;
+pub(crate) use self::integrated::ManagedKeyStorageStartup as StartupPreparation;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PasswordEntryProgress {
@@ -316,6 +316,7 @@ pub(crate) fn prepare_startup() -> Result<StartupPreparation, String> {
     }
 }
 
+#[cfg(feature = "legacy-compat")]
 pub(crate) fn continue_after_startup_recovery(recovery: &ManagedKeyRecovery) -> Result<(), String> {
     if !Preferences::new().uses_integrated_backend() {
         return Ok(());

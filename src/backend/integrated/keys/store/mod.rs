@@ -1,4 +1,5 @@
 mod manifest;
+#[cfg(feature = "legacy-compat")]
 mod migration;
 mod paths;
 mod storage;
@@ -45,6 +46,19 @@ pub use unlock::{
     unlock_ripasso_private_key_for_session,
 };
 
+#[cfg(not(feature = "legacy-compat"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ManagedKeyStorageStartup {
+    Ready,
+}
+
+#[cfg(not(feature = "legacy-compat"))]
+pub(crate) fn prepare_managed_private_key_storage_for_startup(
+) -> Result<ManagedKeyStorageStartup, String> {
+    Ok(ManagedKeyStorageStartup::Ready)
+}
+
+#[cfg(feature = "legacy-compat")]
 pub(crate) use migration::{
     continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
     ManagedKeyStorageRecovery, ManagedKeyStorageStartup,

@@ -87,7 +87,10 @@ pub(in crate::backend::integrated) use self::store::{
     ensure_ripasso_private_key_is_ready, load_available_standard_key_ring, load_ripasso_key_ring,
     missing_private_key_error, selected_ripasso_own_fingerprint,
 };
+#[cfg(feature = "legacy-compat")]
 pub(crate) use self::store::{
-    continue_after_managed_key_storage_recovery, prepare_managed_private_key_storage_for_startup,
-    ManagedKeyStorageRecovery, ManagedKeyStorageStartup,
+    continue_after_managed_key_storage_recovery, ManagedKeyStorageRecovery,
+};
+pub(crate) use self::store::{
+    prepare_managed_private_key_storage_for_startup, ManagedKeyStorageStartup,
 };

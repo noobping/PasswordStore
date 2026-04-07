@@ -56,6 +56,13 @@ option(
 )
 
 option(
+  'legacy_compat',
+  type: 'boolean',
+  value: false,
+  description: 'Enable startup migration and older compatibility shims for managed-key storage.',
+)
+
+option(
   'fidokey',
   type: 'boolean',
   value: false,

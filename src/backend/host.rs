@@ -17,7 +17,7 @@ use crate::logging::CommandLogOptions;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
 use crate::support::runtime::supports_nested_recipients_features;
 use std::path::Path;
-use std::process::Output;
+use std::process::{Command, Output};
 
 #[cfg(target_os = "linux")]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,7 +40,7 @@ impl HostGpgPrivateKeySummary {
 fn read_entry_output(store_root: &str, label: &str, action: &str) -> Result<Output, String> {
     let output =
         run_store_command_output(store_root, action, CommandLogOptions::SENSITIVE, |cmd| {
-            cmd.arg(label);
+            configure_pass_show_command(cmd, label);
         })?;
 
     #[cfg(feature = "hardening")]
@@ -60,6 +60,34 @@ fn effective_recipient_relative_dir<'a>(relative_dir: &'a str) -> &'a str {
     } else {
         "."
     }
+}
+
+fn append_pass_entry_args<'a>(cmd: &mut Command, labels: impl IntoIterator<Item = &'a str>) {
+    cmd.arg("--");
+    cmd.args(labels);
+}
+
+fn configure_pass_show_command(cmd: &mut Command, label: &str) {
+    cmd.arg("show");
+    append_pass_entry_args(cmd, [label]);
+}
+
+fn configure_pass_insert_command(cmd: &mut Command, label: &str, overwrite: bool) {
+    cmd.arg("insert").arg("-m");
+    if overwrite {
+        cmd.arg("-f");
+    }
+    append_pass_entry_args(cmd, [label]);
+}
+
+fn configure_pass_move_command(cmd: &mut Command, old_label: &str, new_label: &str) {
+    cmd.arg("mv");
+    append_pass_entry_args(cmd, [old_label, new_label]);
+}
+
+fn configure_pass_remove_command(cmd: &mut Command, label: &str) {
+    cmd.arg("rm").arg("-rf");
+    append_pass_entry_args(cmd, [label]);
 }
 
 fn ensure_valid_entry_label(label: &str) -> Result<(), String> {
@@ -174,11 +202,7 @@ pub(super) fn save_password_entry_with_progress(
         contents,
         CommandLogOptions::SENSITIVE,
         |cmd| {
-            cmd.arg("insert").arg("-m");
-            if overwrite {
-                cmd.arg("-f");
-            }
-            cmd.arg(label);
+            configure_pass_insert_command(cmd, label, overwrite);
         },
     )
     .map_err({
@@ -220,7 +244,7 @@ pub(super) fn rename_password_entry(
         "Rename password entry",
         CommandLogOptions::DEFAULT,
         |cmd| {
-            cmd.arg("mv").arg(old_label).arg(new_label);
+            configure_pass_move_command(cmd, old_label, new_label);
         },
     )
     .map_err({
@@ -260,7 +284,7 @@ pub(super) fn delete_password_entry(
         "Delete password entry",
         CommandLogOptions::DEFAULT,
         |cmd| {
-            cmd.arg("rm").arg("-rf").arg(label);
+            configure_pass_remove_command(cmd, label);
         },
     )
     .map_err({
@@ -403,10 +427,12 @@ pub(super) fn store_recipients_private_key_requiring_unlock_for_relative_dir(
 #[cfg(test)]
 mod validation_tests {
     use super::{
-        delete_password_entry, read_password_entry_with_progress, rename_password_entry,
-        save_password_entry,
+        configure_pass_insert_command, configure_pass_move_command, configure_pass_remove_command,
+        configure_pass_show_command, delete_password_entry, read_password_entry_with_progress,
+        rename_password_entry, save_password_entry,
     };
     use crate::backend::{PasswordEntryError, PasswordEntryWriteError};
+    use std::process::Command;
 
     #[test]
     fn host_backend_rejects_traversal_labels_before_read_launch() {
@@ -433,6 +459,34 @@ mod validation_tests {
                     if message == "Invalid password entry path."
             ));
         }
+    }
+
+    #[test]
+    fn host_backend_pass_commands_terminate_option_parsing_for_entry_labels() {
+        fn command_args(cmd: &Command) -> Vec<String> {
+            cmd.get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect()
+        }
+
+        let mut show = Command::new("pass");
+        configure_pass_show_command(&mut show, "-danger");
+        assert_eq!(command_args(&show), vec!["show", "--", "-danger"]);
+
+        let mut insert = Command::new("pass");
+        configure_pass_insert_command(&mut insert, "-danger", true);
+        assert_eq!(
+            command_args(&insert),
+            vec!["insert", "-m", "-f", "--", "-danger"]
+        );
+
+        let mut mv = Command::new("pass");
+        configure_pass_move_command(&mut mv, "-old", "-new");
+        assert_eq!(command_args(&mv), vec!["mv", "--", "-old", "-new"]);
+
+        let mut rm = Command::new("pass");
+        configure_pass_remove_command(&mut rm, "-danger");
+        assert_eq!(command_args(&rm), vec!["rm", "-rf", "--", "-danger"]);
     }
 }
 

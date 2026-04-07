@@ -115,6 +115,20 @@ jobs:
           Write-Host "Copying DLLs from: $mingwBin"
           Get-ChildItem -Path $mingwBin -Filter '*.dll' |
           Copy-Item -Destination $bundleDir -Force
+          $mingwRoot = 'C:\tools\msys64\mingw64'
+          $shareDir = Join-Path $bundleDir 'share'
+          $glibSchemasDir = Join-Path $shareDir 'glib-2.0\schemas'
+          New-Item -ItemType Directory -Path $glibSchemasDir -Force | Out-Null
+          $schemaFile = Join-Path $mingwRoot 'share\glib-2.0\schemas\gschemas.compiled'
+          Copy-Item $schemaFile $glibSchemasDir -Force
+          $fontConfigDir = Join-Path $mingwRoot 'share\fontconfig'
+          if (Test-Path $fontConfigDir) {
+            Copy-Item $fontConfigDir (Join-Path $shareDir 'fontconfig') -Recurse -Force
+          }
+          $adwaitaSourceDir = Join-Path $mingwRoot 'share\icons\Adwaita'
+          if (Test-Path $adwaitaSourceDir) {
+            Copy-Item $adwaitaSourceDir (Join-Path $shareDir 'icons\Adwaita') -Recurse -Force
+          }
           $iconThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
           $appIconDir = Join-Path $iconThemeDir '256x256\apps'
           New-Item -ItemType Directory -Path $appIconDir -Force | Out-Null
@@ -122,6 +136,23 @@ jobs:
           Copy-Item $appIcon $appIconDir -Force
           $indexTheme = Join-Path $workspace 'data\windows\share\icons\hicolor\index.theme'
           Copy-Item $indexTheme $iconThemeDir -Force
+          $etcDir = Join-Path $mingwRoot 'etc'
+          if (Test-Path $etcDir) {
+            Copy-Item $etcDir (Join-Path $bundleDir 'etc') -Recurse -Force
+          }
+          $pixbufRoot = Join-Path $bundleDir 'lib\gdk-pixbuf-2.0\2.10.0'
+          $pixbufLoadersDir = Join-Path $pixbufRoot 'loaders'
+          New-Item -ItemType Directory -Path $pixbufLoadersDir -Force | Out-Null
+          $pixbufSourceDir = Join-Path $mingwRoot 'lib\gdk-pixbuf-2.0\2.10.0\loaders'
+          if (Test-Path $pixbufSourceDir) {
+            Copy-Item (Join-Path $pixbufSourceDir '*') $pixbufLoadersDir -Recurse -Force
+          }
+          $pixbufQuery = Join-Path $mingwBin 'gdk-pixbuf-query-loaders.exe'
+          $pixbufLoaderDlls = @(Get-ChildItem $pixbufLoadersDir -Filter '*.dll' | Select-Object -ExpandProperty FullName)
+          if ((Test-Path $pixbufQuery) -and $pixbufLoaderDlls.Count -gt 0) {
+            $pixbufCache = & $pixbufQuery $pixbufLoaderDlls
+            [System.IO.File]::WriteAllText((Join-Path $pixbufRoot 'loaders.cache'), ($pixbufCache -join [Environment]::NewLine))
+          }
           Write-Host "Bundle contents:"
           Get-ChildItem $bundleDir -Recurse
           $zip = Join-Path $workspace 'keycord-windows.zip'

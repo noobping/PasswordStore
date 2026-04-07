@@ -58,7 +58,9 @@ use adw::prelude::*;
 use adw::Application;
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+#[cfg(target_os = "windows")]
+use winsafe::{self as w, co, prelude::*};
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
@@ -86,6 +88,8 @@ fn main() -> ExitCode {
     if let Err(err) = apply_process_hardening() {
         log_error(format!("Failed to apply process hardening: {err}"));
     }
+    #[cfg(target_os = "windows")]
+    configure_windows_runtime_environment();
     if let Err(err) = resources_register_include!("compiled.gresource") {
         #[cfg(feature = "legacy-compat")]
         {
@@ -93,10 +97,7 @@ fn main() -> ExitCode {
         }
         #[cfg(not(feature = "legacy-compat"))]
         {
-            let detail = format!("Failed to register resources.\nerror: {err}");
-            log_error(&detail);
-            eprintln!("{APP_WINDOW_TITLE}: {detail}");
-            return 1.into();
+            return nonlegacy_startup_error("Failed to register resources.", &err.to_string());
         }
     }
 
@@ -107,10 +108,7 @@ fn main() -> ExitCode {
         }
         #[cfg(not(feature = "legacy-compat"))]
         {
-            let detail = format!("Failed to initialize libadwaita.\nerror: {err}");
-            log_error(&detail);
-            eprintln!("{APP_WINDOW_TITLE}: {detail}");
-            return 1.into();
+            return nonlegacy_startup_error("Failed to initialize libadwaita.", &err.to_string());
         }
     }
 
@@ -125,10 +123,7 @@ fn main() -> ExitCode {
         }
         #[cfg(not(feature = "legacy-compat"))]
         {
-            let detail = "No display available.\nerror: missing display".to_string();
-            log_error(&detail);
-            eprintln!("{APP_WINDOW_TITLE}: {detail}");
-            return 1.into();
+            return nonlegacy_startup_error("No display available.", "missing display");
         }
     };
     #[cfg(feature = "platform-theme")]
@@ -165,11 +160,10 @@ fn main() -> ExitCode {
             }
             #[cfg(not(feature = "legacy-compat"))]
             {
-                let detail =
-                    format!("Failed to prepare managed private-key storage.\nerror: {err}");
-                log_error(&detail);
-                eprintln!("{APP_WINDOW_TITLE}: {detail}");
-                return 1.into();
+                return nonlegacy_startup_error(
+                    "Failed to prepare managed private-key storage.",
+                    &err,
+                );
             }
         }
     }
@@ -231,9 +225,7 @@ fn main() -> ExitCode {
                     fatal_startup_error(APP_WINDOW_TITLE, "Failed to build the main window.", err);
                 #[cfg(not(feature = "legacy-compat"))]
                 {
-                    let detail = format!("Failed to build the main window.\nerror: {err}");
-                    log_error(&detail);
-                    eprintln!("{APP_WINDOW_TITLE}: {detail}");
+                    report_nonlegacy_startup_error("Failed to build the main window.", &err);
                 }
                 app.quit();
             }
@@ -267,6 +259,84 @@ fn command_line_query(args: &[OsString]) -> Option<String> {
         .into_string()
         .ok()
         .filter(|query| !query.is_empty())
+}
+
+#[cfg(not(feature = "legacy-compat"))]
+fn report_nonlegacy_startup_error(summary: &str, error: &str) {
+    let detail = format!("{summary}\nerror: {error}");
+    log_error(&detail);
+    eprintln!("{APP_WINDOW_TITLE}: {detail}");
+    #[cfg(target_os = "windows")]
+    show_windows_startup_error_dialog(APP_WINDOW_TITLE, &detail);
+}
+
+#[cfg(not(feature = "legacy-compat"))]
+fn nonlegacy_startup_error(summary: &str, error: &str) -> ExitCode {
+    report_nonlegacy_startup_error(summary, error);
+    1.into()
+}
+
+#[cfg(target_os = "windows")]
+fn show_windows_startup_error_dialog(title: &str, body: &str) {
+    let _ = w::HWND::GetDesktopWindow().MessageBox(body, title, co::MB::OK | co::MB::ICONERROR);
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_runtime_environment() {
+    let Some(root) = windows_runtime_root() else {
+        return;
+    };
+
+    set_windows_env_path_if_exists("GTK_EXE_PREFIX", &root);
+    set_windows_env_path_if_exists("GTK_DATA_PREFIX", &root);
+
+    let share = root.join("share");
+    prepend_windows_env_path("XDG_DATA_DIRS", &share);
+    prepend_windows_env_path("XDG_CONFIG_DIRS", &root.join("etc"));
+
+    let schemas = share.join("glib-2.0").join("schemas");
+    if schemas.join("gschemas.compiled").is_file() {
+        set_windows_env_path_if_exists("GSETTINGS_SCHEMA_DIR", &schemas);
+    }
+
+    let pixbuf_root = root.join("lib").join("gdk-pixbuf-2.0").join("2.10.0");
+    let pixbuf_cache = pixbuf_root.join("loaders.cache");
+    if pixbuf_cache.is_file() {
+        set_windows_env_path_if_exists("GDK_PIXBUF_MODULE_FILE", &pixbuf_cache);
+    }
+    let pixbuf_modules = pixbuf_root.join("loaders");
+    prepend_windows_env_path("GDK_PIXBUF_MODULEDIR", &pixbuf_modules);
+}
+
+#[cfg(target_os = "windows")]
+fn windows_runtime_root() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_env_path_if_exists(name: &str, path: &Path) {
+    if path.exists() {
+        std::env::set_var(name, path);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn prepend_windows_env_path(name: &str, path: &Path) {
+    if !path.exists() {
+        return;
+    }
+
+    let mut paths = std::env::var_os(name)
+        .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .unwrap_or_default();
+    if !paths.iter().any(|existing| existing == path) {
+        paths.insert(0, path.to_path_buf());
+    }
+    if let Ok(joined) = std::env::join_paths(paths) {
+        std::env::set_var(name, joined);
+    }
 }
 
 #[cfg(target_os = "windows")]

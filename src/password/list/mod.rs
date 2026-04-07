@@ -493,24 +493,77 @@ fn append_store_folder_rows(
     depth: usize,
     parent_path: Option<&str>,
 ) {
-    for (segment, child) in &tree.folders {
-        let folder_path = parent_path
-            .map(|parent_path| format!("{parent_path}/{segment}"))
-            .unwrap_or_else(|| segment.clone());
-        rows.push(RenderedPasswordListRow::Folder {
-            store_path: store_path.to_string(),
-            folder_path: folder_path.clone(),
-            depth,
-        });
-        append_store_folder_rows(rows, store_path, child, depth + 1, Some(&folder_path));
+    enum RenderTask<'a> {
+        VisitNode {
+            tree: &'a PasswordFolderTree,
+            depth: usize,
+            parent_path: Option<String>,
+        },
+        PushFolder {
+            folder_path: String,
+            depth: usize,
+        },
+        PushEntry {
+            item: &'a PassEntry,
+            readable: bool,
+            depth: usize,
+        },
     }
 
-    for (item, readable) in &tree.entries {
-        rows.push(RenderedPasswordListRow::Entry {
-            item: item.clone(),
-            readable: *readable,
-            depth,
-        });
+    let store_path = store_path.to_string();
+    let mut tasks = vec![RenderTask::VisitNode {
+        tree,
+        depth,
+        parent_path: parent_path.map(str::to_string),
+    }];
+
+    while let Some(task) = tasks.pop() {
+        match task {
+            RenderTask::VisitNode {
+                tree,
+                depth,
+                parent_path,
+            } => {
+                for (item, readable) in tree.entries.iter().rev() {
+                    tasks.push(RenderTask::PushEntry {
+                        item,
+                        readable: *readable,
+                        depth,
+                    });
+                }
+
+                for (segment, child) in tree.folders.iter().rev() {
+                    let folder_path = parent_path
+                        .as_deref()
+                        .map(|parent_path| format!("{parent_path}/{segment}"))
+                        .unwrap_or_else(|| segment.clone());
+                    tasks.push(RenderTask::VisitNode {
+                        tree: child,
+                        depth: depth + 1,
+                        parent_path: Some(folder_path.clone()),
+                    });
+                    tasks.push(RenderTask::PushFolder { folder_path, depth });
+                }
+            }
+            RenderTask::PushFolder { folder_path, depth } => {
+                rows.push(RenderedPasswordListRow::Folder {
+                    store_path: store_path.clone(),
+                    folder_path,
+                    depth,
+                });
+            }
+            RenderTask::PushEntry {
+                item,
+                readable,
+                depth,
+            } => {
+                rows.push(RenderedPasswordListRow::Entry {
+                    item: item.clone(),
+                    readable,
+                    depth,
+                });
+            }
+        }
     }
 }
 
@@ -1253,5 +1306,30 @@ mod tests {
             vec!["work".to_string(), "alice".to_string()]
         );
         assert!(password_list_folder_segments("").is_empty());
+    }
+
+    #[test]
+    fn store_path_sort_rows_handle_deep_folder_chains() {
+        let folder_depth = 2048;
+        let relative_path = std::iter::repeat_n("team", folder_depth)
+            .collect::<Vec<_>>()
+            .join("/");
+        let rows = build_password_list_rows(
+            vec![(
+                PassEntry::from_label("/tmp/store", &format!("{relative_path}/entry")),
+                true,
+            )],
+            PasswordListSortMode::StorePath,
+        );
+
+        assert_eq!(rows.len(), folder_depth + 1);
+        assert!(matches!(
+            rows.first(),
+            Some(RenderedPasswordListRow::Folder { depth: 0, .. })
+        ));
+        assert!(matches!(
+            rows.last(),
+            Some(RenderedPasswordListRow::Entry { depth, .. }) if *depth == folder_depth
+        ));
     }
 }

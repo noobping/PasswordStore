@@ -36,7 +36,9 @@ use crate::logging::{log_error, run_command_output, CommandLogOptions};
 use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
 use crate::support::hardening::apply_process_hardening;
-use crate::support::object_data::{set_cloned_data, set_string_data, take_data, take_string_data};
+use crate::support::object_data::{
+    cloned_data, set_cloned_data, set_string_data, take_data, take_string_data,
+};
 use crate::support::runtime::handle_unsupported_host_command_invocation;
 #[cfg(feature = "legacy-compat")]
 use crate::support::startup::{
@@ -65,6 +67,7 @@ use winsafe::{self as w, co, prelude::*};
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
 const ISSUE_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
+const MAIN_WINDOW_ACTIVATING_KEY: &str = "main-window-activating";
 const RIPASSO_VERSION: &str = env!("RIPASSO_VERSION");
 const SEQUOIA_OPENPGP_VERSION: &str = env!("SEQUOIA_OPENPGP_VERSION");
 const SHORTCUTS_UI: &str = include_str!("../data/shortcuts.ui");
@@ -212,8 +215,18 @@ fn main() -> ExitCode {
 
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
+        let Some(_activation_guard) = MainWindowActivationGuard::acquire(app) else {
+            return;
+        };
+
         let query = take_string_data(app, "query");
         let pass_file = take_data(app, "open-pass-file");
+        if let Some(window) = existing_main_window(app) {
+            window::dispatch_main_window_command(&window, query, pass_file);
+            window.present();
+            return;
+        }
+
         match window::create_main_window(app, query, pass_file) {
             Ok(win) => {
                 win.present();
@@ -233,6 +246,37 @@ fn main() -> ExitCode {
     });
 
     app.run()
+}
+
+struct MainWindowActivationGuard {
+    app: Application,
+}
+
+impl MainWindowActivationGuard {
+    fn acquire(app: &Application) -> Option<Self> {
+        if cloned_data::<_, bool>(app, MAIN_WINDOW_ACTIVATING_KEY).unwrap_or(false) {
+            return None;
+        }
+
+        set_cloned_data(app, MAIN_WINDOW_ACTIVATING_KEY, true);
+        Some(Self { app: app.clone() })
+    }
+}
+
+impl Drop for MainWindowActivationGuard {
+    fn drop(&mut self) {
+        set_cloned_data(&self.app, MAIN_WINDOW_ACTIVATING_KEY, false);
+    }
+}
+
+fn existing_main_window(app: &Application) -> Option<adw::ApplicationWindow> {
+    app.active_window()
+        .and_then(|window| window.downcast::<adw::ApplicationWindow>().ok())
+        .or_else(|| {
+            app.windows()
+                .into_iter()
+                .find_map(|window| window.downcast::<adw::ApplicationWindow>().ok())
+        })
 }
 
 fn command_line_pass_file(args: &[OsString]) -> Option<OpenPassFile> {

@@ -27,16 +27,26 @@ use crate::password::otp::PasswordOtpState;
 use crate::password::page::{open_password_entry_page, password_page_has_unsaved_changes};
 use crate::preferences::Preferences;
 use crate::private_key::sync::{sync_private_keys_with_host, PrivateKeySyncDirection};
+use crate::support::actions::activate_widget_action;
+use crate::support::object_data::{cloned_data, set_cloned_data};
 use crate::support::runtime::log_runtime_capabilities_once;
 use crate::window::controls::{
     apply_startup_query, configure_window_shortcuts, ListVisibilityState,
 };
 use crate::window::session::initialize_window_session;
-use adw::gtk::Builder;
+use adw::gtk::{Builder, ListBox, SearchEntry};
 use adw::{prelude::*, Application, ApplicationWindow};
 use std::rc::Rc;
 
 const UI_SRC: &str = include_str!(concat!(env!("OUT_DIR"), "/window.ui"));
+const MAIN_WINDOW_COMMAND_STATE_KEY: &str = "main-window-command-state";
+
+#[derive(Clone)]
+struct MainWindowCommandState {
+    list: ListBox,
+    search_entry: SearchEntry,
+    password_page: crate::password::page::PasswordPageState,
+}
 
 pub fn create_main_window(
     app: &Application,
@@ -62,6 +72,15 @@ pub fn create_main_window(
     let new_password_dialog_state = new_password_dialog_state(&widgets);
     let password_otp_state = PasswordOtpState::new(&widgets.otp_entry, &widgets.toast_overlay);
     let password_page_state = password_page_state(&widgets, &password_otp_state);
+    set_cloned_data(
+        &widgets.window,
+        MAIN_WINDOW_COMMAND_STATE_KEY,
+        MainWindowCommandState {
+            list: widgets.list.clone(),
+            search_entry: widgets.search_entry.clone(),
+            password_page: password_page_state.clone(),
+        },
+    );
     let list_visibility = ListVisibilityState::new(false, false);
     let store_git_page_state = store_git_page_state(&widgets);
     let store_recipients_page_state = store_recipients_page_state(&widgets, &store_git_page_state);
@@ -157,4 +176,30 @@ pub fn create_main_window(
     }
 
     Ok(widgets.window)
+}
+
+pub fn dispatch_main_window_command(
+    window: &ApplicationWindow,
+    startup_query: Option<String>,
+    initial_pass_file: Option<OpenPassFile>,
+) {
+    let Some(state) = cloned_data::<_, MainWindowCommandState>(window, MAIN_WINDOW_COMMAND_STATE_KEY)
+    else {
+        return;
+    };
+
+    if let Some(initial_pass_file) = initial_pass_file {
+        open_password_entry_page(&state.password_page, initial_pass_file, true);
+        return;
+    }
+
+    let Some(query) = startup_query else {
+        return;
+    };
+    if query.is_empty() {
+        return;
+    }
+
+    activate_widget_action(window, "win.go-home");
+    apply_startup_query(Some(query), &state.search_entry, &state.list);
 }

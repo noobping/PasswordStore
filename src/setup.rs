@@ -1,7 +1,7 @@
 use adw::gio::{self, ResourceLookupFlags};
 use std::io::{Error, ErrorKind};
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 use std::{
     process,
@@ -41,17 +41,35 @@ pub fn can_install_locally() -> bool {
 }
 
 pub fn is_installed_locally() -> bool {
-    let Some(bin) = dirs_next::executable_dir() else {
+    let Some(bin) = installed_local_binary_path() else {
         return false;
     };
     let Some(data) = dirs_next::data_dir() else {
         return false;
     };
-    let bin = bin.join(env!("CARGO_PKG_NAME"));
     let desktop = data
         .join("applications")
         .join(format!("{}.desktop", APP_ID));
     bin.exists() && bin.is_file() && desktop.exists() && desktop.is_file()
+}
+
+pub fn is_current_executable_installed_locally() -> bool {
+    let Ok(current_exe) = std::env::current_exe() else {
+        return false;
+    };
+    let Some(installed_exe) = installed_local_binary_path() else {
+        return false;
+    };
+
+    same_file_path(&current_exe, &installed_exe)
+}
+
+fn installed_local_binary_path() -> Option<PathBuf> {
+    let Some(bin) = dirs_next::executable_dir() else {
+        return None;
+    };
+
+    Some(bin.join(env!("CARGO_PKG_NAME")))
 }
 
 pub fn install_locally() -> std::io::Result<()> {
@@ -171,6 +189,13 @@ fn is_writable(dir: &Path) -> bool {
     }
 
     false
+}
+
+fn same_file_path(left: &Path, right: &Path) -> bool {
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => left == right,
+    }
 }
 
 fn write_desktop_file(apps_path: &Path, bin_path: &Path) -> std::io::Result<()> {

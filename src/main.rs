@@ -22,7 +22,6 @@ mod private_key;
 mod search_provider;
 mod store;
 mod support;
-#[cfg(target_os = "windows")]
 mod updater;
 mod window;
 
@@ -66,6 +65,10 @@ fn main() -> ExitCode {
     let args = std::env::args_os().collect::<Vec<_>>();
     if handle_unsupported_host_command_invocation(&args) {
         return 126.into();
+    }
+
+    if let Some(code) = updater::handle_special_command(&args) {
+        return code;
     }
 
     #[cfg(target_os = "linux")]
@@ -200,6 +203,12 @@ fn main() -> ExitCode {
     app.connect_shutdown(|_| {
         backend::clear_runtime_secret_state();
     });
+    {
+        let app_for_shutdown = app.clone();
+        app.connect_shutdown(move |_| {
+            updater::shutdown(&app_for_shutdown);
+        });
+    }
 
     // When the app is activated, create and show the main window
     app.connect_activate(|app| {
@@ -208,7 +217,6 @@ fn main() -> ExitCode {
         match window::create_main_window(app, query, pass_file) {
             Ok(win) => {
                 win.present();
-                #[cfg(target_os = "windows")]
                 updater::after_window_presented(app, &win);
             }
             Err(err) => {
@@ -271,7 +279,6 @@ fn windows_icon_search_path() -> Option<PathBuf> {
 }
 
 fn register_app_actions(app: &Application) {
-    #[cfg(target_os = "windows")]
     updater::register_app_actions(app);
 
     let about_action = SimpleAction::new("about", None);

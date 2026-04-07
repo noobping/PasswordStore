@@ -6057,6 +6057,26 @@ msgstr "Verberg toepassenknoppen totdat vereiste invoer is ingevuld in de pass-b
 msgid "Improve keyboard navigation with better arrow-key support and smoother focus movement across the app."
 msgstr "Verbeter toetsenbordnavigatie met betere ondersteuning voor pijltjestoetsen en vloeiendere focusverplaatsing in de hele app."
 
+#: src/updater/linux.rs:23
+msgid "Looking for a newer Linux standalone build on GitHub Releases."
+msgstr "Zoeken naar een nieuwere zelfstandige Linux-build op GitHub Releases."
+
+#: src/updater/linux.rs:27
+msgid "A newer Linux standalone build is available."
+msgstr "Er is een nieuwere zelfstandige Linux-build beschikbaar."
+
+#: src/updater/linux.rs:31
+msgid "The update is ready to install."
+msgstr "De update is klaar om te worden geïnstalleerd."
+
+#: src/updater/linux.rs:171
+msgid "Keycord couldn't finish installing the downloaded Linux update."
+msgstr "Keycord kon de installatie van de gedownloade Linux-update niet voltooien."
+
+#: src/updater/linux.rs:175
+msgid "Couldn't install the update."
+msgstr "Kon de update niet installeren."
+
 #~ msgid "character pools are never empty"
 #~ msgstr "tekenverzamelingen zijn nooit leeg"
 

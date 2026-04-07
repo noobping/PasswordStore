@@ -34,10 +34,14 @@ pub fn parse_release_version(tag_name: &str) -> Option<Version> {
     Version::parse(normalized).ok()
 }
 
-pub fn select_update_release(
+pub fn select_update_release_by<F>(
     current_version: &str,
     releases: &[ReleaseCandidate],
-) -> Option<SelectedRelease> {
+    mut asset_matches: F,
+) -> Option<SelectedRelease>
+where
+    F: FnMut(&ReleaseCandidate, &ReleaseAsset) -> bool,
+{
     let current = Version::parse(current_version).ok()?;
 
     releases
@@ -52,7 +56,7 @@ pub fn select_update_release(
             let asset = release
                 .assets
                 .iter()
-                .find(|asset| asset.name.to_ascii_lowercase().ends_with(".msi"))?
+                .find(|asset| asset_matches(release, asset))?
                 .clone();
 
             Some(SelectedRelease {
@@ -64,7 +68,17 @@ pub fn select_update_release(
         .max_by(|left, right| left.version.cmp(&right.version))
 }
 
-pub fn cached_installer_matches(path: &Path, expected_size: u64) -> bool {
+#[cfg(any(target_os = "windows", test))]
+pub fn select_update_release(
+    current_version: &str,
+    releases: &[ReleaseCandidate],
+) -> Option<SelectedRelease> {
+    select_update_release_by(current_version, releases, |_, asset| {
+        asset.name.to_ascii_lowercase().ends_with(".msi")
+    })
+}
+
+pub fn cached_download_matches_size(path: &Path, expected_size: u64) -> bool {
     fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() == expected_size)
 }
 
@@ -75,8 +89,8 @@ pub fn any_dirty(flags: impl IntoIterator<Item = bool>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        any_dirty, cached_installer_matches, parse_release_version, select_update_release,
-        ReleaseAsset, ReleaseCandidate,
+        any_dirty, cached_download_matches_size, parse_release_version, select_update_release,
+        select_update_release_by, ReleaseAsset, ReleaseCandidate,
     };
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -143,7 +157,41 @@ mod tests {
     }
 
     #[test]
-    fn cached_installer_check_requires_an_exact_file_size_match() {
+    fn selects_the_highest_newer_stable_release_for_a_linux_arch_asset() {
+        let releases = vec![
+            release(
+                "v1.1.0",
+                false,
+                false,
+                vec![asset("keycord-v1.1.0.aarch64", 20)],
+            ),
+            release(
+                "v1.2.0",
+                false,
+                false,
+                vec![
+                    asset("keycord-v1.2.0.aarch64", 30),
+                    asset("keycord-v1.2.0.x86_64", 31),
+                ],
+            ),
+            release(
+                "v1.3.0",
+                false,
+                true,
+                vec![asset("keycord-v1.3.0.x86_64", 40)],
+            ),
+        ];
+
+        let selected = select_update_release_by("1.0.0", &releases, |release, asset| {
+            asset.name == format!("keycord-{}.x86_64", release.tag_name)
+        })
+        .expect("expected release");
+        assert_eq!(selected.version.to_string(), "1.2.0");
+        assert_eq!(selected.asset.name, "keycord-v1.2.0.x86_64");
+    }
+
+    #[test]
+    fn cached_download_check_requires_an_exact_file_size_match() {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock before unix epoch")
@@ -151,8 +199,8 @@ mod tests {
         let path = std::env::temp_dir().join(format!("keycord-updater-{nanos}.msi"));
         fs::write(&path, b"12345").expect("write cached installer");
 
-        assert!(cached_installer_matches(&path, 5));
-        assert!(!cached_installer_matches(&path, 4));
+        assert!(cached_download_matches_size(&path, 5));
+        assert!(!cached_download_matches_size(&path, 4));
 
         fs::remove_file(&path).expect("remove cached installer");
     }

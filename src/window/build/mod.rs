@@ -10,10 +10,8 @@ use crate::password::model::OpenPassFile;
 use crate::password::new_item::register_open_new_password_action;
 use crate::password::new_item::NewPasswordDialogState;
 use crate::password::otp::PasswordOtpState;
-use crate::password::page::open_password_entry_page;
-#[cfg(target_os = "windows")]
-use crate::password::page::password_page_has_unsaved_changes;
 use crate::password::page::PasswordPageState;
+use crate::password::page::{open_password_entry_page, password_page_has_unsaved_changes};
 use crate::preferences::Preferences;
 use crate::private_key::sync::{sync_private_keys_with_host, PrivateKeySyncDirection};
 use crate::store::management::register_open_store_picker_action;
@@ -973,7 +971,6 @@ pub fn create_main_window(
     register_reload_password_list_action(&widgets.window, &list_visibility_action_state);
     register_go_home_action(&widgets.window, &back_action_state);
     register_back_action(&widgets.window, &back_action_state);
-    #[cfg(target_os = "windows")]
     crate::updater::register_window(
         app,
         &widgets.window,

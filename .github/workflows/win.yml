@@ -97,80 +97,117 @@ jobs:
         run: |
           $workspace = $env:GITHUB_WORKSPACE
           Write-Host "Workspace: $workspace"
+
           $bundleDir = Join-Path $workspace 'bundle'
           if (Test-Path $bundleDir) {
-           Remove-Item $bundleDir -Recurse -Force
+            Remove-Item $bundleDir -Recurse -Force
           }
           New-Item -ItemType Directory -Path $bundleDir | Out-Null
+
           $exe = Join-Path $workspace 'target\x86_64-pc-windows-gnu\release\keycord.exe'
           if (-not (Test-Path $exe)) {
-           Write-Error "EXE not found at: $exe"
+            Write-Error "EXE not found at: $exe"
           }
           Write-Host "Copying exe: $exe"
           Copy-Item $exe $bundleDir -Force
+
           $mingwBin = 'C:\tools\msys64\mingw64\bin'
           if (-not (Test-Path $mingwBin)) {
-           Write-Error "MinGW bin dir not found: $mingwBin"
+            Write-Error "MinGW bin dir not found: $mingwBin"
           }
           Write-Host "Copying DLLs from: $mingwBin"
           Get-ChildItem -Path $mingwBin -Filter '*.dll' |
-          Copy-Item -Destination $bundleDir -Force
+            Copy-Item -Destination $bundleDir -Force
+
           $mingwRoot = 'C:\tools\msys64\mingw64'
           $shareDir = Join-Path $bundleDir 'share'
+
           $glibSchemasDir = Join-Path $shareDir 'glib-2.0\schemas'
           New-Item -ItemType Directory -Path $glibSchemasDir -Force | Out-Null
           $schemaFile = Join-Path $mingwRoot 'share\glib-2.0\schemas\gschemas.compiled'
           Copy-Item $schemaFile $glibSchemasDir -Force
+
           $fontConfigDir = Join-Path $mingwRoot 'share\fontconfig'
           if (Test-Path $fontConfigDir) {
             Copy-Item $fontConfigDir (Join-Path $shareDir 'fontconfig') -Recurse -Force
           }
+
           $adwaitaSourceDir = Join-Path $mingwRoot 'share\icons\Adwaita'
           if (Test-Path $adwaitaSourceDir) {
             Copy-Item $adwaitaSourceDir (Join-Path $shareDir 'icons\Adwaita') -Recurse -Force
           }
-          $iconThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
+
+          $hicolorThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
+          $adwaitaThemeDir = Join-Path $bundleDir 'share\icons\Adwaita'
+
           $iconDirs = @{
             'data\256x256\apps' = @('256x256\apps')
             'data\scalable\apps' = @('scalable\apps')
             'data\symbolic\apps' = @('symbolic\apps', 'symbolic\actions')
           }
-          foreach ($source in $iconDirs.Keys) {
-            $sourceDir = Join-Path $workspace $source
-            if (-not (Test-Path $sourceDir)) {
-              continue
-            }
-            foreach ($relativeDest in $iconDirs[$source]) {
-              $destDir = Join-Path $iconThemeDir $relativeDest
-              New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-              Copy-Item (Join-Path $sourceDir '*') $destDir -Force
+
+          $themeTargets = @(
+            @{ Name = 'hicolor'; Dir = $hicolorThemeDir; SkipExisting = $false }
+            @{ Name = 'Adwaita'; Dir = $adwaitaThemeDir; SkipExisting = $true }
+          )
+
+          foreach ($theme in $themeTargets) {
+            foreach ($source in $iconDirs.Keys) {
+              $sourceDir = Join-Path $workspace $source
+              if (-not (Test-Path $sourceDir)) {
+                continue
+              }
+
+              foreach ($relativeDest in $iconDirs[$source]) {
+                $destDir = Join-Path $theme.Dir $relativeDest
+                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+
+                Get-ChildItem -Path $sourceDir -File | ForEach-Object {
+                  $destFile = Join-Path $destDir $_.Name
+
+                  if ($theme.SkipExisting -and (Test-Path $destFile)) {
+                    Write-Host "Skipping existing [$($theme.Name)]: $destFile"
+                    return
+                  }
+
+                  Copy-Item $_.FullName $destFile -Force
+                }
+              }
             }
           }
+
           $indexTheme = Join-Path $workspace 'data\windows\share\icons\hicolor\index.theme'
-          Copy-Item $indexTheme $iconThemeDir -Force
+          Copy-Item $indexTheme $hicolorThemeDir -Force
+
           $etcDir = Join-Path $mingwRoot 'etc'
           if (Test-Path $etcDir) {
             Copy-Item $etcDir (Join-Path $bundleDir 'etc') -Recurse -Force
           }
+
           $pixbufRoot = Join-Path $bundleDir 'lib\gdk-pixbuf-2.0\2.10.0'
           $pixbufLoadersDir = Join-Path $pixbufRoot 'loaders'
           New-Item -ItemType Directory -Path $pixbufLoadersDir -Force | Out-Null
+
           $pixbufSourceDir = Join-Path $mingwRoot 'lib\gdk-pixbuf-2.0\2.10.0\loaders'
           if (Test-Path $pixbufSourceDir) {
             Copy-Item (Join-Path $pixbufSourceDir '*') $pixbufLoadersDir -Recurse -Force
           }
+
           $pixbufQuery = Join-Path $mingwBin 'gdk-pixbuf-query-loaders.exe'
           $pixbufLoaderDlls = @(Get-ChildItem $pixbufLoadersDir -Filter '*.dll' | Select-Object -ExpandProperty FullName)
           if ((Test-Path $pixbufQuery) -and $pixbufLoaderDlls.Count -gt 0) {
             $pixbufCache = & $pixbufQuery $pixbufLoaderDlls
             [System.IO.File]::WriteAllText((Join-Path $pixbufRoot 'loaders.cache'), ($pixbufCache -join [Environment]::NewLine))
           }
+
           Write-Host "Bundle contents:"
           Get-ChildItem $bundleDir -Recurse
+
           $zip = Join-Path $workspace 'keycord-windows.zip'
           if (Test-Path $zip) {
-           Remove-Item $zip -Force
+            Remove-Item $zip -Force
           }
+
           $src = Join-Path $bundleDir '*'
           Compress-Archive -Path $src -DestinationPath $zip -Force
 

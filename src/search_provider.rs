@@ -440,7 +440,10 @@ fn search_result_ids(terms: &[String]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_result_id, encode_result_id, join_search_terms};
+    use super::{
+        decode_result_id, encode_result_id, join_search_terms, normalized_search_terms,
+        search_provider_entry_matches,
+    };
     use crate::password::model::PassEntry;
 
     #[cfg(feature = "hardening")]

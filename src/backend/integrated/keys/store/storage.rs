@@ -384,6 +384,18 @@ fn connected_smartcard_entries() -> Result<Vec<ConnectedSmartcardEntry>, String>
     Ok(entries)
 }
 
+fn connected_smartcard_entries_for_background_load(context: &str) -> Vec<ConnectedSmartcardEntry> {
+    match connected_smartcard_entries() {
+        Ok(entries) => entries,
+        Err(err) => {
+            log_error(format!(
+                "Failed to inspect connected smartcards while {context}: {err}"
+            ));
+            Vec::new()
+        }
+    }
+}
+
 pub fn list_connected_smartcard_keys() -> Result<Vec<ConnectedSmartcardKey>, String> {
     Ok(connected_smartcard_entries()?
         .into_iter()
@@ -499,7 +511,7 @@ pub(in crate::backend::integrated) fn load_available_standard_key_ring(
 ) -> Result<HashMap<[u8; 20], Arc<Cert>>, String> {
     let mut key_ring = load_stored_ripasso_key_ring()?;
 
-    for entry in connected_smartcard_entries()? {
+    for entry in connected_smartcard_entries_for_background_load("loading the available key ring") {
         let fingerprint = slice_to_20_bytes(entry.cert.fingerprint().as_bytes())
             .map_err(|err| err.to_string())?;
         key_ring
@@ -535,7 +547,12 @@ pub(in crate::backend::integrated) fn available_private_key_fingerprints(
 ) -> Result<Vec<String>, String> {
     let mut fingerprints = imported_private_key_fingerprints()?;
 
-    for key in list_connected_smartcard_keys()? {
+    for key in connected_smartcard_entries_for_background_load(
+        "collecting available private-key fingerprints",
+    )
+    .into_iter()
+    .map(|entry| entry.key)
+    {
         if !fingerprints
             .iter()
             .any(|existing| existing.eq_ignore_ascii_case(&key.fingerprint))

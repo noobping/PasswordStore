@@ -27,8 +27,8 @@ use super::keys::{
     discover_ripasso_hardware_keys, ensure_ripasso_private_key_is_ready,
     generate_ripasso_hardware_key, generate_ripasso_private_key, import_ripasso_hardware_key_bytes,
     import_ripasso_private_key_bytes, is_ripasso_private_key_unlocked,
-    list_connected_smartcard_keys, list_ripasso_private_keys, parse_managed_private_key_bytes,
-    prepare_managed_private_key_bytes, remove_ripasso_private_key,
+    list_connected_smartcard_keys, list_ripasso_private_keys, load_available_standard_key_ring,
+    parse_managed_private_key_bytes, prepare_managed_private_key_bytes, remove_ripasso_private_key,
     reset_hardware_transport_for_tests, resolved_ripasso_own_fingerprint, ripasso_keys_dir,
     ripasso_private_key_requires_passphrase, ripasso_private_key_requires_session_unlock,
     set_hardware_transport_for_tests, unlock_ripasso_private_key_for_session,
@@ -289,6 +289,55 @@ impl HardwareTransportGuard {
 impl Drop for HardwareTransportGuard {
     fn drop(&mut self) {
         reset_hardware_transport_for_tests();
+    }
+}
+
+struct FailingHardwareTransport;
+
+impl HardwareTransport for FailingHardwareTransport {
+    fn list_tokens(&self) -> Result<Vec<DiscoveredHardwareToken>, HardwareTransportError> {
+        Err(HardwareTransportError::Other(
+            "Mock smartcard enumeration failure.".to_string(),
+        ))
+    }
+
+    #[cfg(feature = "hardwarekey")]
+    fn generate_key_material(
+        &self,
+        _request: &super::keys::HardwareKeyGenerationRequest,
+    ) -> Result<(DiscoveredHardwareToken, Vec<u8>), HardwareTransportError> {
+        Err(HardwareTransportError::Other(
+            "Mock hardware generation failure.".to_string(),
+        ))
+    }
+
+    fn verify_session(
+        &self,
+        _session: &HardwareSessionPolicy,
+    ) -> Result<(), HardwareTransportError> {
+        Err(HardwareTransportError::Other(
+            "Mock smartcard verification failure.".to_string(),
+        ))
+    }
+
+    fn decrypt_ciphertext(
+        &self,
+        _session: &HardwareSessionPolicy,
+        _ciphertext: &[u8],
+    ) -> Result<String, HardwareTransportError> {
+        Err(HardwareTransportError::Other(
+            "Mock smartcard decrypt failure.".to_string(),
+        ))
+    }
+
+    fn sign_cleartext(
+        &self,
+        _session: &HardwareSessionPolicy,
+        _data: &str,
+    ) -> Result<String, HardwareTransportError> {
+        Err(HardwareTransportError::Other(
+            "Mock smartcard signing failure.".to_string(),
+        ))
     }
 }
 
@@ -1236,6 +1285,33 @@ fn connected_smartcards_without_cardholder_certificates_are_not_exposed() {
     assert!(list_connected_smartcard_keys()
         .expect("list connected smartcards")
         .is_empty());
+}
+
+#[test]
+fn smartcard_enumeration_failures_do_not_block_loading_stored_key_ring() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("smartcard-enumeration-failure");
+    let _guard = HardwareTransportGuard::install(Arc::new(FailingHardwareTransport));
+
+    let bytes = protected_cert_bytes("Stored User <stored@example.com>");
+    let (cert, _) = prepare_managed_private_key_bytes(&bytes, Some("hunter2"))
+        .expect("prepare stored private key");
+    let expected = cert.fingerprint().to_hex();
+
+    import_ripasso_private_key_bytes(&bytes, Some("hunter2")).expect("import stored private key");
+
+    let key_ring = load_available_standard_key_ring().expect("load available key ring");
+    assert!(key_ring.values().any(|stored| stored
+        .fingerprint()
+        .to_hex()
+        .eq_ignore_ascii_case(&expected)));
+    assert!(list_ripasso_private_keys()
+        .expect("list stored private keys")
+        .into_iter()
+        .any(|stored| stored.fingerprint.eq_ignore_ascii_case(&expected)));
+    assert!(list_connected_smartcard_keys()
+        .expect_err("direct smartcard inspection should still surface errors")
+        .contains("Mock smartcard enumeration failure."));
 }
 
 #[cfg(not(feature = "hardwarekey"))]

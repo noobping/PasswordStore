@@ -51,6 +51,8 @@ fn main() {
 
     export_dependency_versions();
     write_window_ui();
+    #[cfg(target_os = "windows")]
+    configure_windows_binary_stack_size();
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set for build script"));
     let locale_dir = out_dir.join("locale");
@@ -100,6 +102,27 @@ fn main() {
     {
         desktop_file();
         search_provider_files();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn configure_windows_binary_stack_size() {
+    const WINDOWS_MAIN_THREAD_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+
+    match env::var("CARGO_CFG_TARGET_ENV").as_deref() {
+        Ok("gnu") => println!(
+            "cargo:rustc-link-arg-bins=-Wl,--stack,{}",
+            WINDOWS_MAIN_THREAD_STACK_SIZE_BYTES
+        ),
+        Ok("msvc") => println!(
+            "cargo:rustc-link-arg-bins=/STACK:{}",
+            WINDOWS_MAIN_THREAD_STACK_SIZE_BYTES
+        ),
+        _ => {}
     }
 }
 

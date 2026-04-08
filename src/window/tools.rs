@@ -483,7 +483,7 @@ impl ToolsPageState {
         self.sync_tool_rows();
     }
 
-    fn tools_are_busy(&self) -> bool {
+    fn advanced_search_tools_are_busy(&self) -> bool {
         self.field_browser.browser.tool_busy.get()
             || self.weak_password_page.weak_passwords.tool_busy.get()
     }
@@ -491,8 +491,8 @@ impl ToolsPageState {
     fn sync_tool_rows(&self) {
         let available =
             password_read_tools_available_for_store_roots(&Preferences::new().store_roots());
-        let enabled = available
-            && tool_rows_enabled(
+        let advanced_search_enabled = available
+            && advanced_search_tool_rows_enabled(
                 self.field_browser.browser.tool_busy.get(),
                 self.weak_password_page.weak_passwords.tool_busy.get(),
             );
@@ -501,7 +501,7 @@ impl ToolsPageState {
             &self.select_page.field_values_suffix_stack,
             &self.select_page.field_values_suffix_arrow,
             &self.select_page.field_values_spinner,
-            enabled,
+            advanced_search_enabled,
             self.field_browser.browser.tool_busy.get(),
             if available {
                 FIELD_VALUES_ROW_SUBTITLE
@@ -514,7 +514,7 @@ impl ToolsPageState {
             &self.select_page.weak_passwords_suffix_stack,
             &self.select_page.weak_passwords_suffix_arrow,
             &self.select_page.weak_passwords_spinner,
-            enabled,
+            advanced_search_enabled,
             self.weak_password_page.weak_passwords.tool_busy.get(),
             if available {
                 WEAK_PASSWORDS_ROW_SUBTITLE
@@ -522,7 +522,7 @@ impl ToolsPageState {
                 WEAK_PASSWORDS_ROW_DISABLED_SUBTITLE
             },
         );
-        self.sync_audit_tool_row(enabled);
+        self.sync_audit_tool_row();
         self.render_select_page_search_results();
     }
 
@@ -631,7 +631,7 @@ fn append_loading_rows(list: &ListBox, title: &str, subtitle: &str) {
     append_spinner_row(list);
 }
 
-fn tool_rows_enabled(field_values_busy: bool, weak_passwords_busy: bool) -> bool {
+fn advanced_search_tool_rows_enabled(field_values_busy: bool, weak_passwords_busy: bool) -> bool {
     !(field_values_busy || weak_passwords_busy)
 }
 

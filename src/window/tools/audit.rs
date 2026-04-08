@@ -86,7 +86,7 @@ impl ToolsPageState {
         }
     }
 
-    pub(super) fn sync_audit_tool_row(&self, enabled: bool) {
+    pub(super) fn sync_audit_tool_row(&self) {
         let supported = supports_audit_features();
         self.select_page.audit_row.set_visible(supported);
         if !supported {
@@ -99,7 +99,7 @@ impl ToolsPageState {
             .set_subtitle(&localized_text(audit_row_subtitle(availability)));
         set_tool_row_enabled(
             &self.select_page.audit_row,
-            enabled && matches!(availability, AuditGitRuntimeAvailability::Available),
+            matches!(availability, AuditGitRuntimeAvailability::Available),
         );
         set_tool_row_suffix_loading(
             &self.select_page.audit_suffix_stack,

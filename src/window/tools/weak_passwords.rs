@@ -43,7 +43,7 @@ struct WeakPasswordBatch {
 
 impl ToolsPageState {
     pub(super) fn prepare_weak_passwords_browser(&self) {
-        if self.tools_are_busy() {
+        if self.advanced_search_tools_are_busy() {
             return;
         }
 
@@ -52,7 +52,7 @@ impl ToolsPageState {
     }
 
     pub(super) fn refresh_weak_passwords_browser_if_needed(&self) {
-        if self.tools_are_busy()
+        if self.advanced_search_tools_are_busy()
             || self.weak_password_page.weak_passwords.in_flight.get()
             || self
                 .weak_password_page

@@ -3,8 +3,9 @@ use super::field_values::{
     unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
 };
 use super::{
-    filter_tool_requests, password_read_tools_available_for_store_roots_with,
-    tool_browser_flow_is_visible, tool_row_matches_query, tool_rows_enabled, FieldValueRequest,
+    advanced_search_tool_rows_enabled, filter_tool_requests,
+    password_read_tools_available_for_store_roots_with, tool_browser_flow_is_visible,
+    tool_row_matches_query, FieldValueRequest,
 };
 use crate::i18n::gettext;
 use crate::password::file::SearchablePassField;
@@ -122,11 +123,11 @@ fn count_subtitles_pluralize() {
 }
 
 #[test]
-fn tool_rows_disable_while_any_tool_is_busy() {
-    assert!(tool_rows_enabled(false, false));
-    assert!(!tool_rows_enabled(true, false));
-    assert!(!tool_rows_enabled(false, true));
-    assert!(!tool_rows_enabled(true, true));
+fn advanced_search_tool_rows_disable_while_any_advanced_search_tool_is_busy() {
+    assert!(advanced_search_tool_rows_enabled(false, false));
+    assert!(!advanced_search_tool_rows_enabled(true, false));
+    assert!(!advanced_search_tool_rows_enabled(false, true));
+    assert!(!advanced_search_tool_rows_enabled(true, true));
 }
 
 #[test]

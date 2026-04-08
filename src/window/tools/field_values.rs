@@ -61,7 +61,7 @@ struct FieldValueCatalogBatch {
 
 impl ToolsPageState {
     pub(super) fn prepare_field_values_browser(&self) {
-        if self.tools_are_busy() {
+        if self.advanced_search_tools_are_busy() {
             return;
         }
 

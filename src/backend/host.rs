@@ -6,9 +6,11 @@ use super::host_errors::{
 };
 use super::path_validation::{validated_entry_label_path, validated_relative_directory_path};
 #[cfg(target_os = "linux")]
-use crate::backend::command::{run_host_program_output, run_host_program_with_input};
+use crate::backend::command::{
+    ensure_success, run_host_program_output, run_host_program_with_input,
+};
 use crate::backend::{
-    command::{ensure_success, run_store_command_output, run_store_command_with_input},
+    command::{run_store_command_output, run_store_command_with_input},
     PasswordEntryError, PasswordEntryWriteError, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };

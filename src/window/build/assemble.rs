@@ -12,7 +12,7 @@ use crate::password::list::{
 use crate::password::new_item::{register_open_new_password_action, NewPasswordDialogState};
 use crate::password::page::PasswordPageState;
 use crate::preferences::Preferences;
-use crate::store::git_page::connect_store_git_controls;
+use crate::store::git_page::{connect_store_git_controls, StoreGitPageState};
 use crate::store::management::{
     connect_store_recipients_controls, initialize_store_import_page, rebuild_store_actions_list,
     register_open_store_picker_action, register_open_store_recipients_shortcut_actions,
@@ -225,10 +225,14 @@ pub(super) fn assemble_store_recipients_page(
     register_open_store_recipients_shortcut_actions(&widgets.window, store_recipients_page_state);
 }
 
-pub(super) fn assemble_git_page(widgets: &WindowWidgets, git_action_state: &GitActionState) {
-    git_action_state.store_git_page.search.connect_handlers();
+pub(super) fn assemble_git_page(
+    widgets: &WindowWidgets,
+    store_git_page: &StoreGitPageState,
+    git_action_state: &GitActionState,
+) {
+    store_git_page.search.connect_handlers();
     let git_supported = supports_host_command_features();
-    connect_store_git_controls(&git_action_state.store_git_page);
+    connect_store_git_controls(store_git_page);
     if git_supported {
         register_open_git_action(git_action_state);
         register_synchronize_action(git_action_state);

@@ -139,7 +139,7 @@ pub fn create_main_window(
     );
     assemble_store_import_page(&widgets, &window_navigation_state);
     assemble_store_recipients_page(&widgets, &store_recipients_page_state);
-    assemble_git_page(&widgets, &git_action_state);
+    assemble_git_page(&widgets, &store_git_page_state, &git_action_state);
     assemble_log_page(&widgets, &window_navigation_state);
     assemble_docs_page(&widgets, &docs_page_state);
     assemble_tools_page(&widgets, &tools_page_state);

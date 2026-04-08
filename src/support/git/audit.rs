@@ -1,12 +1,16 @@
-use super::command::{configure_store_git_repo_command, git_command_error, run_store_git_command};
+use super::command::{
+    configure_store_git_repo_command, git_command_error, run_store_git_command,
+    run_store_remote_git_command,
+};
 use super::repository::has_git_repository;
 use crate::backend::available_standard_public_certs;
 use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
-use crate::logging::{run_command_with_input, CommandLogOptions};
+use crate::logging::{log_error, run_command_with_input, CommandLogOptions};
 use crate::preferences::Preferences;
 use crate::store::recipients::{
     normalize_standard_recipient, parse_fido2_recipients, parse_standard_recipients,
 };
+use crate::support::runtime::has_host_permission;
 use sequoia_openpgp::parse::stream::{
     DetachedVerifierBuilder, MessageLayer, MessageStructure, VerificationError, VerificationHelper,
 };
@@ -79,6 +83,13 @@ pub enum StoreGitAuditVerificationMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreGitAuditVerificationMethod {
+    KeycordOpenPgp,
+    HostGitGpg,
+    HostGitSsh,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StoreGitAuditUnverifiedReason {
     NoSignature,
     MalformedSignature,
@@ -93,6 +104,7 @@ pub enum StoreGitAuditUnverifiedReason {
 pub struct StoreGitAuditVerification {
     pub state: StoreGitAuditVerificationState,
     pub mode: StoreGitAuditVerificationMode,
+    pub method: Option<StoreGitAuditVerificationMethod>,
     pub used_commit_history_fallback: bool,
     pub reason: Option<StoreGitAuditUnverifiedReason>,
     pub signer_fingerprint: Option<String>,
@@ -131,6 +143,22 @@ struct SignatureVerificationState {
     missing_key: bool,
     invalid_signature: bool,
     malformed_signature: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CommitSignatureFormat {
+    OpenPgp,
+    Ssh,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct HostGitCommitSignatureSummary {
+    status: Option<char>,
+    signer_label: Option<String>,
+    key: Option<String>,
+    fingerprint: Option<String>,
+    primary_fingerprint: Option<String>,
 }
 
 #[derive(Clone)]
@@ -221,13 +249,12 @@ pub fn load_store_git_audit_commit_page(
         .into_iter()
         .take(STORE_GIT_AUDIT_PAGE_SIZE)
         .collect::<Vec<_>>();
-    let raw_commits = read_raw_commits(
-        store_root,
-        &summaries
-            .iter()
-            .map(|summary| summary.oid.clone())
-            .collect::<Vec<_>>(),
-    )?;
+    let oids = summaries
+        .iter()
+        .map(|summary| summary.oid.clone())
+        .collect::<Vec<_>>();
+    let raw_commits = read_raw_commits(store_root, &oids)?;
+    let host_signature_summaries = read_host_git_signature_summaries_if_enabled(store_root, &oids);
 
     let mut commits = Vec::with_capacity(summaries.len());
     for summary in summaries {
@@ -243,6 +270,7 @@ pub fn load_store_git_audit_commit_page(
             &parsed,
             &branch_tip_context,
             &all_certs,
+            host_signature_summaries.get(&summary.oid),
             use_commit_history_recipients,
         )?;
 
@@ -465,6 +493,90 @@ fn parse_raw_commit_batch(output: &[u8]) -> Result<HashMap<String, Vec<u8>>, Str
     Ok(commits)
 }
 
+fn host_git_audit_verification_enabled() -> bool {
+    Preferences::new().sync_private_keys_with_host() && has_host_permission()
+}
+
+fn read_host_git_signature_summaries_if_enabled(
+    store_root: &str,
+    oids: &[String],
+) -> HashMap<String, HostGitCommitSignatureSummary> {
+    if !host_git_audit_verification_enabled() || oids.is_empty() {
+        return HashMap::new();
+    }
+
+    match read_host_git_signature_summaries(store_root, oids) {
+        Ok(summaries) => summaries,
+        Err(err) => {
+            log_error(format!(
+                "Failed to read host Git signature metadata for '{store_root}', continuing with local audit verification only: {err}"
+            ));
+            HashMap::new()
+        }
+    }
+}
+
+fn read_host_git_signature_summaries(
+    store_root: &str,
+    oids: &[String],
+) -> Result<HashMap<String, HostGitCommitSignatureSummary>, String> {
+    let output = run_store_remote_git_command(
+        store_root,
+        "Read host Git signature metadata for password store commits",
+        |cmd| {
+            cmd.arg("log")
+                .arg("--no-walk=unsorted")
+                .arg("--format=%H%x00%G?%x00%GS%x00%GK%x00%GF%x00%GP%x1f");
+            cmd.args(oids);
+        },
+        CommandLogOptions::DEFAULT,
+    )?;
+    if !output.status.success() {
+        return Err(git_command_error(
+            "git log --no-walk=unsorted --format=%H%x00%G?...",
+            &output,
+        ));
+    }
+
+    parse_host_git_signature_summaries(&output.stdout)
+}
+
+fn parse_host_git_signature_summaries(
+    output: &[u8],
+) -> Result<HashMap<String, HostGitCommitSignatureSummary>, String> {
+    let mut summaries = HashMap::new();
+
+    for record in output.split(|byte| *byte == 0x1f) {
+        let record = trim_ascii_bytes(record);
+        if record.is_empty() {
+            continue;
+        }
+
+        let fields = record.split(|byte| *byte == 0).collect::<Vec<_>>();
+        if fields.len() < 6 {
+            return Err("Invalid host Git signature metadata.".to_string());
+        }
+
+        let oid = String::from_utf8_lossy(fields[0]).trim().to_string();
+        if oid.is_empty() {
+            continue;
+        }
+
+        summaries.insert(
+            oid,
+            HostGitCommitSignatureSummary {
+                status: String::from_utf8_lossy(fields[1]).trim().chars().next(),
+                signer_label: non_empty_utf8_field(fields[2]),
+                key: non_empty_utf8_field(fields[3]),
+                fingerprint: non_empty_utf8_field(fields[4]),
+                primary_fingerprint: non_empty_utf8_field(fields[5]),
+            },
+        );
+    }
+
+    Ok(summaries)
+}
+
 fn read_commit_changed_paths(
     store_root: &str,
     oid: &str,
@@ -575,6 +687,17 @@ fn parse_commit_object(raw_commit: &[u8]) -> Result<ParsedCommitObject, String> 
     })
 }
 
+fn commit_signature_format(signature: &str) -> CommitSignatureFormat {
+    let trimmed = signature.trim_start();
+    if trimmed.starts_with("-----BEGIN PGP SIGNATURE-----") {
+        CommitSignatureFormat::OpenPgp
+    } else if trimmed.starts_with("-----BEGIN SSH SIGNATURE-----") {
+        CommitSignatureFormat::Ssh
+    } else {
+        CommitSignatureFormat::Unknown
+    }
+}
+
 fn verify_commit(
     store_root: &str,
     _full_ref: &str,
@@ -582,11 +705,13 @@ fn verify_commit(
     parsed: &ParsedCommitObject,
     branch_tip_context: &TreeRecipientContext,
     all_certs: &[Cert],
+    host_signature_summary: Option<&HostGitCommitSignatureSummary>,
     use_commit_history_recipients: bool,
 ) -> Result<StoreGitAuditVerification, String> {
     let Some(signature) = parsed.signature.as_ref() else {
         return Ok(unverified(
             StoreGitAuditVerificationMode::BranchTipRecipients,
+            None,
             false,
             StoreGitAuditUnverifiedReason::NoSignature,
             None,
@@ -594,17 +719,45 @@ fn verify_commit(
         ));
     };
 
-    let crypto = verify_commit_signature(&parsed.unsigned_bytes, signature, all_certs);
+    let crypto = match commit_signature_format(signature) {
+        CommitSignatureFormat::OpenPgp => {
+            let local = verify_commit_signature(&parsed.unsigned_bytes, signature, all_certs);
+            if local.reason.is_none() && local.signer_fingerprint.is_some() {
+                local
+            } else if let Some(host_summary) = host_signature_summary {
+                let host = verify_host_git_signature(host_summary, CommitSignatureFormat::OpenPgp);
+                if host.reason.is_none() {
+                    host
+                } else {
+                    local
+                }
+            } else {
+                local
+            }
+        }
+        CommitSignatureFormat::Ssh => host_signature_summary
+            .map(|summary| verify_host_git_signature(summary, CommitSignatureFormat::Ssh))
+            .unwrap_or(CryptoVerification {
+                reason: Some(StoreGitAuditUnverifiedReason::MalformedSignature),
+                ..CryptoVerification::default()
+            }),
+        CommitSignatureFormat::Unknown => CryptoVerification {
+            reason: Some(StoreGitAuditUnverifiedReason::MalformedSignature),
+            ..CryptoVerification::default()
+        },
+    };
     let CryptoVerification {
         signer_fingerprint,
         signer_label,
         reason,
+        method,
     } = crypto;
 
     let Some(signer_fingerprint) = signer_fingerprint else {
         let reason = reason.unwrap_or(StoreGitAuditUnverifiedReason::InvalidSignature);
         return Ok(unverified(
             StoreGitAuditVerificationMode::BranchTipRecipients,
+            method,
             false,
             reason,
             None,
@@ -619,6 +772,7 @@ fn verify_commit(
                 return Ok(StoreGitAuditVerification {
                     state: StoreGitAuditVerificationState::Verified,
                     mode: StoreGitAuditVerificationMode::CommitHistoryRecipients,
+                    method,
                     used_commit_history_fallback: true,
                     reason: None,
                     signer_fingerprint: Some(signer_fingerprint),
@@ -629,6 +783,7 @@ fn verify_commit(
 
         return Ok(unverified(
             StoreGitAuditVerificationMode::BranchTipRecipients,
+            method,
             false,
             reason,
             Some(signer_fingerprint),
@@ -639,6 +794,7 @@ fn verify_commit(
     Ok(StoreGitAuditVerification {
         state: StoreGitAuditVerificationState::Verified,
         mode: StoreGitAuditVerificationMode::BranchTipRecipients,
+        method,
         used_commit_history_fallback: false,
         reason: None,
         signer_fingerprint: Some(signer_fingerprint),
@@ -651,6 +807,7 @@ struct CryptoVerification {
     signer_fingerprint: Option<String>,
     signer_label: Option<String>,
     reason: Option<StoreGitAuditUnverifiedReason>,
+    method: Option<StoreGitAuditVerificationMethod>,
 }
 
 fn verify_commit_signature(
@@ -668,12 +825,14 @@ fn verify_commit_signature(
     let Ok(builder) = DetachedVerifierBuilder::from_bytes(signature.as_bytes()) else {
         return CryptoVerification {
             reason: Some(StoreGitAuditUnverifiedReason::MalformedSignature),
+            method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
             ..CryptoVerification::default()
         };
     };
     let Ok(mut verifier) = builder.with_policy(&policy, None, helper) else {
         return CryptoVerification {
             reason: Some(StoreGitAuditUnverifiedReason::MalformedSignature),
+            method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
             ..CryptoVerification::default()
         };
     };
@@ -685,12 +844,14 @@ fn verify_commit_signature(
             signer_fingerprint: Some(signer_fingerprint),
             signer_label: state.signer_label,
             reason: None,
+            method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
         };
     }
     if state.missing_key {
         return CryptoVerification {
             reason: Some(StoreGitAuditUnverifiedReason::SigningKeyUnavailable),
             signer_label: state.signer_label,
+            method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
             ..CryptoVerification::default()
         };
     }
@@ -698,6 +859,7 @@ fn verify_commit_signature(
         return CryptoVerification {
             reason: Some(StoreGitAuditUnverifiedReason::MalformedSignature),
             signer_label: state.signer_label,
+            method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
             ..CryptoVerification::default()
         };
     }
@@ -705,18 +867,65 @@ fn verify_commit_signature(
         return CryptoVerification {
             reason: Some(StoreGitAuditUnverifiedReason::InvalidSignature),
             signer_label: state.signer_label,
+            method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
             ..CryptoVerification::default()
         };
     }
 
     CryptoVerification {
         reason: Some(StoreGitAuditUnverifiedReason::InvalidSignature),
+        method: Some(StoreGitAuditVerificationMethod::KeycordOpenPgp),
         ..CryptoVerification::default()
+    }
+}
+
+fn verify_host_git_signature(
+    summary: &HostGitCommitSignatureSummary,
+    format: CommitSignatureFormat,
+) -> CryptoVerification {
+    let method = match format {
+        CommitSignatureFormat::OpenPgp => Some(StoreGitAuditVerificationMethod::HostGitGpg),
+        CommitSignatureFormat::Ssh => Some(StoreGitAuditVerificationMethod::HostGitSsh),
+        CommitSignatureFormat::Unknown => None,
+    };
+
+    let reason = match summary.status {
+        Some('G' | 'U' | 'X' | 'Y' | 'R') => None,
+        Some('N') => Some(StoreGitAuditUnverifiedReason::NoSignature),
+        Some('E') => Some(StoreGitAuditUnverifiedReason::SigningKeyUnavailable),
+        Some('B') => Some(StoreGitAuditUnverifiedReason::InvalidSignature),
+        Some(_) | None => Some(StoreGitAuditUnverifiedReason::MalformedSignature),
+    };
+
+    CryptoVerification {
+        signer_fingerprint: host_git_signer_fingerprint(summary),
+        signer_label: summary.signer_label.clone(),
+        reason,
+        method,
+    }
+}
+
+fn host_git_signer_fingerprint(summary: &HostGitCommitSignatureSummary) -> Option<String> {
+    summary
+        .fingerprint
+        .as_deref()
+        .or(summary.primary_fingerprint.as_deref())
+        .or(summary.key.as_deref())
+        .map(normalized_host_signer_identifier)
+}
+
+fn normalized_host_signer_identifier(identifier: &str) -> String {
+    let trimmed = identifier.trim();
+    if trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        trimmed.to_ascii_uppercase()
+    } else {
+        trimmed.to_string()
     }
 }
 
 fn unverified(
     mode: StoreGitAuditVerificationMode,
+    method: Option<StoreGitAuditVerificationMethod>,
     used_commit_history_fallback: bool,
     reason: StoreGitAuditUnverifiedReason,
     signer_fingerprint: Option<String>,
@@ -725,6 +934,7 @@ fn unverified(
     StoreGitAuditVerification {
         state: StoreGitAuditVerificationState::Unverified,
         mode,
+        method,
         used_commit_history_fallback,
         reason: Some(reason),
         signer_fingerprint,
@@ -736,10 +946,7 @@ fn authorize_signer(
     context: &TreeRecipientContext,
     signer_fingerprint: &str,
 ) -> Option<StoreGitAuditUnverifiedReason> {
-    if context
-        .resolved_standard_fingerprints
-        .contains(&signer_fingerprint.to_ascii_uppercase())
-    {
+    if signer_matches_resolved_standard_fingerprint(context, signer_fingerprint) {
         return None;
     }
     if context.standard_recipient_count == 0 && context.fido2_recipient_count > 0 {
@@ -750,6 +957,25 @@ fn authorize_signer(
     }
 
     Some(StoreGitAuditUnverifiedReason::SignerNotAuthorized)
+}
+
+fn signer_matches_resolved_standard_fingerprint(
+    context: &TreeRecipientContext,
+    signer_fingerprint: &str,
+) -> bool {
+    let normalized = signer_fingerprint.trim().to_ascii_uppercase();
+    if context.resolved_standard_fingerprints.contains(&normalized) {
+        return true;
+    }
+    if normalized.len() < 16 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return false;
+    }
+
+    let mut matches = context
+        .resolved_standard_fingerprints
+        .iter()
+        .filter(|fingerprint| fingerprint.ends_with(&normalized));
+    matches.next().is_some() && matches.next().is_none()
 }
 
 fn should_retry_with_commit_history_recipients(
@@ -918,15 +1144,35 @@ fn cert_primary_user_id(cert: &Cert) -> Option<String> {
         .filter(|value| !value.trim().is_empty())
 }
 
+fn trim_ascii_bytes(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map(|index| index + 1)
+        .unwrap_or(start);
+    &bytes[start..end]
+}
+
+fn non_empty_utf8_field(field: &[u8]) -> Option<String> {
+    let value = String::from_utf8_lossy(field).trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        audit_unverified_reason_message, authorize_signer, parse_audit_refs,
-        parse_changed_path_line, parse_commit_object, parse_commit_summaries,
-        resolve_standard_recipient_fingerprint, should_retry_with_commit_history_recipients,
-        sort_audit_refs, StoreGitAuditUnverifiedReason, TreeRecipientContext,
+        audit_unverified_reason_message, authorize_signer, commit_signature_format,
+        parse_audit_refs, parse_changed_path_line, parse_commit_object, parse_commit_summaries,
+        parse_host_git_signature_summaries, resolve_standard_recipient_fingerprint,
+        should_retry_with_commit_history_recipients, sort_audit_refs, CommitSignatureFormat,
+        StoreGitAuditUnverifiedReason, TreeRecipientContext,
     };
     use sequoia_openpgp::{cert::CertBuilder, Cert};
+    use std::collections::HashSet;
 
     fn test_cert(user_id: &str) -> Cert {
         let (cert, _) = CertBuilder::new()
@@ -1008,6 +1254,40 @@ mod tests {
     }
 
     #[test]
+    fn commit_signature_format_recognizes_pgp_and_ssh_blocks() {
+        assert_eq!(
+            commit_signature_format("-----BEGIN PGP SIGNATURE-----\n..."),
+            CommitSignatureFormat::OpenPgp
+        );
+        assert_eq!(
+            commit_signature_format("-----BEGIN SSH SIGNATURE-----\n..."),
+            CommitSignatureFormat::Ssh
+        );
+        assert_eq!(
+            commit_signature_format("-----BEGIN SOMETHING ELSE-----\n..."),
+            CommitSignatureFormat::Unknown
+        );
+    }
+
+    #[test]
+    fn host_git_signature_parser_reads_structured_fields() {
+        let summaries = parse_host_git_signature_summaries(
+            b"abc\0G\0probe@example.com\0SHA256:key\0SHA256:key\0\x1f\n",
+        )
+        .expect("parse host git signature summary");
+
+        assert_eq!(summaries.len(), 1);
+        let summary = summaries
+            .get("abc")
+            .expect("host signature summary for abc");
+        assert_eq!(summary.status, Some('G'));
+        assert_eq!(summary.signer_label.as_deref(), Some("probe@example.com"));
+        assert_eq!(summary.key.as_deref(), Some("SHA256:key"));
+        assert_eq!(summary.fingerprint.as_deref(), Some("SHA256:key"));
+        assert_eq!(summary.primary_fingerprint, None);
+    }
+
+    #[test]
     fn recipient_resolution_matches_fingerprint_user_id_and_email() {
         let cert = test_cert("Alice Example <alice@example.com>");
         let fingerprint = cert.fingerprint().to_hex();
@@ -1049,6 +1329,23 @@ mod tests {
                 "ABC"
             ),
             Some(StoreGitAuditUnverifiedReason::NoResolvableStandardRecipients)
+        );
+    }
+
+    #[test]
+    fn authorization_accepts_a_unique_key_id_suffix() {
+        assert_eq!(
+            authorize_signer(
+                &TreeRecipientContext {
+                    resolved_standard_fingerprints: HashSet::from([
+                        "AAAAAAAAAAAAAAAA1234567890ABCDEF".to_string()
+                    ]),
+                    standard_recipient_count: 1,
+                    ..TreeRecipientContext::default()
+                },
+                "1234567890ABCDEF"
+            ),
+            None
         );
     }
 

@@ -58,6 +58,13 @@ pub enum StoreGitAuditVerificationMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreGitAuditVerificationMethod {
+    KeycordOpenPgp,
+    HostGitGpg,
+    HostGitSsh,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StoreGitAuditUnverifiedReason {
     NoSignature,
     MalformedSignature,
@@ -72,6 +79,7 @@ pub enum StoreGitAuditUnverifiedReason {
 pub struct StoreGitAuditVerification {
     pub state: StoreGitAuditVerificationState,
     pub mode: StoreGitAuditVerificationMode,
+    pub method: Option<StoreGitAuditVerificationMethod>,
     pub used_commit_history_fallback: bool,
     pub reason: Option<StoreGitAuditUnverifiedReason>,
     pub signer_fingerprint: Option<String>,
@@ -118,6 +126,11 @@ fn touch_disabled_audit_types() {
     let _ = StoreGitAuditVerificationState::Unverified;
     let _ = StoreGitAuditVerificationMode::BranchTipRecipients;
     let _ = StoreGitAuditVerificationMode::CommitHistoryRecipients;
+    let _ = [
+        StoreGitAuditVerificationMethod::KeycordOpenPgp,
+        StoreGitAuditVerificationMethod::HostGitGpg,
+        StoreGitAuditVerificationMethod::HostGitSsh,
+    ];
     let _ = [
         StoreGitAuditUnverifiedReason::NoSignature,
         StoreGitAuditUnverifiedReason::MalformedSignature,

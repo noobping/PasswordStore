@@ -16,8 +16,8 @@ use crate::support::git::{
     audit_unverified_reason_message, discover_store_git_audit_catalog, git_command_available,
     has_git_repository, load_store_git_audit_commit_page, StoreGitAuditBranchRef,
     StoreGitAuditCatalog, StoreGitAuditCommit, StoreGitAuditCommitPage, StoreGitAuditPathChange,
-    StoreGitAuditVerification, StoreGitAuditVerificationMode, StoreGitAuditVerificationState,
-    STORE_GIT_AUDIT_PAGE_SIZE,
+    StoreGitAuditVerification, StoreGitAuditVerificationMethod, StoreGitAuditVerificationMode,
+    StoreGitAuditVerificationState, STORE_GIT_AUDIT_PAGE_SIZE,
 };
 use crate::support::runtime::supports_audit_features;
 use crate::support::ui::{reveal_navigation_page, visible_navigation_page_is};
@@ -910,6 +910,15 @@ fn verification_mode_summary(verification: &StoreGitAuditVerification) -> String
     }
 }
 
+fn verification_method_summary(verification: &StoreGitAuditVerification) -> String {
+    match verification.method {
+        Some(StoreGitAuditVerificationMethod::KeycordOpenPgp) => gettext("Keycord OpenPGP"),
+        Some(StoreGitAuditVerificationMethod::HostGitGpg) => gettext("Host Git (GPG)"),
+        Some(StoreGitAuditVerificationMethod::HostGitSsh) => gettext("Host Git (SSH)"),
+        None => gettext("Not available"),
+    }
+}
+
 fn changed_path_detail(change: &StoreGitAuditPathChange) -> String {
     format!("{} ({})", change.path, change.status)
 }
@@ -928,6 +937,7 @@ fn audit_commit_matches_query(commit: &StoreGitAuditCommit, query: &str) -> bool
         || audit_text_matches_query(&commit.committed_at, query)
         || audit_text_matches_query(&commit.message, query)
         || audit_text_matches_query(&verification_summary(&commit.verification), query)
+        || audit_text_matches_query(&verification_method_summary(&commit.verification), query)
         || audit_text_matches_query(&verification_mode_summary(&commit.verification), query)
         || commit
             .changed_paths
@@ -1046,10 +1056,17 @@ fn build_commit_details_widget(commit: &StoreGitAuditCommit) -> GtkBox {
         &verification_state_summary(&commit.verification),
         false,
     );
+    append_commit_detail_grid_row(
+        &metadata,
+        6,
+        "Verification method",
+        &verification_method_summary(&commit.verification),
+        false,
+    );
     if let Some(reason) = commit.verification.reason {
         append_commit_detail_grid_row(
             &metadata,
-            6,
+            7,
             "Reason",
             audit_unverified_reason_message(reason),
             false,
@@ -1057,7 +1074,7 @@ fn build_commit_details_widget(commit: &StoreGitAuditCommit) -> GtkBox {
     }
     append_commit_detail_grid_row(
         &metadata,
-        7,
+        8,
         "Recipient source",
         &verification_mode_summary(&commit.verification),
         false,
@@ -1065,7 +1082,7 @@ fn build_commit_details_widget(commit: &StoreGitAuditCommit) -> GtkBox {
     if commit.verification.used_commit_history_fallback {
         append_commit_detail_grid_row(
             &metadata,
-            8,
+            9,
             "Historical fallback",
             "Enabled for this result",
             false,
@@ -1179,13 +1196,13 @@ mod tests {
         audit_available_branch_names, audit_available_store_ids,
         audit_branch_context_matches_query, audit_commit_matches_query, audit_search_query,
         branch_expansion_needs_initial_load, commit_summary_subtitle, gtk_safe_text,
-        localized_text, reconciled_filter_selection, verification_state_summary,
-        verification_summary, AuditBranchState,
+        localized_text, reconciled_filter_selection, verification_method_summary,
+        verification_state_summary, verification_summary, AuditBranchState,
     };
     use crate::support::git::{
         StoreGitAuditBranchRef, StoreGitAuditCatalog, StoreGitAuditCommit, StoreGitAuditStore,
-        StoreGitAuditUnverifiedReason, StoreGitAuditVerification, StoreGitAuditVerificationMode,
-        StoreGitAuditVerificationState,
+        StoreGitAuditUnverifiedReason, StoreGitAuditVerification, StoreGitAuditVerificationMethod,
+        StoreGitAuditVerificationMode, StoreGitAuditVerificationState,
     };
     use std::collections::BTreeSet;
 
@@ -1292,6 +1309,7 @@ mod tests {
             verification: StoreGitAuditVerification {
                 state: StoreGitAuditVerificationState::Unverified,
                 mode: StoreGitAuditVerificationMode::BranchTipRecipients,
+                method: None,
                 used_commit_history_fallback: false,
                 reason: None,
                 signer_fingerprint: None,
@@ -1311,6 +1329,7 @@ mod tests {
         let verification = StoreGitAuditVerification {
             state: StoreGitAuditVerificationState::Unverified,
             mode: StoreGitAuditVerificationMode::BranchTipRecipients,
+            method: None,
             used_commit_history_fallback: false,
             reason: Some(StoreGitAuditUnverifiedReason::NoSignature),
             signer_fingerprint: None,
@@ -1321,6 +1340,34 @@ mod tests {
         assert_eq!(
             verification_summary(&verification),
             "Unverified: No signature"
+        );
+    }
+
+    #[test]
+    fn verification_method_summary_reports_known_methods() {
+        assert_eq!(
+            verification_method_summary(&StoreGitAuditVerification {
+                state: StoreGitAuditVerificationState::Verified,
+                mode: StoreGitAuditVerificationMode::BranchTipRecipients,
+                method: Some(StoreGitAuditVerificationMethod::HostGitSsh),
+                used_commit_history_fallback: false,
+                reason: None,
+                signer_fingerprint: None,
+                signer_label: None,
+            }),
+            "Host Git (SSH)"
+        );
+        assert_eq!(
+            verification_method_summary(&StoreGitAuditVerification {
+                state: StoreGitAuditVerificationState::Unverified,
+                mode: StoreGitAuditVerificationMode::BranchTipRecipients,
+                method: None,
+                used_commit_history_fallback: false,
+                reason: Some(StoreGitAuditUnverifiedReason::NoSignature),
+                signer_fingerprint: None,
+                signer_label: None,
+            }),
+            "Not available"
         );
     }
 
@@ -1365,6 +1412,7 @@ mod tests {
             verification: StoreGitAuditVerification {
                 state: StoreGitAuditVerificationState::Unverified,
                 mode: StoreGitAuditVerificationMode::BranchTipRecipients,
+                method: Some(StoreGitAuditVerificationMethod::HostGitSsh),
                 used_commit_history_fallback: false,
                 reason: Some(StoreGitAuditUnverifiedReason::NoSignature),
                 signer_fingerprint: None,
@@ -1374,6 +1422,7 @@ mod tests {
 
         assert!(audit_commit_matches_query(&commit, "audit search"));
         assert!(audit_commit_matches_query(&commit, "no signature"));
+        assert!(audit_commit_matches_query(&commit, "host git"));
         assert!(audit_commit_matches_query(
             &commit,
             "src/window/tools/audit.rs"

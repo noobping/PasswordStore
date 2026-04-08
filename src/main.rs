@@ -467,7 +467,6 @@ fn add_windows_icon_search_path(theme: &IconTheme) {
     if let Some(path) = windows_icon_search_path() {
         theme.add_search_path(path);
     }
-    theme.set_theme_name(Some("Adwaita"));
 }
 
 #[cfg(target_os = "windows")]

@@ -27,6 +27,7 @@ mod linux {
         if let Err(err) = disable_core_dumps() {
             errors.push(format!("disable core dumps: {err}"));
         }
+        #[cfg(feature = "flatpak")]
         if let Err(err) = disable_process_dumpability() {
             errors.push(format!("disable process dumpability: {err}"));
         }
@@ -50,6 +51,7 @@ mod linux {
         }
     }
 
+    #[cfg(feature = "flatpak")]
     fn disable_process_dumpability() -> io::Result<()> {
         if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) } == 0 {
             Ok(())

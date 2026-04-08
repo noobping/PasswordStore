@@ -187,20 +187,7 @@ fn should_delete_without_undo_snapshot(entry: &PassEntry) -> bool {
 }
 
 fn can_delete_without_undo_after_read_error(error: &PasswordEntryError) -> bool {
-    matches!(
-        error,
-        PasswordEntryError::MissingPrivateKey(_)
-            | PasswordEntryError::LockedPrivateKey(_)
-            | PasswordEntryError::IncompatiblePrivateKey(_)
-    ) || matches!(error, PasswordEntryError::Other(message) if can_delete_without_undo_after_fido_read_error(message))
-}
-
-fn can_delete_without_undo_after_fido_read_error(message: &str) -> bool {
-    let lowered = message.to_ascii_lowercase();
-    lowered.contains("fido2")
-        || lowered.contains("security key")
-        || lowered.contains("libfido2")
-        || lowered.contains("operation denied")
+    !matches!(error, PasswordEntryError::EntryNotFound(_))
 }
 
 pub fn move_entry_to_store(entry: &PassEntry, target_store: &str) -> Result<PassEntry, UndoError> {
@@ -324,14 +311,24 @@ fn move_entry_between_stores(
 #[cfg(test)]
 mod tests {
     use super::{
-        can_delete_without_undo_after_read_error, clear_undo_actions, has_undo_actions,
-        move_entry_between_stores_action, rename_entry_action, restore_deleted_entry_action,
-        restore_saved_entry_action, unavailable_undo_action, unavailable_undo_message,
-        undo_action_restored_entry, UndoAction,
+        can_delete_without_undo_after_read_error, clear_undo_actions,
+        delete_entry_with_optional_undo, has_undo_actions, move_entry_between_stores_action,
+        rename_entry_action, restore_deleted_entry_action, restore_saved_entry_action,
+        unavailable_undo_action, unavailable_undo_message, undo_action_restored_entry, UndoAction,
     };
     use crate::backend::PasswordEntryError;
     use crate::password::model::PassEntry;
     use crate::window::session::WindowSessionState;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_store(prefix: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
 
     #[test]
     fn undo_stack_round_trips_the_most_recent_action() {
@@ -403,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_without_undo_is_allowed_only_for_private_key_read_failures() {
+    fn delete_without_undo_is_allowed_for_any_read_failure_except_missing_entries() {
         assert!(can_delete_without_undo_after_read_error(
             &PasswordEntryError::missing_private_key("missing"),
         ));
@@ -413,17 +410,34 @@ mod tests {
         assert!(can_delete_without_undo_after_read_error(
             &PasswordEntryError::incompatible_private_key("incompatible"),
         ));
-
-        assert!(!can_delete_without_undo_after_read_error(
+        assert!(can_delete_without_undo_after_read_error(
             &PasswordEntryError::other("other"),
         ));
-        assert!(can_delete_without_undo_after_read_error(
-            &PasswordEntryError::other("Connect the matching FIDO2 security key."),
+        assert!(!can_delete_without_undo_after_read_error(
+            &PasswordEntryError::EntryNotFound("missing".to_string()),
         ));
-        assert!(can_delete_without_undo_after_read_error(
-            &PasswordEntryError::other(
-                "libfido2: Error { code: 39, message: \"FIDO_ERR_OPERATION_DENIED\" }",
-            ),
-        ));
+    }
+
+    #[test]
+    fn delete_entry_with_optional_undo_removes_invalid_files_without_git() {
+        let store_root = temp_store("password-undo-invalid-delete");
+        let entry_path = store_root.join("team/service.gpg");
+        fs::create_dir_all(&store_root).expect("create store root");
+        fs::create_dir_all(entry_path.parent().expect("entry parent")).expect("create entry dir");
+        fs::write(&entry_path, b"not a valid password entry").expect("write invalid entry");
+
+        let action = delete_entry_with_optional_undo(&PassEntry::from_label(
+            store_root.to_string_lossy().to_string(),
+            "team/service",
+        ))
+        .expect("delete invalid entry")
+        .expect("record undo action");
+
+        assert_eq!(
+            unavailable_undo_message(&action),
+            Some("Can't undo that change.")
+        );
+        assert!(!entry_path.exists());
+        let _ = fs::remove_dir_all(store_root);
     }
 }

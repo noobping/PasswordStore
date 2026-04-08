@@ -1977,6 +1977,10 @@ msgstr "Wachtwoorden importeren met pass import"
 msgid "Import private key"
 msgstr "Privésleutel importeren"
 
+#: data/window.ui:515
+msgid "Import private key from this item"
+msgstr "Privésleutel uit dit item importeren"
+
 #: data/window.ui:1091
 msgid "Import source"
 msgstr "Importbron"
@@ -3882,6 +3886,10 @@ msgstr ""
 msgid "This key can't open your items."
 msgstr "Deze sleutel kan je items niet openen."
 
+#: src/password/page/mod.rs:764
+msgid "This item does not contain an armored private key."
+msgstr "Dit item bevat geen ASCII-gepantserde privésleutel."
+
 #: src/backend/integrated/keys/cert.rs:226
 #: src/backend/integrated/keys/store.rs:647
 msgid "This private key is password protected."
@@ -5335,6 +5343,230 @@ msgstr "{}.svg"
 #: src/preferences/storage.rs:27 src/preferences/storage.rs:28
 msgid "{}.toml"
 msgstr "{}.toml"
+
+#: src/window/tools.rs:77
+msgid "Inspect change history"
+msgstr "Wijzigingsgeschiedenis inspecteren"
+
+#: src/window/tools.rs:78
+msgid "Git history and verification"
+msgstr "Git-geschiedenis en verificatie"
+
+#: src/window/tools.rs:79
+msgid "Inspect Git history across stores and verify commit signatures."
+msgstr "Inspecteer Git-geschiedenis in opslagen en verifieer commit-handtekeningen."
+
+#: src/window/tools.rs:80
+msgid "Git isn't available in this runtime."
+msgstr "Git is niet beschikbaar in deze runtime."
+
+#: src/window/tools.rs:81
+msgid "No Git-backed stores available."
+msgstr "Geen Git-opslagen beschikbaar."
+
+#: src/window/tools.rs:82
+msgid "Loading data"
+msgstr "Gegevens laden"
+
+#: src/window/tools.rs:83
+msgid "Inspecting Git-backed stores and discovering branches."
+msgstr "Git-opslagen inspecteren en branches ontdekken."
+
+#: src/window/tools.rs:84
+msgid "No Git-backed stores"
+msgstr "Geen Git-opslagen"
+
+#: src/window/tools.rs:85
+msgid "Add a store with a Git repository to inspect history here."
+msgstr "Voeg een opslag met een Git-repository toe om hier geschiedenis te inspecteren."
+
+#: src/window/tools.rs:86
+msgid "Couldn't load data"
+msgstr "Kon gegevens niet laden"
+
+#: src/window/tools.rs:87
+msgid "Nothing selected"
+msgstr "Niets geselecteerd"
+
+#: src/window/tools.rs:88
+msgid "Select at least one store and one branch in the filter menu."
+msgstr "Selecteer minstens een opslag en een branch in het filtermenu."
+
+#: src/window/tools.rs:90
+msgid "No matching branches"
+msgstr "Geen overeenkomende branches"
+
+#: src/window/tools.rs:91
+msgid "The current filters don't match any branches in the selected stores."
+msgstr "De huidige filters komen met geen enkele branch in de geselecteerde opslagen overeen."
+
+#: src/window/tools.rs:94
+msgid "Try a different search term or load more commits."
+msgstr "Probeer een andere zoekterm of laad meer commits."
+
+#: src/window/tools.rs:95
+msgid "Loading commits"
+msgstr "Commits laden"
+
+#: src/window/tools.rs:96
+msgid "Reading recent Git history for this branch."
+msgstr "Recente Git-geschiedenis voor deze branch lezen."
+
+#: src/window/tools.rs:97
+msgid "No commits loaded"
+msgstr "Geen commits geladen"
+
+#: src/window/tools.rs:98
+msgid "This branch doesn't have any commits available to audit."
+msgstr "Deze branch heeft geen commits beschikbaar om te controleren."
+
+#: src/window/tools.rs:100
+msgid "Load more commits"
+msgstr "Meer commits laden"
+
+#: src/window/tools.rs:101
+msgid "Read the next {count} commits."
+msgstr "Lees de volgende {count} commits."
+
+#: src/window/tools/audit.rs:236
+msgid "Audit stopped unexpectedly."
+msgstr "Audit is onverwacht gestopt."
+
+#: src/window/tools/audit.rs:705
+msgid "Couldn't load commits."
+msgstr "Kon commits niet laden."
+
+#: src/window/tools/audit.rs:722
+msgid "Commit loading stopped unexpectedly."
+msgstr "Het laden van commits is onverwacht gestopt."
+
+#: src/window/tools/audit.rs:856
+msgid "Remote-tracking branch"
+msgstr "Gevolgde remotebranch"
+
+#: src/window/tools/audit.rs:858
+msgid "Local branch"
+msgstr "Lokale branch"
+
+#: src/window/tools/audit.rs:868
+msgid "{count} commits loaded"
+msgstr "{count} commits geladen"
+
+#: src/window/tools/audit.rs:886
+msgid "Verified"
+msgstr "Geverifieerd"
+
+#: src/window/tools/audit.rs:887
+msgid "Unverified"
+msgstr "Niet geverifieerd"
+
+#: src/window/tools/audit.rs:905
+msgid "Current branch-tip recipients"
+msgstr "Ontvangers van de huidige branch-tip"
+
+#: src/window/tools/audit.rs:908
+msgid "Recipients from the audited commit"
+msgstr "Ontvangers uit de gecontroleerde commit"
+
+#: src/window/tools/audit.rs:915
+msgid "Keycord OpenPGP"
+msgstr "Keycord OpenPGP"
+
+#: src/window/tools/audit.rs:916
+msgid "Host Git (GPG)"
+msgstr "Host-Git (GPG)"
+
+#: src/window/tools/audit.rs:917
+msgid "Host Git (SSH)"
+msgstr "Host-Git (SSH)"
+
+#: src/window/tools/audit.rs:918
+msgid "Not available"
+msgstr "Niet beschikbaar"
+
+#: src/window/tools/audit.rs:951
+msgid "Empty"
+msgstr "Leeg"
+
+#: src/window/tools/audit.rs:1048
+msgid "Author"
+msgstr "Auteur"
+
+#: src/window/tools/audit.rs:1049
+msgid "Authored"
+msgstr "Geschreven op"
+
+#: src/window/tools/audit.rs:1050
+msgid "Committer"
+msgstr "Committer"
+
+#: src/window/tools/audit.rs:1051
+msgid "Committed"
+msgstr "Gecommit op"
+
+#: src/window/tools/audit.rs:1055
+msgid "Verification"
+msgstr "Verificatie"
+
+#: src/window/tools/audit.rs:1062
+msgid "Verification method"
+msgstr "Verificatiemethode"
+
+#: src/window/tools/audit.rs:1070
+msgid "Reason"
+msgstr "Reden"
+
+#: src/window/tools/audit.rs:1078
+msgid "Recipient source"
+msgstr "Bron van ontvangers"
+
+#: src/window/tools/audit.rs:1086
+msgid "Historical fallback"
+msgstr "Historische terugval"
+
+#: src/window/tools/audit.rs:1087
+msgid "Enabled for this result"
+msgstr "Ingeschakeld voor dit resultaat"
+
+#: src/window/tools/audit.rs:1094
+msgid "Message"
+msgstr "Bericht"
+
+#: src/window/tools/audit.rs:1100
+msgid "No changed paths"
+msgstr "Geen gewijzigde paden"
+
+#: src/window/tools/audit.rs:1110
+msgid "Changed paths"
+msgstr "Gewijzigde paden"
+
+#: src/support/git/audit.rs:331
+msgid "No signature"
+msgstr "Geen handtekening"
+
+#: src/support/git/audit.rs:332
+msgid "Malformed or unsupported signature"
+msgstr "Ongeldige of niet-ondersteunde handtekening"
+
+#: src/support/git/audit.rs:333
+msgid "Cryptographically invalid signature"
+msgstr "Cryptografisch ongeldige handtekening"
+
+#: src/support/git/audit.rs:335
+msgid "Signing key not available in Keycord"
+msgstr "Ondertekeningssleutel niet beschikbaar in Keycord"
+
+#: src/support/git/audit.rs:338
+msgid "Signer not in the branch recipient set"
+msgstr "Ondertekenaar zit niet in de ontvangersset van de branch"
+
+#: src/support/git/audit.rs:341
+msgid "No resolvable standard recipient keys"
+msgstr "Geen herleidbare standaardontvangerssleutels"
+
+#: src/support/git/audit.rs:343
+msgid "Only FIDO2 recipients are available"
+msgstr "Alleen FIDO2-ontvangers zijn beschikbaar"
 
 #~ msgid "Add FIDO2 recipient support"
 #~ msgstr "Voeg ondersteuning voor FIDO2-ontvangers toe"

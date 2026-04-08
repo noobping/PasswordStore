@@ -3,10 +3,20 @@ use super::{BackendKind, Preferences};
 use std::env;
 use std::process::Command;
 
+fn flatpak_host_args(program: &str, args: &[String], envs: &[(&str, &str)]) -> Vec<String> {
+    let mut command_args = vec!["--host".to_string()];
+    for (key, value) in envs {
+        command_args.push(format!("--env={key}={value}"));
+    }
+    command_args.push(program.to_string());
+    command_args.extend(args.iter().cloned());
+    command_args
+}
+
 fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> Command {
     let mut cmd = if env::var("FLATPAK_ID").is_ok() {
         let mut cmd = Command::new("flatpak-spawn");
-        cmd.arg("--host").arg(&program).args(&args);
+        cmd.args(flatpak_host_args(&program, &args, envs));
         cmd.current_dir("/");
         cmd
     } else {
@@ -15,8 +25,10 @@ fn build_command(program: String, args: Vec<String>, envs: &[(&str, &str)]) -> C
         cmd
     };
 
-    for (key, value) in envs {
-        cmd.env(key, value);
+    if env::var("FLATPAK_ID").is_err() {
+        for (key, value) in envs {
+            cmd.env(key, value);
+        }
     }
 
     if let Ok(appdir) = env::var("APPDIR") {
@@ -89,7 +101,25 @@ impl Preferences {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_command, local_git_command, remote_git_command};
+    use super::{build_command, flatpak_host_args, local_git_command, remote_git_command};
+
+    #[test]
+    fn flatpak_host_args_forward_requested_environment_variables() {
+        assert_eq!(
+            flatpak_host_args(
+                "pass",
+                &["show".to_string(), "team/demo".to_string()],
+                &[("PASSWORD_STORE_DIR", "/tmp/store")]
+            ),
+            vec![
+                "--host".to_string(),
+                "--env=PASSWORD_STORE_DIR=/tmp/store".to_string(),
+                "pass".to_string(),
+                "show".to_string(),
+                "team/demo".to_string(),
+            ]
+        );
+    }
 
     #[test]
     fn linux_host_command_sets_requested_environment_variables() {
@@ -99,20 +129,40 @@ mod tests {
             &[("PASSWORD_STORE_DIR", "/tmp/store")],
         );
 
-        assert_eq!(cmd.get_program().to_string_lossy(), "pass");
-        assert_eq!(
-            cmd.get_args()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect::<Vec<_>>(),
-            vec!["show".to_string(), "team/demo".to_string()]
-        );
-        assert!(cmd
-            .get_envs()
-            .filter_map(|(key, value)| value.map(|value| (key, value)))
-            .any(|(key, value)| {
-                key.to_string_lossy() == "PASSWORD_STORE_DIR"
-                    && value.to_string_lossy() == "/tmp/store"
-            }));
+        #[cfg(feature = "flatpak")]
+        {
+            assert_eq!(cmd.get_program().to_string_lossy(), "flatpak-spawn");
+            assert_eq!(
+                cmd.get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                vec![
+                    "--host".to_string(),
+                    "--env=PASSWORD_STORE_DIR=/tmp/store".to_string(),
+                    "pass".to_string(),
+                    "show".to_string(),
+                    "team/demo".to_string(),
+                ]
+            );
+        }
+
+        #[cfg(not(feature = "flatpak"))]
+        {
+            assert_eq!(cmd.get_program().to_string_lossy(), "pass");
+            assert_eq!(
+                cmd.get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                vec!["show".to_string(), "team/demo".to_string()]
+            );
+            assert!(cmd
+                .get_envs()
+                .filter_map(|(key, value)| value.map(|value| (key, value)))
+                .any(|(key, value)| {
+                    key.to_string_lossy() == "PASSWORD_STORE_DIR"
+                        && value.to_string_lossy() == "/tmp/store"
+                }));
+        }
     }
 
     #[test]

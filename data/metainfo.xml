@@ -28,18 +28,19 @@
   </supports>
 
   <description>
-    <p>Works with password stores that use the standard <code>pass</code> layout, so you can keep using the password folders you already have.</p>
+    <p>Works with password folders that use the standard <code>pass</code> layout, so you can keep using the folders you already have.</p>
     <ul>
-      <li>Open, search, and edit one or more password stores</li>
-      <li>Make passwords and copy passwords, usernames, and one-time login codes</li>
-      <li>Edit entries with easy fields or as plain text</li>
-      <li>Check for weak passwords and see repeated details like usernames, emails, and web addresses</li>
-      <li>Add an existing store, make a new one, or restore one from Git</li>
-      <li>Import passwords from other apps on supported Linux setups</li>
-      <li>Choose which keys unlock a store, including password-protected keys, FIDO security keys, and OpenPGP smartcards</li>
-      <li>Create and import keys</li>
-      <li>Sync Git-backed stores, manage Git remotes, and sign Git commits</li>
-      <li>For extra-sensitive stores, require more than one key to open them</li>
+      <li>Open one or more password folders, then search, filter, and edit what is inside</li>
+      <li>Create passwords and quickly copy passwords, usernames, and one-time login codes</li>
+      <li>Edit entries with simple fields or as plain text</li>
+      <li>Find weak passwords and spot repeated usernames, email addresses, and website links</li>
+      <li>Add a password folder you already have, create a new one, or restore one from Git</li>
+      <li>Import passwords from other apps on supported Linux systems</li>
+      <li>Choose which keys can unlock a folder, including password-protected keys, security keys, and OpenPGP smartcards</li>
+      <li>Create new keys or import keys you already have</li>
+      <li>Use Git to sync password folders, choose where they sync, and sign your changes</li>
+      <li>Inspect change history to see what changed and whether a commit was verified</li>
+      <li>For extra-sensitive folders, require more than one key before they open</li>
     </ul>
   </description>
 
@@ -78,17 +79,19 @@
     <release version="0.9.9" date="2026-04-06">
       <description>
         <ul>
-          <li>Add a selector for nested <code>.gpg-id</code> files on the recipients page, so folder-specific recipients can be managed.</li>
-          <li>Keep recipient changes scoped to the selected folder-specific <code>.gpg-id</code> file instead of always rewriting only the root recipients file.</li>
-          <li>Prefer a usable local private key when multiple recipients are configured, instead of picking an unrelated coworker recipient first.</li>
-          <li>Harden search privacy so the GNOME search provider exposes less metadata and no longer matches against secret fields.</li>
-          <li>Reduce the risk of secrets leaking through failed commands and logs by redacting sensitive command output more aggressively.</li>
-          <li>Improve secret handling with safer private file writes, stronger process hardening, and tighter recipient validation.</li>
-          <li>Add a primary <code>Save and go back</code> action in the pass file editor.</li>
-          <li>Add an extra add-item and clear search row at the bottom of the pass file list.</li>
-          <li>Hide apply buttons until required input is filled in across the pass file editor, new-item popup, key dialogs and other related forms.</li>
-          <li>Improve keyboard navigation with better arrow-key support and smoother focus movement across the app.</li>
-          <li>Added a tool for inspecting the change history.</li>
+          <li>On the recipients page, you can now choose which folder-specific <code>.gpg-id</code> file you want to edit.</li>
+          <li>When you change recipients, Keycord now changes the selected folder's <code>.gpg-id</code> file instead of always changing only the top-level file.</li>
+          <li>When a store has many recipients, Keycord now prefers a usable local private key instead of trying the wrong person's key first.</li>
+          <li>GNOME search now shows less metadata and no longer looks inside secret fields.</li>
+          <li>Sensitive command output is now hidden more often in failed commands and logs.</li>
+          <li>Secrets are now handled more safely with better file writes, stronger process hardening, and stricter recipient checks.</li>
+          <li>The entry editor now has a clear save button.</li>
+          <li>The entry list now has quick add and clear-search actions at the bottom.</li>
+          <li>Apply buttons now stay hidden until all needed information is filled in.</li>
+          <li>Keyboard navigation now works better, especially with the arrow keys.</li>
+          <li>New history tool: read old changes and check whether a Git commit was verified.</li>
+          <li>You can now search or filter every page, so settings and options are easier to find.</li>
+          <li>The entry editor now shows the password check tool.</li>
         </ul>
       </description>
     </release>

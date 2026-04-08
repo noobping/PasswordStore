@@ -5568,6 +5568,106 @@ msgstr "Geen herleidbare standaardontvangerssleutels"
 msgid "Only FIDO2 recipients are available"
 msgstr "Alleen FIDO2-ontvangers zijn beschikbaar"
 
+#: data/metainfo.xml:31
+msgid "Works with password folders that use the standard <code>pass</code> layout, so you can keep using the folders you already have."
+msgstr "Werkt met wachtwoordmappen die de standaard <code>pass</code>-indeling gebruiken, zodat je de mappen die je al hebt kunt blijven gebruiken."
+
+#: data/metainfo.xml:33
+msgid "Open one or more password folders, then search, filter, and edit what is inside"
+msgstr "Open een of meer wachtwoordmappen en zoek, filter en bewerk wat erin staat"
+
+#: data/metainfo.xml:34
+msgid "Create passwords and quickly copy passwords, usernames, and one-time login codes"
+msgstr "Maak wachtwoorden en kopieer snel wachtwoorden, gebruikersnamen en eenmalige inlogcodes"
+
+#: data/metainfo.xml:35
+msgid "Edit entries with simple fields or as plain text"
+msgstr "Bewerk items met eenvoudige velden of als platte tekst"
+
+#: data/metainfo.xml:36
+msgid "Find weak passwords and spot repeated usernames, email addresses, and website links"
+msgstr "Vind zwakke wachtwoorden en zie terugkerende gebruikersnamen, e-mailadressen en webadressen"
+
+#: data/metainfo.xml:37
+msgid "Add a password folder you already have, create a new one, or restore one from Git"
+msgstr "Voeg een wachtwoordmap toe die je al hebt, maak een nieuwe of herstel er een uit Git"
+
+#: data/metainfo.xml:38
+msgid "Import passwords from other apps on supported Linux systems"
+msgstr "Importeer wachtwoorden uit andere apps op ondersteunde Linux-systemen"
+
+#: data/metainfo.xml:39
+msgid "Choose which keys can unlock a folder, including password-protected keys, security keys, and OpenPGP smartcards"
+msgstr "Kies welke sleutels een map kunnen ontgrendelen, waaronder met een wachtwoord beveiligde sleutels, beveiligingssleutels en OpenPGP-smartcards"
+
+#: data/metainfo.xml:40
+msgid "Create new keys or import keys you already have"
+msgstr "Maak nieuwe sleutels of importeer sleutels die je al hebt"
+
+#: data/metainfo.xml:41
+msgid "Use Git to sync password folders, choose where they sync, and sign your changes"
+msgstr "Gebruik Git om wachtwoordmappen te synchroniseren, kies waar ze synchroniseren en onderteken je wijzigingen"
+
+#: data/metainfo.xml:42
+msgid "Inspect change history to see what changed and whether a commit was verified"
+msgstr "Bekijk de wijzigingsgeschiedenis om te zien wat er veranderde en of een commit is geverifieerd"
+
+#: data/metainfo.xml:43
+msgid "For extra-sensitive folders, require more than one key before they open"
+msgstr "Laat voor extra gevoelige mappen meer dan een sleutel nodig zijn voordat ze openen"
+
+#: data/metainfo.xml:82
+msgid "On the recipients page, you can now choose which folder-specific <code>.gpg-id</code> file you want to edit."
+msgstr "Op de ontvangerspagina kun je nu kiezen welk mapspecifiek <code>.gpg-id</code>-bestand je wilt bewerken."
+
+#: data/metainfo.xml:83
+msgid "When you change recipients, Keycord now changes the selected folder's <code>.gpg-id</code> file instead of always changing only the top-level file."
+msgstr "Als je ontvangers wijzigt, past Keycord nu het <code>.gpg-id</code>-bestand van de geselecteerde map aan in plaats van steeds alleen het bestand op het bovenste niveau aan te passen."
+
+#: data/metainfo.xml:84
+msgid "When a store has many recipients, Keycord now prefers a usable local private key instead of trying the wrong person's key first."
+msgstr "Als een opslag veel ontvangers heeft, kiest Keycord nu liever een bruikbare lokale privésleutel dan eerst de sleutel van de verkeerde persoon te proberen."
+
+#: data/metainfo.xml:85
+msgid "GNOME search now shows less metadata and no longer looks inside secret fields."
+msgstr "GNOME-zoeken toont nu minder metadata en kijkt niet meer in geheime velden."
+
+#: data/metainfo.xml:86
+msgid "Sensitive command output is now hidden more often in failed commands and logs."
+msgstr "Gevoelige opdrachteruitvoer wordt nu vaker verborgen in mislukte opdrachten en logboeken."
+
+#: data/metainfo.xml:87
+msgid "Secrets are now handled more safely with better file writes, stronger process hardening, and stricter recipient checks."
+msgstr "Geheimen worden nu veiliger behandeld met veiliger opslaan in bestanden, sterkere beveiliging van processen en strengere controles van ontvangers."
+
+#: data/metainfo.xml:88
+msgid "The entry editor now has a clear save button."
+msgstr "De itemeditor heeft nu een duidelijke opslaanknop."
+
+#: data/metainfo.xml:89
+msgid "The entry list now has quick add and clear-search actions at the bottom."
+msgstr "Onderaan de itemlijst staan nu snelle acties om iets toe te voegen en om het zoeken te wissen."
+
+#: data/metainfo.xml:90
+msgid "Apply buttons now stay hidden until all needed information is filled in."
+msgstr "Knoppen om wijzigingen toe te passen blijven nu verborgen totdat alle nodige informatie is ingevuld."
+
+#: data/metainfo.xml:91
+msgid "Keyboard navigation now works better, especially with the arrow keys."
+msgstr "Navigeren met het toetsenbord werkt nu beter, vooral met de pijltjestoetsen."
+
+#: data/metainfo.xml:92
+msgid "New history tool: read old changes and check whether a Git commit was verified."
+msgstr "Nieuw hulpmiddel voor geschiedenis: bekijk oude veranderingen en controleer of een Git-commit is geverifieerd."
+
+#: data/metainfo.xml:93
+msgid "You can now search or filter every page, so settings and options are easier to find."
+msgstr "Je kunt nu elke pagina doorzoeken of filteren, zodat instellingen en opties makkelijker te vinden zijn."
+
+#: data/metainfo.xml:94
+msgid "The entry editor now shows the password check tool."
+msgstr "De itemeditor toont nu het hulpmiddel om wachtwoorden te controleren."
+
 #~ msgid "Add FIDO2 recipient support"
 #~ msgstr "Voeg ondersteuning voor FIDO2-ontvangers toe"
 
@@ -6288,6 +6388,18 @@ msgstr "Verberg toepassenknoppen totdat vereiste invoer is ingevuld in de pass-b
 #: data/metainfo.xml:90
 msgid "Improve keyboard navigation with better arrow-key support and smoother focus movement across the app."
 msgstr "Verbeter toetsenbordnavigatie met betere ondersteuning voor pijltjestoetsen en vloeiendere focusverplaatsing in de hele app."
+
+#: data/metainfo.xml:91
+msgid "Added a tool for inspecting the change history."
+msgstr "Een hulpmiddel toegevoegd om de wijzigingsgeschiedenis te inspecteren."
+
+#: data/metainfo.xml:92
+msgid "Any page can be searched or filtered. So that settings or options can be found more easily."
+msgstr "Elke pagina kan worden doorzocht of gefilterd, zodat instellingen of opties gemakkelijker te vinden zijn."
+
+#: data/metainfo.xml:93
+msgid "Show the password validation tool inside the entry editor."
+msgstr "Toon het hulpmiddel voor wachtwoordvalidatie in de wachtwoordeditor."
 
 #: src/updater/linux.rs:23
 msgid "Looking for a newer Linux standalone build on GitHub Releases."

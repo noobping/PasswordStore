@@ -1,6 +1,6 @@
 # Keycord-documentatie
 
-Keycord is een GUI voor standaard [`pass`](https://www.passwordstore.org/) -opslagen. Het behoudt de opslagindeling op schijf en voegt zoeken, bewerken, OTP-codes, sleutelbeheer, Git-workflows en ondersteuning voor softwaresleutels, FIDO-beveiligingssleutels en OpenPGP-smartcards toe.
+Keycord is een GUI voor standaard [`pass`](https://www.passwordstore.org/) -opslagen. Het behoudt dezelfde mapindeling op schijf en voegt zoeken, bewerken, eenmalige inlogcodes, sleutelbeheer, Git-hulpmiddelen en ondersteuning voor softwaresleutels, FIDO-beveiligingssleutels en OpenPGP-smartcards toe.
 
 ## Handleidingen
 
@@ -24,14 +24,14 @@ Keycord leest en schrijft gewone `pass`-opslagen:
 
 ## Keycord functies
 
-- bladeren, zoeken en bewerken over meer dan een opslag
-- eenvoudige veldeneditor plus editor voor ruwe pass-bestanden
-- ingebouwde wachtwoordgenerator en live eenmalige inlogcodes
-- controles op zwakke wachtwoorden en hulpmiddelen voor terugkerende gebruikersnamen, e-mailadressen en URL's
-- bestaande opslagen toevoegen, nieuwe opslagen maken, wachtwoorden importeren en opslagen herstellen vanuit Git
-- sleutels voor een opslag kiezen, maken en importeren, inclusief FIDO-beveiligingssleutels en OpenPGP-smartcards
-- optionele Git-synchronisatie, beheer van remotes en ondertekening van commits
-- voor extra gevoelige opslagen kun je meer dan een sleutel verplicht maken
+- open een of meer wachtwoordmappen en zoek, filter en bewerk wat erin staat
+- bewerk items met eenvoudige velden of in de ruwe pass-bestandseditor
+- maak wachtwoorden en kopieer wachtwoorden, gebruikersnamen en eenmalige inlogcodes
+- vind zwakke wachtwoorden en terugkerende gebruikersnamen, e-mailadressen en URL's
+- voeg een wachtwoordmap toe die je al hebt, maak een nieuwe, importeer wachtwoorden of herstel een map uit Git
+- kies welke sleutels een map ontgrendelen, en maak of importeer extra sleutels wanneer dat nodig is
+- gebruik Git om wachtwoordmappen te synchroniseren, remotes te beheren, wijzigingen te ondertekenen en de wijzigingsgeschiedenis te bekijken
+- voor extra gevoelige mappen kun je meer dan een sleutel verplicht maken voordat ze openen
 
 ## Backendmatrix
 

@@ -1,6 +1,6 @@
 # Keycord Docs
 
-Keycord is a GUI for standard [`pass`](https://www.passwordstore.org/) stores. It keeps the store layout on disk and adds search, editing, OTP codes, key management, Git workflows, and support for software keys, FIDO security keys, and OpenPGP smartcards.
+Keycord is a GUI for standard [`pass`](https://www.passwordstore.org/) stores. It keeps the same folder layout on disk and adds search, editing, one-time login codes, key management, Git tools, and support for software keys, FIDO security keys, and OpenPGP smartcards.
 
 ## Guides
 
@@ -24,14 +24,14 @@ Keycord reads and writes normal `pass` stores:
 
 ## Keycord Features
 
-- browse, search, and edit more than one store
-- easy field editor plus raw pass-file editor
-- built-in password generator and live one-time login codes
-- weak-password checks and tools for repeated usernames, emails, and URLs
-- add existing stores, make new ones, import passwords, and restore stores from Git
-- choose, create, and import store keys, including FIDO security keys and OpenPGP smartcards
-- optional Git sync, remote management, and commit signing
-- extra-sensitive stores can require more than one key
+- open one or more password folders, then search, filter, and edit what is inside
+- edit entries with simple fields or in the raw pass-file editor
+- create passwords and copy passwords, usernames, and one-time login codes
+- find weak passwords and repeated usernames, email addresses, and URLs
+- add a password folder you already have, make a new one, import passwords, or restore a folder from Git
+- choose which keys unlock a folder, and create or import more keys when needed
+- use Git to sync password folders, manage remotes, sign changes, and inspect change history
+- extra-sensitive folders can require more than one key before they open
 
 ## Backend Matrix
 

@@ -7,18 +7,19 @@
 
 Browse and edit password stores.
 
-Keycord works with password stores that use the standard [`pass`](https://www.passwordstore.org/) layout, so you can keep using the password folders you already have.
+Keycord works with password folders that use the standard [`pass`](https://www.passwordstore.org/) layout, so you can keep using the folders you already have.
 
-- Open, search, and edit one or more password stores
-- Make passwords and copy passwords, usernames, and one-time login codes
-- Edit entries with easy fields or as plain text
-- Check for weak passwords and see repeated details like usernames, emails, and web addresses
-- Add an existing store, make a new one, or restore one from Git
-- Import passwords from other apps on supported Linux setups
-- Choose which keys unlock a store, including password-protected keys, FIDO security keys, and OpenPGP smartcards
-- Create and import keys
-- Sync Git-backed stores, manage Git remotes, and sign Git commits
-- For extra-sensitive stores, require more than one key to open them
+- Open one or more password folders, then search, filter, and edit what is inside
+- Create passwords and quickly copy passwords, usernames, and one-time login codes
+- Edit entries with simple fields or as plain text
+- Find weak passwords and spot repeated usernames, email addresses, and website links
+- Add a password folder you already have, create a new one, or restore one from Git
+- Import passwords from other apps on supported Linux systems
+- Choose which keys can unlock a folder, including password-protected keys, security keys, and OpenPGP smartcards
+- Create new keys or import keys you already have
+- Use Git to sync password folders, choose where they sync, and sign your changes
+- Inspect change history to see what changed and whether a commit was verified
+- For extra-sensitive folders, require more than one key before they open
 
 ![list](screenshots/list.png)
 

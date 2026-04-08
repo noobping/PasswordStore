@@ -37,6 +37,37 @@ const fn should_reschedule_after_finish(
     save_queued || (include_dirty && recipients_dirty)
 }
 
+fn should_refresh_after_save(
+    current_request: Option<&StoreRecipientsRequest>,
+    saved_store: &str,
+    current_scope: &str,
+    saved_scope: &str,
+    recipients_dirty: bool,
+) -> bool {
+    !recipients_dirty
+        && current_scope == saved_scope
+        && current_request.is_some_and(|request| request.store == saved_store)
+}
+
+fn refresh_store_recipients_after_save(
+    state: &StoreRecipientsPageState,
+    store_root: &str,
+    recipient_scope: &str,
+) {
+    let current_request = state.current_request();
+    if !should_refresh_after_save(
+        current_request.as_ref(),
+        store_root,
+        &state.current_recipient_scope(),
+        recipient_scope,
+        state.recipients_are_dirty(),
+    ) {
+        return;
+    }
+
+    super::list::refresh_recipient_scope_row(state);
+}
+
 fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty: bool) {
     state.save_in_flight.set(false);
     if should_reschedule_after_finish(
@@ -247,6 +278,7 @@ fn save_store_recipients_async(
                         refresh_after_store_list_change(&state);
                     }
                     finish_store_recipients_save(&state, true);
+                    refresh_store_recipients_after_save(&state, &request.store, &recipient_scope);
                 }
                 Err(err) => {
                     close_fido2_save_progress_dialog(&state);
@@ -343,6 +375,7 @@ fn save_store_recipients_async(
                     refresh_after_store_list_change(&state);
                 }
                 finish_store_recipients_save(&state, true);
+                refresh_store_recipients_after_save(&state, &request.store, &recipient_scope);
             }
             Err(err) => {
                 if maybe_prompt_store_recipients_entry_unlock(
@@ -414,7 +447,8 @@ pub fn register_store_recipients_save_action(
 
 #[cfg(test)]
 mod tests {
-    use super::should_reschedule_after_finish;
+    use super::{should_refresh_after_save, should_reschedule_after_finish};
+    use crate::store::recipients_page::{StoreRecipientsMode, StoreRecipientsRequest};
 
     #[test]
     fn finish_reschedules_for_queued_or_still_dirty_changes() {
@@ -422,5 +456,49 @@ mod tests {
         assert!(should_reschedule_after_finish(false, true, true));
         assert!(!should_reschedule_after_finish(false, false, true));
         assert!(!should_reschedule_after_finish(false, true, false));
+    }
+
+    #[test]
+    fn save_refreshes_scope_selector_only_for_the_active_clean_scope() {
+        let request = StoreRecipientsRequest {
+            store: "/tmp/store".to_string(),
+            mode: StoreRecipientsMode::Edit,
+        };
+
+        assert!(should_refresh_after_save(
+            Some(&request),
+            "/tmp/store",
+            "team",
+            "team",
+            false,
+        ));
+        assert!(!should_refresh_after_save(
+            Some(&request),
+            "/tmp/other",
+            "team",
+            "team",
+            false,
+        ));
+        assert!(!should_refresh_after_save(
+            Some(&request),
+            "/tmp/store",
+            ".",
+            "team",
+            false,
+        ));
+        assert!(!should_refresh_after_save(
+            Some(&request),
+            "/tmp/store",
+            "team",
+            "team",
+            true,
+        ));
+        assert!(!should_refresh_after_save(
+            None,
+            "/tmp/store",
+            "team",
+            "team",
+            false,
+        ));
     }
 }

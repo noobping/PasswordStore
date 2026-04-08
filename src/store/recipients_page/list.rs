@@ -495,6 +495,10 @@ fn sync_recipient_scope_row(state: &StoreRecipientsPageState) {
     }
 }
 
+pub(super) fn refresh_recipient_scope_row(state: &StoreRecipientsPageState) {
+    sync_recipient_scope_row(state);
+}
+
 fn show_require_all_private_keys_option(
     selection_mode: StoreRecipientsSelectionMode,
     has_keys: bool,

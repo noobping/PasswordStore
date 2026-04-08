@@ -2570,6 +2570,10 @@ msgstr ""
 msgid "Inspect change history"
 msgstr "Wijzigingsgeschiedenis inspecteren"
 
+#: data/metainfo.xml:78
+msgid "Inspect change history and verify commits"
+msgstr "Inspecteer de wijzigingsgeschiedenis en verifieer commits"
+
 #: data/metainfo.xml:42
 msgid ""
 "Inspect change history to see what changed and whether a commit was verified"

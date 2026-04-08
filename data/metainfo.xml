@@ -54,29 +54,33 @@
 
   <screenshots>
     <screenshot type="default">
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/01b01bfaf373ec4110e2294f51bc6d9f9fa4cc28/screenshots/list.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/1e86da2239382b4316f57670d6351c350e23bd85/screenshots/list.png</image>
       <caption>Password list</caption>
     </screenshot>
     <screenshot>
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/142fea9f319398ec459f49dfbbcac9c0f14d2dd1/screenshots/unlock.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/1e86da2239382b4316f57670d6351c350e23bd85/screenshots/unlock.png</image>
       <caption>Unlock a pass file</caption>
     </screenshot>
     <screenshot>
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/6dc210a8737c50cfe0796e23199f7af3bad35e2a/screenshots/file.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/1e86da2239382b4316f57670d6351c350e23bd85/screenshots/file.png</image>
       <caption>Edit a password entry</caption>
     </screenshot>
     <screenshot>
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/50d4e2443dc0fc0b14d7f715b9557fe24077947e/screenshots/preferences.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/1e86da2239382b4316f57670d6351c350e23bd85/screenshots/preferences.png</image>
       <caption>Manage stores</caption>
     </screenshot>
     <screenshot>
-      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/3aedfc216face9e7142b6481455ba66273983955/screenshots/recipients.png</image>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/1e86da2239382b4316f57670d6351c350e23bd85/screenshots/recipients.png</image>
       <caption>Manage private keys</caption>
+    </screenshot>
+    <screenshot>
+      <image translate="no">https://raw.githubusercontent.com/noobping/keycord/1e86da2239382b4316f57670d6351c350e23bd85/screenshots/inspect.png</image>
+      <caption>Inspect change history and verify commits</caption>
     </screenshot>
   </screenshots>
 
   <releases>
-    <release version="0.9.9" date="2026-04-06">
+    <release version="0.9.9" date="2026-04-09">
       <description>
         <ul>
           <li>On the recipients page, you can now choose which folder-specific <code>.gpg-id</code> file you want to edit.</li>

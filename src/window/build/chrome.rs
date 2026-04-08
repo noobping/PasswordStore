@@ -411,7 +411,7 @@ fn connect_headerbar_down_navigation(widgets: &WindowWidgets, navigation: &Windo
         let Some(focus) = adw::gtk::prelude::RootExt::focus(&widgets.window) else {
             return Propagation::Proceed;
         };
-        if focus.ancestor(adw::gtk::HeaderBar::static_type()).is_none() {
+        if focus.ancestor(adw::HeaderBar::static_type()).is_none() {
             return Propagation::Proceed;
         }
 

@@ -122,6 +122,20 @@ jobs:
           $mingwRoot = 'C:\tools\msys64\mingw64'
           $shareDir = Join-Path $bundleDir 'share'
 
+          $iconSourceDir = Join-Path $workspace 'data\scalable\apps'
+          $iconTargetDir = Join-Path $shareDir 'icons\hicolor\scalable\apps'
+          if (Test-Path $iconSourceDir) {
+            New-Item -ItemType Directory -Path $iconTargetDir -Force | Out-Null
+            Copy-Item (Join-Path $iconSourceDir '*.svg') $iconTargetDir -Force
+          }
+
+          $icon256SourceDir = Join-Path $workspace 'data\256x256\apps'
+          $icon256TargetDir = Join-Path $shareDir 'icons\hicolor\256x256\apps'
+          if (Test-Path $icon256SourceDir) {
+            New-Item -ItemType Directory -Path $icon256TargetDir -Force | Out-Null
+            Copy-Item (Join-Path $icon256SourceDir '*.png') $icon256TargetDir -Force
+          }
+
           $glibSchemasDir = Join-Path $shareDir 'glib-2.0\schemas'
           New-Item -ItemType Directory -Path $glibSchemasDir -Force | Out-Null
           $schemaFile = Join-Path $mingwRoot 'share\glib-2.0\schemas\gschemas.compiled'

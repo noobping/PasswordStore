@@ -74,7 +74,7 @@ const WEAK_PASSWORDS_EMPTY_SUBTITLE: &str =
     "No loaded pass files matched the current weak-password checks.";
 const WEAK_PASSWORDS_FILTER_EMPTY_TITLE: &str = "No matching results";
 const WEAK_PASSWORDS_FILTER_EMPTY_SUBTITLE: &str = "Try a different search term.";
-const AUDIT_TITLE: &str = "Audit";
+const AUDIT_TITLE: &str = "Inspect change history";
 const AUDIT_SUBTITLE: &str = "Git history and verification";
 const AUDIT_ROW_SUBTITLE: &str = "Inspect Git history across stores and verify commit signatures.";
 const AUDIT_ROW_GIT_UNAVAILABLE_SUBTITLE: &str = "Git isn't available in this runtime.";

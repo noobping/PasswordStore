@@ -145,7 +145,7 @@ pub fn restore_window_for_current_page(
         );
         chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::ToolAudit {
-        show_secondary_page_chrome(&chrome, "Audit", "Git history and verification", false);
+        show_secondary_page_chrome(&chrome, "Inspect change history", "Git history and verification", false);
         chrome.find.set_visible(true);
     } else if page_kind == RestoredPageKind::Recipients {
         set_save_button_for_password(&state.save);

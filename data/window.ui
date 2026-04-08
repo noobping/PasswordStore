@@ -972,7 +972,7 @@
                                         </child>
                                         <child>
                                           <object class="AdwActionRow" id="tools_audit_row">
-                                            <property name="title" translatable="yes">History</property>
+                                            <property name="title" translatable="yes">Inspect change history</property>
                                             <property name="subtitle" translatable="yes">Inspect Git history across stores and verify commit signatures.</property>
                                             <property name="activatable">True</property>
                                             <property name="visible">false</property>
@@ -1263,7 +1263,7 @@
 
                 <child>
                   <object class="AdwNavigationPage" id="tools_audit_page">
-                    <property name="title" translatable="yes">Audit</property>
+                    <property name="title" translatable="yes">Inspect change history</property>
                     <child>
                       <object class="GtkBox">
                         <property name="orientation">vertical</property>
@@ -1278,7 +1278,7 @@
                             <child>
                               <object class="AdwStatusPage" id="tools_audit_status">
                                 <property name="icon-name">git-symbolic</property>
-                                <property name="title" translatable="yes">Audit</property>
+                                <property name="title" translatable="yes">Inspect change history</property>
                                 <property name="description" translatable="yes">Open a Git-backed store to inspect branches and commits.</property>
                               </object>
                             </child>

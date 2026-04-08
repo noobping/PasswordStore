@@ -88,6 +88,7 @@
           <li>Add an extra add-item and clear search row at the bottom of the pass file list.</li>
           <li>Hide apply buttons until required input is filled in across the pass file editor, new-item popup, key dialogs and other related forms.</li>
           <li>Improve keyboard navigation with better arrow-key support and smoother focus movement across the app.</li>
+          <li>Added a tool for inspecting the change history.</li>
         </ul>
       </description>
     </release>

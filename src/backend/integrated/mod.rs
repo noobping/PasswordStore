@@ -51,6 +51,7 @@ pub use self::entries::{
     read_password_entry, read_password_entry_with_progress, read_password_line,
     rename_password_entry, save_password_entry, save_password_entry_with_progress,
 };
+pub(in crate::backend) use self::store::try_initialize_empty_store_recipients;
 pub use self::store::{
     save_store_recipients, save_store_recipients_for_relative_dir,
     save_store_recipients_with_progress, save_store_recipients_with_progress_for_relative_dir,

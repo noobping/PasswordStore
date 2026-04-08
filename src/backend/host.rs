@@ -4,6 +4,7 @@ use super::host_errors::{
     password_entry_write_error_from_host_launch, store_recipients_error_from_host_failure,
     store_recipients_error_from_host_launch, HostStoreAction,
 };
+use super::integrated::try_initialize_empty_store_recipients;
 use super::path_validation::{validated_entry_label_path, validated_relative_directory_path};
 #[cfg(target_os = "linux")]
 use crate::backend::command::{
@@ -98,6 +99,17 @@ fn validated_effective_recipient_relative_dir(
     relative_dir: &str,
 ) -> Result<std::path::PathBuf, StoreRecipientsError> {
     validated_relative_directory_path(relative_dir).map_err(StoreRecipientsError::other)
+}
+
+fn store_recipients_error_from_internal_message(
+    message: impl Into<String>,
+) -> StoreRecipientsError {
+    let message = message.into();
+    if message == "The selected password store path is not a folder." {
+        StoreRecipientsError::invalid_store_path(message)
+    } else {
+        StoreRecipientsError::other(message)
+    }
 }
 
 pub(super) fn read_password_entry(
@@ -233,12 +245,18 @@ pub(super) fn save_store_recipients(
 pub(super) fn save_store_recipients_with_progress(
     store_root: &str,
     recipients: &StoreRecipients,
-    _private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
 ) -> Result<(), StoreRecipientsError> {
     if !recipients.fido2().is_empty() {
         return Err(StoreRecipientsError::other(
             "FIDO2 recipients require the Integrated backend.",
         ));
+    }
+
+    if try_initialize_empty_store_recipients(store_root, recipients, private_key_requirement)
+        .map_err(store_recipients_error_from_internal_message)?
+    {
+        return Ok(());
     }
 
     let should_initialize_git =
@@ -637,6 +655,7 @@ mod tests {
     use crate::backend::{
         StoreRecipients, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
     };
+    use crate::preferences::Preferences;
     use crate::support::git::has_git_repository;
     #[cfg(feature = "audit")]
     use sequoia_openpgp::cert::CertBuilder;
@@ -713,7 +732,7 @@ mod tests {
         clippy::significant_drop_tightening,
         reason = "SystemBackendTestEnv must stay alive for the full test to keep the temp store and env vars in place."
     )]
-    fn host_backend_initializes_git_for_new_stores() {
+    fn host_backend_initializes_new_stores_without_pass_init() {
         let env = SystemBackendTestEnv::new();
 
         let key = SystemBackendTestEnv::generate_secret_key("Recipient <host-create@example.com>")
@@ -722,6 +741,9 @@ mod tests {
             .expect("import host recipient key");
         SystemBackendTestEnv::trust_public_key(&key.fingerprint_hex)
             .expect("trust host recipient key");
+        Preferences::new()
+            .set_command("keycord-pass-command-that-does-not-exist")
+            .expect("set missing pass command");
 
         let store_root = env.store_root().to_string_lossy().to_string();
         save_store_recipients(
@@ -732,6 +754,11 @@ mod tests {
         .expect("save store recipients");
 
         assert!(has_git_repository(&store_root));
+        assert_eq!(
+            std::fs::read_to_string(env.store_root().join(".gpg-id"))
+                .expect("read initialized store recipients file"),
+            format!("{}\n", key.fingerprint_hex)
+        );
     }
 
     #[test]

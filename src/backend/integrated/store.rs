@@ -95,6 +95,54 @@ fn clear_saved_fido2_enrollment_state(recipients: &StoreRecipients) {
     }
 }
 
+pub(in crate::backend) fn try_initialize_empty_store_recipients(
+    store_root: &str,
+    recipients: &StoreRecipients,
+    private_key_requirement: StoreRecipientsPrivateKeyRequirement,
+) -> Result<bool, String> {
+    let store_dir = ensure_store_directory(store_root)?;
+    let recipients_path = recipients_file_for_relative_dir(store_root, ".")?;
+    if recipients_path.exists() || !collect_password_entry_files(&store_dir)?.is_empty() {
+        return Ok(false);
+    }
+
+    let recipients_contents =
+        standard_recipient_file_contents(recipients.standard(), private_key_requirement);
+    let fido2_recipients_contents = fido2_recipient_file_contents(recipients.fido2());
+    let fido2_recipients_path = fido2_recipients_file_for_recipients_path(&recipients_path);
+    let had_fido2_recipients_path = fido2_recipients_path.exists();
+    let should_initialize_git = !has_git_repository(store_root);
+
+    with_updated_recipient_files(
+        &recipients_path,
+        &recipients_contents,
+        &fido2_recipients_path,
+        &fido2_recipients_contents,
+        || Ok(()),
+    )?;
+    clear_saved_fido2_enrollment_state(recipients);
+
+    if should_initialize_git {
+        ensure_store_git_repository(store_root)?;
+    }
+
+    maybe_commit_git_paths(
+        store_root,
+        "Update password store recipients",
+        std::iter::once(password_entry_git_path(&store_dir, &recipients_path)?).chain(
+            (!fido2_recipients_contents.trim().is_empty() || had_fido2_recipients_path)
+                .then(|| {
+                    password_entry_git_path(&store_dir, &fido2_recipients_path)
+                        .map_err(|err| err.to_string())
+                })
+                .transpose()?,
+        ),
+        None,
+    );
+
+    Ok(true)
+}
+
 pub fn store_recipients_private_key_requiring_unlock(
     store_root: &str,
 ) -> Result<Option<String>, String> {

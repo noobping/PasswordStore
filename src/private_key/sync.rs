@@ -7,6 +7,9 @@ use crate::backend::{
 };
 
 #[cfg(target_os = "linux")]
+use crate::logging::log_info;
+
+#[cfg(target_os = "linux")]
 use std::collections::HashSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,15 +27,7 @@ pub fn preflight_host_to_app_private_key_sync() -> Result<(), String> {
                 continue;
             }
 
-            let armored = armored_host_gpg_private_key(&fingerprint)?;
-            if !ripasso_private_key_requires_passphrase(armored.as_bytes())
-                .map_err(|err| err.to_string())?
-            {
-                return Err(
-                    "Every synced host key must be password protected before Keycord can store it."
-                        .to_string(),
-                );
-            }
+            let _ = syncable_host_private_key_export(&fingerprint, false)?;
         }
 
         Ok(())
@@ -72,6 +67,24 @@ fn normalized_fingerprint(fingerprint: &str) -> String {
     fingerprint.trim().to_ascii_lowercase()
 }
 
+#[cfg(target_os = "linux")]
+fn syncable_host_private_key_export(
+    fingerprint: &str,
+    log_skip: bool,
+) -> Result<Option<String>, String> {
+    let armored = armored_host_gpg_private_key(fingerprint)?;
+    if ripasso_private_key_requires_passphrase(armored.as_bytes()).map_err(|err| err.to_string())? {
+        return Ok(Some(armored));
+    }
+
+    if log_skip {
+        log_info(format!(
+            "Skipping host GPG private key without a passphrase during sync: {fingerprint}"
+        ));
+    }
+    Ok(None)
+}
+
 fn sync_host_private_keys_to_app() -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
@@ -86,22 +99,16 @@ fn sync_host_private_keys_to_app() -> Result<(), String> {
             .map(|key| normalized_fingerprint(&key.fingerprint))
             .collect::<HashSet<_>>();
 
-        let host_exports = host_keys
+        let mut host_exports = Vec::new();
+        for key in host_keys
             .into_iter()
             .filter(|key| !app_fingerprints.contains(&normalized_fingerprint(&key.fingerprint)))
-            .map(|key| {
-                let armored = armored_host_gpg_private_key(&key.fingerprint)?;
-                if !ripasso_private_key_requires_passphrase(armored.as_bytes())
-                    .map_err(|err| err.to_string())?
-                {
-                    return Err(
-                        "Every synced host key must be password protected before Keycord can store it."
-                            .to_string(),
-                    );
-                }
-                Ok((key.fingerprint, armored))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
+        {
+            let Some(armored) = syncable_host_private_key_export(&key.fingerprint, true)? else {
+                continue;
+            };
+            host_exports.push((key.fingerprint, armored));
+        }
 
         for (_, armored) in host_exports {
             store_ripasso_private_key_bytes(armored.as_bytes()).map_err(|err| err.to_string())?;

@@ -449,6 +449,13 @@ fn sync_recipient_group_headers(state: &StoreRecipientsPageState, show_scope_sel
     }
 }
 
+pub(super) fn sync_store_recipients_busy_indicator(state: &StoreRecipientsPageState) {
+    state
+        .platform
+        .saving_group
+        .set_visible(state.save_in_flight.get());
+}
+
 fn sync_recipient_scope_row(state: &StoreRecipientsPageState) {
     let scopes = available_recipient_scopes(state);
     let current_scope = state.current_recipient_scope();
@@ -471,10 +478,7 @@ fn sync_recipient_scope_row(state: &StoreRecipientsPageState) {
     sync_recipient_group_headers(state, show_scope_selector);
     state.platform.scope_list.set_visible(show_scope_selector);
     state.platform.scope_row.set_visible(show_scope_selector);
-    state
-        .platform
-        .scope_row
-        .set_sensitive(show_scope_selector && !state.save_in_flight.get());
+    state.platform.scope_row.set_sensitive(show_scope_selector);
 
     let selected_position = scopes
         .iter()
@@ -689,11 +693,6 @@ pub(super) fn connect_recipient_scope_control(state: &StoreRecipientsPageState) 
     let row = state.platform.scope_row.clone();
     let page_state = state.clone();
     row.connect_selected_notify(move |row| {
-        if page_state.save_in_flight.get() {
-            super::rebuild_store_recipients_list(&page_state);
-            return;
-        }
-
         let Some(request) = page_state.current_request() else {
             return;
         };
@@ -839,6 +838,7 @@ pub(super) fn rebuild_store_recipients_list(state: &StoreRecipientsPageState) {
     rebuild_store_recipients_git_row(state);
     sync_private_key_verification_warning(state, StoreRecipientsSelectionMode::Empty, None);
     let _ = sync_private_keys_from_host_if_enabled(state);
+    sync_store_recipients_busy_indicator(state);
     sync_recipient_scope_row(state);
     let current_recipients = state.recipients.borrow().clone();
 

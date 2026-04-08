@@ -40,26 +40,16 @@ const fn should_reschedule_after_finish(
 fn should_refresh_after_save(
     current_request: Option<&StoreRecipientsRequest>,
     saved_store: &str,
-    current_scope: &str,
-    saved_scope: &str,
     recipients_dirty: bool,
 ) -> bool {
-    !recipients_dirty
-        && current_scope == saved_scope
-        && current_request.is_some_and(|request| request.store == saved_store)
+    !recipients_dirty && current_request.is_some_and(|request| request.store == saved_store)
 }
 
-fn refresh_store_recipients_after_save(
-    state: &StoreRecipientsPageState,
-    store_root: &str,
-    recipient_scope: &str,
-) {
+fn refresh_store_recipients_after_save(state: &StoreRecipientsPageState, store_root: &str) {
     let current_request = state.current_request();
     if !should_refresh_after_save(
         current_request.as_ref(),
         store_root,
-        &state.current_recipient_scope(),
-        recipient_scope,
         state.recipients_are_dirty(),
     ) {
         return;
@@ -70,6 +60,7 @@ fn refresh_store_recipients_after_save(
 
 fn finish_store_recipients_save(state: &StoreRecipientsPageState, include_dirty: bool) {
     state.save_in_flight.set(false);
+    super::list::sync_store_recipients_busy_indicator(state);
     if should_reschedule_after_finish(
         state.save_queued.get(),
         include_dirty,
@@ -198,6 +189,7 @@ fn save_store_recipients_async(
         state.save_queued.set(true);
         return;
     }
+    super::list::sync_store_recipients_busy_indicator(state);
     state.save_queued.set(false);
 
     let store_for_thread = request.store.clone();
@@ -278,7 +270,7 @@ fn save_store_recipients_async(
                         refresh_after_store_list_change(&state);
                     }
                     finish_store_recipients_save(&state, true);
-                    refresh_store_recipients_after_save(&state, &request.store, &recipient_scope);
+                    refresh_store_recipients_after_save(&state, &request.store);
                 }
                 Err(err) => {
                     close_fido2_save_progress_dialog(&state);
@@ -375,7 +367,7 @@ fn save_store_recipients_async(
                     refresh_after_store_list_change(&state);
                 }
                 finish_store_recipients_save(&state, true);
-                refresh_store_recipients_after_save(&state, &request.store, &recipient_scope);
+                refresh_store_recipients_after_save(&state, &request.store);
             }
             Err(err) => {
                 if maybe_prompt_store_recipients_entry_unlock(
@@ -459,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn save_refreshes_scope_selector_only_for_the_active_clean_scope() {
+    fn save_refreshes_scope_selector_when_the_open_store_page_is_clean() {
         let request = StoreRecipientsRequest {
             store: "/tmp/store".to_string(),
             mode: StoreRecipientsMode::Edit,
@@ -468,37 +460,18 @@ mod tests {
         assert!(should_refresh_after_save(
             Some(&request),
             "/tmp/store",
-            "team",
-            "team",
-            false,
+            false
         ));
         assert!(!should_refresh_after_save(
             Some(&request),
             "/tmp/other",
-            "team",
-            "team",
-            false,
+            false
         ));
         assert!(!should_refresh_after_save(
             Some(&request),
             "/tmp/store",
-            ".",
-            "team",
-            false,
+            true
         ));
-        assert!(!should_refresh_after_save(
-            Some(&request),
-            "/tmp/store",
-            "team",
-            "team",
-            true,
-        ));
-        assert!(!should_refresh_after_save(
-            None,
-            "/tmp/store",
-            "team",
-            "team",
-            false,
-        ));
+        assert!(!should_refresh_after_save(None, "/tmp/store", false));
     }
 }

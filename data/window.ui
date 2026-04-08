@@ -1526,6 +1526,24 @@
                               </object>
                             </child>
                             <child>
+                              <object class="AdwPreferencesGroup" id="store_recipients_saving_group">
+                                <property name="visible">false</property>
+                                <child>
+                                  <object class="AdwActionRow">
+                                    <property name="title" translatable="yes">Saving recipients file</property>
+                                    <property name="subtitle" translatable="yes">Updating all saved passwords to match the new access settings.</property>
+                                    <property name="activatable">False</property>
+                                    <child type="suffix">
+                                      <object class="GtkSpinner">
+                                        <property name="valign">center</property>
+                                        <property name="spinning">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
                               <object class="AdwPreferencesGroup" id="store_recipients_keys_group">
                                 <property name="title" translatable="yes">Keys for this store</property>
                                 <property name="description" translatable="yes">Select the private keys that can unlock passwords in this store.</property>

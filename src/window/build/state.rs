@@ -148,6 +148,7 @@ fn build_store_recipients_platform_state(
         fido2_info_group: widgets.store_recipients_fido2_info_group.clone(),
         fido2_info_list: widgets.store_recipients_fido2_info_list.clone(),
         scope_group: widgets.store_recipients_scope_group.clone(),
+        saving_group: widgets.store_recipients_saving_group.clone(),
         keys_group: widgets.store_recipients_keys_group.clone(),
         scope_list: widgets.store_recipients_scope_list.clone(),
         add_group: widgets.store_recipients_add_group.clone(),

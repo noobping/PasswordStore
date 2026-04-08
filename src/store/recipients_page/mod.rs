@@ -134,6 +134,7 @@ pub struct StoreRecipientsPlatformState {
     pub fido2_info_group: PreferencesGroup,
     pub fido2_info_list: PreferencesGroup,
     pub scope_group: PreferencesGroup,
+    pub saving_group: PreferencesGroup,
     pub keys_group: PreferencesGroup,
     pub scope_list: PreferencesGroup,
     pub add_group: PreferencesGroup,

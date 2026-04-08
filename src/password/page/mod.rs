@@ -11,9 +11,12 @@ use super::file::{
 use super::generation::generate_password;
 use super::list::{load_passwords_async, PasswordListActions};
 use crate::backend::{
-    password_entry_fido2_recipient_count, read_password_entry_with_progress, rename_password_entry,
-    save_password_entry, save_password_entry_with_progress, PasswordEntryError,
+    import_ripasso_private_key_bytes, password_entry_fido2_recipient_count,
+    read_password_entry_with_progress, rename_password_entry,
+    ripasso_private_key_requires_passphrase, save_password_entry,
+    save_password_entry_with_progress, ManagedRipassoPrivateKey, PasswordEntryError,
     PasswordEntryReadProgress, PasswordEntryWriteError, PasswordEntryWriteProgress,
+    PrivateKeyError,
 };
 use crate::clipboard::set_clipboard_text;
 use crate::i18n::gettext;
@@ -26,8 +29,12 @@ use crate::password::opened::{
 };
 use crate::password::undo::{push_undo_action, restore_saved_entry_action};
 use crate::preferences::Preferences;
+use crate::private_key::dialog::{
+    build_private_key_progress_dialog, present_private_key_password_dialog, PrivateKeyDialogHandle,
+};
+use crate::private_key::sync::{sync_private_keys_with_host, PrivateKeySyncDirection};
 use crate::support::actions::activate_widget_action;
-use crate::support::background::spawn_progress_result_task;
+use crate::support::background::{spawn_progress_result_task, spawn_result_task_with_finalizer};
 use crate::support::ui::{
     navigation_stack_is_root, pop_navigation_to_root, push_navigation_page_if_needed,
     visible_navigation_page_is,
@@ -36,7 +43,8 @@ use crate::support::validation::validate_pass_file_email_fields;
 use crate::window::navigation::{show_primary_page_chrome, HasWindowChrome, APP_WINDOW_TITLE};
 use crate::window::sync_tools_action_availability;
 use adw::prelude::*;
-use adw::{Dialog, Toast};
+use adw::{ApplicationWindow, Dialog, Toast};
+use secrecy::{ExposeSecret, SecretString};
 use std::rc::Rc;
 use std::string::ToString;
 
@@ -74,6 +82,8 @@ const WAIT_A_MOMENT: &str = "Wait a moment.";
 const TOUCH_KEY_IF_IT_BLINKS: &str = "Touch your key if it blinks.";
 const TOUCH_EACH_KEY_IF_IT_BLINKS: &str = "Touch each key if it blinks.";
 const CHECK_KEYS_ONE_BY_ONE: &str = "Check each key one by one.";
+const ARMORED_PRIVATE_KEY_BEGIN: &str = "-----BEGIN PGP PRIVATE KEY BLOCK-----";
+const ARMORED_PRIVATE_KEY_END: &str = "-----END PGP PRIVATE KEY BLOCK-----";
 
 const fn password_save_status_text(fido2_recipient_count: usize) -> (&'static str, &'static str) {
     if fido2_recipient_count > 1 {
@@ -540,7 +550,9 @@ pub fn add_pass_field_from_input(state: &PasswordPageState) {
 }
 
 pub fn refresh_apply_template_button(state: &PasswordPageState) {
-    sync_apply_template_button(state, &current_editor_contents(state));
+    let contents = current_editor_contents(state);
+    sync_apply_template_button(state, &contents);
+    sync_import_private_key_button(state, &contents);
 }
 
 pub fn apply_pass_file_template(state: &PasswordPageState) {
@@ -577,6 +589,174 @@ fn sync_apply_template_button(state: &PasswordPageState, contents: &str) {
             contents,
             &Preferences::new().new_pass_file_template(),
         ));
+}
+
+fn sync_import_private_key_button(state: &PasswordPageState, contents: &str) {
+    state
+        .import_private_key_button
+        .set_visible(armored_private_key_block_from_contents(contents).is_some());
+}
+
+fn armored_private_key_block_from_contents(contents: &str) -> Option<&str> {
+    let start = contents.find(ARMORED_PRIVATE_KEY_BEGIN)?;
+    let remaining = &contents[start..];
+    let end = remaining.find(ARMORED_PRIVATE_KEY_END)?;
+    let end = start + end + ARMORED_PRIVATE_KEY_END.len();
+    contents.get(start..end)
+}
+
+fn current_pass_file_private_key_bytes(state: &PasswordPageState) -> Option<Vec<u8>> {
+    armored_private_key_block_from_contents(&current_editor_contents(state))
+        .map(|block| block.as_bytes().to_vec())
+}
+
+fn password_page_window(state: &PasswordPageState) -> Option<ApplicationWindow> {
+    state
+        .page
+        .root()
+        .and_then(|root| root.downcast::<ApplicationWindow>().ok())
+}
+
+fn handle_private_key_sync_failure(state: &PasswordPageState, err: &str) {
+    log_error(format!(
+        "Failed to sync private keys with the host after importing from a pass file: {err}"
+    ));
+    if let Err(save_err) = Preferences::new().set_sync_private_keys_with_host(false) {
+        log_error(format!(
+            "Failed to turn off private-key sync after an error: {}",
+            save_err.message
+        ));
+    }
+    state.overlay.add_toast(Toast::new(&gettext(
+        "Couldn't keep private keys synced. Sync was turned off.",
+    )));
+}
+
+fn sync_imported_private_key_to_host_if_enabled(state: &PasswordPageState) -> bool {
+    if !Preferences::new().sync_private_keys_with_host() {
+        return true;
+    }
+
+    match sync_private_keys_with_host(PrivateKeySyncDirection::AppToHost) {
+        Ok(()) => true,
+        Err(err) => {
+            handle_private_key_sync_failure(state, &err);
+            false
+        }
+    }
+}
+
+fn finish_private_key_import_from_pass_file(
+    state: &PasswordPageState,
+    result: Result<ManagedRipassoPrivateKey, PrivateKeyError>,
+) {
+    match result {
+        Ok(_) => {
+            let _ = sync_imported_private_key_to_host_if_enabled(state);
+            activate_widget_action(&state.nav, "win.reload-password-list");
+            state
+                .overlay
+                .add_toast(Toast::new(&gettext("Key imported.")));
+        }
+        Err(err) => {
+            log_error(format!(
+                "Failed to import private key from pass file: {err}"
+            ));
+            state
+                .overlay
+                .add_toast(Toast::new(&gettext(err.import_message())));
+        }
+    }
+}
+
+fn start_private_key_import_from_pass_file(
+    state: &PasswordPageState,
+    bytes: Vec<u8>,
+    passphrase: Option<SecretString>,
+) {
+    let Some(window) = password_page_window(state) else {
+        log_error("Private key import was requested without a window root.".to_string());
+        state
+            .overlay
+            .add_toast(Toast::new(&gettext("Couldn't import the key.")));
+        return;
+    };
+
+    let state = state.clone();
+    let progress_dialog = PrivateKeyDialogHandle::new(&build_private_key_progress_dialog(
+        &window,
+        "Importing key",
+        None,
+        WAIT_A_MOMENT,
+    ));
+    let state_for_disconnect = state.clone();
+    spawn_result_task_with_finalizer(
+        move || {
+            import_ripasso_private_key_bytes(
+                &bytes,
+                passphrase
+                    .as_ref()
+                    .map(|passphrase| passphrase.expose_secret()),
+            )
+        },
+        move || progress_dialog.force_close(),
+        move |result| {
+            finish_private_key_import_from_pass_file(&state, result);
+        },
+        move || {
+            log_error("Pass-file private key import worker disconnected unexpectedly.".to_string());
+            state_for_disconnect
+                .overlay
+                .add_toast(Toast::new(&gettext("Couldn't import the key.")));
+        },
+    );
+}
+
+fn prompt_private_key_passphrase_from_pass_file(state: &PasswordPageState, bytes: Vec<u8>) {
+    let Some(window) = password_page_window(state) else {
+        log_error("Private key passphrase dialog was requested without a window root.".to_string());
+        state
+            .overlay
+            .add_toast(Toast::new(&gettext("Couldn't import the key.")));
+        return;
+    };
+
+    let bytes = Rc::new(bytes);
+    let overlay = state.overlay.clone();
+    let state = state.clone();
+    present_private_key_password_dialog(&window, &overlay, "Unlock key", None, move |passphrase| {
+        start_private_key_import_from_pass_file(
+            &state,
+            bytes.as_slice().to_vec(),
+            Some(passphrase),
+        );
+    });
+}
+
+pub fn import_private_key_from_current_pass_file(state: &PasswordPageState) {
+    let editing_structured = visible_navigation_page_is(&state.nav, &state.page);
+    let editing_raw = visible_navigation_page_is(&state.nav, &state.raw_page);
+    if (!editing_structured || !state.entry.is_visible()) && !editing_raw {
+        return;
+    }
+
+    let Some(bytes) = current_pass_file_private_key_bytes(state) else {
+        state.overlay.add_toast(Toast::new(&gettext(
+            "This item does not contain an armored private key.",
+        )));
+        return;
+    };
+
+    match ripasso_private_key_requires_passphrase(&bytes) {
+        Ok(true) => prompt_private_key_passphrase_from_pass_file(state, bytes),
+        Ok(false) => start_private_key_import_from_pass_file(state, bytes, None),
+        Err(err) => {
+            log_error(format!("Failed to inspect private key in pass file: {err}"));
+            state
+                .overlay
+                .add_toast(Toast::new(&gettext(err.inspection_message())));
+        }
+    }
 }
 
 pub fn clean_pass_file(state: &PasswordPageState) {
@@ -778,13 +958,13 @@ pub fn retry_open_password_entry_if_needed(state: &PasswordPageState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        password_open_failure_message, password_open_progress_description,
-        password_open_status_text, password_save_failure_message,
-        password_save_progress_description, password_save_status_text, password_unlock_status_text,
-        prepared_password_save_contents, should_retry_open_password_entry,
-        validate_password_save_contents, PasswordPageDisplay, CHECK_KEYS_ONE_BY_ONE,
-        OPEN_STATUS_TITLE, SAVE_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS, TOUCH_KEY_IF_IT_BLINKS,
-        UNLOCK_STATUS_TITLE, WAIT_A_MOMENT,
+        armored_private_key_block_from_contents, password_open_failure_message,
+        password_open_progress_description, password_open_status_text,
+        password_save_failure_message, password_save_progress_description,
+        password_save_status_text, password_unlock_status_text, prepared_password_save_contents,
+        should_retry_open_password_entry, validate_password_save_contents, PasswordPageDisplay,
+        CHECK_KEYS_ONE_BY_ONE, OPEN_STATUS_TITLE, SAVE_STATUS_TITLE, TOUCH_EACH_KEY_IF_IT_BLINKS,
+        TOUCH_KEY_IF_IT_BLINKS, UNLOCK_STATUS_TITLE, WAIT_A_MOMENT,
     };
     use crate::backend::{
         PasswordEntryError, PasswordEntryReadProgress, PasswordEntryWriteError,
@@ -1003,6 +1183,24 @@ mod tests {
                 false
             ),
             "secret\nusername:\nurl: https://example.com".to_string()
+        );
+    }
+
+    #[test]
+    fn armored_private_key_block_is_extracted_from_surrounding_pass_file_text() {
+        let contents = "hunter2\nnotes: keep this\n-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----\nfooter";
+
+        assert_eq!(
+            armored_private_key_block_from_contents(contents),
+            Some("-----BEGIN PGP PRIVATE KEY BLOCK-----\nabc\n-----END PGP PRIVATE KEY BLOCK-----")
+        );
+    }
+
+    #[test]
+    fn armored_private_key_block_extraction_returns_none_without_a_private_key() {
+        assert_eq!(
+            armored_private_key_block_from_contents("hunter2\nusername: me"),
+            None
         );
     }
 }

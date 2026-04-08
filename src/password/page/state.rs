@@ -33,6 +33,7 @@ pub struct PasswordPageState {
     pub template_button: Button,
     pub clean_button: Button,
     pub otp_add_button: Button,
+    pub import_private_key_button: Button,
     pub editor_save_button: Button,
     pub generator_settings_button: ToggleButton,
     pub generator_settings_revealer: Revealer,
@@ -62,6 +63,7 @@ fn set_password_editor_action_visibility(
     state.template_button.set_visible(false);
     state.clean_button.set_visible(clean_button);
     state.otp_add_button.set_visible(false);
+    state.import_private_key_button.set_visible(false);
     state.editor_save_button.set_visible(editor_save_button);
     state.raw.set_visible(raw);
 }

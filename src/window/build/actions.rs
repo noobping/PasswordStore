@@ -13,8 +13,9 @@ use crate::password::page::{
     add_empty_otp_secret, add_pass_field_from_input, apply_pass_file_template,
     begin_new_password_entry, clean_pass_file, copy_current_otp, copy_current_password,
     copy_current_username, focus_add_pass_field_input, generate_password_entry,
-    open_password_entry_page, refresh_apply_template_button, save_current_password_entry,
-    show_raw_pass_file_page, toggle_password_options, PasswordPageState,
+    import_private_key_from_current_pass_file, open_password_entry_page,
+    refresh_apply_template_button, save_current_password_entry, show_raw_pass_file_page,
+    toggle_password_options, PasswordPageState,
 };
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::object_data::non_null_to_string_option;
@@ -130,6 +131,8 @@ pub(super) fn register_password_page_actions(
         let template_button: Widget = page_state.template_button.clone().upcast();
         let clean_button: Widget = page_state.clean_button.clone().upcast();
         let otp_add_button: Widget = page_state.otp_add_button.clone().upcast();
+        let import_private_key_button: Widget =
+            page_state.import_private_key_button.clone().upcast();
         let editor_save_button: Widget = page_state.editor_save_button.clone().upcast();
         let controller = EventControllerKey::new();
         controller.set_propagation_phase(PropagationPhase::Capture);
@@ -154,6 +157,7 @@ pub(super) fn register_password_page_actions(
                 && (focus == template_button
                     || focus == clean_button
                     || focus == otp_add_button
+                    || focus == import_private_key_button
                     || focus == editor_save_button)
             {
                 focus_add_pass_field_input(&page_state);
@@ -232,6 +236,13 @@ pub(super) fn register_password_page_actions(
         let page_state = page_state.clone();
         register_window_action(window, "generate-password", move || {
             generate_password_entry(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
+        register_window_action(window, "import-private-key-from-pass-file", move || {
+            import_private_key_from_current_pass_file(&page_state);
         });
     }
 

@@ -494,6 +494,14 @@
                                           </object>
                                         </child>
                                         <child>
+                                          <object class="GtkButton" id="import_private_key_button">
+                                            <property name="visible">false</property>
+                                            <property name="icon-name">document-open-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Import private key from this item</property>
+                                            <property name="action-name">win.import-private-key-from-pass-file</property>
+                                          </object>
+                                        </child>
+                                        <child>
                                           <object class="GtkButton" id="editor_save_button">
                                             <property name="visible">false</property>
                                             <property name="label" translatable="yes">Save</property>

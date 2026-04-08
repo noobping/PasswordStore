@@ -3,7 +3,7 @@ use super::super::file::{
     structured_pass_contents, sync_username_row_from_parsed_lines, DynamicFieldTemplate,
     OtpFieldTemplate, StructuredPassLine,
 };
-use super::{refresh_apply_template_button, PasswordPageState};
+use super::{refresh_apply_template_button, refresh_password_analysis_label, PasswordPageState};
 use crate::password::model::OpenPassFile;
 use crate::preferences::Preferences;
 use crate::support::ui::visible_navigation_page_is;
@@ -48,6 +48,7 @@ pub(super) fn sync_editor_contents(
     sync_username_row_from_parsed_lines(&state.username, pass_file, &structured_lines);
     state.otp.sync_from_parsed_lines(&structured_lines, true);
     state.field_add_row.set_text("");
+    refresh_password_analysis_label(state);
     refresh_apply_template_button(state);
     state
         .generator_controls

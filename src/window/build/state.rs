@@ -56,6 +56,7 @@ pub(super) fn password_page_state(
         win: widgets.window_title.clone(),
         status: widgets.password_status.clone(),
         entry: widgets.password_entry.clone(),
+        password_analysis_label: widgets.password_analysis_label.clone(),
         username: widgets.username_entry.clone(),
         otp: otp.clone(),
         field_add_row: widgets.add_field_row.clone(),

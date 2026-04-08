@@ -27,6 +27,7 @@ use crate::password::opened::{
     clear_opened_pass_file, get_opened_pass_file, is_opened_pass_file,
     refresh_opened_pass_file_from_contents, set_opened_pass_file,
 };
+use crate::password::strength::weak_password_reason;
 use crate::password::undo::{push_undo_action, restore_saved_entry_action};
 use crate::preferences::Preferences;
 use crate::private_key::dialog::{
@@ -69,6 +70,21 @@ fn password_open_failure_message(error: Option<&PasswordEntryError>) -> &'static
 
 fn password_save_failure_message(error: &PasswordEntryWriteError) -> &'static str {
     error.save_toast_message()
+}
+
+pub fn refresh_password_analysis_label(state: &PasswordPageState) {
+    if !state.entry.is_visible() {
+        state.password_analysis_label.set_visible(false);
+        return;
+    }
+
+    let Some(description) = weak_password_reason(state.entry.text().as_str()) else {
+        state.password_analysis_label.set_visible(false);
+        return;
+    };
+
+    state.password_analysis_label.set_label(&description);
+    state.password_analysis_label.set_visible(true);
 }
 
 const fn username_fallback_failure_message(error: UsernameFallbackError) -> &'static str {
@@ -301,6 +317,7 @@ fn handle_password_save_result(
             Ok(active_pass_file) => finish_password_save(state, save_context, &active_pass_file),
             Err(err) => {
                 show_password_editor_fields(state);
+                refresh_password_analysis_label(state);
                 log_error(format!("Failed to move password entry after save: {err}"));
                 state
                     .overlay
@@ -309,6 +326,7 @@ fn handle_password_save_result(
         },
         Err(err) => {
             show_password_editor_fields(state);
+            refresh_password_analysis_label(state);
             log_error(format!("Failed to save password entry: {err}"));
             state
                 .overlay
@@ -369,6 +387,7 @@ fn start_password_save_with_progress(
             set_password_save_buttons_sensitive(&state_for_disconnect, true);
             if is_opened_pass_file(&state_for_disconnect.nav, &pass_file_for_disconnect) {
                 show_password_editor_fields(&state_for_disconnect);
+                refresh_password_analysis_label(&state_for_disconnect);
             }
             log_error("Password save worker disconnected unexpectedly.".to_string());
             state_for_disconnect
@@ -808,6 +827,7 @@ pub fn generate_password_entry(state: &PasswordPageState) {
 
     let password = generate_password(&state.generator_controls.settings());
     state.entry.set_text(&password);
+    refresh_password_analysis_label(state);
     if !visible_navigation_page_is(&state.nav, &state.raw_page) {
         state
             .text

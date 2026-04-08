@@ -183,7 +183,8 @@ pub fn dispatch_main_window_command(
     startup_query: Option<String>,
     initial_pass_file: Option<OpenPassFile>,
 ) {
-    let Some(state) = cloned_data::<_, MainWindowCommandState>(window, MAIN_WINDOW_COMMAND_STATE_KEY)
+    let Some(state) =
+        cloned_data::<_, MainWindowCommandState>(window, MAIN_WINDOW_COMMAND_STATE_KEY)
     else {
         return;
     };

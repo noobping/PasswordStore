@@ -5,7 +5,7 @@ use super::super::generation::PasswordGenerationControls;
 use super::super::otp::PasswordOtpState;
 use super::password_open_status_text;
 use crate::window::navigation::{show_secondary_page_chrome, HasWindowChrome};
-use adw::gtk::{Box as GtkBox, Button, ListBox, Revealer, TextView, ToggleButton};
+use adw::gtk::{Box as GtkBox, Button, Label, ListBox, Revealer, TextView, ToggleButton};
 use adw::prelude::*;
 use adw::{EntryRow, NavigationPage, PasswordEntryRow, StatusPage, ToastOverlay, WindowTitle};
 use std::cell::{Cell, RefCell};
@@ -27,6 +27,7 @@ pub struct PasswordPageState {
     pub win: WindowTitle,
     pub status: StatusPage,
     pub entry: PasswordEntryRow,
+    pub password_analysis_label: Label,
     pub username: EntryRow,
     pub otp: PasswordOtpState,
     pub field_add_row: EntryRow,
@@ -70,6 +71,7 @@ fn set_password_editor_action_visibility(
 
 fn hide_password_editor_fields(state: &PasswordPageState) {
     state.entry.set_visible(false);
+    state.password_analysis_label.set_visible(false);
     state.username.set_visible(false);
     state.otp.clear();
     set_password_editor_action_visibility(state, false, false, false, false);
@@ -109,6 +111,7 @@ pub(super) fn show_password_editor_fields(state: &PasswordPageState) {
 
 pub(super) fn reset_password_editor(state: &PasswordPageState) {
     state.entry.set_text("");
+    state.password_analysis_label.set_visible(false);
     sync_username_row(&state.username, None);
     state.otp.clear();
     state.field_add_row.set_text("");

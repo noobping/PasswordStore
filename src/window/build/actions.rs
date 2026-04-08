@@ -14,8 +14,8 @@ use crate::password::page::{
     begin_new_password_entry, clean_pass_file, copy_current_otp, copy_current_password,
     copy_current_username, focus_add_pass_field_input, generate_password_entry,
     import_private_key_from_current_pass_file, open_password_entry_page,
-    refresh_apply_template_button, save_current_password_entry, show_raw_pass_file_page,
-    toggle_password_options, PasswordPageState,
+    refresh_apply_template_button, refresh_password_analysis_label, save_current_password_entry,
+    show_raw_pass_file_page, toggle_password_options, PasswordPageState,
 };
 use crate::support::actions::{activate_widget_action, register_window_action};
 use crate::support::object_data::non_null_to_string_option;
@@ -178,6 +178,14 @@ pub(super) fn register_password_page_actions(
         let buffer = page_state.text.buffer();
         buffer.connect_changed(move |_| {
             refresh_apply_template_button(&page_state);
+        });
+    }
+
+    {
+        let page_state = page_state.clone();
+        let password_entry = page_state.entry.clone();
+        password_entry.connect_changed(move |_| {
+            refresh_password_analysis_label(&page_state);
         });
     }
 

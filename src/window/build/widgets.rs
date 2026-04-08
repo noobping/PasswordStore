@@ -1,7 +1,7 @@
 use adw::glib::{object::IsA, Object};
 use adw::gtk::{
-    Box as GtkBox, Builder, Button, CheckButton, Image, ListBox, MenuButton, Popover, Revealer,
-    ScrolledWindow, SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
+    Box as GtkBox, Builder, Button, CheckButton, Image, Label, ListBox, MenuButton, Popover,
+    Revealer, ScrolledWindow, SearchEntry, SpinButton, Spinner, Stack, TextView, ToggleButton,
 };
 use adw::ActionRow;
 use adw::{
@@ -175,6 +175,7 @@ pub(in crate::window) struct WindowWidgets {
     pub(in crate::window) raw_text_page: NavigationPage,
     pub(in crate::window) password_status: StatusPage,
     pub(in crate::window) password_entry: PasswordEntryRow,
+    pub(in crate::window) password_analysis_label: Label,
     pub(in crate::window) password_generator_settings_button: ToggleButton,
     pub(in crate::window) password_generator_settings_revealer: Revealer,
     pub(in crate::window) password_generator_length_spin: SpinButton,
@@ -424,6 +425,7 @@ impl WindowWidgets {
             raw_text_page: required!("raw_text_page"),
             password_status: required!("password_status"),
             password_entry: required!("password_entry"),
+            password_analysis_label: required!("password_analysis_label"),
             password_generator_settings_button: required!("password_generator_settings_button"),
             password_generator_settings_revealer: required!("password_generator_settings_revealer"),
             password_generator_length_spin: required!("password_generator_length_spin"),

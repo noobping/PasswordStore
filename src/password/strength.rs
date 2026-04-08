@@ -61,7 +61,6 @@ pub fn weak_password_reason(password: &str) -> Option<String> {
 
     None
 }
-
 fn repeated_single_character(password: &str) -> bool {
     let mut chars = password.chars();
     let Some(first) = chars.next() else {

@@ -1,3 +1,5 @@
+use crate::i18n::gettext;
+
 const COMMON_WEAK_PASSWORDS: &[&str] = &[
     "000000",
     "111111",
@@ -20,26 +22,28 @@ const COMMON_WEAK_PASSWORDS: &[&str] = &[
 
 pub fn weak_password_reason(password: &str) -> Option<String> {
     if password.is_empty() {
-        return Some("Password is empty".to_string());
+        return Some(gettext("Password is empty"));
     }
     if password.trim().is_empty() {
-        return Some("Password is only whitespace".to_string());
+        return Some(gettext("Password is only whitespace"));
     }
 
     let normalized = password.trim().to_ascii_lowercase();
     if COMMON_WEAK_PASSWORDS.contains(&normalized.as_str()) {
-        return Some("Matches a common password".to_string());
+        return Some(gettext("Matches a common password"));
     }
     if repeated_single_character(password) {
-        return Some("Repeated single character".to_string());
+        return Some(gettext("Repeated single character"));
     }
 
     let length = password.chars().count();
     if length < 8 {
-        return Some(format!("Too short ({length} characters)"));
+        return Some(
+            gettext("Too short ({length} characters)").replace("{length}", &length.to_string()),
+        );
     }
     if simple_ascii_sequence(&normalized) {
-        return Some("Sequential characters".to_string());
+        return Some(gettext("Sequential characters"));
     }
 
     if looks_like_multiword_passphrase(password) {
@@ -50,13 +54,13 @@ pub fn weak_password_reason(password: &str) -> Option<String> {
     let unique_count = unique_char_count(password);
 
     if length < 10 && class_count <= 2 {
-        return Some("Short with limited character variety".to_string());
+        return Some(gettext("Short with limited character variety"));
     }
     if length < 12 && unique_count <= 4 {
-        return Some("Very low character variety".to_string());
+        return Some(gettext("Very low character variety"));
     }
     if length < 12 && class_count <= 1 {
-        return Some("Single character class and short".to_string());
+        return Some(gettext("Single character class and short"));
     }
 
     None
@@ -115,24 +119,25 @@ fn unique_char_count(password: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::weak_password_reason;
+    use crate::i18n::gettext;
 
     #[test]
     fn weak_password_checks_flag_common_short_and_repetitive_passwords() {
         assert_eq!(
             weak_password_reason("password"),
-            Some("Matches a common password".to_string())
+            Some(gettext("Matches a common password"))
         );
         assert_eq!(
             weak_password_reason("1234567"),
-            Some("Too short (7 characters)".to_string())
+            Some(gettext("Too short ({length} characters)").replace("{length}", "7"))
         );
         assert_eq!(
             weak_password_reason("aaaaaa"),
-            Some("Repeated single character".to_string())
+            Some(gettext("Repeated single character"))
         );
         assert_eq!(
             weak_password_reason("abcdef"),
-            Some("Too short (6 characters)".to_string())
+            Some(gettext("Too short ({length} characters)").replace("{length}", "6"))
         );
     }
 

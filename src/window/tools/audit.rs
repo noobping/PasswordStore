@@ -757,7 +757,7 @@ impl ToolsPageState {
             .set_title(&localized_text(title));
         self.audit_page
             .audit_status
-            .set_description(Some(&gtk_safe_text(description)));
+            .set_description(Some(&localized_text(description)));
     }
 }
 
@@ -861,7 +861,7 @@ fn branch_row_subtitle(branch: &StoreGitAuditBranchRef, runtime: &AuditBranchSta
         return format!("{scope} · {}", gettext(AUDIT_LOADING_COMMITS_TITLE));
     }
     if let Some(err) = runtime.error.borrow().clone() {
-        return format!("{scope} · {err}");
+        return format!("{scope} · {}", localized_text(&err));
     }
     if runtime.loaded_once.get() {
         let count = runtime.commits.borrow().len();
@@ -893,7 +893,7 @@ fn verification_summary(verification: &StoreGitAuditVerification) -> String {
         Some(reason) => format!(
             "{}: {}",
             verification_state_summary(verification),
-            audit_unverified_reason_message(reason)
+            localized_text(audit_unverified_reason_message(reason))
         ),
         None => verification_state_summary(verification),
     }
@@ -1004,7 +1004,7 @@ fn build_info_row(title: &str, subtitle: &str) -> ActionRow {
 }
 
 fn build_info_text_row(title: &str, subtitle: &str) -> ActionRow {
-    build_action_row(title, subtitle, false)
+    build_action_row(title, &localized_text(subtitle), false)
 }
 
 fn build_loading_branch_row() -> ActionRow {
@@ -1068,7 +1068,7 @@ fn build_commit_details_widget(commit: &StoreGitAuditCommit) -> GtkBox {
             &metadata,
             7,
             "Reason",
-            audit_unverified_reason_message(reason),
+            &localized_text(audit_unverified_reason_message(reason)),
             false,
         );
     }
@@ -1084,7 +1084,7 @@ fn build_commit_details_widget(commit: &StoreGitAuditCommit) -> GtkBox {
             &metadata,
             9,
             "Historical fallback",
-            "Enabled for this result",
+            &gettext("Enabled for this result"),
             false,
         );
     }
@@ -1097,7 +1097,7 @@ fn build_commit_details_widget(commit: &StoreGitAuditCommit) -> GtkBox {
     ));
 
     let changed_paths = if commit.changed_paths.is_empty() {
-        "No changed paths".to_string()
+        gettext("No changed paths")
     } else {
         commit
             .changed_paths
@@ -1199,6 +1199,7 @@ mod tests {
         localized_text, reconciled_filter_selection, verification_method_summary,
         verification_state_summary, verification_summary, AuditBranchState,
     };
+    use crate::i18n::gettext;
     use crate::support::git::{
         StoreGitAuditBranchRef, StoreGitAuditCatalog, StoreGitAuditCommit, StoreGitAuditStore,
         StoreGitAuditUnverifiedReason, StoreGitAuditVerification, StoreGitAuditVerificationMethod,
@@ -1336,10 +1337,13 @@ mod tests {
             signer_label: None,
         };
 
-        assert_eq!(verification_state_summary(&verification), "Unverified");
+        assert_eq!(
+            verification_state_summary(&verification),
+            gettext("Unverified")
+        );
         assert_eq!(
             verification_summary(&verification),
-            "Unverified: No signature"
+            format!("{}: {}", gettext("Unverified"), gettext("No signature"))
         );
     }
 
@@ -1355,7 +1359,7 @@ mod tests {
                 signer_fingerprint: None,
                 signer_label: None,
             }),
-            "Host Git (SSH)"
+            gettext("Host Git (SSH)")
         );
         assert_eq!(
             verification_method_summary(&StoreGitAuditVerification {
@@ -1367,7 +1371,7 @@ mod tests {
                 signer_fingerprint: None,
                 signer_label: None,
             }),
-            "Not available"
+            gettext("Not available")
         );
     }
 

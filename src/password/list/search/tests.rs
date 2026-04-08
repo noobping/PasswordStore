@@ -5,6 +5,7 @@ use super::query::{
     WEAK_PASSWORD_SEARCH_KEY,
 };
 use super::{advanced_search_includes_store, SearchRowFieldIndexState};
+use crate::i18n::gettext;
 use crate::password::file::SearchablePassField;
 
 fn clause(field: &str, comparison: SearchComparison, value: &str) -> StructuredSearchQuery {
@@ -744,7 +745,10 @@ fn regex_queries_match_case_sensitive_patterns() {
 fn weak_password_queries_match_only_rows_with_the_weak_password_flag() {
     assert!(matches_query(
         "alice",
-        &indexed_fields(&[(WEAK_PASSWORD_SEARCH_KEY, "Too short (6 characters)")]),
+        &indexed_fields(&[(
+            WEAK_PASSWORD_SEARCH_KEY,
+            &gettext("Too short ({length} characters)").replace("{length}", "6"),
+        )]),
         &SearchQuery::Structured(weak_password()),
     ));
     assert!(!matches_query(

@@ -35,6 +35,8 @@ use crate::window::controls::{
 };
 use crate::window::session::initialize_window_session;
 use adw::gtk::{Builder, ListBox, SearchEntry};
+#[cfg(target_os = "windows")]
+use adw::ToolbarView;
 use adw::{prelude::*, Application, ApplicationWindow};
 use std::rc::Rc;
 
@@ -185,6 +187,14 @@ fn configure_platform_window_header(widgets: &WindowWidgets) {
     if header_bar.find_property("use-native-controls").is_some() {
         header_bar.set_property("use-native-controls", true);
     }
+
+    if let Some(parent) = header_bar.parent() {
+        if let Ok(toolbar_view) = parent.downcast::<ToolbarView>() {
+            toolbar_view.remove(header_bar);
+        }
+    }
+
+    widgets.window.set_titlebar(Some(header_bar));
 }
 
 #[cfg(not(target_os = "windows"))]

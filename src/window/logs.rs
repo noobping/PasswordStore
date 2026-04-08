@@ -11,6 +11,13 @@ use std::time::Duration;
 
 const LOG_SCROLL_BOTTOM_EPSILON: f64 = 1.0;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LogBufferUpdate<'a> {
+    None,
+    Append(&'a str),
+    Replace(&'a str),
+}
+
 pub fn register_open_log_action(
     window: &ApplicationWindow,
     navigation_state: &WindowNavigationState,
@@ -33,18 +40,38 @@ pub fn start_log_poller(view: &TextView) {
     let view = view.clone();
     let scrolled = enclosing_scrolled_window(&view);
     let seen_revision = Rc::new(RefCell::new(0usize));
+    let visible_text = Rc::new(RefCell::new(String::new()));
     glib::timeout_add_local(Duration::from_millis(50), move || {
         let (revision, _error_revision, text) = log_snapshot();
         {
             let mut seen = seen_revision.borrow_mut();
             if revision != *seen {
+                let safe_text = gtk_safe_log_text(&text);
                 let keep_bottom = scrolled.as_ref().is_some_and(scrolled_window_is_at_bottom);
-                view.buffer().set_text(&gtk_safe_log_text(&text));
-                if keep_bottom {
+                let update = {
+                    let visible = visible_text.borrow();
+                    log_buffer_update(&visible, &safe_text)
+                };
+
+                match update {
+                    LogBufferUpdate::None => {}
+                    LogBufferUpdate::Append(appended) => {
+                        let buffer = view.buffer();
+                        let mut end = buffer.end_iter();
+                        buffer.insert(&mut end, appended);
+                    }
+                    LogBufferUpdate::Replace(replacement) => {
+                        view.buffer().set_text(replacement);
+                    }
+                }
+
+                if !matches!(update, LogBufferUpdate::None) && keep_bottom {
                     if let Some(scrolled) = scrolled.as_ref() {
                         queue_scroll_to_bottom(scrolled);
                     }
                 }
+
+                *visible_text.borrow_mut() = safe_text;
                 *seen = revision;
             }
         }
@@ -93,13 +120,26 @@ fn scroll_position_is_at_bottom(value: f64, upper: f64, page_size: f64) -> bool 
     scroll_bottom_value(upper, page_size) - value <= LOG_SCROLL_BOTTOM_EPSILON
 }
 
+fn log_buffer_update<'a>(visible: &str, next: &'a str) -> LogBufferUpdate<'a> {
+    if visible == next {
+        LogBufferUpdate::None
+    } else if let Some(appended) = next.strip_prefix(visible) {
+        LogBufferUpdate::Append(appended)
+    } else {
+        LogBufferUpdate::Replace(next)
+    }
+}
+
 fn gtk_safe_log_text(text: &str) -> String {
     text.replace('\0', "\u{FFFD}")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{gtk_safe_log_text, scroll_bottom_value, scroll_position_is_at_bottom};
+    use super::{
+        gtk_safe_log_text, log_buffer_update, scroll_bottom_value, scroll_position_is_at_bottom,
+        LogBufferUpdate,
+    };
 
     #[test]
     fn gtk_safe_log_text_replaces_embedded_nuls() {
@@ -119,5 +159,21 @@ mod tests {
     #[test]
     fn scroll_position_detects_when_user_scrolled_up() {
         assert!(!scroll_position_is_at_bottom(60.0, 200.0, 100.0));
+    }
+
+    #[test]
+    fn log_buffer_update_appends_new_tail() {
+        assert_eq!(
+            log_buffer_update("alpha", "alpha\nbeta"),
+            LogBufferUpdate::Append("\nbeta")
+        );
+    }
+
+    #[test]
+    fn log_buffer_update_replaces_when_text_diverges() {
+        assert_eq!(
+            log_buffer_update("alpha", "beta"),
+            LogBufferUpdate::Replace("beta")
+        );
     }
 }

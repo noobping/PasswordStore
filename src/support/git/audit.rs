@@ -3,7 +3,7 @@ use super::command::{
     run_store_remote_git_command,
 };
 use super::repository::has_git_repository;
-use crate::backend::available_standard_public_certs;
+use crate::backend::{available_host_gpg_public_certs, available_standard_public_certs};
 use crate::fido2_recipient::FIDO2_RECIPIENTS_FILE_NAME;
 use crate::logging::{log_error, run_command_with_input, CommandLogOptions};
 use crate::preferences::Preferences;
@@ -241,7 +241,7 @@ pub fn load_store_git_audit_commit_page(
     use_commit_history_recipients: bool,
     page: usize,
 ) -> Result<StoreGitAuditCommitPage, String> {
-    let all_certs = available_standard_public_certs()?;
+    let all_certs = audit_available_standard_public_certs()?;
     let branch_tip_context = load_tree_recipient_context(store_root, full_ref, &all_certs)?;
     let summaries = read_commit_summaries(store_root, full_ref, page)?;
     let has_more = summaries.len() > STORE_GIT_AUDIT_PAGE_SIZE;
@@ -293,6 +293,37 @@ pub fn load_store_git_audit_commit_page(
         has_more,
         next_page: page + 1,
     })
+}
+
+fn audit_available_standard_public_certs() -> Result<Vec<Cert>, String> {
+    let mut certs = available_standard_public_certs()?;
+    if !host_git_audit_verification_enabled() {
+        return Ok(certs);
+    }
+
+    match available_host_gpg_public_certs() {
+        Ok(host_certs) => extend_unique_certs(&mut certs, host_certs),
+        Err(err) => {
+            log_error(format!(
+                "Failed to load host GPG public keys for audit verification, continuing with app keys only: {err}"
+            ));
+        }
+    }
+
+    Ok(certs)
+}
+
+fn extend_unique_certs(certs: &mut Vec<Cert>, additional: Vec<Cert>) {
+    let mut seen = certs
+        .iter()
+        .map(|cert| cert.fingerprint().to_hex())
+        .collect::<HashSet<_>>();
+    for cert in additional {
+        let fingerprint = cert.fingerprint().to_hex();
+        if seen.insert(fingerprint) {
+            certs.push(cert);
+        }
+    }
 }
 
 pub fn audit_unverified_reason_message(reason: StoreGitAuditUnverifiedReason) -> &'static str {

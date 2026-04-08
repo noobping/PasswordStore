@@ -14,8 +14,14 @@ use crate::backend::{
     PasswordEntryError, PasswordEntryWriteError, StoreRecipients, StoreRecipientsError,
     StoreRecipientsPrivateKeyRequirement,
 };
+#[cfg(all(target_os = "linux", feature = "audit"))]
+use crate::logging::log_error;
 use crate::logging::CommandLogOptions;
 use crate::support::git::{ensure_store_git_repository, has_git_repository};
+#[cfg(all(target_os = "linux", feature = "audit"))]
+use sequoia_openpgp::{cert::CertParser, parse::Parse, Cert};
+#[cfg(all(target_os = "linux", feature = "audit"))]
+use std::collections::HashSet;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -437,6 +443,18 @@ pub fn list_host_gpg_private_keys() -> Result<Vec<HostGpgPrivateKeySummary>, Str
     )))
 }
 
+#[cfg(all(target_os = "linux", feature = "audit"))]
+pub fn available_host_gpg_public_certs() -> Result<Vec<Cert>, String> {
+    let output = run_host_program_output(
+        "gpg",
+        &["--batch", "--export"],
+        "Export host GPG public keys",
+        CommandLogOptions::DEFAULT,
+    )?;
+    let output = ensure_success(output, "gpg --export failed")?;
+    parse_host_gpg_public_certs(&output.stdout)
+}
+
 #[cfg(target_os = "linux")]
 pub fn armored_host_gpg_private_key(fingerprint: &str) -> Result<String, String> {
     let output = run_host_program_output(
@@ -580,8 +598,36 @@ fn parse_host_gpg_private_keys(output: &str) -> Vec<HostGpgPrivateKeySummary> {
     keys
 }
 
+#[cfg(all(target_os = "linux", feature = "audit"))]
+fn parse_host_gpg_public_certs(bytes: &[u8]) -> Result<Vec<Cert>, String> {
+    let parser = CertParser::from_bytes(bytes).map_err(|err| err.to_string())?;
+    let mut certs = Vec::new();
+    let mut seen = HashSet::new();
+
+    for cert in parser {
+        match cert {
+            Ok(cert) => {
+                let cert = cert.strip_secret_key_material();
+                let fingerprint = cert.fingerprint().to_hex();
+                if seen.insert(fingerprint) {
+                    certs.push(cert);
+                }
+            }
+            Err(err) => {
+                log_error(format!(
+                    "Ignoring invalid host GPG public key while loading audit verification keys: {err}"
+                ));
+            }
+        }
+    }
+
+    Ok(certs)
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
+    #[cfg(feature = "audit")]
+    use super::parse_host_gpg_public_certs;
     use super::{
         list_host_gpg_private_keys, parse_host_gpg_private_keys, save_password_entry,
         save_store_recipients,
@@ -592,6 +638,8 @@ mod tests {
         StoreRecipients, StoreRecipientsError, StoreRecipientsPrivateKeyRequirement,
     };
     use crate::support::git::has_git_repository;
+    #[cfg(feature = "audit")]
+    use sequoia_openpgp::cert::CertBuilder;
     use sequoia_openpgp::serialize::Serialize;
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -843,5 +891,32 @@ uid:u::::1::Duplicate Alice <alice@example.com>::::::::::0:\n",
                     .iter()
                     .any(|user_id| user_id == "Host User <host-user@example.com>")
         }));
+    }
+
+    #[cfg(feature = "audit")]
+    #[test]
+    fn host_gpg_public_key_parser_reads_multiple_certs() {
+        let (alice, _) = CertBuilder::general_purpose(Some("alice@example.com"))
+            .generate()
+            .expect("generate alice cert");
+        let (bob, _) = CertBuilder::general_purpose(Some("bob@example.com"))
+            .generate()
+            .expect("generate bob cert");
+        let mut bytes = Vec::new();
+        alice
+            .serialize(&mut bytes)
+            .expect("serialize alice public cert");
+        bob.serialize(&mut bytes)
+            .expect("serialize bob public cert");
+
+        let certs = parse_host_gpg_public_certs(&bytes).expect("parse host public certs");
+
+        assert_eq!(certs.len(), 2);
+        assert!(certs
+            .iter()
+            .any(|cert| cert.fingerprint() == alice.fingerprint()));
+        assert!(certs
+            .iter()
+            .any(|cert| cert.fingerprint() == bob.fingerprint()));
     }
 }

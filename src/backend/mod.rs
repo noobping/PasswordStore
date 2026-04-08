@@ -104,6 +104,19 @@ pub fn available_standard_public_certs() -> Result<Vec<Cert>, String> {
     integrated::available_standard_public_certs()
 }
 
+#[cfg(feature = "audit")]
+pub fn available_host_gpg_public_certs() -> Result<Vec<Cert>, String> {
+    #[cfg(target_os = "linux")]
+    {
+        host::available_host_gpg_public_certs()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
 use crate::preferences::Preferences;
 
 fn dispatch_backend<T>(integrated: impl FnOnce() -> T, host: impl FnOnce() -> T) -> T {

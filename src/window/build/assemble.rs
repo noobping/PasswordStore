@@ -352,9 +352,6 @@ fn initialize_backend_preferences(widgets: &WindowWidgets, preferences: &Prefere
         return;
     }
 
-    widgets
-        .backend_preferences
-        .set_sensitive(has_host_permission());
     append_optional_host_access_group_row(
         &widgets.host_access_preferences_group,
         &widgets.toast_overlay,

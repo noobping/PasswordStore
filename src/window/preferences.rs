@@ -9,9 +9,9 @@ use crate::store::management::{rebuild_store_list, StoreRecipientsPageState};
 use crate::support::actions::activate_widget_action;
 use crate::support::actions::register_window_action;
 use crate::support::git::git_command_available;
-#[cfg(feature = "flatpak")]
-use crate::support::runtime::has_host_permission;
-use crate::support::runtime::{supports_audit_features, supports_host_command_features};
+use crate::support::runtime::{
+    has_host_permission, supports_audit_features, supports_host_command_features,
+};
 use crate::support::ui::{
     connect_entry_row_apply_button_to_nonempty_text, focus_first_matching_list_row_in_order,
     list_row_is_keyboard_focusable, reveal_navigation_page,
@@ -39,11 +39,14 @@ fn sync_backend_preferences_rows(
 ) {
     let backend = preferences.backend_kind();
     let position = combo_position_for_backend_kind(backend);
+    let host_backend_controls_available = supports_host_command_features() && has_host_permission();
     if backend_row.selected() != position {
         backend_row.set_selected(position);
     }
     backend_row.set_visible(backend_row_is_visible());
+    backend_row.set_sensitive(host_backend_controls_available);
     pass_row.set_visible(host_command_preferences_visible(preferences));
+    pass_row.set_sensitive(host_backend_controls_available);
     sync_private_key_sync_row(sync_row, sync_check, preferences);
     sync_audit_history_recipient_row(audit_row, audit_check, preferences);
 }

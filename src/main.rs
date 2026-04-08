@@ -135,8 +135,6 @@ fn main() -> ExitCode {
     install_color_scheme_tracking(&display);
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);
-    #[cfg(target_os = "windows")]
-    add_windows_icon_search_path(&theme);
 
     match backend::prepare_startup() {
         Ok(backend::StartupPreparation::Ready) => {}
@@ -460,21 +458,6 @@ fn quoted_pixbuf_loader_name(line: &str) -> Option<&str> {
         return None;
     }
     Some(name)
-}
-
-#[cfg(target_os = "windows")]
-fn add_windows_icon_search_path(theme: &IconTheme) {
-    if let Some(path) = windows_icon_search_path() {
-        theme.add_search_path(path);
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn windows_icon_search_path() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|dir| dir.join("share").join("icons")))
-        .filter(|path| path.is_dir())
 }
 
 fn register_app_actions(app: &Application) {

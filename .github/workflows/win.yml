@@ -132,53 +132,6 @@ jobs:
             Copy-Item $fontConfigDir (Join-Path $shareDir 'fontconfig') -Recurse -Force
           }
 
-          $adwaitaSourceDir = Join-Path $mingwRoot 'share\icons\Adwaita'
-          if (Test-Path $adwaitaSourceDir) {
-            Copy-Item $adwaitaSourceDir (Join-Path $shareDir 'icons\Adwaita') -Recurse -Force
-          }
-
-          $hicolorThemeDir = Join-Path $bundleDir 'share\icons\hicolor'
-          $adwaitaThemeDir = Join-Path $bundleDir 'share\icons\Adwaita'
-
-          $iconDirs = @{
-            'data\256x256\apps' = @('256x256\apps')
-            'data\scalable\apps' = @('scalable\apps')
-            'data\symbolic\apps' = @('symbolic\apps', 'symbolic\actions')
-          }
-
-          $themeTargets = @(
-            @{ Name = 'hicolor'; Dir = $hicolorThemeDir; SkipExisting = $false }
-            @{ Name = 'Adwaita'; Dir = $adwaitaThemeDir; SkipExisting = $true }
-          )
-
-          foreach ($theme in $themeTargets) {
-            foreach ($source in $iconDirs.Keys) {
-              $sourceDir = Join-Path $workspace $source
-              if (-not (Test-Path $sourceDir)) {
-                continue
-              }
-
-              foreach ($relativeDest in $iconDirs[$source]) {
-                $destDir = Join-Path $theme.Dir $relativeDest
-                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-
-                Get-ChildItem -Path $sourceDir -File | ForEach-Object {
-                  $destFile = Join-Path $destDir $_.Name
-
-                  if ($theme.SkipExisting -and (Test-Path $destFile)) {
-                    Write-Host "Skipping existing [$($theme.Name)]: $destFile"
-                    return
-                  }
-
-                  Copy-Item $_.FullName $destFile -Force
-                }
-              }
-            }
-          }
-
-          $indexTheme = Join-Path $workspace 'data\windows\share\icons\hicolor\index.theme'
-          Copy-Item $indexTheme $hicolorThemeDir -Force
-
           $etcDir = Join-Path $mingwRoot 'etc'
           if (Test-Path $etcDir) {
             Copy-Item $etcDir (Join-Path $bundleDir 'etc') -Recurse -Force

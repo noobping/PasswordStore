@@ -68,6 +68,8 @@ use winsafe::{self as w, co};
 
 const APP_ID: &str = env!("APP_ID");
 const RESOURCE_ID: &str = env!("RESOURCE_ID");
+#[cfg(target_os = "windows")]
+const WINDOWS_ICON_RESOURCE_PATH: &str = concat!(env!("RESOURCE_ID"), "/windows/share/icons");
 const ISSUE_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
 const MAIN_WINDOW_ACTIVATING_KEY: &str = "main-window-activating";
 const RIPASSO_VERSION: &str = env!("RIPASSO_VERSION");
@@ -136,7 +138,7 @@ fn main() -> ExitCode {
     let theme = IconTheme::for_display(&display);
     theme.add_resource_path(RESOURCE_ID);
     #[cfg(target_os = "windows")]
-    add_windows_icon_search_path(&theme);
+    add_windows_icon_theme_paths(&theme);
 
     match backend::prepare_startup() {
         Ok(backend::StartupPreparation::Ready) => {}
@@ -463,7 +465,8 @@ fn quoted_pixbuf_loader_name(line: &str) -> Option<&str> {
 }
 
 #[cfg(target_os = "windows")]
-fn add_windows_icon_search_path(theme: &IconTheme) {
+fn add_windows_icon_theme_paths(theme: &IconTheme) {
+    theme.add_resource_path(WINDOWS_ICON_RESOURCE_PATH);
     if let Some(path) = windows_icon_search_path() {
         theme.add_search_path(path);
     }

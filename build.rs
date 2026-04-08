@@ -34,6 +34,28 @@ enum ActivePoField {
     StrPlural(usize),
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ResourceFileEntry {
+    source: String,
+    alias: Option<String>,
+}
+
+impl ResourceFileEntry {
+    fn source(source: String) -> Self {
+        Self {
+            source,
+            alias: None,
+        }
+    }
+
+    fn alias(source: impl Into<String>, alias: impl Into<String>) -> Self {
+        Self {
+            source: source.into(),
+            alias: Some(alias.into()),
+        }
+    }
+}
+
 fn main() {
     let docs_enabled = env::var_os("CARGO_FEATURE_DOCS").is_some();
 
@@ -66,10 +88,11 @@ fn main() {
     fs::create_dir_all(data_dir).expect("Failed to create data directory");
     fs::create_dir_all(po_dir).expect("Failed to create po directory");
 
-    let mut icons = Vec::new();
-    collect_icon_assets(data_dir, data_dir, &mut icons);
-    icons.sort();
-    write_resources_xml(data_dir, &icons);
+    let mut resource_files = Vec::new();
+    collect_icon_assets(data_dir, data_dir, &mut resource_files);
+    extend_windows_icon_theme_resources(data_dir, &mut resource_files);
+    resource_files.sort();
+    write_resources_xml(data_dir, &resource_files);
 
     glib_build_tools::compile_resources(&[data_dir], "data/resources.xml", "compiled.gresource");
 
@@ -1107,12 +1130,18 @@ fn write_if_changed_binary(path: &Path, contents: &[u8]) {
         .unwrap_or_else(|err| panic!("Failed to write {}: {err}", path.display()));
 }
 
-fn write_resources_xml(data_dir: &Path, icons: &[String]) {
+fn write_resources_xml(data_dir: &Path, resource_files: &[ResourceFileEntry]) {
     let mut xml = String::from("<gresources>\n");
     writeln!(xml, "\t<gresource prefix=\"{}\">", resource_id())
         .expect("Failed to format resource prefix");
-    for icon in icons {
-        writeln!(xml, "\t\t<file>{icon}</file>").expect("Failed to format resource entry");
+    for file in resource_files {
+        if let Some(alias) = file.alias.as_deref() {
+            writeln!(xml, "\t\t<file alias=\"{alias}\">{}</file>", file.source)
+                .expect("Failed to format aliased resource entry");
+        } else {
+            writeln!(xml, "\t\t<file>{}</file>", file.source)
+                .expect("Failed to format resource entry");
+        }
     }
     xml.push_str("\t</gresource>\n</gresources>\n");
     let path = data_dir.join("resources.xml");
@@ -1259,13 +1288,13 @@ fn find_locked_package_version(lockfile: &str, package: &str) -> Option<String> 
     None
 }
 
-fn collect_icon_assets(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
+fn collect_icon_assets(dir: &Path, data_dir: &Path, resource_files: &mut Vec<ResourceFileEntry>) {
     for entry in fs::read_dir(dir).expect("Failed to read resource directory") {
         let entry = entry.expect("Failed to read resource directory entry");
         let path = entry.path();
 
         if path.is_dir() {
-            collect_icon_assets(&path, data_dir, icons);
+            collect_icon_assets(&path, data_dir, resource_files);
         } else if matches!(
             path.extension().and_then(|value| value.to_str()),
             Some("png" | "svg")
@@ -1276,9 +1305,53 @@ fn collect_icon_assets(dir: &Path, data_dir: &Path, icons: &mut Vec<String>) {
             let rel = path
                 .strip_prefix(data_dir)
                 .expect("Resource path should stay within data/");
-            icons.push(rel.to_string_lossy().into_owned());
+            resource_files.push(ResourceFileEntry::source(
+                rel.to_string_lossy().into_owned(),
+            ));
         }
     }
+}
+
+fn extend_windows_icon_theme_resources(
+    data_dir: &Path,
+    resource_files: &mut Vec<ResourceFileEntry>,
+) {
+    let theme_index = data_dir.join("windows/share/icons/hicolor/index.theme");
+    if theme_index.is_file() {
+        resource_files.push(ResourceFileEntry::source(
+            "windows/share/icons/hicolor/index.theme".to_string(),
+        ));
+    }
+
+    let sources = resource_files
+        .iter()
+        .map(|entry| entry.source.clone())
+        .collect::<Vec<_>>();
+    for source in sources {
+        for alias in windows_icon_theme_aliases(&source) {
+            resource_files.push(ResourceFileEntry::alias(source.clone(), alias));
+        }
+    }
+}
+
+fn windows_icon_theme_aliases(source: &str) -> Vec<String> {
+    if source.starts_with("256x256/apps/") || source.starts_with("scalable/apps/") {
+        return vec![format!("windows/share/icons/hicolor/{source}")];
+    }
+
+    if let Some(file_name) = source.strip_prefix("symbolic/apps/") {
+        let mut aliases = vec![format!(
+            "windows/share/icons/hicolor/symbolic/actions/{file_name}"
+        )];
+        if file_name.starts_with("io.github.noobping.") {
+            aliases.push(format!(
+                "windows/share/icons/hicolor/symbolic/apps/{file_name}"
+            ));
+        }
+        return aliases;
+    }
+
+    Vec::new()
 }
 
 #[cfg(not(feature = "setup"))]

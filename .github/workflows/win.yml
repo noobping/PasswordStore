@@ -129,6 +129,13 @@ jobs:
             Copy-Item (Join-Path $iconSourceDir '*.svg') $iconTargetDir -Force
           }
 
+          $iconSourceDir = Join-Path $workspace 'data\symbolic\apps'
+          $iconTargetDir = Join-Path $shareDir 'icons\hicolor\symbolic\apps'
+          if (Test-Path $iconSourceDir) {
+            New-Item -ItemType Directory -Path $iconTargetDir -Force | Out-Null
+            Copy-Item (Join-Path $iconSourceDir '*.svg') $iconTargetDir -Force
+          }
+
           $icon256SourceDir = Join-Path $workspace 'data\256x256\apps'
           $icon256TargetDir = Join-Path $shareDir 'icons\hicolor\256x256\apps'
           if (Test-Path $icon256SourceDir) {

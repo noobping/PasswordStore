@@ -47,13 +47,6 @@ impl ResourceFileEntry {
             alias: None,
         }
     }
-
-    fn alias(source: impl Into<String>, alias: impl Into<String>) -> Self {
-        Self {
-            source: source.into(),
-            alias: Some(alias.into()),
-        }
-    }
 }
 
 fn main() {
@@ -90,7 +83,6 @@ fn main() {
 
     let mut resource_files = Vec::new();
     collect_icon_assets(data_dir, data_dir, &mut resource_files);
-    extend_windows_icon_theme_resources(data_dir, &mut resource_files);
     resource_files.sort();
     write_resources_xml(data_dir, &resource_files);
 
@@ -1310,48 +1302,6 @@ fn collect_icon_assets(dir: &Path, data_dir: &Path, resource_files: &mut Vec<Res
             ));
         }
     }
-}
-
-fn extend_windows_icon_theme_resources(
-    data_dir: &Path,
-    resource_files: &mut Vec<ResourceFileEntry>,
-) {
-    let theme_index = data_dir.join("windows/share/icons/hicolor/index.theme");
-    if theme_index.is_file() {
-        resource_files.push(ResourceFileEntry::source(
-            "windows/share/icons/hicolor/index.theme".to_string(),
-        ));
-    }
-
-    let sources = resource_files
-        .iter()
-        .map(|entry| entry.source.clone())
-        .collect::<Vec<_>>();
-    for source in sources {
-        for alias in windows_icon_theme_aliases(&source) {
-            resource_files.push(ResourceFileEntry::alias(source.clone(), alias));
-        }
-    }
-}
-
-fn windows_icon_theme_aliases(source: &str) -> Vec<String> {
-    if source.starts_with("256x256/apps/") || source.starts_with("scalable/apps/") {
-        return vec![format!("windows/share/icons/hicolor/{source}")];
-    }
-
-    if let Some(file_name) = source.strip_prefix("symbolic/apps/") {
-        let mut aliases = vec![format!(
-            "windows/share/icons/hicolor/symbolic/actions/{file_name}"
-        )];
-        if file_name.starts_with("io.github.noobping.") {
-            aliases.push(format!(
-                "windows/share/icons/hicolor/symbolic/apps/{file_name}"
-            ));
-        }
-        return aliases;
-    }
-
-    Vec::new()
 }
 
 #[cfg(not(feature = "setup"))]

@@ -720,14 +720,6 @@ pub fn flat_icon_button_with_tooltip(icon_name: &str, tooltip: &str) -> Button {
     button
 }
 
-#[cfg(target_os = "windows")]
-pub fn flat_resource_icon_button_with_tooltip(resource_path: &str, tooltip: &str) -> Button {
-    let button = flat_resource_icon_button(resource_path);
-    let tooltip = gettext(tooltip);
-    button.set_tooltip_text(Some(&tooltip));
-    button
-}
-
 pub fn add_persistent_hide_button(row: &ActionRow, notice_id: &str, on_hide: impl Fn() + 'static) {
     let button = flat_icon_button_with_tooltip("window-close-symbolic", "Hide permanently");
     row.add_suffix(&button);

@@ -1,6 +1,6 @@
 project(
   'keycord',
-  version: '0.9.9',
+  version: '0.9.10',
   meson_version: '>=1.1.0',
 )
 

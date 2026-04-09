@@ -80,6 +80,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.9.10" date="2026-04-10">
+      <description>
+        <p>Fixed Gnome search provider</p>
+      </description>
+    </release>
     <release version="0.9.9" date="2026-04-09">
       <description>
         <ul>

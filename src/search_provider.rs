@@ -251,9 +251,6 @@ fn meta_for_identifier(
 fn fallback_meta(identifier: &str) -> HashMap<String, Variant> {
     let mut meta = HashMap::new();
     meta.insert("id".to_string(), identifier.to_variant());
-    #[cfg(feature = "hardening")]
-    meta.insert("name".to_string(), "Password entry".to_variant());
-    #[cfg(not(feature = "hardening"))]
     meta.insert("name".to_string(), identifier.to_variant());
     meta.insert("gicon".to_string(), APP_ID.to_variant());
     meta
@@ -418,15 +415,6 @@ mod tests {
                 "alice".to_string(),
             ]),
             "find otp and user alice".to_string()
-        );
-    }
-
-    #[cfg(feature = "hardening")]
-    #[test]
-    fn search_terms_normalization_drops_empty_values() {
-        assert_eq!(
-            normalized_search_terms(&["  Alice ".to_string(), "".to_string(), "Work".to_string()]),
-            vec!["alice".to_string(), "work".to_string()]
         );
     }
 

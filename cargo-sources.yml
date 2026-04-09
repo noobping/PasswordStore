@@ -3530,13 +3530,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/tokio/tokio-1.51.0.crate
-  sha256: 2bd1c4c0fc4a7ab90fc15ef6daaa3ec3b893f004f915f2392557ed23237820cd
-  dest: cargo/vendor/tokio-1.51.0
+  url: https://static.crates.io/crates/tokio/tokio-1.51.1.crate
+  sha256: f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c
+  dest: cargo/vendor/tokio-1.51.1
 - type: inline
-  contents: '{"package": "2bd1c4c0fc4a7ab90fc15ef6daaa3ec3b893f004f915f2392557ed23237820cd",
+  contents: '{"package": "f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c",
     "files": {}}'
-  dest: cargo/vendor/tokio-1.51.0
+  dest: cargo/vendor/tokio-1.51.1
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
@@ -3620,13 +3620,13 @@
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip
-  url: https://static.crates.io/crates/toml_edit/toml_edit-0.25.10+spec-1.1.0.crate
-  sha256: a82418ca169e235e6c399a84e395ab6debeb3bc90edc959bf0f48647c6a32d1b
-  dest: cargo/vendor/toml_edit-0.25.10+spec-1.1.0
+  url: https://static.crates.io/crates/toml_edit/toml_edit-0.25.11+spec-1.1.0.crate
+  sha256: 0b59c4d22ed448339746c59b905d24568fcbb3ab65a500494f7b8c3e97739f2b
+  dest: cargo/vendor/toml_edit-0.25.11+spec-1.1.0
 - type: inline
-  contents: '{"package": "a82418ca169e235e6c399a84e395ab6debeb3bc90edc959bf0f48647c6a32d1b",
+  contents: '{"package": "0b59c4d22ed448339746c59b905d24568fcbb3ab65a500494f7b8c3e97739f2b",
     "files": {}}'
-  dest: cargo/vendor/toml_edit-0.25.10+spec-1.1.0
+  dest: cargo/vendor/toml_edit-0.25.11+spec-1.1.0
   dest-filename: .cargo-checksum.json
 - type: archive
   archive-type: tar-gzip

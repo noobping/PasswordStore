@@ -116,11 +116,11 @@ pub(super) fn sync_store_recipients_mode_controls(
     state
         .platform
         .add_hardware_key_row
-        .set_visible(show_standard_rows && hardwarekey_supported);
+        .set_visible(show_standard_rows && smartcard_supported);
     state
         .platform
         .import_hardware_key_row
-        .set_visible(show_standard_rows && hardwarekey_supported);
+        .set_visible(show_standard_rows && smartcard_supported);
     state
         .platform
         .add_fido2_key_row
@@ -134,7 +134,10 @@ pub(super) fn sync_store_recipients_mode_controls(
             &state.platform.add_hardware_key_row,
             &state.platform.import_hardware_key_row,
         ],
-        show_standard_rows && smartcard_supported && hardwarekey_supported,
+        show_standard_rows
+            && (state.platform.setup_hardware_key_row.is_visible()
+                || state.platform.add_hardware_key_row.is_visible()
+                || state.platform.import_hardware_key_row.is_visible()),
     );
     append_optional_fido2_access_group_row(
         &state.platform.add_list,

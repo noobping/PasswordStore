@@ -13,12 +13,11 @@ use super::super::cert::{
     ManagedRipassoHardwareKey, ManagedRipassoPrivateKey, ManagedRipassoPrivateKeyProtection,
 };
 use super::super::hardware::list_hardware_tokens;
+#[cfg(feature = "smartcard")]
+use super::super::hardware::private_key_error_from_hardware_transport_error;
 #[cfg(feature = "hardwarekey")]
-use super::super::hardware::{
-    generate_hardware_key_material, private_key_error_from_hardware_transport_error,
-    HardwareKeyGenerationRequest,
-};
-#[cfg(feature = "hardwarekey")]
+use super::super::hardware::{generate_hardware_key_material, HardwareKeyGenerationRequest};
+#[cfg(feature = "smartcard")]
 use super::manifest::HardwarePrivateKeyManifest;
 #[cfg(feature = "fidokey")]
 use super::manifest::{
@@ -34,15 +33,18 @@ use super::manifest::{
 use super::missing_private_key_error;
 #[cfg(feature = "fidokey")]
 use super::paths::ripasso_fido_keys_dir;
-#[cfg(feature = "hardwarekey")]
+#[cfg(feature = "smartcard")]
 use super::paths::{hardware_manifest_path, hardware_public_key_path};
 use super::paths::{ripasso_keys_dir, ripasso_keys_v2_dir};
 use super::private_key_not_stored_error;
 #[cfg(not(feature = "fidokey"))]
 use super::FIDO2_PRIVATE_KEY_FEATURE_DISABLED_ERROR;
+#[cfg(not(feature = "smartcard"))]
+const SMARTCARD_FEATURE_DISABLED_ERROR: &str =
+    "Managed smartcard add/import is disabled in this build of Keycord.";
 #[cfg(not(feature = "hardwarekey"))]
 const HARDWAREKEY_FEATURE_DISABLED_ERROR: &str =
-    "Managed hardware-key add/import/setup is disabled in this build of Keycord.";
+    "Managed hardware-key setup is disabled in this build of Keycord.";
 use crate::backend::PrivateKeyError;
 #[cfg(feature = "fidokey")]
 use crate::fido2_recipient::parse_fido2_recipient_string;
@@ -807,7 +809,7 @@ pub fn store_ripasso_private_key_bytes(
     Ok(key)
 }
 
-#[cfg(feature = "hardwarekey")]
+#[cfg(feature = "smartcard")]
 fn validate_hardware_key_material(
     cert: &Cert,
     hardware: &ManagedRipassoHardwareKey,
@@ -878,7 +880,7 @@ fn validate_hardware_key_material(
     Ok(())
 }
 
-#[cfg(feature = "hardwarekey")]
+#[cfg(feature = "smartcard")]
 pub fn store_ripasso_hardware_key_bytes(
     bytes: &[u8],
     hardware: ManagedRipassoHardwareKey,
@@ -906,7 +908,7 @@ pub fn store_ripasso_hardware_key_bytes(
     Ok(key)
 }
 
-#[cfg(feature = "hardwarekey")]
+#[cfg(feature = "smartcard")]
 pub fn import_ripasso_hardware_key_bytes(
     bytes: &[u8],
     hardware: ManagedRipassoHardwareKey,
@@ -914,26 +916,26 @@ pub fn import_ripasso_hardware_key_bytes(
     store_ripasso_hardware_key_bytes(bytes, hardware)
 }
 
-#[cfg(not(feature = "hardwarekey"))]
+#[cfg(not(feature = "smartcard"))]
 pub fn import_ripasso_hardware_key_bytes(
     _bytes: &[u8],
     _hardware: ManagedRipassoHardwareKey,
 ) -> Result<ManagedRipassoPrivateKey, PrivateKeyError> {
     Err(PrivateKeyError::unsupported_hardware_key(
-        HARDWAREKEY_FEATURE_DISABLED_ERROR,
+        SMARTCARD_FEATURE_DISABLED_ERROR,
     ))
 }
 
-#[cfg(feature = "hardwarekey")]
+#[cfg(feature = "smartcard")]
 pub fn discover_ripasso_hardware_keys(
 ) -> Result<Vec<super::super::hardware::DiscoveredHardwareToken>, String> {
     list_hardware_tokens().map_err(|err| err.to_string())
 }
 
-#[cfg(not(feature = "hardwarekey"))]
+#[cfg(not(feature = "smartcard"))]
 pub fn discover_ripasso_hardware_keys(
 ) -> Result<Vec<super::super::hardware::DiscoveredHardwareToken>, String> {
-    Err(HARDWAREKEY_FEATURE_DISABLED_ERROR.to_string())
+    Err(SMARTCARD_FEATURE_DISABLED_ERROR.to_string())
 }
 
 #[cfg(feature = "hardwarekey")]

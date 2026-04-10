@@ -1419,26 +1419,42 @@ fn smartcard_enumeration_failures_do_not_block_loading_stored_key_ring() {
         .contains("Mock smartcard enumeration failure."));
 }
 
-#[cfg(not(feature = "hardwarekey"))]
+#[cfg(all(not(feature = "hardwarekey"), feature = "smartcard"))]
 #[test]
-fn smartcard_only_build_keeps_managed_hardware_key_entry_points_disabled() {
+fn smartcard_only_build_allows_managed_hardware_key_add_import_but_not_setup() {
+    let env = SystemBackendTestEnv::new();
+    env.activate_profile("smartcard-only-hardware-key-import");
     let public_bytes = public_cert_bytes("Token User <token@example.com>");
-
-    assert!(discover_ripasso_hardware_keys()
-        .expect_err("hardware-key discovery should stay disabled")
-        .contains("disabled"));
-    assert!(matches!(
-        import_ripasso_hardware_key_bytes(
-            &public_bytes,
-            ManagedRipassoHardwareKey {
+    let _guard =
+        HardwareTransportGuard::install(Arc::new(MockHardwareTransport::with_tokens(vec![
+            DiscoveredHardwareToken {
                 ident: "mock-token".to_string(),
+                reader_hint: Some("Mock Reader".to_string()),
+                cardholder_certificate: Some(public_bytes.clone()),
                 signing_fingerprint: None,
                 decryption_fingerprint: None,
-                reader_hint: Some("Mock Reader".to_string()),
             },
-        ),
-        Err(PrivateKeyError::UnsupportedHardwareKey(_))
-    ));
+        ])));
+
+    let discovered = discover_ripasso_hardware_keys().expect("discover hardware keys");
+    assert_eq!(discovered.len(), 1);
+    assert_eq!(discovered[0].ident, "mock-token");
+
+    let imported = import_ripasso_hardware_key_bytes(
+        &public_bytes,
+        ManagedRipassoHardwareKey {
+            ident: "mock-token".to_string(),
+            signing_fingerprint: None,
+            decryption_fingerprint: None,
+            reader_hint: Some("Mock Reader".to_string()),
+        },
+    )
+    .expect("import hardware public key");
+
+    assert_eq!(
+        imported.protection,
+        ManagedRipassoPrivateKeyProtection::HardwareOpenPgpCard
+    );
     assert!(matches!(
         generate_ripasso_hardware_key(
             "mock-token",

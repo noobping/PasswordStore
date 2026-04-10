@@ -14,7 +14,7 @@ use crate::support::runtime::{
 #[cfg(feature = "flatpak")]
 use crate::support::ui::{add_persistent_hide_button, flat_icon_button_with_tooltip};
 #[cfg(feature = "flatpak")]
-use adw::gtk::Button;
+use adw::gtk::{Align, Box as GtkBox, Button, Orientation};
 use adw::prelude::*;
 #[cfg(feature = "flatpak")]
 use adw::{ActionRow, PreferencesGroup, Toast, ToastOverlay};
@@ -102,10 +102,17 @@ fn build_optional_permission_row(
     row.set_activatable(false);
 
     if optional_permission_uses_in_app_grant(has_host_permission()) {
-        let button = Button::with_label(&gettext("Grant permission"));
+        let button = Button::with_label(&gettext("Grant"));
         button.add_css_class("suggested-action");
+        button.set_tooltip_text(Some(&gettext("Grant permission")));
         connect_optional_permission_grant_button(&button, overlay, command);
-        row.add_suffix(&button);
+
+        let suffix = GtkBox::builder()
+            .orientation(Orientation::Vertical)
+            .valign(Align::Center)
+            .build();
+        suffix.append(&button);
+        row.add_suffix(&suffix);
     } else {
         let button = flat_icon_button_with_tooltip("edit-copy-symbolic", "Copy permission command");
         row.add_suffix(&button);

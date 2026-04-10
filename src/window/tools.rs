@@ -17,7 +17,8 @@ use crate::support::object_data::non_null_to_string_option;
 use crate::support::runtime::{supports_docs_features, supports_logging_features};
 use crate::support::ui::{
     append_info_row, append_spinner_row, connect_keyboard_focusable_search_list_arrow_navigation,
-    focus_first_keyboard_focusable_list_row, reveal_navigation_page, visible_navigation_page_is,
+    focus_first_keyboard_focusable_list_row, navigation_stack_contains_page,
+    reveal_navigation_page, visible_navigation_page_is,
 };
 use crate::window::navigation::{
     show_secondary_page_chrome, HasWindowChrome, WindowNavigationState,
@@ -419,8 +420,12 @@ impl ToolsPageState {
     }
 
     fn handle_navigation_visibility_change(&self) {
+        let audit_page_visible =
+            visible_navigation_page_is(&self.navigation.nav, &self.audit_page.page);
+        let audit_page_in_stack =
+            navigation_stack_contains_page(&self.navigation.nav, &self.audit_page.page);
         self.sync_audit_filter_button();
-        if !visible_navigation_page_is(&self.navigation.nav, &self.audit_page.page)
+        if audit_tool_cache_should_clear(audit_page_visible, audit_page_in_stack)
             && self.audit_has_transient_state()
         {
             self.clear_audit_transient_state();
@@ -431,7 +436,7 @@ impl ToolsPageState {
             return;
         }
 
-        if visible_navigation_page_is(&self.navigation.nav, &self.audit_page.page) {
+        if audit_page_visible {
             return;
         }
 
@@ -441,7 +446,6 @@ impl ToolsPageState {
 
         self.reset_field_values_view();
         self.clear_weak_passwords_cache();
-        self.clear_audit_transient_state();
         self.invalidate_stale_tool_cache();
     }
 
@@ -633,6 +637,13 @@ fn append_loading_rows(list: &ListBox, title: &str, subtitle: &str) {
 
 fn advanced_search_tool_rows_enabled(field_values_busy: bool, weak_passwords_busy: bool) -> bool {
     !(field_values_busy || weak_passwords_busy)
+}
+
+const fn audit_tool_cache_should_clear(
+    audit_page_visible: bool,
+    audit_page_in_stack: bool,
+) -> bool {
+    !audit_page_visible && !audit_page_in_stack
 }
 
 const fn tool_browser_flow_is_visible(

@@ -3,7 +3,7 @@ use super::field_values::{
     unique_values_subtitle, FieldCatalogEntry, ValueCatalogEntry,
 };
 use super::{
-    advanced_search_tool_rows_enabled, filter_tool_requests,
+    advanced_search_tool_rows_enabled, audit_tool_cache_should_clear, filter_tool_requests,
     password_read_tools_available_for_store_roots_with, tool_browser_flow_is_visible,
     tool_row_matches_query, FieldValueRequest,
 };
@@ -147,6 +147,13 @@ fn tool_browser_flow_stays_visible_while_a_password_entry_is_open() {
     assert!(!tool_browser_flow_is_visible(
         false, false, false, false, false, false, false
     ));
+}
+
+#[test]
+fn audit_tool_cache_persists_while_page_remains_in_navigation_stack() {
+    assert!(!audit_tool_cache_should_clear(true, true));
+    assert!(!audit_tool_cache_should_clear(false, true));
+    assert!(audit_tool_cache_should_clear(false, false));
 }
 
 #[test]

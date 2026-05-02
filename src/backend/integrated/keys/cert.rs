@@ -4,6 +4,8 @@ use sequoia_openpgp::{
     cert::amalgamation::key::PrimaryKey, crypto::Password, parse::Parse, Cert, Fingerprint, Packet,
 };
 
+const OPENPGP_V4_FINGERPRINT_LEN: usize = 20;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ManagedRipassoPrivateKeyProtection {
     Password,
@@ -148,19 +150,19 @@ impl From<ConnectedSmartcardKey> for ManagedRipassoPrivateKey {
 
 pub(in crate::backend::integrated) fn fingerprint_from_string(
     value: &str,
-) -> Result<[u8; 20], String> {
+) -> Result<[u8; OPENPGP_V4_FINGERPRINT_LEN], String> {
     let fingerprint = Fingerprint::from_hex(value)
         .map_err(|err| format!("Invalid private key fingerprint '{value}': {err}"))?;
     let bytes = fingerprint.as_bytes();
-    if bytes.len() != 20 {
+    if bytes.len() != OPENPGP_V4_FINGERPRINT_LEN {
         return Err(format!(
             "Private key fingerprint '{value}' does not have the expected length."
         ));
     }
 
-    let mut parsed = [0u8; 20];
-    parsed.copy_from_slice(bytes);
-    Ok(parsed)
+    bytes.try_into().map_err(|_| {
+        format!("Private key fingerprint '{value}' does not have the expected length.")
+    })
 }
 
 pub(in crate::backend::integrated) fn normalized_fingerprint(

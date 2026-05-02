@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: keycord 0.9.9\n"
-"PO-Revision-Date: 2026-04-06 18:30+0200\n"
+"Project-Id-Version: keycord 0.9.10\n"
+"PO-Revision-Date: 2026-05-02 14:00+0200\n"
 "Last-Translator: Codex\n"
 "Language-Team: none\n"
 "Language: nl\n"
@@ -149,13 +149,13 @@ msgstr "Voeg een Git-remote voor deze opslag toe."
 msgid "Add a folder."
 msgstr "Voeg een map toe."
 
-#: data/metainfo.xml:37
+#: data/metainfo.xml:36
 msgid ""
-"Add a password folder you already have, create a new one, or restore one "
-"from Git"
+"Add existing stores, create new stores, import passwords on supported Linux "
+"systems, or restore a store from Git with the Host backend"
 msgstr ""
-"Voeg een wachtwoordmap toe die je al hebt, maak een nieuwe of herstel er een "
-"uit Git"
+"Voeg bestaande opslagen toe, maak nieuwe opslagen, importeer wachtwoorden op "
+"ondersteunde Linux-systemen of herstel een opslag uit Git met de Host-backend"
 
 #: src/backend/errors.rs:408
 msgid "Add a password to that key first."
@@ -248,8 +248,8 @@ msgstr "Git-remote voor wachtwoordopslag toevoegen"
 msgid "Add remote"
 msgstr "Remote toevoegen"
 
-#: data/metainfo.xml:138
-msgid "Add search profider"
+#: data/metainfo.xml:128
+msgid "Add search provider"
 msgstr "Voeg zoekprovider toe"
 
 #: data/metainfo.xml:155
@@ -279,6 +279,14 @@ msgstr "FIDO2-handleidingen en voortgangsindicatoren toegevoegd."
 #: data/metainfo.xml:102
 msgid "Added FIDO2-protected OpenPGP keys."
 msgstr "Met FIDO2 beveiligde OpenPGP-sleutels toegevoegd."
+
+#: data/metainfo.xml:80
+msgid "Added folder-specific recipient editing for .gpg-id files."
+msgstr "Mapspecifieke ontvangerbewerking toegevoegd voor .gpg-id-bestanden."
+
+#: data/metainfo.xml:83
+msgid "Added Git history inspection with commit verification details."
+msgstr "Git-geschiedenisinspectie toegevoegd met commitverificatiedetails."
 
 #: src/password/page/mod.rs:601
 msgid "Added missing template fields."
@@ -567,13 +575,13 @@ msgstr "Kies opslagmap om te herstellen"
 msgid "Choose which folder-specific .gpg-id file to manage."
 msgstr "Kies welk mapspecifiek .gpg-id-bestand je wilt beheren."
 
-#: data/metainfo.xml:39
+#: data/metainfo.xml:37
 msgid ""
-"Choose which keys can unlock a folder, including password-protected keys, "
+"Manage store recipients, folder-specific .gpg-id files, private keys, FIDO2 "
 "security keys, and OpenPGP smartcards"
 msgstr ""
-"Kies welke sleutels een map kunnen ontgrendelen, waaronder met een "
-"wachtwoord beveiligde sleutels, beveiligingssleutels en OpenPGP-smartcards"
+"Beheer opslagontvangers, mapspecifieke .gpg-id-bestanden, privésleutels, "
+"FIDO2-beveiligingssleutels en OpenPGP-smartcards"
 
 #: data/shortcuts.ui:77
 msgid "Clean pass file"
@@ -1171,16 +1179,13 @@ msgid "Create a password-protected private key for password stores."
 msgstr ""
 "Maak een met wachtwoord beveiligde privésleutel voor wachtwoordopslagen."
 
-#: data/metainfo.xml:40
-msgid "Create new keys or import keys you already have"
-msgstr "Maak nieuwe sleutels of importeer sleutels die je al hebt"
-
-#: data/metainfo.xml:34
+#: data/metainfo.xml:35
 msgid ""
-"Create passwords and quickly copy passwords, usernames, and one-time login "
-"codes"
+"Edit entries with form fields or raw pass-file text, generate passwords, and "
+"copy passwords, usernames, or one-time login codes"
 msgstr ""
-"Maak wachtwoorden en kopieer snel wachtwoorden, gebruikersnamen en eenmalige "
+"Bewerk items met formuliervelden of ruwe pass-bestandstekst, genereer "
+"wachtwoorden en kopieer wachtwoorden, gebruikersnamen of eenmalige "
 "inlogcodes"
 
 #: src/backend/integrated/git.rs:659
@@ -2201,14 +2206,6 @@ msgstr "Item zoeken"
 msgid "Find weak passwords"
 msgstr "Zwakke wachtwoorden vinden"
 
-#: data/metainfo.xml:36
-msgid ""
-"Find weak passwords and spot repeated usernames, email addresses, and "
-"website links"
-msgstr ""
-"Vind zwakke wachtwoorden en zie terugkerende gebruikersnamen, e-mailadressen "
-"en webadressen"
-
 #: data/metainfo.xml:179
 msgid "First release"
 msgstr "Eerste release"
@@ -2226,11 +2223,9 @@ msgid "Fixed OTP bug where valid secrets were incorrectly invalidated."
 msgstr ""
 "OTP-fout opgelost waarbij geldige geheimen onterecht ongeldig werden gemaakt."
 
-#: data/metainfo.xml:43
-msgid "For extra-sensitive folders, require more than one key before they open"
-msgstr ""
-"Laat voor extra gevoelige mappen meer dan een sleutel nodig zijn voordat ze "
-"openen"
+#: data/metainfo.xml:74
+msgid "Fixed the GNOME search provider."
+msgstr "GNOME-zoekprovider opgelost."
 
 #: src/backend/integrated/git.rs:196
 msgid "GIT_{env_prefix}_EMAIL"
@@ -2521,8 +2516,8 @@ msgid "Import passwords"
 msgstr "Wachtwoorden importeren"
 
 #: data/metainfo.xml:38
-msgid "Import passwords from other apps on supported Linux systems"
-msgstr "Importeer wachtwoorden uit andere apps op ondersteunde Linux-systemen"
+msgid "Import passwords from other apps on supported systems"
+msgstr "Importeer wachtwoorden uit andere apps op ondersteunde systemen"
 
 #: src/support/pass_import.rs:134
 msgid "Import passwords with pass import"
@@ -3457,12 +3452,13 @@ msgstr "In nieuw venster openen"
 msgid "Open logs"
 msgstr "Loguitvoer openen"
 
-#: data/metainfo.xml:33
+#: data/metainfo.xml:34
 msgid ""
-"Open one or more password folders, then search, filter, and edit what is "
-"inside"
+"Open one or more password stores and search by name, store, field, regular "
+"expression, or structured find query"
 msgstr ""
-"Open een of meer wachtwoordmappen en zoek, filter en bewerk wat erin staat"
+"Open een of meer wachtwoordopslagen en zoek op naam, opslag, veld, reguliere "
+"expressie of gestructureerde find-query"
 
 #: data/shortcuts.ui:282
 msgid "Open preferences"
@@ -4045,6 +4041,12 @@ msgid ""
 msgstr ""
 "Functie voor met FIDO2 ondersteunde wachtwoordopslagen verwijderd uit de "
 "Flatpak-app. Neem contact op als je die terug wilt."
+
+#: data/metainfo.xml:82
+msgid "Reduced secret exposure in GNOME search, command failures, and logs."
+msgstr ""
+"Blootstelling van geheimen verminderd in GNOME-zoekopdrachten, "
+"commandofouten en logs."
 
 #: src/store/recipients_page/progress.rs:10
 msgid "Removing Security Key"
@@ -5328,13 +5330,21 @@ msgstr "Hoofdletters"
 msgid "Use Add OTP secret instead."
 msgstr "Gebruik in plaats daarvan 'OTP-geheim toevoegen'."
 
-#: data/metainfo.xml:41
+#: data/metainfo.xml:38
 msgid ""
-"Use Git to sync password folders, choose where they sync, and sign your "
-"changes"
+"Sync Git-backed stores, manage remotes, sign changes, and inspect history "
+"with commit verification details"
 msgstr ""
-"Gebruik Git om wachtwoordmappen te synchroniseren, kies waar ze "
-"synchroniseren en onderteken je wijzigingen"
+"Synchroniseer Git-opslagen, beheer remotes, onderteken wijzigingen en bekijk "
+"geschiedenis met commitverificatiedetails"
+
+#: data/metainfo.xml:39
+msgid ""
+"Use the adaptive GTK interface with keyboard, pointer, or touch on desktop "
+"and mobile Linux"
+msgstr ""
+"Gebruik de adaptieve GTK-interface met toetsenbord, aanwijzer of aanraking "
+"op desktop- en mobiele Linux"
 
 #: data/window.ui:1595
 msgid ""
@@ -5454,6 +5464,11 @@ msgstr ""
 "lokale privésleutel dan eerst de sleutel van de verkeerde persoon te "
 "proberen."
 
+#: data/metainfo.xml:81
+msgid "Improved recipient selection when a store has many possible keys."
+msgstr ""
+"Ontvangerselectie verbeterd wanneer een opslag veel mogelijke sleutels heeft."
+
 #: data/window.ui:653
 msgid ""
 "When enabled, History can use recipients from earlier commits while "
@@ -5500,8 +5515,14 @@ msgid "Working"
 msgstr "Bezig"
 
 #: data/metainfo.xml:31
-msgid "Works with password folders that use the standard"
-msgstr "Werkt met wachtwoordmappen die de standaard"
+msgid ""
+"Keycord works with folders that use the standard pass layout. Existing "
+"stores stay on disk as normal pass stores, so you can keep using compatible "
+"tools."
+msgstr ""
+"Keycord werkt met mappen die de standaard pass-indeling gebruiken. Bestaande "
+"opslagen blijven als normale pass-opslagen op schijf staan, zodat je "
+"compatibele hulpmiddelen kunt blijven gebruiken."
 
 #: src/backend/integrated/git.rs:493
 msgid "Write password store Git commit object"
@@ -5527,13 +5548,9 @@ msgstr "Je kunt nu Git-remotes beheren"
 msgid "You can now open pass files in a new window"
 msgstr "Je kunt pass-bestanden nu in een nieuw venster openen"
 
-#: data/metainfo.xml:93
-msgid ""
-"You can now search or filter every page, so settings and options are easier "
-"to find."
-msgstr ""
-"Je kunt nu elke pagina doorzoeken of filteren, zodat instellingen en opties "
-"makkelijker te vinden zijn."
+#: data/metainfo.xml:84
+msgid "Improved search, filtering, keyboard navigation, and entry editing."
+msgstr "Zoeken, filteren, toetsenbordnavigatie en itembewerking verbeterd."
 
 #: data/metainfo.xml:148
 msgid "You can now use the field values as variables in search"

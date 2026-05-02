@@ -28,19 +28,14 @@
   </supports>
 
   <description>
-    <p>Works with password folders that use the standard <code>pass</code> layout, so you can keep using the folders you already have.</p>
+    <p>Keycord works with folders that use the standard pass layout. Existing stores stay on disk as normal pass stores, so you can keep using compatible tools.</p>
     <ul>
-      <li>Open one or more password folders, then search, filter, and edit what is inside</li>
-      <li>Create passwords and quickly copy passwords, usernames, and one-time login codes</li>
-      <li>Edit entries with simple fields or as plain text</li>
-      <li>Find weak passwords and spot repeated usernames, email addresses, and website links</li>
-      <li>Add a password folder you already have, create a new one, or restore one from Git</li>
-      <li>Import passwords from other apps on supported Linux systems</li>
-      <li>Choose which keys can unlock a folder, including password-protected keys, security keys, and OpenPGP smartcards</li>
-      <li>Create new keys or import keys you already have</li>
-      <li>Use Git to sync password folders, choose where they sync, and sign your changes</li>
-      <li>Inspect change history to see what changed and whether a commit was verified</li>
-      <li>For extra-sensitive folders, require more than one key before they open</li>
+      <li>Open one or more password stores and search by name, store, field, regular expression, or structured find query</li>
+      <li>Edit entries with form fields or raw pass-file text, generate passwords, and copy passwords, usernames, or one-time login codes</li>
+      <li>Add existing stores, create new stores, import passwords on supported systems, or restore a store from Git with the Host backend</li>
+      <li>Manage store recipients, folder-specific .gpg-id files, private keys, FIDO2 security keys, and OpenPGP smartcards</li>
+      <li>Sync Git-backed stores, manage remotes, sign changes, and inspect history with commit verification details</li>
+      <li>Use the adaptive GTK interface with keyboard, pointer, or touch on desktop and mobile Linux</li>
     </ul>
   </description>
 
@@ -82,25 +77,17 @@
   <releases>
     <release version="0.9.10" date="2026-04-10">
       <description>
-        <p>Fixed Gnome search provider</p>
+        <p>Fixed the GNOME search provider.</p>
       </description>
     </release>
     <release version="0.9.9" date="2026-04-09">
       <description>
         <ul>
-          <li>On the recipients page, you can now choose which folder-specific <code>.gpg-id</code> file you want to edit.</li>
-          <li>When you change recipients, Keycord now changes the selected folder's <code>.gpg-id</code> file instead of always changing only the top-level file.</li>
-          <li>When a store has many recipients, Keycord now prefers a usable local private key instead of trying the wrong person's key first.</li>
-          <li>GNOME search now shows less metadata and no longer looks inside secret fields.</li>
-          <li>Sensitive command output is now hidden more often in failed commands and logs.</li>
-          <li>Secrets are now handled more safely with better file writes, stronger process hardening, and stricter recipient checks.</li>
-          <li>The entry editor now has a clear save button.</li>
-          <li>The entry list now has quick add and clear-search actions at the bottom.</li>
-          <li>Apply buttons now stay hidden until all needed information is filled in.</li>
-          <li>Keyboard navigation now works better, especially with the arrow keys.</li>
-          <li>New history tool: read old changes and check whether a Git commit was verified.</li>
-          <li>You can now search or filter every page, so settings and options are easier to find.</li>
-          <li>The entry editor now shows the password check tool.</li>
+          <li>Added folder-specific recipient editing for .gpg-id files.</li>
+          <li>Improved recipient selection when a store has many possible keys.</li>
+          <li>Reduced secret exposure in GNOME search, command failures, and logs.</li>
+          <li>Added Git history inspection with commit verification details.</li>
+          <li>Improved search, filtering, keyboard navigation, and entry editing.</li>
         </ul>
       </description>
     </release>
@@ -144,7 +131,7 @@
       <description>
         <ul>
           <li>Add documentation</li>
-          <li>Add search profider</li>
+          <li>Add search provider</li>
           <li>You can now open pass files in a new window</li>
         </ul>
       </description>

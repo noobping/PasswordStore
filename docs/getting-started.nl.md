@@ -1,6 +1,6 @@
 # Aan de slag
 
-Keycord is een GUI voor standaard `pass`-opslagen. Je hoeft je gegevens niet te converteren.
+Keycord is een grafische app voor standaard `pass`-opslagen. Je hoeft je gegevens niet te converteren, en de interface is gemaakt voor toetsenbord, aanwijzer en aanraking op desktop- en mobiele Linux.
 
 ## Kernbegrippen
 

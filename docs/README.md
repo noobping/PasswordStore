@@ -1,6 +1,6 @@
 # Keycord Docs
 
-Keycord is a GUI for standard [`pass`](https://www.passwordstore.org/) stores. It keeps the same folder layout on disk and adds search, editing, one-time login codes, key management, Git tools, and support for software keys, FIDO security keys, and OpenPGP smartcards.
+Keycord is a graphical app for standard [`pass`](https://www.passwordstore.org/) stores. It keeps the same folder layout on disk, works with compatible pass tools, and uses an adaptive GTK interface for keyboard, pointer, and touch use on desktop and mobile Linux.
 
 ## Guides
 
@@ -24,14 +24,12 @@ Keycord reads and writes normal `pass` stores:
 
 ## Keycord Features
 
-- open one or more password folders, then search, filter, and edit what is inside
-- edit entries with simple fields or in the raw pass-file editor
-- create passwords and copy passwords, usernames, and one-time login codes
-- find weak passwords and repeated usernames, email addresses, and URLs
-- add a password folder you already have, make a new one, import passwords, or restore a folder from Git
-- choose which keys unlock a folder, and create or import more keys when needed
-- use Git to sync password folders, manage remotes, sign changes, and inspect change history
-- extra-sensitive folders can require more than one key before they open
+- open one or more password stores and search by name, store, field, regular expression, or structured `find` query
+- edit entries with form fields or raw pass-file text, generate passwords, and copy passwords, usernames, or one-time login codes
+- add existing stores, create new stores, import passwords on supported systems, or restore a store from Git with the Host backend
+- manage store recipients, folder-specific `.gpg-id` files, private keys, FIDO2 security keys, and OpenPGP smartcards
+- sync Git-backed stores, manage remotes, sign changes, and inspect history with commit verification details
+- use the adaptive GTK interface with keyboard, pointer, or touch on desktop and mobile Linux
 
 ## Backend Matrix
 

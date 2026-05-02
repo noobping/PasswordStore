@@ -7,19 +7,14 @@
 
 Browse and edit password stores.
 
-Keycord works with password folders that use the standard [`pass`](https://www.passwordstore.org/) layout, so you can keep using the folders you already have.
+Keycord works with password folders that use the standard [`pass`](https://www.passwordstore.org/) layout. Existing stores stay on disk as normal pass stores, so you can keep using compatible tools.
 
-- Open one or more password folders, then search, filter, and edit what is inside
-- Create passwords and quickly copy passwords, usernames, and one-time login codes
-- Edit entries with simple fields or as plain text
-- Find weak passwords and spot repeated usernames, email addresses, and website links
-- Add a password folder you already have, create a new one, or restore one from Git
-- Import passwords from other apps on supported Linux systems
-- Choose which keys can unlock a folder, including password-protected keys, security keys, and OpenPGP smartcards
-- Create new keys or import keys you already have
-- Use Git to sync password folders, choose where they sync, and sign your changes
-- Inspect change history to see what changed and whether a commit was verified
-- For extra-sensitive folders, require more than one key before they open
+- Open one or more password stores and search by name, store, field, regular expression, or structured `find` query
+- Edit entries with form fields or raw pass-file text, generate passwords, and copy passwords, usernames, or one-time login codes
+- Add existing stores, create new stores, import passwords on supported systems, or restore a store from Git with the Host backend
+- Manage store recipients, folder-specific `.gpg-id` files, private keys, FIDO2 security keys, and OpenPGP smartcards
+- Sync Git-backed stores, manage remotes, sign changes, and inspect history with commit verification details
+- Use the adaptive GTK interface with keyboard, pointer, or touch on desktop and mobile Linux
 
 ![list](screenshots/list.png)
 
@@ -27,7 +22,7 @@ Keycord works with password folders that use the standard [`pass`](https://www.p
 
 Start with the [Getting Started guide](docs/getting-started.md), then explore the following sections:
 
-- [Search](docs/search.md): how to find outdated or insecure accounds  
+- [Search](docs/search.md): how to find outdated or insecure accounts
 - [Workflows](docs/workflows.md): how to do things in Keycord
 - [Permissions & Backends](docs/permissions-and-backends.md): application environment
 - [Use Cases](docs/use-cases.md): practical examples and short tutorials

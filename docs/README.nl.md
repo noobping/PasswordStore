@@ -1,6 +1,6 @@
 # Keycord-documentatie
 
-Keycord is een GUI voor standaard [`pass`](https://www.passwordstore.org/) -opslagen. Het behoudt dezelfde mapindeling op schijf en voegt zoeken, bewerken, eenmalige inlogcodes, sleutelbeheer, Git-hulpmiddelen en ondersteuning voor softwaresleutels, FIDO-beveiligingssleutels en OpenPGP-smartcards toe.
+Keycord is een grafische app voor standaard [`pass`](https://www.passwordstore.org/)-opslagen. Het behoudt dezelfde mapindeling op schijf, werkt met compatibele pass-hulpmiddelen en gebruikt een adaptieve GTK-interface voor toetsenbord, aanwijzer en aanraking op desktop- en mobiele Linux.
 
 ## Handleidingen
 
@@ -24,14 +24,12 @@ Keycord leest en schrijft gewone `pass`-opslagen:
 
 ## Keycord functies
 
-- open een of meer wachtwoordmappen en zoek, filter en bewerk wat erin staat
-- bewerk items met eenvoudige velden of in de ruwe pass-bestandseditor
-- maak wachtwoorden en kopieer wachtwoorden, gebruikersnamen en eenmalige inlogcodes
-- vind zwakke wachtwoorden en terugkerende gebruikersnamen, e-mailadressen en URL's
-- voeg een wachtwoordmap toe die je al hebt, maak een nieuwe, importeer wachtwoorden of herstel een map uit Git
-- kies welke sleutels een map ontgrendelen, en maak of importeer extra sleutels wanneer dat nodig is
-- gebruik Git om wachtwoordmappen te synchroniseren, remotes te beheren, wijzigingen te ondertekenen en de wijzigingsgeschiedenis te bekijken
-- voor extra gevoelige mappen kun je meer dan een sleutel verplicht maken voordat ze openen
+- open een of meer wachtwoordopslagen en zoek op naam, opslag, veld, reguliere expressie of gestructureerde `find`-query
+- bewerk items met formuliervelden of ruwe pass-bestandstekst, genereer wachtwoorden en kopieer wachtwoorden, gebruikersnamen of eenmalige inlogcodes
+- voeg bestaande opslagen toe, maak nieuwe opslagen, importeer wachtwoorden op ondersteunde Linux-systemen of herstel een opslag uit Git met de Host-backend
+- beheer opslagontvangers, mapspecifieke `.gpg-id`-bestanden, privésleutels, FIDO2-beveiligingssleutels en OpenPGP-smartcards
+- synchroniseer Git-opslagen, beheer remotes, onderteken wijzigingen en bekijk geschiedenis met commitverificatiedetails
+- gebruik de adaptieve GTK-interface met toetsenbord, aanwijzer of aanraking op desktop- en mobiele Linux
 
 ## Backendmatrix
 
